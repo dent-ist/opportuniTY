@@ -1,6 +1,4 @@
-var builder = Host.CreateApplicationBuilder(args);
+using Opportunity.Hosting.Workers;
 
-// Export worker: handlers are registered here as the corresponding epics land.
-
-var host = builder.Build();
-host.Run();
+// Thin composition root (ADR-019 R5). Workers__Enabled overrides the worker types this process runs.
+await OpportunityWorkerHost.RunAsync(args, WorkerTypes.Export);

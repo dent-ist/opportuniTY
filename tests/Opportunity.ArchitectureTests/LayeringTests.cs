@@ -5,7 +5,7 @@ using NetArchTest.Rules;
 namespace Opportunity.ArchitectureTests;
 
 /// <summary>
-/// Enforces the project layering in docs/adr/0019-layering-and-api-conventions.md (rules R1–R3).
+/// Enforces the project layering in docs/adr/0019-layering-and-api-conventions.md (rules R1–R3, plus the host-composition layer).
 /// </summary>
 public class LayeringTests
 {
@@ -38,9 +38,11 @@ public class LayeringTests
         "Opportunity.Production",
     ];
 
+    private static readonly string[] HostComposition = ["Opportunity.Hosting"];
+
     private static readonly string[] Hosts = ["Opportunity.Api", "Opportunity.Worker", "Opportunity.Migrator"];
 
-    private static readonly string[] OpportunityInfrastructure = [.. Infrastructure, .. FeatureModules, .. Hosts];
+    private static readonly string[] OpportunityInfrastructure = [.. Infrastructure, .. FeatureModules, .. HostComposition, .. Hosts];
 
     public static TheoryData<string> PureAssemblies => new() { "Opportunity.Core", "Opportunity.Contracts" };
 
@@ -81,7 +83,7 @@ public class LayeringTests
     [MemberData(nameof(FeatureModuleNames))]
     public void Feature_modules_do_not_reference_infrastructure_vendor_sdks_or_hosts(string assemblyName)
     {
-        AssertNoDependencyOn(Load(assemblyName), [.. InfrastructureSdks, .. Infrastructure, .. Hosts]);
+        AssertNoDependencyOn(Load(assemblyName), [.. InfrastructureSdks, .. Infrastructure, .. HostComposition, .. Hosts]);
     }
 
     public static TheoryData<string> InfrastructureNames => new(Infrastructure);
@@ -92,7 +94,13 @@ public class LayeringTests
     {
         AssertNoDependencyOn(
             Load(assemblyName),
-            [.. Infrastructure.Where(n => n != assemblyName), .. FeatureModules, .. Hosts]);
+            [.. Infrastructure.Where(n => n != assemblyName), .. FeatureModules, .. HostComposition, .. Hosts]);
+    }
+
+    [Fact]
+    public void Host_composition_does_not_reference_hosts()
+    {
+        AssertNoDependencyOn(Load("Opportunity.Hosting"), Hosts);
     }
 
     private static Assembly Load(string name) => Assembly.Load(name);

@@ -1,10 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <PropertyGroup>
+    <!-- OpenAPI 3.1 document generated on every build and committed; CI diffs it for breaking changes (ADR-019 §2.1). -->
+    <OpenApiGenerateDocuments>true</OpenApiGenerateDocuments>
+    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/openapi</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOptions>--file-name opportunity-api-v1</OpenApiGenerateDocumentsOptions>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Hosting\Opportunity.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />
