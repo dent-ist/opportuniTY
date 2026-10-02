@@ -32,7 +32,8 @@ before the first project reference is added. Separately, §20 and §32 describe 
 | **Application** | `Opportunity.Application` — use cases, ports (interfaces such as `IDocumentRepository`, `IMessagePublisher`, `ISearchService`, `IObjectStore`), authorization orchestration | Core, Contracts |
 | **Feature modules** | `Opportunity.Import`, `Opportunity.Rendering`, `Opportunity.Production` | Core, Contracts, Application |
 | **Infrastructure** | `Opportunity.Data` (Npgsql), `Opportunity.Search` (OpenSearch), `Opportunity.Storage` (S3/Azure/filesystem), `Opportunity.Messaging` (RabbitMQ), `Opportunity.Security` (OIDC, key/secret providers), `Opportunity.Jobs` (job/chunk state, leases, dispatch loop) | Core, Contracts, Application (to implement its ports) |
-| **Hosts** | `Opportunity.Api`, `Opportunity.Worker.Import`, `.Indexing`, `.Rendering`, `.Export`, `.Production`, `.Dispatcher`, `.BulkCoding`, `Opportunity.Migrator` (one-shot schema migrations + infrastructure bootstrap, `E04-T01`) | anything in `src/` except other hosts |
+| **Host composition** | `Opportunity.Hosting` — shared host builder, health endpoints, validated options, worker module catalog (`E01-T02`) | anything in `src/` except hosts; referenced only by hosts |
+| **Hosts** | `Opportunity.Api`, `Opportunity.Worker.Import`, `.Indexing`, `.Rendering`, `.Export`, `.Production`, `.Dispatcher`, `.BulkCoding`, `.All` (combined, Lite), `Opportunity.Migrator` (one-shot schema migrations + infrastructure bootstrap, `E04-T01`) | anything in `src/` except other hosts |
 | **Frontend** | `Opportunity.Web` (Angular) | the published OpenAPI document only (generated client); no .NET references |
 
 Rules:

@@ -1,12 +1,17 @@
+using Opportunity.Api.Conventions;
+using Opportunity.Hosting;
+
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
+builder.AddOpportunityHostDefaults();
+builder.Services.AddApiConventions();
 
 var app = builder.Build();
 
+app.UseApiConventions();
+app.MapOpportunityHostDefaults();
 app.MapOpenApi();
-
-app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
+app.MapApiV1();
 
 app.Run();
 
