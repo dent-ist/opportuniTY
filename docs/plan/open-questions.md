@@ -142,7 +142,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E05, E09, E16. **Raised by:** SEC (Q2), UI (Q4).
 - **Suggested default:** No automatic inheritance. Propagation is an explicit action with a conflict preview. Above 1,000 documents it becomes a bulk job. Production QC flags inconsistent families.
 
-### Q-15 Export authorization when access is revoked mid-job
+### Q-15 Export authorization when access is revoked mid-job — ANSWERED (see decisions.md)
 - **Question:** If a user's access is revoked between export submission and execution, should the export fail entirely, exclude the denied documents with a report, or continue under the original authorization?
 - **Affected epics:** E05, E12. **Raised by:** SEC (Q6).
 - **Suggested default:** Exclude the denied documents with an exception report. A per-workspace "strict" option fails the whole job instead.
