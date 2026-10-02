@@ -126,7 +126,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E05, E13. **Raised by:** BE (Q5).
 - **Suggested default:** Privilege status, confidentiality designation (AEO) and ethical-wall membership are security-affecting. Document-level restrictions ship in M3.
 
-### Q-12 ★ Are stale-hit snippets and metadata protected content?
+### Q-12 ★ Are stale-hit snippets and metadata protected content? — ANSWERED (see decisions.md)
 - **Question:** Do grid column values, snippets and highlight fragments from OpenSearch count as protected content under §24?
 - **Why it matters:** If yes, every page of hits must be post-filtered against PG. That adds latency and changes the ADR-004 benchmark.
 - **Affected epics:** E05, E07, E16, E18. **Raised by:** UI (Q3), SEC (finding 5).
