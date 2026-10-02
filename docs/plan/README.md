@@ -142,3 +142,5 @@ Milestones map 1:1 to the GitHub milestones `M0` … `M5`. Every ticket belongs 
 ## GitHub issues
 
 All epics and tickets are tracked as GitHub issues. See [issue-map.md](issue-map.md) for the plan-key → issue-number mapping.
+
+Product-owner answers are recorded in [decisions.md](decisions.md).
