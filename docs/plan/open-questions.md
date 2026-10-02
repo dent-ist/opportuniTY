@@ -58,7 +58,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 
 ## Deployment, scale and benchmarking
 
-### Q-01 ★ Hosting and trust model — PARTLY ANSWERED (see decisions.md)
+### Q-01 ★ Hosting and trust model — ANSWERED (see decisions.md)
 - **Question:** Is the MVP self-hosted per organization (law firm/corporate) or a multi-tenant hosted service? Is the Lite profile meant for real client data (TLS everywhere, RLS, sandboxed renderer, malware scanning, OpenSearch security plugin) or for evaluation only, with documented reduced guarantees?
 - **Why it matters:** The answer drives shared-index placement, how strict RLS must be, the per-workspace key roadmap, GDPR processor status, and the Lite security defaults.
 - **Affected epics:** E02, E05, E19. **Raised by:** BE (Q6), LEG (Q5), SEC (Q8), OPS (Q8).
