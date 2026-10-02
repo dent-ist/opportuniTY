@@ -28,6 +28,7 @@
     <Project Path="tests/Opportunity.ArchitectureTests/Opportunity.ArchitectureTests.csproj" />
     <Project Path="tests/Opportunity.IntegrationTests/Opportunity.IntegrationTests.csproj" />
     <Project Path="tests/Opportunity.ScaleTests/Opportunity.ScaleTests.csproj" />
+    <Project Path="tests/Opportunity.Testing/Opportunity.Testing.csproj" />
     <Project Path="tests/Opportunity.UnitTests/Opportunity.UnitTests.csproj" />
   </Folder>
   <Folder Name="/tools/">

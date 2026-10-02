@@ -12,6 +12,9 @@
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="AWSSDK.S3" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +30,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Hosting\Opportunity.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Api\Opportunity.Api.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Migrator\Opportunity.Migrator.csproj" />
+    <ProjectReference Include="..\Opportunity.Testing\Opportunity.Testing.csproj" />
   </ItemGroup>
 
 </Project>
