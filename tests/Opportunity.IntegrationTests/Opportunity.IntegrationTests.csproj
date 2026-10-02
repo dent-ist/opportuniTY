@@ -12,6 +12,7 @@
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,6 +26,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Security\Opportunity.Security.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Jobs\Opportunity.Jobs.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Api\Opportunity.Api.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Migrator\Opportunity.Migrator.csproj" />
   </ItemGroup>
 
 </Project>

@@ -38,7 +38,7 @@ public class LayeringTests
         "Opportunity.Production",
     ];
 
-    private static readonly string[] Hosts = ["Opportunity.Api", "Opportunity.Worker"];
+    private static readonly string[] Hosts = ["Opportunity.Api", "Opportunity.Worker", "Opportunity.Migrator"];
 
     private static readonly string[] OpportunityInfrastructure = [.. Infrastructure, .. FeatureModules, .. Hosts];
 
