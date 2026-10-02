@@ -114,7 +114,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E02, E09. **Raised by:** BE (Q3), EDS (Q3).
 - **Suggested default:** Honour upstream dedupe by default. Optional computed grouping is family-level with global scope and uses the upstream `DedupeHash`/email hash when present, otherwise SHA-256. Grouping is informational only: no suppression in the MVP.
 
-### Q-10 Staleness tolerance and security-projection lag SLO
+### Q-10 Staleness tolerance and security-projection lag SLO — ANSWERED (see decisions.md)
 - **Question:** Are visibly stale counts with a freshness banner acceptable during bulk indexing (§28), or must some workflows, such as privilege review, block until the index is current? What is the maximum stale window after privilege or wall changes, and must counts be exact during that window? Should reviewers see raw generation numbers?
 - **Why it matters:** It shapes the UI design, the priority-lane SLO and the ADR-004 gates.
 - **Affected epics:** E05, E07, E16. **Raised by:** BE (Q4), SEC (Q3), UI (Q7).
