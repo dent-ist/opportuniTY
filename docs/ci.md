@@ -58,4 +58,4 @@ Require the **`CI gate`** status check on `main`, and require branches to be up 
 - **OpenAPI diff and message-contract tests (L5).** Add steps in the `.NET` job, after the architecture tests, once the suites exist.
 - **Cross-workspace security suite (`E05-T05`).** It lives under `tests/Opportunity.IntegrationTests/Security`, so it already runs in the integration job. **Fault/idempotency smoke (`E18-T01`).** Give it its own job if it would push the integration job past the budget, and add that job to `ci-gate.needs`.
 - **Coverage.** Not collected yet. Add `Microsoft.Testing.Extensions.CodeCoverage` (.NET) and `@vitest/coverage-v8` (Angular), then upload Cobertura reports next to the test results.
-- **`dotnet format --verify-no-changes`.** Not enabled. The current sources do not pass it, because `.editorconfig` sets `insert_final_newline = false` for `*.cs` while the files end with a newline. Resolve that, reformat once, then add the step to the `.NET` job.
+- **`dotnet format --verify-no-changes`.** Enabled in the `.NET` job (`Check formatting`). Run `dotnet format Opportunity.slnx` locally to fix.

@@ -54,6 +54,8 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
       - name: Restore
         run: dotnet restore Opportunity.slnx
+      - name: Check formatting
+        run: dotnet format Opportunity.slnx --verify-no-changes --no-restore
       - name: Build (warnings as errors)
         id: build
         run: dotnet build Opportunity.slnx -c "$CONFIGURATION" --no-restore -warnaserror
