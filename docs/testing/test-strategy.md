@@ -128,12 +128,12 @@ This strategy needs approval from the **lead architect** and the **product owner
 
 Points for explicit confirmation at sign-off:
 
-1. **Absolute-threshold gates on developer hardware.** Under Q-03, the index-lag (≤ 2 min) and coding→searchable (≤ 1 s) gates are absolute numbers measured on non-reference hardware. Proposal: they are evaluated and reported. A miss is disqualifying only if the candidate also loses the relative comparison against other candidates on the same machine. Otherwise it is flagged for re-measurement on sponsored hardware (M4). Record the outcome in `gates.yaml`.
+1. **Absolute-threshold gates on developer hardware.** Under Q-03, the index-lag (≤ 2 min) and coding→searchable (≤ 1 s) gates are absolute numbers measured on non-reference hardware. Proposal: they are evaluated and reported. A miss is disqualifying only if the candidate also loses the relative comparison against other candidates on the same machine. Otherwise it is flagged for re-measurement on sponsored hardware (M4). Record the outcome in `gates.yaml`. **Confirmed by the product owner as decision Q-44 (2026-10-02).**
 2. **Weekly 1M slot** runs on the same runner as nightly (100K), within the 3 h budget, if cache restore allows it (§3).
 3. **T4 (10M)** stays deferred until hardware is sponsored (Q-03). Any claim about 10M+ behavior is labelled "unproven" (§30) until then.
 
 | Role | Name | Decision | Date |
 |---|---|---|---|
 | Lead architect | | ☐ Approved ☐ Changes requested | |
-| Product owner | | ☐ Approved ☐ Changes requested | |
+| Product owner | plogramer | Item 1 approved (Q-44); full sign-off pending | 2026-10-02 |
 | QA Lead (author) | | Submitted | 2026-10-02 |
