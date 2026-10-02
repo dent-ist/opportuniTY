@@ -39,7 +39,8 @@ ConnectionStrings__Migrator="Host=...;Database=opportunity;Username=opportunity_
   with `COMMENT ON TABLE ... IS '@global <reason>'`.
 - **Partition-agnostic DDL:** the partitioning scheme is still open (`E18-T08`), so keys and queries must work whether
   a table is plain or hash-partitioned by `workspace_id`; partition children are checked through their parent.
-- **RLS** policies (`ENABLE` + `FORCE ROW LEVEL SECURITY`) live in the migration that creates the table.
+- **RLS** policies (`ENABLE` + `FORCE ROW LEVEL SECURITY`) live in the migration that creates the table. The
+  core tables of V0002 (`E04-T02`) predate the RLS ticket and get their policies in `E05-T03`'s migration.
 - **Privileges:** default privileges from V0001 give `opportunity_app` SELECT/INSERT/UPDATE/DELETE and
   `opportunity_readonly` SELECT on new tables. Append-only tables must `REVOKE UPDATE, DELETE ... FROM opportunity_app`.
   Run the migrator as one stable owner login: default privileges only apply to objects that login creates.
