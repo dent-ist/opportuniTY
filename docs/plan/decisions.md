@@ -18,3 +18,33 @@ Answers to the questions in [open-questions.md](open-questions.md). A decision h
 | Q-13 | **Full ethical walls.** Walls apply to individual users and to IdP groups (e.g., AD/Entra). Walled documents are hidden entirely from affected users, including search hits, counts and facets. Workspace admins can be walled. Emergency access uses a separate break-glass role whose every use is separately audited and reportable. | 2026-10-02 |
 | Q-10 | **Stale counts are acceptable with a visible freshness banner and "≈" labels.** Privilege-review and production workflows offer an optional "wait until index is current" before running. Security-projection lag SLO: ≤ 5 s p95 after privilege/confidentiality/wall changes (access itself is enforced immediately per Q-12). Raw generation/watermark numbers are shown only to admins and support; reviewers see plain-language freshness ("current as of …"). | 2026-10-02 |
 | Q-15 | **Exports re-check access at execution time and exclude denied documents with a report.** Each export chunk re-authorizes every document against current PostgreSQL security state (§24). Documents the requester can no longer access are excluded; the job result lists each excluded document and the reason, and the exclusion is audited. The export manifest reflects actual contents. | 2026-10-02 |
+| Q-02 | Adopted suggested default: ≤ 1,000 workspaces per installation, most under 1M documents. Shared index below 5M documents or 50 GB, dedicated above that. All thresholds are configurable. | 2026-10-02 |
+| Q-05 | Adopted suggested default: Yes for reference runs. Relaxed settings are allowed only on the nightly developer profile and must be recorded in the manifest. | 2026-10-02 |
+| Q-06 | Adopted suggested default: Use §29 plus the eDiscovery practitioner defaults in `E17-T01`. Re-weight if real statistics become available. | 2026-10-02 |
+| Q-16 | **Full executed search text is stored in audit, visible only to admin/auditor roles.** Audit is retained for the life of the matter plus a configurable period (default **7 years after matter close**), set per installation. | 2026-10-02 |
+| Q-17 | Adopted suggested default: Hash chain and signed checkpoints in M3 (`E14-T03`). WORM archival post-MVP (`E14-T07`). | 2026-10-02 |
+| Q-18 | Adopted suggested default: Download and print off for Reviewer and on for Admin and Production Manager. Watermarking is post-MVP. | 2026-10-02 |
+| Q-19 | Adopted suggested default: US federal civil litigation, with generic configurable templates (default DAT field set, document-by-document log). DOJ/FTC specs come post-MVP. | 2026-10-02 |
+| Q-21 | Adopted suggested default: Full production in M3 with TIFF G4 300 DPI and JPG chosen by file type rather than by detection, plus natives with slip sheets, text, placeholders and DAT/OPT. PDF and LFP come post-MVP. | 2026-10-02 |
+| Q-22 | Adopted suggested default: Rectangle-on-image only. Redacted documents are always imaged and never produced natively. Term-based and native redaction come post-MVP. | 2026-10-02 |
+| Q-23 | Adopted suggested default: Retain productions, logs and audit by default. Deletion needs two-person approval (requester plus approver with a designated role). The workspace-level lock is sufficient for the MVP. | 2026-10-02 |
+| Q-24 | Adopted suggested default: Not in the MVP. Record a residency field per workspace now and ship enforcement and PII assist post-MVP. | 2026-10-02 |
+| Q-25 | Adopted suggested default: Yes, in the README, the documentation and the UI "About" page. | 2026-10-02 |
+| Q-26 | Adopted suggested default: Relativity, Nuix and generic Concordance/CSV presets and alias maps. LFP post-MVP. | 2026-10-02 |
+| Q-27 | Adopted suggested default: ControlNumber is immutable and unique per workspace on a normalized form, with an optional import prefix. Received BegBates/EndBates are typed fields. No renaming. | 2026-10-02 |
+| Q-28 | Adopted suggested default: A matter display time zone with a per-user override. Productions use the time zone in their specification. MVP locales are en-US and en-GB formats. | 2026-10-02 |
+| Q-29 | Adopted suggested default: Index the first 10 M characters (configurable; eDiscovery suggested up to 50 MB), set `TextTruncated=true`, keep the full text in object storage, and show a viewer banner. | 2026-10-02 |
+| Q-30 | Adopted suggested default: Yes, STRs are snapshot-bound and exportable. `W/n` ships in M1 and `PRE/n` and `!` post-MVP (`E07-T12`). | 2026-10-02 |
+| Q-31 | Adopted suggested default: Workspace Admin only. Coding and privilege fields are not overlayable unless an admin explicitly enables it per import, which is audited. | 2026-10-02 |
+| Q-32 | Adopted suggested default: Approximate counts above 10,000, with a "count exactly" action. No arbitrary deep page jumps. Sorting toward the end serves the "last page" need. | 2026-10-02 |
+| Q-33 | Adopted suggested default: A live PIT cursor with a "results refreshed" notice in the MVP. Frozen review sets come from review batches post-MVP. | 2026-10-02 |
+| Q-34 | Adopted suggested default: No undo in the MVP (an admin-only "revert job" is a post-MVP candidate). Typed confirmation above 10,000 documents or for any security-affecting field. | 2026-10-02 |
+| Q-35 | Adopted suggested default: SSE with a polling fallback (≥ 5 s interval). | 2026-10-02 |
+| Q-36 | Adopted suggested default: Yes. No in-browser native rendering in the MVP. | 2026-10-02 |
+| Q-37 | Adopted suggested default: WCAG 2.2 AA with an ACR at 1.0. Latest two versions of Chrome, Edge, Firefox and Safari. UI latency is diagnostic, with budgets enforced in CI. | 2026-10-02 |
+| Q-38 | Adopted suggested default: The default is permissively licensed (filesystem provider for Lite plus a verified Apache-2.0 S3 store for Full). AGPL stores are allowed only as documented, optional, unmodified external services. The PO owns the license policy. | 2026-10-02 |
+| Q-39 | Adopted suggested default: 16 GB recommended and 8 GB minimum with the combined worker. Linux, macOS (Apple Silicon) and WSL2 supported. Multi-arch images. | 2026-10-02 |
+| Q-40 | Adopted suggested default: Full profile only. Off-site DR is documented as an operator responsibility in v1. | 2026-10-02 |
+| Q-41 | Adopted suggested default: Compose only for v1. Helm after the 10M validation (M5). | 2026-10-02 |
+| Q-42 | Adopted suggested default: Ship an OTel Collector configuration plus an optional `observability` profile with the Grafana stack. Do not use the product OpenSearch cluster for logs. | 2026-10-02 |
+| Q-43 | Adopted suggested default: Monthly minor releases, with security fixes for N and N-1. Short maintenance-window upgrades before 1.0, and expand/contract migrations so zero-downtime is possible afterwards. | 2026-10-02 |

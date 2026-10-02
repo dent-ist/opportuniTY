@@ -4,7 +4,7 @@ These are the product-owner questions from the seven role reviews, deduplicated 
 
 Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel, EDS = eDiscovery Practitioner, SEC = Security, QA = QA & Performance, OPS = DevOps/SRE.
 
-**Priority:** the eight questions marked ★ block M0–M2 work or the ADR-004 decision. Answer them first.
+**Status:** All 43 questions are answered. See [decisions.md](decisions.md); decisions override the suggested defaults below.
 
 ## Summary
 
@@ -64,7 +64,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E02, E05, E19. **Raised by:** BE (Q6), LEG (Q5), SEC (Q8), OPS (Q8).
 - **Suggested default:** Self-hosted, single organization with many workspaces. Lite is for evaluation/development and has documented reduced guarantees. Full is the production profile with TLS, the security plugin, RLS and the sandbox. The architecture keeps multi-tenant boundaries regardless.
 
-### Q-02 Workspace count and size distribution
+### Q-02 Workspace count and size distribution — ANSWERED (see decisions.md)
 - **Question:** About how many workspaces will one installation hold, and how are their sizes distributed?
 - **Why it matters:** It sets the shared vs dedicated index thresholds (§8) and decides whether hash partitioning (§6) is worth its complexity.
 - **Affected epics:** E02, E07, E18. **Raised by:** BE (Q7).
@@ -82,13 +82,13 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E17, E18. **Raised by:** QA (Q2, Q3, Q5, Q6).
 - **Suggested default:** Sign-off by the PO and lead architect. Gates may only be tightened after calibration. Degradation gates run at the calibrated maximum rate of the weakest candidate, and ≥ 10K docs/s is measured separately as a ceiling. A material advantage is ≥ 20% p95 improvement on gated classes or ≥ 1.5× bulk throughput, consistent across all repetitions. A material 10M failure is any missed §26 gate, > 50% p95 growth from 1M to 10M, or a super-linear disk/merge trend.
 
-### Q-05 Benchmark durability settings
+### Q-05 Benchmark durability settings — ANSWERED (see decisions.md)
 - **Question:** Must reference runs use production-grade durability (PG `synchronous_commit=on` with a sync replica, OpenSearch translog `request`, replicas ≥ 1)?
 - **Why it matters:** Results under relaxed settings are not comparable to the §17 RPO target.
 - **Affected epics:** E17, E18. **Raised by:** QA (Q7).
 - **Suggested default:** Yes for reference runs. Relaxed settings are allowed only on the nightly developer profile and must be recorded in the manifest.
 
-### Q-06 Corpus realism
+### Q-06 Corpus realism — ANSWERED (see decisions.md)
 - **Question:** Can anonymised real-matter statistics be obtained (family-size distribution, duplicate types, text-size percentiles, field cardinality), or is §29 the only authority?
 - **Why it matters:** ADR-004 results may not transfer to real matters.
 - **Affected epics:** E17. **Raised by:** QA (Q4).
@@ -149,22 +149,22 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 
 ## Audit, security policy and legal scope
 
-### Q-16 Search audit content and audit retention
+### Q-16 Search audit content and audit retention — ANSWERED (see decisions.md)
 - **Question:** Must executed search query text be stored in the audit log, or hashed or redacted? How long is audit retained after a matter closes?
 - **Affected epics:** E02, E14. **Raised by:** SEC (Q4), LEG (Q6).
 - **Suggested default:** Store query text, readable only with `Audit.Read`. Audit survives workspace deletion for a configurable retention period (default 7 years).
 
-### Q-17 Tamper evidence in the first release
+### Q-17 Tamper evidence in the first release — ANSWERED (see decisions.md)
 - **Question:** Is tamper-evident audit (hash chain + signed checkpoints, later WORM) required for the first public release?
 - **Affected epics:** E02, E14. **Raised by:** SEC (Q5), LEG (Q6).
 - **Suggested default:** Hash chain and signed checkpoints in M3 (`E14-T03`). WORM archival post-MVP (`E14-T07`).
 
-### Q-18 Native download/print defaults and reviewer watermark
+### Q-18 Native download/print defaults and reviewer watermark — ANSWERED (see decisions.md)
 - **Question:** Should native download and print be off by default for the Reviewer role? Is a dynamic reviewer watermark a v1 requirement?
 - **Affected epics:** E05. **Raised by:** SEC (Q7).
 - **Suggested default:** Download and print off for Reviewer and on for Admin and Production Manager. Watermarking is post-MVP.
 
-### Q-19 Jurisdictions and ESI protocol templates
+### Q-19 Jurisdictions and ESI protocol templates — ANSWERED (see decisions.md)
 - **Question:** Is the initial target US federal civil litigation only, or also state courts, regulatory responses (Second Requests, CIDs, SEC) and non-US proceedings? Which model orders and protocols should ship as templates, and are DOJ/FTC field lists in scope for the MVP?
 - **Affected epics:** E12, E13. **Raised by:** LEG (Q1, Q2).
 - **Suggested default:** US federal civil litigation, with generic configurable templates (default DAT field set, document-by-document log). DOJ/FTC specs come post-MVP.
@@ -174,123 +174,123 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E13. **Raised by:** LEG (Q3), EDS (Q7), BE (Q9).
 - **Suggested default:** M3 ships document-by-document and metadata-only logs with configurable column templates. Categorical logs are in the same ticket if the timebox allows, otherwise the next minor release.
 
-### Q-21 Production depth and image format in MVP
+### Q-21 Production depth and image format in MVP — ANSWERED (see decisions.md)
 - **Question:** Does the MVP need full production (Bates, burned redactions, endorsements, placeholders, privilege log), or is export plus basic Bates enough? Is TIFF G4 + JPG-for-color required, or is PDF-per-document acceptable? Is color detection needed?
 - **Affected epics:** E12. **Raised by:** BE (Q9), EDS (Q5).
 - **Suggested default:** Full production in M3 with TIFF G4 300 DPI and JPG chosen by file type rather than by detection, plus natives with slip sheets, text, placeholders and DAT/OPT. PDF and LFP come post-MVP.
 
-### Q-22 Redaction scope
+### Q-22 Redaction scope — ANSWERED (see decisions.md)
 - **Question:** Is rectangle-on-image enough for the MVP, or are text-mode redaction, term-based "redact all hits" and native (cell-level) spreadsheet redaction required? May redacted documents ever be produced natively?
 - **Affected epics:** E11, E12. **Raised by:** LEG (Q4), EDS (Q6), UI (Q9).
 - **Suggested default:** Rectangle-on-image only. Redacted documents are always imaged and never produced natively. Term-based and native redaction come post-MVP.
 
-### Q-23 Matter-end defaults, approvers and hold scope
+### Q-23 Matter-end defaults, approvers and hold scope — ANSWERED (see decisions.md)
 - **Question:** Should deletion default to "purge all" or to "retain productions, privilege logs and audit; purge review data"? Who may approve destruction? Is a workspace-level preservation lock enough for the MVP?
 - **Affected epics:** E02, E20. **Raised by:** LEG (Q7, Q8).
 - **Suggested default:** Retain productions, logs and audit by default. Deletion needs two-person approval (requester plus approver with a designated role). The workspace-level lock is sufficient for the MVP.
 
-### Q-24 Cross-border and privacy
+### Q-24 Cross-border and privacy — ANSWERED (see decisions.md)
 - **Question:** Are EU/UK custodians expected in early users' matters, requiring data residency and pseudonymization before transfer to US review?
 - **Affected epics:** E20. **Raised by:** LEG (Q9).
 - **Suggested default:** Not in the MVP. Record a residency field per workspace now and ship enforcement and PII assist post-MVP.
 
-### Q-25 Legal disclaimer
+### Q-25 Legal disclaimer — ANSWERED (see decisions.md)
 - **Question:** Should the project ship a standard disclaimer that it provides no legal advice and that users remain responsible for privilege, production and automated-coding validation?
 - **Affected epics:** E01 (README/about page). **Raised by:** LEG (Q10).
 - **Suggested default:** Yes, in the README, the documentation and the UI "About" page.
 
 ## Import, identity and search features
 
-### Q-26 Import source priority and LFP
+### Q-26 Import source priority and LFP — ANSWERED (see decisions.md)
 - **Question:** Which processing tools' exports must import cleanly at MVP (Relativity, Nuix, Reveal/Brainspace, Everlaw, Venio, GoldFynch)? Is LFP needed in the MVP?
 - **Affected epics:** E08, E12. **Raised by:** EDS (Q1).
 - **Suggested default:** Relativity, Nuix and generic Concordance/CSV presets and alias maps. LFP post-MVP.
 
-### Q-27 Identity model
+### Q-27 Identity model — ANSWERED (see decisions.md)
 - **Question:** Is ControlNumber the immutable internal identifier, with received-production Bates kept as separate fields, or may Bates be the key for opposing-party productions? Can a control number ever be renamed?
 - **Affected epics:** E02, E04. **Raised by:** EDS (Q2).
 - **Suggested default:** ControlNumber is immutable and unique per workspace on a normalized form, with an optional import prefix. Received BegBates/EndBates are typed fields. No renaming.
 
-### Q-28 Time-zone and locale policy
+### Q-28 Time-zone and locale policy — ANSWERED (see decisions.md)
 - **Question:** Is there one matter display time zone or one per user? Must productions output dates in the time zone set by the ESI protocol? Which locales and date formats ship in the MVP?
 - **Affected epics:** E08, E15. **Raised by:** EDS (Q4), UI (Q10).
 - **Suggested default:** A matter display time zone with a per-user override. Productions use the time zone in their specification. MVP locales are en-US and en-GB formats.
 
-### Q-29 Extracted text cap
+### Q-29 Extracted text cap — ANSWERED (see decisions.md)
 - **Question:** What is the maximum indexed text size per document? Is it acceptable for search and highlighting to cover only the indexed portion if the document is flagged?
 - **Affected epics:** E02, E07, E08. **Raised by:** BE (Q8), EDS (Q8).
 - **Suggested default:** Index the first 10 M characters (configurable; eDiscovery suggested up to 50 MB), set `TextTruncated=true`, keep the full text in object storage, and show a viewer banner.
 
-### Q-30 STR reproducibility and syntax familiarity
+### Q-30 STR reproducibility and syntax familiarity — ANSWERED (see decisions.md)
 - **Question:** Must search term reports be exchangeable with opposing counsel (snapshot + generation stamp + export format)? Should the syntax mirror dtSearch/Relativity (`W/n`, `PRE/n`, `!`)?
 - **Affected epics:** E07. **Raised by:** EDS (Q9).
 - **Suggested default:** Yes, STRs are snapshot-bound and exportable. `W/n` ships in M1 and `PRE/n` and `!` post-MVP (`E07-T12`).
 
-### Q-31 Overlay governance
+### Q-31 Overlay governance — ANSWERED (see decisions.md)
 - **Question:** Who may run overlays? Must overlays of coding/privilege fields be blocked to protect review provenance (§27)?
 - **Affected epics:** E08. **Raised by:** EDS (Q10).
 - **Suggested default:** Workspace Admin only. Coding and privilege fields are not overlayable unless an admin explicitly enables it per import, which is audited.
 
 ## Reviewer UX
 
-### Q-32 Grid totals and paging
+### Q-32 Grid totals and paging — ANSWERED (see decisions.md)
 - **Question:** Are approximate counts ("~1.2M", "≥ 10,000") acceptable for large result sets? Do users need "jump to page N" or "last page"?
 - **Affected epics:** E16. **Raised by:** UI (Q1).
 - **Suggested default:** Approximate counts above 10,000, with a "count exactly" action. No arbitrary deep page jumps. Sorting toward the end serves the "last page" need.
 
-### Q-33 Review session stability
+### Q-33 Review session stability — ANSWERED (see decisions.md)
 - **Question:** Should a reviewer's next/previous order be frozen for the whole session (a lightweight session snapshot), or may it re-query and shift as others code?
 - **Affected epics:** E10, E16. **Raised by:** UI (Q2).
 - **Suggested default:** A live PIT cursor with a "results refreshed" notice in the MVP. Frozen review sets come from review batches post-MVP.
 
-### Q-34 Bulk undo and confirmation thresholds
+### Q-34 Bulk undo and confirmation thresholds — ANSWERED (see decisions.md)
 - **Question:** Should a completed bulk coding job be revertible from CodingEvent history? Who may do it? What threshold requires a typed confirmation?
 - **Affected epics:** E10, E16. **Raised by:** UI (Q5).
 - **Suggested default:** No undo in the MVP (an admin-only "revert job" is a post-MVP candidate). Typed confirmation above 10,000 documents or for any security-affecting field.
 
-### Q-35 Progress delivery
+### Q-35 Progress delivery — ANSWERED (see decisions.md)
 - **Question:** May the UI use a push channel (SSE/SignalR through the API pool) for job and watermark updates, or must v1 poll?
 - **Affected epics:** E06, E15. **Raised by:** UI (Q6).
 - **Suggested default:** SSE with a polling fallback (≥ 5 s interval).
 
-### Q-36 Native viewing before the renderer is chosen
+### Q-36 Native viewing before the renderer is chosen — ANSWERED (see decisions.md)
 - **Question:** Until native rendering is chosen (§33), is "download native + extracted text + imported images/PDF" acceptable for MVP review? Do any formats need in-browser rendering on day one?
 - **Affected epics:** E11, E16. **Raised by:** UI (Q8).
 - **Suggested default:** Yes. No in-browser native rendering in the MVP.
 
-### Q-37 Accessibility, browser and localisation commitments
+### Q-37 Accessibility, browser and localisation commitments — ANSWERED (see decisions.md)
 - **Question:** Can the project commit formally to WCAG 2.2 AA (and publish a VPAT/ACR)? Which browsers must the E2E suite cover? Is UI latency a gated metric or diagnostic only?
 - **Affected epics:** E03, E15. **Raised by:** UI (Q10), QA (Q8).
 - **Suggested default:** WCAG 2.2 AA with an ACR at 1.0. Latest two versions of Chrome, Edge, Firefox and Safari. UI latency is diagnostic, with budgets enforced in CI.
 
 ## Operations and release
 
-### Q-38 Object-storage license policy
+### Q-38 Object-storage license policy — ANSWERED (see decisions.md)
 - **Question:** May an AGPL object store (MinIO, Garage) ship unmodified in the official Compose bundle, or must the default be permissively licensed? Who owns the third-party license policy?
 - **Affected epics:** E01, E19. **Raised by:** OPS (Q1).
 - **Suggested default:** The default is permissively licensed (filesystem provider for Lite plus a verified Apache-2.0 S3 store for Full). AGPL stores are allowed only as documented, optional, unmodified external services. The PO owns the license policy.
 
-### Q-39 Minimum Lite hardware and platforms
+### Q-39 Minimum Lite hardware and platforms — ANSWERED (see decisions.md)
 - **Question:** What is the minimum machine for Lite (8 GB or 16 GB)? Must it run on Windows/WSL2 and Apple Silicon?
 - **Affected epics:** E19. **Raised by:** OPS (Q2).
 - **Suggested default:** 16 GB recommended and 8 GB minimum with the combined worker. Linux, macOS (Apple Silicon) and WSL2 supported. Multi-arch images.
 
-### Q-40 RPO/RTO scope
+### Q-40 RPO/RTO scope — ANSWERED (see decisions.md)
 - **Question:** Do RPO ≤ 5 min and RTO ≤ 1 h (§17) apply to Lite/self-hosted Compose or only to Full? Is cross-region/off-site DR in scope for v1?
 - **Affected epics:** E18, E19. **Raised by:** OPS (Q3).
 - **Suggested default:** Full profile only. Off-site DR is documented as an operator responsibility in v1.
 
-### Q-41 Supported deployment targets and Kubernetes timing
+### Q-41 Supported deployment targets and Kubernetes timing — ANSWERED (see decisions.md)
 - **Question:** Is v1 Compose only, or also single-host Docker Swarm? When does Helm/Kubernetes become officially supported?
 - **Affected epics:** E19. **Raised by:** OPS (Q5).
 - **Suggested default:** Compose only for v1. Helm after the 10M validation (M5).
 
-### Q-42 Observability backend
+### Q-42 Observability backend — ANSWERED (see decisions.md)
 - **Question:** Should the project ship its own Grafana/Prometheus/Loki/Tempo stack, or only an OTel Collector configuration? Is OpenSearch acceptable as the log backend?
 - **Affected epics:** E19. **Raised by:** OPS (Q6).
 - **Suggested default:** Ship an OTel Collector configuration plus an optional `observability` profile with the Grafana stack. Do not use the product OpenSearch cluster for logs.
 
-### Q-43 Release cadence and support policy
+### Q-43 Release cadence and support policy — ANSWERED (see decisions.md)
 - **Question:** What release cadence, and how many versions back receive security fixes? Must upgrades be zero-downtime from v1.0?
 - **Affected epics:** E01. **Raised by:** OPS (Q7).
 - **Suggested default:** Monthly minor releases, with security fixes for N and N-1. Short maintenance-window upgrades before 1.0, and expand/contract migrations so zero-downtime is possible afterwards.
