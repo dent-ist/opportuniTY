@@ -71,7 +71,7 @@ Create the §18 skeleton (`src/`, `tests/`, `tools/`, `deploy/docker-compose/`, 
 - **Milestone / phase / size:** M0 - Foundation & Benchmark Harness / P0 / M
 
 #### Notes
-Addresses backend finding 16 (§18 layout gaps) and devops finding on unpinned versions.
+Addresses backend finding 16 (§18 layout gaps) and devops finding on unpinned versions. Add the legal disclaimer to README/CONTRIBUTING per Q-25.
 
 ---
 

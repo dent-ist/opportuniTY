@@ -203,7 +203,7 @@ Per format profile: single-page TIFF G4 300 DPI (B&W) / JPG for color (per file 
 - **Milestone / phase / size:** M3 - MVP Feature Complete / P1 / L
 
 #### Notes
-Q-21. PDF output and LFP are in `E12-T09`.
+Q-19, Q-21. PDF output and LFP are in `E12-T09`.
 
 ---
 
