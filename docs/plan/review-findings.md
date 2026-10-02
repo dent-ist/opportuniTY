@@ -10,7 +10,7 @@ Legend:
 
 | ID | Amendment | Baseline § | Raised by | Resolved via |
 |---|---|---|---|---|
-| A-01 | Renumber ADRs: §19 item 4 "Coding storage" collides with §25 "ADR-004" (OpenSearch projection). Proposal: ADR-004a PG coding storage, ADR-004b OpenSearch coding projection | §19, §25–§27 | BE | `E02-T01` |
+| A-01 | Renumber ADRs: §19 item 4 "Coding storage" collides with §25 "ADR-004" (OpenSearch projection). Proposal: ADR-004a PG coding storage, ADR-004b OpenSearch coding projection | §19, §25–§27 | BE | `E02-T01` — **Resolved:** numbering adopted in [ADR-019](../adr/0019-layering-and-api-conventions.md) / [ADR index](../adr/README.md#numbering) |
 | A-02 | Add missing ADRs to §19: 015 Security/threat model, 016 Backup/DR, 017 Observability/SLOs, 018 Frontend architecture | §19 | SEC, OPS, UI | `E02-T01`, `E02-T08`, `E19-T07`, `E15-T01` |
 | A-03 | External versioning works only with full `index`, not `_update`; ADR-004 must test full reindex vs guarded update separately and name the write primitive per candidate | §7, §21 step 5, §25 | BE | `E02-T02`, `E18-T04` |
 | A-04 | Define one authoritative `DocumentVersion` (bumped on any projected-field change, written as external version) and a separate `ProjectionGeneration` that is never compared with it; clarify `projectionVersion`/`SearchGeneration` | §5, §7, §10, §21, §23, §28 | BE, QA | `E02-T02` |
