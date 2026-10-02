@@ -108,7 +108,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E02, E12. **Raised by:** BE (Q2), LEG (finding 9).
 - **Suggested default:** Freeze membership, the production specification, the redaction-set version and the coding-state version for privilege/confidentiality decisions (`E12-T02`). Other metadata uses current values, and any difference is reported.
 
-### Q-09 Dedupe policy in MVP
+### Q-09 Dedupe policy in MVP — ANSWERED (see decisions.md)
 - **Question:** In the MVP, does opportuniTY only honour upstream dedupe (import AllCustodians and duplicate groups), or must it also compute duplicate groups itself? If it computes them, is the default scope global or custodial, and which hash defines an email duplicate? Is suppression needed in review or export?
 - **Why it matters:** It affects the import mapping, ADR-009 and the grid and export behaviour.
 - **Affected epics:** E02, E09. **Raised by:** BE (Q3), EDS (Q3).
