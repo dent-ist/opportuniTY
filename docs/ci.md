@@ -58,4 +58,5 @@ Require the **`CI gate`** status check on `main`, and require branches to be up 
 - **OpenAPI diff and message-contract tests (L5).** Add steps in the `.NET` job, after the architecture tests, once the suites exist.
 - **Cross-workspace security suite (`E05-T05`).** It lives under `tests/Opportunity.IntegrationTests/Security`, so it already runs in the integration job. **Fault/idempotency smoke (`E18-T01`).** Give it its own job if it would push the integration job past the budget, and add that job to `ci-gate.needs`.
 - **Coverage.** Not collected yet. Add `Microsoft.Testing.Extensions.CodeCoverage` (.NET) and `@vitest/coverage-v8` (Angular), then upload Cobertura reports next to the test results.
+- **OpenAPI gate.** `tools/ci/openapi-check.sh` runs in the `.NET` job after build: fails on uncommitted drift of `src/Opportunity.Api/openapi/opportunity-api-v1.json` and on breaking changes vs the base branch (oasdiff).
 - **`dotnet format --verify-no-changes`.** Enabled in the `.NET` job (`Check formatting`). Run `dotnet format Opportunity.slnx` locally to fix.

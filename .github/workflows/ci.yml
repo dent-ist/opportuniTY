@@ -59,6 +59,12 @@ jobs:
       - name: Build (warnings as errors)
         id: build
         run: dotnet build Opportunity.slnx -c "$CONFIGURATION" --no-restore -warnaserror
+      - name: OpenAPI drift and breaking-change check
+        env:
+          BASE_BRANCH: ${{ github.base_ref || 'main' }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_BRANCH" || true
+          bash tools/ci/openapi-check.sh "origin/$BASE_BRANCH"
       - name: Unit tests
         run: >-
           dotnet test --project tests/Opportunity.UnitTests -c "$CONFIGURATION" --no-build
