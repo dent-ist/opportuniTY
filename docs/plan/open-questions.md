@@ -169,7 +169,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E12, E13. **Raised by:** LEG (Q1, Q2).
 - **Suggested default:** US federal civil litigation, with generic configurable templates (default DAT field set, document-by-document log). DOJ/FTC specs come post-MVP.
 
-### Q-20 ★ Privilege log format and scope in MVP
+### Q-20 ★ Privilege log format and scope in MVP — ANSWERED (see decisions.md)
 - **Question:** Is privilege-log generation part of the MVP? If so, which formats: categorical, metadata-only or document-by-document, and with which column templates?
 - **Affected epics:** E13. **Raised by:** LEG (Q3), EDS (Q7), BE (Q9).
 - **Suggested default:** M3 ships document-by-document and metadata-only logs with configurable column templates. Categorical logs are in the same ticket if the timebox allows, otherwise the next minor release.
