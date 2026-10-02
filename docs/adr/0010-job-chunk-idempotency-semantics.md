@@ -124,7 +124,7 @@ if and only if the job was still `Running` at its commit. Cancellation keeps alr
 
 | Kind | Used by | Reference | Resolution (§21 step 1) |
 |---|---|---|---|
-| `SnapshotRange` | bulk coding, apply-to-family > 1,000 (Q-14), export, production, review batch | `SnapshotId`, `OrdinalFrom`, `OrdinalTo` | read member pages of the materialized snapshot (ADR-002 §4) |
+| `SnapshotRange` | bulk coding, apply-to-family > 1,000 (Q-14), export, production, review batch | `SnapshotId`, `OrdinalFrom`, `OrdinalTo` | read member pages of the materialized snapshot (ADR-002 §6) |
 | `ImportRows` | import (append, overlay, append/overlay) | `ImportBatchId`, `RowFrom`, `RowTo` | `ImportBatchMember(WorkspaceId, ImportBatchId, RowNo, DocumentId)` rows written by the import chunk's own transaction |
 | `DocumentKeyRange` | reindex | `ProjectionGeneration`, `DocumentIdFrom`, `DocumentIdTo` | current PG rows in the key range at execution; later changes are dual-written (ADR-001 §7.5) |
 | `ExplicitIds` | relationship fix-ups, repair | `DocumentIds` array, ≤ 1,000 | as listed (identifiers only, still payload-free) |
@@ -193,8 +193,8 @@ gate reachable). **Security throttle (Q-10):** a job writing a security-affectin
 
 ### 8. Q-07 enforcement — bulk skips documents edited after job start
 
-1. Every materialized snapshot member stores `BaselineVersion` = its `DocumentVersion` read from PG when the member page
-   was written (ADR-002 §4); that read is the job's start point for the document.
+1. Every materialized snapshot member stores `BaselineVersion` = its `DocumentVersion` read in the snapshot's freeze
+   transaction (ADR-002 §5, one consistent PG snapshot); that read is the job's start point for the document.
 2. Each coding current-state value carries `ChangedAtVersion` (the `DocumentVersion` produced by the change) and
    `ChangedByJobId` (null for interactive). Physical placement is ADR-004a's; the attributes are mandatory.
 3. In the chunk transaction, after `SELECT … FOR UPDATE` of the members (ordered by `DocumentId`), the worker skips
