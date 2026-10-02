@@ -8,6 +8,7 @@
     <Project Path="src/Opportunity.Import/Opportunity.Import.csproj" />
     <Project Path="src/Opportunity.Jobs/Opportunity.Jobs.csproj" />
     <Project Path="src/Opportunity.Messaging/Opportunity.Messaging.csproj" />
+    <Project Path="src/Opportunity.Migrator/Opportunity.Migrator.csproj" />
     <Project Path="src/Opportunity.Production/Opportunity.Production.csproj" />
     <Project Path="src/Opportunity.Rendering/Opportunity.Rendering.csproj" />
     <Project Path="src/Opportunity.Search/Opportunity.Search.csproj" />
