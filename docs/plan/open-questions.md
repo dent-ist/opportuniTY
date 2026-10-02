@@ -120,7 +120,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E05, E07, E16. **Raised by:** BE (Q4), SEC (Q3), UI (Q7).
 - **Suggested default:** A banner plus "approximate" labels is acceptable, with an optional "wait until current" for privilege workflows. Security-projection lag SLO is ≤ 5 s p95, and counts during that window are labelled approximate. Raw generations are shown only to admins and support.
 
-### Q-11 Security-affecting fields and document-level restrictions in MVP
+### Q-11 Security-affecting fields and document-level restrictions in MVP — ANSWERED (see decisions.md)
 - **Question:** Which fields are security-affecting in the MVP, and are document-level restrictions in MVP scope or only workspace RBAC (§15 says "optional")?
 - **Why it matters:** It determines the scope of `E05-T06` and of the privilege model.
 - **Affected epics:** E05, E13. **Raised by:** BE (Q5).
