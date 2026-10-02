@@ -26,3 +26,8 @@ deploy/docker-compose/.env
 
 # Benchmark outputs (result bundles are published deliberately, not committed by accident)
 artifacts/
+
+# Local output of the security/supply-chain CI steps (docs/ci.md)
+/sbom/
+/audit/
+gitleaks.sarif

@@ -1,0 +1,65 @@
+# SAST (#24, E01-T04). Separate from ci.yml so security-events: write is granted to this workflow only.
+# See docs/ci.md#security-and-supply-chain-gates.
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  schedule:
+    - cron: "17 3 * * 1" # weekly, picks up new queries against unchanged code
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions: {}
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read # workflow run metadata for the upload
+      security-events: write # upload SARIF to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: actions # the workflows themselves (injection, unpinned or over-privileged steps)
+            build-mode: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        if: ${{ matrix.language == 'csharp' }}
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: ${{ matrix.language == 'csharp' }}
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+      - name: Build (traced by CodeQL)
+        if: ${{ matrix.build-mode == 'manual' }}
+        run: dotnet build Opportunity.slnx -c Release
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: /language:${{ matrix.language }}

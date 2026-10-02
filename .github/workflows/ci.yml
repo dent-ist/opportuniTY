@@ -177,12 +177,135 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Security and supply-chain gates (#24, E01-T04). CodeQL and Scorecard live in their own
+  # workflows (codeql.yml, scorecard.yml) because they need security-events: write.
+  dependency-audit:
+    name: Dependency vulnerabilities (NuGet, npm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Restore
+        run: dotnet restore Opportunity.slnx
+      - name: NuGet vulnerabilities (incl. transitive)
+        run: |
+          mkdir -p audit
+          dotnet list Opportunity.slnx package --vulnerable --include-transitive --format json > audit/nuget-vulnerable.json
+      # Reads package-lock.json only; nothing is installed. npm exits non-zero when it finds
+      # anything (any severity), so the policy script below decides pass/fail.
+      - name: npm vulnerabilities (incl. dev toolchain)
+        working-directory: src/Opportunity.Web
+        run: npm audit --json > ../../audit/npm-audit.json || true
+      - name: Apply policy (fail on High/Critical without an unexpired exception)
+        run: >-
+          python3 tools/ci/security/check-vulnerabilities.py
+          --dotnet audit/nuget-vulnerable.json --npm audit/npm-audit.json
+          --report audit/vulnerabilities.md
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: dependency-audit
+          path: audit/
+          if-no-files-found: warn
+          retention-days: 14
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      # The gitleaks binary (MIT) instead of gitleaks-action, which needs a license key for org repos.
+      - name: Install gitleaks (checksum verified)
+        run: |
+          archive="gitleaks_${GITLEAKS}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan full git history
+        run: >-
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --exit-code 1
+          --report-format sarif --report-path gitleaks.sarif .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ failure() }}
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          if-no-files-found: ignore
+          retention-days: 7
+
+  licenses-sbom:
+    name: Licenses and SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Restore .NET tools
+        run: dotnet tool restore
+      # Shipped code only: test projects are excluded (-t); tools/ projects are included.
+      - name: .NET SBOM
+        run: >-
+          dotnet CycloneDX Opportunity.slnx --exclude-test-projects --output-format Json
+          --output sbom --filename opportunity-dotnet.cdx.json --set-name opportuniTY
+      # Production dependencies only (what the Angular bundle ships), from package-lock.json.
+      - name: npm SBOM
+        working-directory: src/Opportunity.Web
+        run: >-
+          npx --yes "@cyclonedx/cyclonedx-npm@${CYCLONEDX_NPM}" --package-lock-only --omit dev
+          --flatten-components --output-format JSON --output-file ../../sbom/opportunity-web.cdx.json
+      - name: License policy
+        run: >-
+          python3 tools/ci/security/check-licenses.py --report sbom/license-report.md
+          sbom/opportunity-dotnet.cdx.json sbom/opportunity-web.cdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: sbom
+          path: sbom/
+          if-no-files-found: error
+          retention-days: 90
+
   # Single stable check for branch protection. Add future required jobs to `needs`
-  # (e.g. security scanning from #24, fault/idempotency smoke from E18-T01).
+  # (e.g. fault/idempotency smoke from E18-T01).
   ci-gate:
     name: CI gate
     if: ${{ always() }}
-    needs: [versions, dotnet, integration, web]
+    needs: [versions, dotnet, integration, web, dependency-audit, secret-scan, licenses-sbom]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
