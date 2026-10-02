@@ -132,7 +132,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E05, E07, E16, E18. **Raised by:** UI (Q3), SEC (finding 5).
 - **Suggested default:** Yes. Post-filter each returned page (a batched PG check, ≤ 20 ms p95 for 100 IDs) and include the cost in the benchmark.
 
-### Q-13 Ethical-wall semantics
+### Q-13 Ethical-wall semantics — ANSWERED (see decisions.md)
 - **Question:** Do walls apply to users only or also to IdP groups? Do they hide documents entirely (including from counts and facets) or only block content? Can a Workspace Admin be walled off, or is a separately audited break-glass role required?
 - **Affected epics:** E05, E14. **Raised by:** SEC (Q1), LEG (finding 12).
 - **Suggested default:** Walls apply to users and groups and hide documents entirely, including from counts. Admins can be walled. Break-glass is a separate role that is audited separately.
