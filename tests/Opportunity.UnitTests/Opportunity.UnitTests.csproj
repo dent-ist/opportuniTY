@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="AwesomeAssertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />
+  </ItemGroup>
+
+</Project>

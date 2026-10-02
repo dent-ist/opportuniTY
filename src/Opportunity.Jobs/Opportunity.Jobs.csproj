@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Job, chunk and idempotency infrastructure.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />
+  </ItemGroup>
+
+</Project>

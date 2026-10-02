@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Message envelopes and integration contracts. No infrastructure dependencies.</Description>
+  </PropertyGroup>
+
+
+</Project>

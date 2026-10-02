@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>DAT/OPT/text/native load-file import.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />
+  </ItemGroup>
+
+</Project>
