@@ -1,0 +1,173 @@
+{
+  "profileVersion": 1,
+  "name": "enterprise-reference",
+  "documentCount": 1000000,
+  "controlNumberPrefix": "OPP",
+  "controlNumberDigits": 10,
+  "unitsPerChunk": 256,
+  "mix": {
+    "emailShare": 0.6
+  },
+  "families": {
+    "meanFamilySize": 3,
+    "maxAttachmentDepth": 3,
+    "nestingProbability": 0.15,
+    "edocMeanEmbeddedChildren": 0.25,
+    "emailContainerShare": 0.004,
+    "edocContainerShare": 0.006,
+    "containerMinChildren": 20,
+    "containerMaxChildren": 1000,
+    "containerSizeExponent": 2
+  },
+  "duplicates": {
+    "rate": 0.2,
+    "copiesWhenDuplicatedMean": 1.5,
+    "sameCustodianShare": 0.15,
+    "withinFamilyRate": 0.05
+  },
+  "threads": {
+    "singleMessageShare": 0.55,
+    "minLength": 2,
+    "maxLength": 50,
+    "lengthExponent": 1.3,
+    "branchProbability": 0.2,
+    "forwardProbability": 0.15,
+    "meanReplyGapHours": 10,
+    "maxQuotedShare": 0.5
+  },
+  "custodians": {
+    "count": 250,
+    "zipfExponent": 1,
+    "copyToParticipantProbability": 0.7
+  },
+  "people": {
+    "internalCount": 2000,
+    "externalCount": 8000,
+    "externalDomainCount": 300,
+    "internalDomain": "corp.example",
+    "accentedShare": 0.08,
+    "cjkShare": 0.05,
+    "rtlShare": 0.05
+  },
+  "recipients": {
+    "maxRecipients": 500,
+    "toExponent": 1.9,
+    "ccEmptyShare": 0.55,
+    "bccEmptyShare": 0.92,
+    "copyExponent": 1.7
+  },
+  "dates": {
+    "start": "2015-01-01",
+    "end": "2024-12-31",
+    "weekendWeight": 0.15,
+    "missingEdocDateShare": 0.02,
+    "timeZones": [
+      {
+        "offset": "-05:00",
+        "weight": 0.3
+      },
+      {
+        "offset": "-08:00",
+        "weight": 0.15
+      },
+      {
+        "offset": "-06:00",
+        "weight": 0.08
+      },
+      {
+        "offset": "\u002B00:00",
+        "weight": 0.12
+      },
+      {
+        "offset": "\u002B01:00",
+        "weight": 0.12
+      },
+      {
+        "offset": "\u002B05:30",
+        "weight": 0.06
+      },
+      {
+        "offset": "\u002B08:00",
+        "weight": 0.07
+      },
+      {
+        "offset": "\u002B09:00",
+        "weight": 0.05
+      },
+      {
+        "offset": "-03:00",
+        "weight": 0.03
+      },
+      {
+        "offset": "\u002B10:00",
+        "weight": 0.01
+      },
+      {
+        "offset": "\u002B05:45",
+        "weight": 0.01
+      }
+    ]
+  },
+  "text": {
+    "medianBytes": 5120,
+    "p99Bytes": 1048576,
+    "minBytes": 64,
+    "maxBytes": 134217728,
+    "vocabularySeed": 1,
+    "vocabularySize": 50000,
+    "vocabularyZipfExponent": 1.07,
+    "minNeedleBodyBytes": 2048
+  },
+  "nearDuplicates": {
+    "rate": 0.03,
+    "meanClusterSize": 4,
+    "wordChangeRate": 0.02
+  },
+  "fields": {
+    "extraCustomFields": 0,
+    "hazardousValueShare": 0.03,
+    "unicodeValueShare": 0.04
+  },
+  "needles": [
+    {
+      "term": "zyqvoltran",
+      "docRate": 0.001,
+      "maxOccurrences": 3,
+      "scope": "any"
+    },
+    {
+      "term": "plimsorbex",
+      "docRate": 0.0005,
+      "maxOccurrences": 1,
+      "scope": "attachmentsOnly"
+    },
+    {
+      "term": "quandrillex",
+      "docRate": 0.0002,
+      "maxOccurrences": 1,
+      "scope": "parentsOnly"
+    },
+    {
+      "term": "vex-tomarin",
+      "docRate": 0.0005,
+      "maxOccurrences": 1,
+      "scope": "any"
+    },
+    {
+      "term": "o\u0027bralvix",
+      "docRate": 0.0005,
+      "maxOccurrences": 1,
+      "scope": "any"
+    }
+  ],
+  "proximityPairs": [
+    {
+      "first": "kelvatron",
+      "second": "brisomund",
+      "nearDistance": 3,
+      "farDistance": 12,
+      "nearDocRate": 0.0005,
+      "farDocRate": 0.0005
+    }
+  ]
+}

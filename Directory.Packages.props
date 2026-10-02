@@ -22,5 +22,7 @@
     <!-- Core schema mapping (E04-T02) -->
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="Dapper" Version="2.1.89" />
+    <!-- Tools -->
+    <PackageVersion Include="System.CommandLine" Version="2.0.12" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,7 @@
 using System.Reflection;
+
 using AwesomeAssertions;
+
 using NetArchTest.Rules;
 
 namespace Opportunity.ArchitectureTests;

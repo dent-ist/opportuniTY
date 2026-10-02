@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Synthetic corpus generation model (E17-T01). Tooling only: production code under src/ must never
+    reference this project (enforced by tests/Opportunity.ArchitectureTests).
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
