@@ -76,7 +76,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E17, E18. **Raised by:** QA (Q1), BE (Q10), OPS (Q4).
 - **Suggested default:** Ephemeral cloud infrastructure provisioned via IaC (`E17-T03`), with a pre-approved budget per run. Results are published publicly with full manifests. No customer data is involved.
 
-### Q-04 ★ Gate sign-off and numeric definitions
+### Q-04 ★ Gate sign-off and numeric definitions — ANSWERED (see decisions.md)
 - **Question:** Who signs off the frozen gates, query taxonomy and think-time model? Can gates be relaxed after calibration, or only tightened? What fixed bulk rate applies to the degradation gates? What counts as a "material, repeatable advantage" (§26), and what counts as "failing materially at 10M" (§29)?
 - **Why it matters:** Without these numbers the ADR-004 decision cannot be made mechanically or defended later.
 - **Affected epics:** E17, E18. **Raised by:** QA (Q2, Q3, Q5, Q6).
