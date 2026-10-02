@@ -102,7 +102,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E02, E10. **Raised by:** BE (Q1).
 - **Suggested default:** Last commit wins per field, with full CodingEvent provenance. The bulk job report counts documents that were edited after the snapshot.
 
-### Q-08 ★ Export/production reproducibility scope
+### Q-08 ★ Export/production reproducibility scope — ANSWERED (see decisions.md)
 - **Question:** Must re-running an export or production reproduce the content as it was at snapshot time, or only the membership (current content of the frozen IDs)?
 - **Why it matters:** §22 guarantees membership only. Legal defensibility needs a frozen specification and the state of the redactions and privilege decisions that were used.
 - **Affected epics:** E02, E12. **Raised by:** BE (Q2), LEG (finding 9).
