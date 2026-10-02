@@ -10,6 +10,9 @@ The PR pipeline is [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It
 | `.NET build, unit and architecture tests` | Restores, then builds `Opportunity.slnx` in Release with `-warnaserror`. Runs `tests/Opportunity.UnitTests` and `tests/Opportunity.ArchitectureTests` (ADR-019 layering rules) | `test-results-dotnet` (TRX + Markdown) |
 | `Integration tests (Testcontainers)` | Sets `vm.max_map_count=262144` for OpenSearch, then builds and runs `tests/Opportunity.IntegrationTests` against real containers on the runner's Docker daemon | `test-results-integration` (TRX + Markdown) |
 | `Angular build and unit tests` | `npm ci`, `prettier --check`, `npm run build`, `ng test --watch=false` (Vitest) | `test-results-web` (JUnit XML) |
+| `Dependency vulnerabilities (NuGet, npm)` | `dotnet list package --vulnerable --include-transitive` and `npm audit` (lockfile only, dev toolchain included), then `tools/ci/security/check-vulnerabilities.py` fails on High/Critical findings that have no unexpired exception | `dependency-audit` (raw JSON + Markdown) |
+| `Secret scan (gitleaks)` | A checksum-verified gitleaks binary scans the full git history, with secrets redacted in the output | `gitleaks-report` (SARIF, on failure only) |
+| `Licenses and SBOM (CycloneDX)` | Builds CycloneDX SBOMs of shipped code (non-test .NET projects and npm production dependencies). `tools/ci/security/check-licenses.py` then enforces the license policy | `sbom` (two `.cdx.json` files + `license-report.md`, 90 days) |
 | `CI gate` | Passes only if every job above succeeded. This is the one check that branch protection requires | — |
 
 Shared behaviour:
@@ -18,7 +21,7 @@ Shared behaviour:
 - **Caching.** NuGet (`~/.nuget/packages`) is cached with `actions/cache`. The key hashes `global.json`, `Directory.Packages.props`, `Directory.Build.props` and all `*.csproj`. npm is cached by `actions/setup-node`, keyed on `package-lock.json`.
 - **Test results.** .NET suites write TRX for download and Markdown, which is appended to the run's job summary on the PR's Checks tab. The Angular suite writes JUnit XML. Artifacts are kept for 14 days.
 - **Concurrency.** A new push to a PR cancels that PR's previous run. Runs on `main` are never cancelled.
-- **Permissions.** The workflow token is `contents: read` only. Checkout does not persist credentials.
+- **Permissions.** The workflow token is `contents: read` only. Checkout does not persist credentials. Only `codeql.yml` and `scorecard.yml` get `security-events: write`, and they grant it per job.
 - **Supply chain.** Third-party actions are pinned to full commit SHAs, with the release tag in a comment. Dependabot (`github-actions` ecosystem) proposes updates.
 - **No retries.** Per the [flake policy](testing/test-strategy.md#8-flake-policy), no step retries tests.
 
@@ -47,13 +50,84 @@ npx ng test --watch=false
 
 `dotnet test --solution Opportunity.slnx` runs every suite at once (including `ScaleTests`, which CI does not run on PRs).
 
-## Branch protection (manual, repository admin)
+## Security and supply-chain gates
+
+These gates implement #24 (`E01-T04`) and threat-model entries T-57 and T-59 ([threat model](security/threat-model.md#tb12--supply-chain--installation)). Image scanning, signing and provenance belong to #25 (`E01-T05`).
+
+| Gate | Where | Runs on | Blocks merge |
+|---|---|---|---|
+| Dependency vulnerabilities (NuGet + npm, transitive) | `ci.yml` › `dependency-audit` | every PR, `main`, merge queue | yes, through `CI gate` |
+| Secret scan (gitleaks, full history) | `ci.yml` › `secret-scan` | every PR, `main`, merge queue | yes, through `CI gate` |
+| License policy + CycloneDX SBOM | `ci.yml` › `licenses-sbom` | every PR, `main`, merge queue | yes, through `CI gate` |
+| CodeQL SAST: C#, JavaScript/TypeScript, GitHub Actions (`security-extended`) | `codeql.yml` | every PR, `main`, merge queue, weekly | yes, once the code-scanning rule below is set |
+| OpenSSF Scorecard | `scorecard.yml` | `main`, weekly, branch-protection changes | no (tracked score) |
+| GitHub secret scanning + push protection | repository setting | every push | push protection blocks the push |
+
+### Vulnerability policy and exceptions
+
+Both advisory feeds come from the GitHub Advisory Database. `tools/ci/security/check-vulnerabilities.py` fails the job on any **High** or **Critical** advisory. Lower severities appear in the report and do not block. An advisory can be accepted temporarily by adding an entry to [`tools/ci/security/vulnerability-exceptions.json`](../tools/ci/security/vulnerability-exceptions.json):
+
+```json
+{ "advisory": "GHSA-xxxx-xxxx-xxxx", "package": "Some.Package", "reason": "Not reachable: we never call X; upgrade blocked by #123",
+  "expires": "2026-12-31", "approvedBy": "@security-reviewer" }
+```
+
+Every field is required. `expires` may be at most 90 days out. Once an exception expires the job fails again, so the advisory has to be fixed or the exception re-reviewed. CODEOWNERS routes changes to this file to Security & Compliance. The npm audit includes dev dependencies, because a compromised build toolchain is a supply-chain risk even though it does not ship.
+
+### License policy
+
+The project is MIT-licensed. [`tools/ci/security/license-policy.json`](../tools/ci/security/license-policy.json) applies only to **shipped** components, as listed in the SBOMs: the dependencies of non-test .NET projects (including the `tools/` projects) and npm production dependencies, which is what the Angular bundle contains. The policy works like this:
+
+- **Default deny.** A license must be on `allowed` (permissive licenses such as MIT, Apache-2.0, BSD, ISC and PostgreSQL). For SPDX expressions, `A OR B` needs one allowed side and `A AND B` needs both. A component with no license, or with only a license URL, fails.
+- **`denied`** lists the GPL/AGPL family, SSPL, EUPL, BUSL, the Elastic License and similar. A linked dependency under one of these fails **even if an exception names it**. This follows Q-38 in [decisions.md](plan/decisions.md): AGPL software may only be an optional, unmodified *external service* (for example an object store), never linked code.
+- **`exceptions`** accept one component (`component` is a purl, with or without `@version`) that is neither allowed nor denied, for example an LGPL or MPL library used unmodified. Each needs `reason` and `approvedBy`. `expires` is optional. The product owner owns the policy.
+
+`license-report.md` in the `sbom` artifact is the per-build license report. It also appears in the job summary.
+
+### SBOM
+
+`opportunity-dotnet.cdx.json` comes from the CycloneDX .NET tool, pinned in [`.config/dotnet-tools.json`](../.config/dotnet-tools.json). `opportunity-web.cdx.json` comes from `@cyclonedx/cyclonedx-npm`, pinned by `CYCLONEDX_NPM` in `versions.env` and run on `package-lock.json` only. Both use CycloneDX 1.6+ JSON and are kept for 90 days. Per-image SBOMs attached to signed releases come with #25.
+
+### Secret scanning
+
+gitleaks (`GITLEAKS` and `GITLEAKS_SHA256` in `versions.env`) runs as the release binary with its checksum verified. It does not use `gitleaks-action`, which needs a paid license key for organization repositories. To suppress a false positive, add a `.gitleaksignore` entry with the finding fingerprint from the report, or a `.gitleaks.toml` allowlist, and get Security review. Never allowlist a real secret: rotate it, because it stays in history.
+
+### Reproduce locally
+
+```bash
+dotnet restore Opportunity.slnx
+dotnet list Opportunity.slnx package --vulnerable --include-transitive --format json > nuget.json
+(cd src/Opportunity.Web && npm audit --json > ../../npm.json)
+python3 tools/ci/security/check-vulnerabilities.py --dotnet nuget.json --npm npm.json
+
+dotnet tool restore
+dotnet CycloneDX Opportunity.slnx --exclude-test-projects --output-format Json --output sbom --filename opportunity-dotnet.cdx.json
+(cd src/Opportunity.Web && npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --package-lock-only --omit dev \
+   --flatten-components --output-format JSON --output-file ../../sbom/opportunity-web.cdx.json)
+python3 tools/ci/security/check-licenses.py sbom/*.cdx.json
+
+gitleaks git --redact .      # https://github.com/gitleaks/gitleaks/releases
+```
+
+### Not covered here
+
+- **Trivy image scanning** comes with the image build in #25 (`E01-T05`). No images are built yet.
+- **`actions/dependency-review-action` and OSV-Scanner.** Not added, because the two audits above already query the same advisory database on every PR and use one exception file. Dependency review also needs the dependency graph, plus GitHub Advanced Security on private repositories. Add one of them if the project wants findings to appear as PR annotations.
+
+## Branch protection and repository settings (manual, repository admin)
 
 Require the **`CI gate`** status check on `main`, and require branches to be up to date before merging. Because only the gate is required, adding or renaming jobs never needs a branch-protection change. Add the new job to `ci-gate.needs` instead.
 
+The security gates also need these settings:
+
+- **Code scanning:** add a ruleset rule *Require code scanning results* (CodeQL, alerts at *High or higher* / security severity *High or higher*). This makes CodeQL block merges without listing each matrix check by name.
+- **Secret scanning** and **push protection:** turn both on (Settings › Code security).
+- **Private vulnerability reporting:** turn it on (Settings › Code security), as [SECURITY.md](../SECURITY.md) requires.
+- **Pull request reviews:** require at least one approving review, and *Require review from Code Owners*. CODEOWNERS covers `src/Opportunity.Security/`, the workflows, `tools/ci/security/` and `SECURITY.md`. Add the auth and audit paths when that code lands.
+- **Scorecard:** `publish_results: true` publishes the score to the OpenSSF API for public repositories. Track it with the badge `https://api.securityscorecards.dev/projects/github.com/<owner>/<repo>/badge` and in the code-scanning view (category `scorecard`).
+
 ## Extension points
 
-- **Security and supply-chain scanning (#24, `E01-T04`).** Add the jobs to `ci.yml`, or to a separate workflow with its own `permissions` (e.g. `security-events: write` on that job only), and add them to `ci-gate.needs`.
 - **Container image build/sign/publish (#25, `E01-T05`).** Use a separate workflow triggered on `main`/tags, with `packages: write` / `id-token: write` scoped to that workflow. Do not widen this workflow's permissions.
 - **OpenAPI diff and message-contract tests (L5).** Add steps in the `.NET` job, after the architecture tests, once the suites exist.
 - **Cross-workspace security suite (`E05-T05`).** It lives under `tests/Opportunity.IntegrationTests/Security`, so it already runs in the integration job. **Fault/idempotency smoke (`E18-T01`).** Give it its own job if it would push the integration job past the budget, and add that job to `ci-gate.needs`.
