@@ -137,7 +137,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E05, E14. **Raised by:** SEC (Q1), LEG (finding 12).
 - **Suggested default:** Walls apply to users and groups and hide documents entirely, including from counts. Admins can be walled. Break-glass is a separate role that is audited separately.
 
-### Q-14 Family propagation of privilege and coding
+### Q-14 Family propagation of privilege and coding — ANSWERED (see decisions.md)
 - **Question:** When a parent email is coded Privileged/Withhold, do attachments inherit the restriction (for reviewers, for exports, or neither)? Is "apply to family/duplicates" in the MVP, is it automatic for some fields, and above what size does it become a bulk job?
 - **Affected epics:** E05, E09, E16. **Raised by:** SEC (Q2), UI (Q4).
 - **Suggested default:** No automatic inheritance. Propagation is an explicit action with a conflict preview. Above 1,000 documents it becomes a bulk job. Production QC flags inconsistent families.
