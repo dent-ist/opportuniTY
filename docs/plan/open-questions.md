@@ -70,7 +70,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 - **Affected epics:** E02, E07, E18. **Raised by:** BE (Q7).
 - **Suggested default:** ≤ 1,000 workspaces per installation, most under 1M documents. Shared index below 5M documents or 50 GB, dedicated above that. All thresholds are configurable.
 
-### Q-03 ★ Reference benchmark hardware, budget and publication
+### Q-03 ★ Reference benchmark hardware, budget and publication — ANSWERED (see decisions.md)
 - **Question:** Which cloud SKUs or on-prem spec define the §29 enterprise reference? What is the budget per 1M/10M run and per month? Who owns it, and may results and environment details be published?
 - **Why it matters:** The ADR-004 spike (M2) and the 10M validation (M4) cannot start without it. Estimated need: 3 OpenSearch data nodes on NVMe, PG primary + replica, 2–4 load generators, multi-TB storage, 8–24 h per run.
 - **Affected epics:** E17, E18. **Raised by:** QA (Q1), BE (Q10), OPS (Q4).
