@@ -138,3 +138,7 @@ Milestones map 1:1 to the GitHub milestones `M0` … `M5`. Every ticket belongs 
 - **Open questions:** tickets that cite `Q-xx` assume that question's *suggested default* (see [open-questions.md](open-questions.md)) until the product owner decides. A different decision means updating the affected tickets.
 - **Proposed amendments:** these are in [review-findings.md](review-findings.md). Each one is resolved through the ADR ticket that cites it, which must be Accepted (or explicitly rejected) before dependent implementation tickets merge. Under §35 the baseline is only changed by an explicit owner decision.
 - **Keeping it in sync:** the machine-readable source is `issues.json`, generated alongside this directory. It is used to create the GitHub issues, where `` `Exx-Tyy` `` references are rewritten into issue links. Update this directory when ticket scope changes materially.
+
+## GitHub issues
+
+All epics and tickets are tracked as GitHub issues. See [issue-map.md](issue-map.md) for the plan-key → issue-number mapping.
