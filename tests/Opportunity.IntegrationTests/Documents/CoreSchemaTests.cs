@@ -481,7 +481,10 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
         {
             context.Workspaces.Add(new Workspace
             {
-                WorkspaceId = ws, Name = "Acme v. Widget", MatterNumber = "2026-001", DisplayTimeZone = "Europe/London",
+                WorkspaceId = ws,
+                Name = "Acme v. Widget",
+                MatterNumber = "2026-001",
+                DisplayTimeZone = "Europe/London",
                 ControlNumberCaseSensitive = true,
             });
             await context.SaveChangesAsync(Ct);
@@ -503,13 +506,28 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
         {
             context.Pages.Add(new Page
             {
-                WorkspaceId = ws, PageSetId = pageSetId, Ordinal = 1, DocumentId = document.DocumentId, ImageKey = "ABC0001",
-                WidthPt = 595.28m, HeightPt = 841.89m, Rotation = 90, ColorMode = PageColorMode.Bitonal,
+                WorkspaceId = ws,
+                PageSetId = pageSetId,
+                Ordinal = 1,
+                DocumentId = document.DocumentId,
+                ImageKey = "ABC0001",
+                WidthPt = 595.28m,
+                HeightPt = 841.89m,
+                Rotation = 90,
+                ColorMode = PageColorMode.Bitonal,
             });
             context.PageImages.Add(new PageImage
             {
-                WorkspaceId = ws, PageSetId = pageSetId, Ordinal = 1, Purpose = PageImagePurpose.Original, ObjectId = objectId,
-                WidthPx = 2480, HeightPx = 3508, DpiX = 300, DpiY = 300, Format = PageImageFormat.TiffG4,
+                WorkspaceId = ws,
+                PageSetId = pageSetId,
+                Ordinal = 1,
+                Purpose = PageImagePurpose.Original,
+                ObjectId = objectId,
+                WidthPx = 2480,
+                HeightPx = 3508,
+                DpiX = 300,
+                DpiY = 300,
+                Format = PageImageFormat.TiffG4,
             });
             await context.SaveChangesAsync(Ct);
         }
