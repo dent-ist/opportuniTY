@@ -96,7 +96,7 @@ Raised-by abbreviations: UI = UI/UX, BE = Backend, LEG = Legal/Discovery Counsel
 
 ## Consistency, coding and search semantics
 
-### Q-07 ★ Interactive vs bulk conflict rule
+### Q-07 ★ Interactive vs bulk conflict rule — ANSWERED (see decisions.md)
 - **Question:** A reviewer changes a field interactively while a bulk job targeting the same field is running. Which value wins in PostgreSQL: the last commit, or does the bulk job skip documents edited after its snapshot?
 - **Why it matters:** This is a product rule as well as a technical one, and it shapes provenance reporting and the bulk worker's SQL.
 - **Affected epics:** E02, E10. **Raised by:** BE (Q1).
