@@ -607,7 +607,10 @@ public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkR
     // security-bulk tasks, the security throttle counts un-applied tasks plus in-flight chunks. The workspace budget
     // takes the next chunk of every job in turn. Dispatched chunks no worker claimed for a while are re-dispatched
     // outside the budgets (they are in flight already). FOR UPDATE SKIP LOCKED after the selection re-checks each row,
-    // so a chunk another dispatcher holds is skipped, never substituted, and the limits hold across dispatchers.
+    // so a chunk another dispatcher holds is skipped, never substituted. That alone does not keep the budgets across
+    // dispatchers (each counts in-flight chunks in its own snapshot), so ClaimForDispatchAsync first takes a
+    // transaction-scoped advisory lock per workspace: claim passes in a workspace run one at a time and each one sees
+    // the claims the previous pass committed.
     private static readonly string ClaimForDispatchSql =
         $"""
         WITH running AS (
@@ -684,6 +687,12 @@ public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkR
         }
 
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using (var serialize = tx.Command("SELECT pg_advisory_xact_lock(hashtextextended('opportunity.job_chunk dispatch ' || @ws::text, 0))"))
+        {
+            serialize.Parameters.AddWithValue("ws", workspaceId);
+            await serialize.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await using var command = tx.Command(ClaimForDispatchSql);
         command.Parameters.AddWithValue("ws", workspaceId);
         command.Parameters.AddWithValue("kinds", limits.Operations.Select(k => k.ToString()).ToArray());
