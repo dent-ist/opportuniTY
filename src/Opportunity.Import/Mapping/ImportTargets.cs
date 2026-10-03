@@ -17,10 +17,14 @@ public sealed record WellKnownField(string Name, ImportFieldType Type, bool IsMu
 /// </summary>
 public static class ImportTargets
 {
-    /// <summary>System fields the platform computes (text length, missing/truncated flags); never mapped from a load file.</summary>
+    /// <summary>
+    /// System fields the platform computes (text length, missing/truncated flags) or derives from structural targets
+    /// (duplicate group, primary flag, email thread); never mapped from a load file.
+    /// </summary>
     public static readonly IReadOnlySet<int> ComputedSystemFields = new HashSet<int>
     {
         SystemFields.TextLength, SystemFields.TextTruncated, SystemFields.TextMissing, SystemFields.NativeMissing, SystemFields.ImagesIncomplete,
+        SystemFields.DuplicateGroup, SystemFields.DuplicatePrimary, SystemFields.EmailThreadGroup,
     };
 
     /// <summary>System hash fields, validated as lower-case hex of this many digits.</summary>
@@ -82,6 +86,16 @@ public static class ImportTargets
         [SystemFields.Md5] = ["MD5Hash", "MD5", "MD5 Hash", "Hash MD5", "HashMD5", "MD5_HASH"],
         [SystemFields.Sha1] = ["SHA1Hash", "SHA1", "SHA-1", "SHA1 Hash", "Hash SHA1", "HashSHA1", "SHA1_HASH"],
         [SystemFields.Sha256] = ["SHA256Hash", "SHA256", "SHA-256", "SHA256 Hash", "Hash SHA256", "HashSHA256", "SHA256_HASH"],
+        [SystemFields.AllCustodians] =
+            ["AllCustodians", "All Custodians", "Custodians", "Custodian(s)", "Custodians All", "CustodianAll", "All Custodian", "DeDupedCustodians"],
+        [SystemFields.DuplicateCustodians] =
+            ["DuplicateCustodians", "Duplicate Custodians", "DupCustodians", "Dup Custodians", "Other Custodians", "OtherCustodians", "Dupe Custodians"],
+        [SystemFields.AllPaths] = ["AllPaths", "All Paths", "AllFilePaths", "All File Paths", "All Locations", "AllLocations", "DeDupedPaths"],
+        [SystemFields.DuplicatePaths] = ["DuplicatePaths", "Duplicate Paths", "DupPaths", "Dup Paths", "Duplicate File Paths", "Other Paths"],
+        [SystemFields.ConversationIndex] = ["ConversationIndex", "Conversation Index", "ConvIndex", "Conv Index", "ThreadIndex", "Thread Index", "PR_CONVERSATION_INDEX"],
+        [SystemFields.ConversationTopic] = ["ConversationTopic", "Conversation Topic", "ConvTopic", "Thread Topic", "ThreadTopic", "PR_CONVERSATION_TOPIC"],
+        [SystemFields.InclusiveEmail] = ["InclusiveEmail", "Inclusive Email", "Inclusive", "Email Inclusive", "IsInclusive", "Is Inclusive"],
+        [SystemFields.ThreadSortOrder] = ["ThreadSortOrder", "Thread Sort Order", "ThreadSort", "Thread Sort", "Email Thread Sort Order", "ThreadOrder"],
     };
 
     /// <summary>Companion time columns of the date system fields, in priority order.</summary>
@@ -126,10 +140,8 @@ public static class ImportTargets
                 "DedupeGroup", "Dedupe Group", "DupID", "Duplicate ID",
             ],
             [StructuralTarget.DedupeHash] =
-            [
-                "DedupeHash", "Dedupe Hash", "DedupHash", "Deduplication Hash", "DupHash", "Duplicate Hash", "EmailHash",
-                "Email Hash", "HashDedupe",
-            ],
+                ["DedupeHash", "Dedupe Hash", "DedupHash", "Deduplication Hash", "DupHash", "Duplicate Hash", "HashDedupe", "Dedupe Key"],
+            [StructuralTarget.EmailHash] = ["EmailHash", "Email Hash", "MessageHash", "Message Hash", "EmailDedupeHash", "Email Dedupe Hash"],
             [StructuralTarget.EmailThreadId] =
             [
                 "EmailThreadID", "Email Thread ID", "EmailThreadGroup", "Email Thread Group", "ThreadID", "Thread ID",
@@ -141,11 +153,6 @@ public static class ImportTargets
     public static readonly IReadOnlyList<WellKnownField> WellKnownFields =
     [
         new("Custodian", ImportFieldType.Keyword, false, ["Custodian", "CustodianName", "Custodian Name", "Primary Custodian"]),
-        new("All Custodians", ImportFieldType.Keyword, true,
-            ["AllCustodians", "All Custodians", "Custodians", "Custodian(s)", "Custodians All", "CustodianAll", "All Custodian"]),
-        new("Duplicate Custodians", ImportFieldType.Keyword, true,
-            ["DuplicateCustodians", "Duplicate Custodians", "DupCustodians", "Dup Custodians", "Other Custodians", "OtherCustodians"]),
-        new("All Paths", ImportFieldType.Text, true, ["AllPaths", "All Paths", "AllFilePaths", "All File Paths", "DuplicatePaths", "Duplicate Paths"]),
         new("Original File Path", ImportFieldType.Text, false, ["FilePath", "File Path", "OriginalPath", "Original Path", "Source Path", "SourcePath"]),
         new("Author", ImportFieldType.Keyword, false, ["Author", "DocAuthor", "Doc Author", "Document Author"]),
         new("From", ImportFieldType.Text, false, ["From", "EmailFrom", "Email From", "Sender", "Email Sender"]),
@@ -154,10 +161,6 @@ public static class ImportTargets
         new("BCC", ImportFieldType.Text, true, ["BCC", "EmailBCC", "Email BCC"]),
         new("Subject", ImportFieldType.Text, false, ["Subject", "EmailSubject", "Email Subject"]),
         new("Title", ImportFieldType.Text, false, ["Title", "DocTitle", "Doc Title", "Document Title"]),
-        new("Conversation Index", ImportFieldType.Keyword, false, ["ConversationIndex", "Conversation Index"]),
-        new("Conversation Topic", ImportFieldType.Text, false, ["ConversationTopic", "Conversation Topic"]),
-        new("Inclusive Email", ImportFieldType.Boolean, false, ["InclusiveEmail", "Inclusive Email", "Inclusive"]),
-        new("Thread Sort Order", ImportFieldType.Keyword, false, ["ThreadSortOrder", "Thread Sort Order", "ThreadSort"]),
     ];
 
     public static string Label(StructuralTarget target) => target switch
@@ -170,6 +173,7 @@ public static class ImportTargets
         StructuralTarget.DuplicateGroupId => "Duplicate Group ID",
         StructuralTarget.DedupeHash => "Dedupe Hash",
         StructuralTarget.EmailThreadId => "Email Thread ID",
+        StructuralTarget.EmailHash => "Email Hash",
         _ => target.ToString(),
     };
 

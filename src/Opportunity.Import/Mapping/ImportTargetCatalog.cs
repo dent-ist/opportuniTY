@@ -15,7 +15,7 @@ public static class ImportTargetCatalog
     private static readonly int[] Hashes = [SystemFields.Md5, SystemFields.Sha1, SystemFields.Sha256];
 
     private static readonly StructuralTarget[] Upstream =
-        [StructuralTarget.DuplicateGroupId, StructuralTarget.DedupeHash, StructuralTarget.EmailThreadId];
+        [StructuralTarget.DuplicateGroupId, StructuralTarget.DedupeHash, StructuralTarget.EmailHash, StructuralTarget.EmailThreadId];
 
     public static IReadOnlyList<ImportTargetResource> List(FieldCatalog catalog)
     {

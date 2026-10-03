@@ -7,6 +7,7 @@ import { LoadFileSettings } from '../models/load-file-settings';
 import { OverlaySettings } from '../models/overlay-settings';
 import { ParsingDefaults } from '../models/parsing-defaults';
 import { PathSettings } from '../models/path-settings';
+import { RelationshipSettings } from '../models/relationship-settings';
 import { UnmappedColumnPolicy } from '../models/unmapped-column-policy';
 export interface ImportProfileDefinition {
   columns?: Array<ColumnMapping>;
@@ -16,6 +17,7 @@ export interface ImportProfileDefinition {
   overlay?: OverlaySettings;
   parsing?: ParsingDefaults;
   paths?: PathSettings;
+  relationships?: RelationshipSettings;
   schemaVersion?: number | string;
   unmappedColumns?: UnmappedColumnPolicy;
 }

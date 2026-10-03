@@ -85,8 +85,25 @@ public sealed class DocumentRepository(NpgsqlDataSource dataSource) : IDocumentR
             throw new ArgumentException("Every document must belong to the given workspace.", nameof(documents));
         }
 
-        var columns = DocumentColumns.NameList(DocumentColumns.All);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await InsertManyAsync(tx, documents, cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Bulk insert inside the caller's transaction (an import chunk writes documents, their relationships and its search
+    /// work in one transaction). Every document must belong to the transaction's workspace.
+    /// </summary>
+    internal static async Task InsertManyAsync(WorkspaceTransaction tx, IReadOnlyCollection<Document> documents, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(tx);
+        ArgumentNullException.ThrowIfNull(documents);
+        if (documents.Any(d => d.WorkspaceId != tx.WorkspaceId))
+        {
+            throw new ArgumentException("Every document must belong to the transaction's workspace.", nameof(documents));
+        }
+
+        var columns = DocumentColumns.NameList(DocumentColumns.All);
 
         // RLS forbids COPY FROM into the target for a non-owner role, so stage in a temp table and INSERT ... SELECT,
         // which RLS checks (ADR-015 D7.4.2). The stage has the column types but none of the constraints.
@@ -125,13 +142,12 @@ public sealed class DocumentRepository(NpgsqlDataSource dataSource) : IDocumentR
                 SELECT {columns.Replace(NormColumn, NormalizedNorm, StringComparison.Ordinal)} FROM {StageTable};
             INSERT INTO opportunity.document_projection_state (workspace_id, document_id)
                 SELECT workspace_id, document_id FROM {StageTable};
+            DROP TABLE {StageTable};
             """))
         {
             insert.CommandTimeout = 0;
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
-
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<DocumentWriteResult> UpdateAsync(

@@ -116,7 +116,7 @@ public class MappingPreviewTests
         docType.Type.Should().Be(ImportFieldType.SingleChoice);
         docType.ChoicesToCreate.Should().Be(2);
         docType.SampleChoices.Should().Equal("Email", "Attachment");
-        result.NewFields.Should().Contain(f => f.Name == "Custodian").And.Contain(f => f.Name == "All Custodians" && f.IsMultiValue);
+        result.NewFields.Should().Contain(f => f.Name == "Custodian").And.NotContain(f => f.Name == "All Custodians", "it is a system field");
         result.Column("AllCustodians").Targets.Single().MatchedBy.Should().Be(MatchKind.NormalizedName);
         result.Column("PARENT_ID").Targets.Single().MatchedBy.Should().Be(MatchKind.NormalizedName);
         result.Column("NATIVELINK").Targets.Single().MatchedBy.Should().Be(MatchKind.Alias);

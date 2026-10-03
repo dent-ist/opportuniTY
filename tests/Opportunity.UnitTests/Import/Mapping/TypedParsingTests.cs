@@ -136,8 +136,7 @@ public class TypedParsingTests
     [Fact]
     public void Multi_values_split_on_the_profile_delimiter_trimmed_and_de_duplicated()
     {
-        var catalog = Catalog(Custom(1000, "All Custodians", FieldType.Keyword, multi: true), Custom(1001, "All Paths", FieldType.Text, multi: true));
-        var row = MapOne(Profile(), ["DOCID", "AllCustodians", "AllPaths"], ["A1", "A; B; A", @" \\srv\a ; \\srv\b;\\srv\a;; "], catalog);
+        var row = MapOne(Profile(), ["DOCID", "AllCustodians", "AllPaths"], ["A1", "A; B; A", @" \\srv\a ; \\srv\b;\\srv\a;; "]);
 
         CellFor(row, "AllCustodians").Value!.ToJsonString().Should().Be("""["A","B"]""");
         CellFor(row, "AllPaths").Value!.ToJsonString().Should().Be("""["\\\\srv\\a","\\\\srv\\b"]""");
