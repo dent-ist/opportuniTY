@@ -39,6 +39,23 @@ public sealed class ObjectStorageOptions
     public AzureBlobObjectStoreOptions AzureBlob { get; set; } = new();
 
     public PresignPolicy CreatePresignPolicy() => new(PresignGetDefaultTtl, PresignGetMaxTtl, PresignPutDefaultTtl);
+
+    /// <summary>Start-up check of the settings the selected provider needs; throws <see cref="InvalidOperationException"/>.</summary>
+    public void Validate()
+    {
+        var missing = Provider switch
+        {
+            ObjectStorageProvider.FileSystem => string.IsNullOrWhiteSpace(FileSystem.RootPath) ? "FileSystem:RootPath" : null,
+            ObjectStorageProvider.S3 => S3.ServiceUrl is null ? "S3:ServiceUrl" : string.IsNullOrWhiteSpace(S3.Bucket) ? "S3:Bucket" : null,
+            ObjectStorageProvider.AzureBlob => string.IsNullOrWhiteSpace(AzureBlob.ConnectionString) ? "AzureBlob:ConnectionString"
+                : string.IsNullOrWhiteSpace(AzureBlob.Container) ? "AzureBlob:Container" : null,
+            _ => "Provider",
+        };
+        if (missing is not null)
+        {
+            throw new InvalidOperationException($"{SectionName}:{missing} is required for provider {Provider}.");
+        }
+    }
 }
 
 public sealed class FileSystemObjectStoreOptions
