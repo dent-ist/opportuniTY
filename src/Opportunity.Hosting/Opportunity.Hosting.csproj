@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Data\Opportunity.Data.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Jobs\Opportunity.Jobs.csproj" />
   </ItemGroup>
 
 </Project>
