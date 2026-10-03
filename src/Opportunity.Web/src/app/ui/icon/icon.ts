@@ -20,6 +20,9 @@ const PATHS = {
   'grip-vertical': 'M10 6v.5M14 6v.5M10 12v.5M14 12v.5M10 18v.5M14 18v.5',
   'grip-horizontal': 'M6 10h.5M12 10h.5M18 10h.5M6 14h.5M12 14h.5M18 14h.5',
   inbox: 'M3.5 13.5l3-8h11l3 8M3.5 13.5V19h17v-5.5M3.5 13.5H9l1 2h4l1-2h5.5',
+  help: 'M12 21a9 9 0 100-18 9 9 0 000 18zM9.5 9.5a2.5 2.5 0 114 2c-1 .6-1.5 1.2-1.5 2.5M12 17v.5',
+  unfold: 'M8 9l4-4 4 4M8 15l4 4 4-4',
+  fold: 'M8 4.5l4 4 4-4M8 19.5l4-4 4 4',
 } as const;
 
 export type IconName = keyof typeof PATHS;

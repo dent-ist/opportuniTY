@@ -22,6 +22,12 @@ const pairs: [string, string, number, string][] = [
     ['focus', s, 3, 'focus indicator'],
     ['danger-text', s, 4.5, 'field error text'],
   ]),
+  ...['operator', 'field', 'phrase', 'range'].map((kind): [string, string, number, string] => [
+    `syntax-${kind}`,
+    'surface',
+    4.5,
+    'query bar syntax highlighting',
+  ]),
   ['on-accent', 'accent', 4.5, 'primary button label'],
   ['on-accent', 'accent-hover', 4.5, 'primary button label (hover)'],
   ['on-danger', 'danger', 4.5, 'danger button label'],

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { QueryHistory } from '../core/search/query-history';
 import { WorkspaceContext } from '../core/workspace/workspace-context';
 
 /**
@@ -12,7 +13,7 @@ import { WorkspaceContext } from '../core/workspace/workspace-context';
   selector: 'opp-workspace-shell',
   imports: [RouterOutlet],
   template: `<router-outlet />`,
-  providers: [WorkspaceContext],
+  providers: [WorkspaceContext, QueryHistory],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'workspace-shell' },
 })
