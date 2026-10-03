@@ -13,6 +13,7 @@ The PR pipeline is [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It
 | `Dependency vulnerabilities (NuGet, npm)` | `dotnet list package --vulnerable --include-transitive` and `npm audit` (lockfile only, dev toolchain included), then `tools/ci/security/check-vulnerabilities.py` fails on High/Critical findings that have no unexpired exception | `dependency-audit` (raw JSON + Markdown) |
 | `Secret scan (gitleaks)` | A checksum-verified gitleaks binary scans the full git history, with secrets redacted in the output | `gitleaks-report` (SARIF, on failure only) |
 | `Licenses and SBOM (CycloneDX)` | Builds CycloneDX SBOMs of shipped code (non-test .NET projects and npm production dependencies). `tools/ci/security/check-licenses.py` then enforces the license policy | `sbom` (two `.cdx.json` files + `license-report.md`, 90 days) |
+| `Compose developer profile` | Sets `vm.max_map_count`, generates `.env`, fails if a Redis/Valkey service exists, then `deploy/docker-compose/opportunity.sh up`: preflight, builds the four images from `deploy/docker`, starts the stack and waits until every service is healthy. Then checks that the migrator exited 0, `/health/ready` on the API returns 200, the web serves `index.html` and the demo seed runs. Dumps logs on failure ([developer profile](../deploy/docker-compose/README.md), `E19-T03`) | — |
 | `CI gate` | Passes only if every job above succeeded. This is the one check that branch protection requires | — |
 
 Shared behaviour:
@@ -126,6 +127,7 @@ Implements #25 (`E01-T05`), ADR-015 D17.2 and threat-model entries T-57/T-58. Fo
 | `ghcr.io/plogramer/opportunity-web` | `deploy/docker/web.Dockerfile` (`web`) | `nginxinc/nginx-unprivileged:1.30-alpine-slim` | `nginx` (101) | `HEALTHCHECK` on `/healthz`, port 8080 |
 
 - **Worker.** One image runs every worker type: `Workers__Enabled=all` (the default, Lite) or one type or a comma-separated subset per container (Full), e.g. `Workers__Enabled=import`. Unknown names fail at startup.
+- **Readiness.** When `ConnectionStrings__App` is set, api and worker register the `postgres-schema` readiness check (`SchemaVersionHealthCheck`): `/health/ready` returns 503 until the migrator has brought the schema up to the version the image was built for. A newer schema is ready (expand/contract).
 - **Migrator.** Applies PostgreSQL migrations and bootstrap steps, then exits: `0` success, `1` migration failed, `2` configuration error (no `ConnectionStrings__Migrator`), `3` bootstrap step failed. Verified against PostgreSQL 17: the first run applies the migrations, a second run is a no-op that exits `0`.
 - **Kerberos.** The chiseled images do not include `libgssapi_krb5`, so PostgreSQL GSSAPI/Kerberos authentication is not supported. Npgsql probes for it and prints `libgssapi_krb5.so.2: cannot open shared object file` once; add `GSS Encryption Mode=Disable` to PostgreSQL connection strings to skip the probe.
 - **Web.** The Angular production build, served by nginx with SPA fallback, `no-cache` on `index.html`, immutable caching for content-hashed bundles and the ADR-015 D4 response headers. The CSP allows `'unsafe-inline'` for styles only, the documented interim exception until `ngCspNonce` (`E15-T01`). TLS and `/api` routing are the edge proxy's job.
@@ -186,7 +188,7 @@ Approximate sizes (linux/amd64, compressed as pulled / unpacked): api 61 / 141 M
 
 ### Not covered yet
 
-- **Compose developer-profile smoke test on both architectures.** The verify job runs each published image on amd64 and arm64 runners with the Compose hardening flags. The full developer-profile smoke test (API, workers, PostgreSQL, OpenSearch, RabbitMQ) runs once `deploy/docker-compose` exists (`E01-T06` / `E19`).
+- **Compose developer-profile smoke test on both architectures.** The verify job runs each published image on amd64 and arm64 runners with the Compose hardening flags. The developer-profile smoke test (the `Compose developer profile` job in `ci.yml`) runs on amd64 with locally built images on every PR; running it against the published images on both architectures remains open (`E01-T06`).
 - **Release notes, Compose bundle with digests, changelog.** These come with #26 (`E01-T06`), which builds on `release.yml`.
 - **arm64 runners.** `ubuntu-24.04-arm` is free for public repositories. A private repository needs a larger-runner plan or a self-hosted arm64 runner.
 

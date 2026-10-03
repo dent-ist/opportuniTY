@@ -7,6 +7,9 @@
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS source
 ENV DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+# Data directories the chiseled images cannot create at runtime (no shell). Named volumes mounted there inherit the
+# app user's ownership, e.g. the Lite filesystem object store (ObjectStorage__FileSystem__RootPath).
+RUN mkdir -p /rootfs/var/lib/opportunity/objects
 WORKDIR /repo
 COPY .editorconfig global.json Directory.Build.props Directory.Packages.props ./
 COPY src/ src/
@@ -60,6 +63,7 @@ LABEL org.opencontainers.image.vendor="opportuniTY contributors" \
       org.opencontainers.image.created="${CREATED}"
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_gcServer=0
+COPY --from=source --link --chown=1654:1654 /rootfs/var/lib/opportunity/ /var/lib/opportunity/
 WORKDIR /app
 USER $APP_UID
 EXPOSE 8080

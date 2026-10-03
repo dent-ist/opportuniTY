@@ -300,12 +300,48 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # E19-T03: boots the developer Compose profile from a clean checkout (images built from deploy/docker) and checks
+  # that every service is healthy. Runs in parallel with the other jobs; a cold build plus boot takes ~6-8 min.
+  compose:
+    name: Compose developer profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: deploy/docker-compose
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Raise vm.max_map_count for OpenSearch
+        run: sudo sysctl -w vm.max_map_count=262144
+      - name: Generate .env (random secrets)
+        run: ./opportunity.sh init
+      - name: No Redis/Valkey service
+        run: |
+          ! ./opportunity.sh compose --profile '*' config --services | grep -Ei 'redis|valkey'
+      - name: Preflight, build and start; waits until every service is healthy
+        run: ./opportunity.sh up
+      - name: Smoke checks
+        run: |
+          ./opportunity.sh compose ps --all
+          test "$(docker inspect -f '{{.State.ExitCode}}' "$(./opportunity.sh compose ps --all -q migrator)")" = 0
+          curl -fsS http://127.0.0.1:8081/health/ready
+          curl -fsS http://127.0.0.1:8080/ | grep -q '<app-root'
+          ./opportunity.sh seed
+      - name: Logs on failure
+        if: ${{ failure() }}
+        run: ./opportunity.sh compose --profile '*' logs --no-color --tail 300
+      - name: Tear down
+        if: ${{ always() }}
+        run: ./opportunity.sh compose --profile '*' down --volumes --remove-orphans || true
+
   # Single stable check for branch protection. Add future required jobs to `needs`
   # (e.g. fault/idempotency smoke from E18-T01).
   ci-gate:
     name: CI gate
     if: ${{ always() }}
-    needs: [versions, dotnet, integration, web, dependency-audit, secret-scan, licenses-sbom]
+    needs: [versions, dotnet, integration, web, dependency-audit, secret-scan, licenses-sbom, compose]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

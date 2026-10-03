@@ -14,6 +14,7 @@ public static class OpportunityHost
 
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.AddOpportunityHealthChecks();
+        builder.Services.AddOpportunityPostgres();
         return builder;
     }
 
