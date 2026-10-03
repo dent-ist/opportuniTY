@@ -331,11 +331,9 @@ public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkR
     public async Task<IReadOnlyList<Guid>> GetWorkspacesToSweepAsync(CancellationToken cancellationToken = default)
     {
         // The workspace registry is installation-level (ADR-015 D7.1): readable without a workspace context.
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand(
-            $"SELECT workspace_id FROM opportunity.workspace WHERE status <> '{nameof(WorkspaceStatus.Purged)}' ORDER BY workspace_id",
-            connection, transaction);
+        await using var tx = await WorkspaceTransaction.BeginInstallationAsync(dataSource, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            $"SELECT workspace_id FROM opportunity.workspace WHERE status <> '{nameof(WorkspaceStatus.Purged)}' ORDER BY workspace_id");
         var ids = new List<Guid>();
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -345,7 +343,7 @@ public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkR
             }
         }
 
-        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return ids;
     }
 

@@ -14,6 +14,10 @@ public partial class WorkspaceContextTests
 
     private static readonly string Migrations = Path.Combine("src", "Opportunity.Data", "Migrations");
 
+    // Installation-level identity stores (app_user, user_session, data_protection_key are @global tables, ADR-015 D3/D4)
+    // have no workspace and therefore no RLS context to set.
+    private static readonly string Identity = Path.Combine("src", "Opportunity.Data", "Identity");
+
     [Fact]
     public void Only_the_workspace_transaction_sets_the_rls_context()
     {
@@ -33,7 +37,8 @@ public partial class WorkspaceContextTests
     {
         var data = Path.Combine("src", "Opportunity.Data");
         Offenders(path => path.StartsWith(data, StringComparison.Ordinal) && path != Helper
-                && !path.StartsWith(Migrations, StringComparison.Ordinal), DirectConnection())
+                && !path.StartsWith(Migrations, StringComparison.Ordinal)
+                && !path.StartsWith(Identity, StringComparison.Ordinal), DirectConnection())
             .Should().BeEmpty("repositories use WorkspaceTransaction.BeginAsync so RLS always has a context");
     }
 
