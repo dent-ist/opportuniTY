@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DOCUMENT, inject } from '@angular/c
 
 /**
  * First focusable element of every layout (WCAG 2.4.1). Moves focus to `#main` itself: a plain `#main`
- * href would resolve against `<base href>` and trigger router navigation.
+ * href would add a fragment to the URL, which the router treats as a navigation.
  */
 @Component({
   selector: 'opp-skip-link',

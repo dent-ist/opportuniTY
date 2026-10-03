@@ -313,6 +313,7 @@ The shell is 95 kB gzip today.
 | `ng-openapi-gen` (exact 1.1.0) | MIT | dev | API client generation (§4) |
 | `axe-core` | MPL-2.0 | dev | Accessibility checks in tests |
 | `@types/node` | MIT | dev | Node APIs in token/lint specs |
+| `@playwright/test` (exact, = `PLAYWRIGHT` in `versions.env`) | Apache-2.0 | dev | Browser accessibility/performance gates (`E15-T04`) |
 
 The licence policy (`tools/ci/security/license-policy.json`) applies to shipped components only; the npm SBOM is built
 with `--omit dev` and the web image contains only the compiled bundle, so axe-core is neither in the SBOM nor in the

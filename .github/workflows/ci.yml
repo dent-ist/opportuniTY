@@ -187,6 +187,50 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # E15-T04: bundle-size budgets on the production build, then axe (real Chromium, every theme), keyboard-only and
+  # page-performance checks against that build with the API mocked in the browser (perf-budgets.json, docs/ci.md).
+  web-gates:
+    name: Angular accessibility and performance gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/Opportunity.Web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        working-directory: .
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE }}
+          cache: npm
+          cache-dependency-path: src/Opportunity.Web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Production build (with esbuild metafile)
+        run: npx ng build --stats-json
+      - name: Bundle budgets
+        run: npm run budget:bundle
+      - name: Type-check browser tests
+        run: npx tsc -p e2e/tsconfig.json
+      # The Chromium build pinned by @playwright/test (== PLAYWRIGHT in versions.env, checked by verify-versions.sh).
+      - name: Install Chromium
+        run: npx playwright install --with-deps --only-shell chromium
+      - name: Accessibility, keyboard and performance tests (Playwright)
+        run: npm run e2e
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-web-gates
+          path: |
+            src/Opportunity.Web/TestResults/
+            src/Opportunity.Web/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
   # Security and supply-chain gates (#24, E01-T04). CodeQL and Scorecard live in their own
   # workflows (codeql.yml, scorecard.yml) because they need security-events: write.
   dependency-audit:
@@ -361,7 +405,7 @@ jobs:
   ci-gate:
     name: CI gate
     if: ${{ always() }}
-    needs: [versions, dotnet, integration, web, dependency-audit, secret-scan, licenses-sbom, compose]
+    needs: [versions, dotnet, integration, web, dependency-audit, secret-scan, licenses-sbom, compose, web-gates]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -1,3 +1,4 @@
+import { APP_BASE_HREF } from '@angular/common';
 import {
   ApplicationConfig,
   EnvironmentProviders,
@@ -27,6 +28,9 @@ export function provideAppRouting(appRoutes: Routes = routes): (Provider | Envir
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    // No <base href>: the CSP has `base-uri 'none'` (ADR-015 D4.6). Assets use absolute URLs (deployUrl "/"),
+    // so deep links such as /w/{id}/documents load the same bundles.
+    { provide: APP_BASE_HREF, useValue: '/' },
     ...provideAppRouting(),
     ...provideOpportunityHttp(),
   ],
