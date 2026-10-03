@@ -14,10 +14,17 @@ internal sealed class OpenSearchConnection : IDisposable
     private readonly HttpClient _http;
 
     public OpenSearchConnection(OpenSearchOptions options)
+        : this(options, new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+    {
+    }
+
+    /// <summary>Over <paramref name="handler"/> (tests record or fault requests); the connection owns it.</summary>
+    public OpenSearchConnection(OpenSearchOptions options, HttpMessageHandler handler)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(handler);
         options.Validate();
-        _http = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+        _http = new HttpClient(handler)
         {
             BaseAddress = options.Endpoint,
             Timeout = options.RequestTimeout,

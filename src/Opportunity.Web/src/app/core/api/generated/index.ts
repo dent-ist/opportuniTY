@@ -53,6 +53,16 @@ export type { QueryValidationDiagnostic } from './models/query-validation-diagno
 export type { QueryValidationRequest } from './models/query-validation-request';
 export type { QueryValidationResult } from './models/query-validation-result';
 export type { RowPreview } from './models/row-preview';
+export type { SearchFacet } from './models/search-facet';
+export type { SearchFacetBucket } from './models/search-facet-bucket';
+export type { SearchFreshness } from './models/search-freshness';
+export type { SearchHit } from './models/search-hit';
+export type { SearchPageInfo } from './models/search-page-info';
+export type { SearchRequest } from './models/search-request';
+export type { SearchResultPage } from './models/search-result-page';
+export type { SearchSnippet } from './models/search-snippet';
+export type { SearchSortDirection } from './models/search-sort-direction';
+export type { SearchSortKey } from './models/search-sort-key';
 export type { StructuralTarget } from './models/structural-target';
 export type { TargetPreview } from './models/target-preview';
 export type { TargetResolution } from './models/target-resolution';
@@ -67,6 +77,10 @@ export type { GetCurrentUser$Params as GetCurrentUser$Params } from './fn/authen
 export { getCurrentUser as getCurrentUser } from './fn/authentication/get-current-user';
 export type { ValidateQuery$Params as ValidateQuery$Params } from './fn/opportunity-api/validate-query';
 export { validateQuery as validateQuery } from './fn/opportunity-api/validate-query';
+export type { RunSearch$Params as RunSearch$Params } from './fn/search/run-search';
+export { runSearch as runSearch } from './fn/search/run-search';
+export type { GetSearchPage$Params as GetSearchPage$Params } from './fn/search/get-search-page';
+export { getSearchPage as getSearchPage } from './fn/search/get-search-page';
 export type { GetJob$Params as GetJob$Params } from './fn/jobs/get-job';
 export { getJob as getJob } from './fn/jobs/get-job';
 export type { GetWorkspace$Params as GetWorkspace$Params } from './fn/workspaces/get-workspace';

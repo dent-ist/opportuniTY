@@ -137,6 +137,7 @@ file name into a third-party backend.
 | `opportunity.index.chunk_tasks` | gauge | {task} | `opportunity.status`, `opportunity.lane` | `E07-T06` |
 | `opportunity.index.chunk_task.oldest_age` | gauge | s | `opportunity.status`, `opportunity.lane` | `E07-T06` |
 | `opportunity.search.request.duration` | histogram | s | `opportunity.search.class` (simple, complex), `opportunity.outcome` | `E07-T07` |
+| `opportunity.search.post_filter.dropped` | counter | {document} | `opportunity.search.drop_reason` (PDP reason, `integrity`) | `E07-T05` (Q-12 page post-filter) |
 | `opportunity.jobs` | counter | {job} | `opportunity.job.type`, `opportunity.status` | `E06-T05` |
 | `opportunity.jobs.active` | up-down counter | {job} | `opportunity.job.type` | `E06-T05` |
 | `opportunity.job.chunks` | counter | {chunk} | `opportunity.job.type`, `opportunity.outcome`, `error.type` | `E06-T05` |

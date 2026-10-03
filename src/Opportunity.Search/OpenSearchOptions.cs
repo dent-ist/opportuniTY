@@ -46,6 +46,9 @@ public sealed partial class OpenSearchOptions
     /// <summary>Placement thresholds (ADR-006 §2).</summary>
     public IndexPlacementOptions Placement { get; set; } = new();
 
+    /// <summary>Search service paging, totals, snippets and timeouts (E07-T05).</summary>
+    public SearchServiceOptions Search { get; set; } = new();
+
     /// <summary>Binds <see cref="SectionName"/> and, unless <see cref="Endpoint"/> is set there, the connection string.</summary>
     public static OpenSearchOptions Bind(IConfiguration configuration)
     {
@@ -93,6 +96,7 @@ public sealed partial class OpenSearchOptions
         Require(p.MaxSharedIndexes is >= 1 and <= 999, "Placement:MaxSharedIndexes");
         Require(p.SizeCalibrationFactor > 0, "Placement:SizeCalibrationFactor");
         Require(p.CacheTtl >= TimeSpan.Zero && p.CacheTtl <= TimeSpan.FromSeconds(5), "Placement:CacheTtl (at most 5 s, ADR-006 R2)");
+        (Search ?? throw new InvalidOperationException($"{SectionName}:Search is required.")).Validate($"{SectionName}:Search");
     }
 
     private static void Require(bool condition, string setting)

@@ -1,0 +1,740 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Net;
+using System.Text.Json.Nodes;
+
+using Microsoft.Extensions.Logging;
+
+using Opportunity.Application.Audit;
+using Opportunity.Application.Authorization;
+using Opportunity.Application.Search;
+using Opportunity.Application.Telemetry;
+using Opportunity.Contracts.Api;
+using Opportunity.Contracts.Search;
+using Opportunity.Core.QueryLanguage;
+using Opportunity.Core.Security;
+using Opportunity.Search.Indexing;
+
+using static Opportunity.Search.Indexing.JsonBodies;
+
+namespace Opportunity.Search.Querying;
+
+/// <summary>
+/// The logical search service (E07-T05). One path for every page:
+/// <list type="number">
+/// <item>parse and translate the query text (the user clause can only ever land in <c>bool.must</c>);</item>
+/// <item>read the caller's visibility from the PDP (requires <c>Search.Execute</c>; restriction classes and walls go
+/// into the outer filter as defence in depth, ADR-006 R10);</item>
+/// <item>resolve the placement through <see cref="IIndexManager"/> and search a point-in-time reader of the read alias
+/// (routing on shared indexes), with the workspace term first in the outer filter;</item>
+/// <item>post-filter the page against PostgreSQL with <c>AuthorizeMany(Document.View)</c> in summary-audit mode
+/// (Q-12, Q-59): denied hits vanish with their snippets and grid fields;</item>
+/// <item>keep the reader and positions server-side behind opaque IDs bound to (user, session, workspace).</item>
+/// </list>
+/// </summary>
+internal sealed partial class SearchService(
+    IIndexManager indexes,
+    OpenSearchConnection connection,
+    IAuthorizationService authorization,
+    IAuditEventWriter audit,
+    ISearchSessionStore sessions,
+    ISearchQueryTranslator translator,
+    QueryLimits limits,
+    OpenSearchOptions options,
+    TimeProvider time,
+    ILogger<SearchService> logger,
+    OpportunityMetrics? metrics = null) : ISearchService
+{
+    private const string ResourceType = "Search";
+    private const string CorrelationTag = "opportunity.correlation_id";
+    private const string SearchClassAttribute = "opportunity.search.class";
+    private const string DropReasonAttribute = "opportunity.search.drop_reason";
+
+    /// <summary>ReasonCode of a search handle replayed by another user or session (audited, answered 404).</summary>
+    internal const string HandleMismatchReason = "SearchHandleMismatch";
+
+    private SearchServiceOptions Settings => options.Search;
+
+    public async Task<SearchOutcome> SearchAsync(SearchCaller caller, SearchRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(request);
+        var started = Stopwatch.GetTimestamp();
+
+        var pageSize = request.PageSize ?? Settings.DefaultPageSize;
+        if (pageSize < 1 || pageSize > Settings.MaxPageSize)
+        {
+            return SearchOutcome.InvalidRequest("pageSize", $"pageSize must be between 1 and {Settings.MaxPageSize}.");
+        }
+
+        if (request.Query is null)
+        {
+            return SearchOutcome.InvalidRequest("query", "The query text is required (it may be empty).");
+        }
+
+        var sort = new List<SortKey>();
+        foreach (var key in request.Sort ?? [])
+        {
+            if (key is null || SortKey.Resolve(key.Field, key.Direction) is not { } resolved)
+            {
+                return SearchOutcome.InvalidRequest("sort", $"Sortable fields: {string.Join(", ", SearchSortFields.All)}.");
+            }
+
+            sort.Add(resolved);
+        }
+
+        if (sort.Count == 0)
+        {
+            sort.Add(SortKey.Default);
+        }
+
+        if (sort.Count > 5 || sort.Select(s => s.Field).Distinct(StringComparer.Ordinal).Count() != sort.Count)
+        {
+            return SearchOutcome.InvalidRequest("sort", "At most 5 distinct sort fields.");
+        }
+
+        var facets = new List<string>();
+        foreach (var facet in request.Facets ?? [])
+        {
+            if (SearchFacetFields.All.FirstOrDefault(f => string.Equals(f, facet, StringComparison.OrdinalIgnoreCase)) is not { } name)
+            {
+                return SearchOutcome.InvalidRequest("facets", $"Facet fields: {string.Join(", ", SearchFacetFields.All)}.");
+            }
+
+            facets.Add(name);
+        }
+
+        var visibility = await VisibilityAsync(caller, cancellationToken).ConfigureAwait(false);
+        if (visibility.Outcome is not null)
+        {
+            return visibility.Outcome;
+        }
+
+        var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var plan = await PlanAsync(caller.WorkspaceId, request.Query, placement?.Generation, cancellationToken).ConfigureAwait(false);
+        if (plan.Errors is { } errors)
+        {
+            return SearchOutcome.InvalidQuery(errors);
+        }
+
+        var now = time.GetUtcNow();
+        var search = new SearchSessionRecord(
+            caller.WorkspaceId,
+            Guid.NewGuid(),
+            caller.Principal.UserId,
+            caller.SessionId,
+            request.Query,
+            SortKey.ToJson(sort),
+            pageSize,
+            request.CountExact == true,
+            request.Highlight ?? true,
+            PointInTimeId: null,
+            TotalValue: 0,
+            TotalExact: true,
+            now,
+            now + Settings.SearchIdleTimeout);
+
+        if (placement is null)
+        {
+            // Nothing was ever indexed for this workspace: an empty first page, no handle to page through.
+            await AuditExecutedAsync(caller, visibility.Filter!, search, plan, null, new TotalCount(0, TotalRelation.Eq), 0, 0, cancellationToken)
+                .ConfigureAwait(false);
+            RecordDuration(started, plan.QueryClass, "ok");
+            return SearchOutcome.Ok(EmptyPage(plan.Normalized, pageSize, now));
+        }
+
+        var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
+        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
+        var result = await ExecuteAsync(placement, search with { PointInTimeId = pit }, query, sort, Navigation.First(), facets, cancellationToken)
+            .ConfigureAwait(false);
+
+        var served = await ServeAsync(caller, search with { PointInTimeId = result.PointInTimeId }, placement, result, Navigation.First(), plan.Normalized, cancellationToken)
+            .ConfigureAwait(false);
+        await sessions.CreateAsync(
+            search with { PointInTimeId = result.PointInTimeId, TotalValue = result.Total.Value, TotalExact = result.Total.Relation == TotalRelation.Eq },
+            served.Cursors,
+            cancellationToken).ConfigureAwait(false);
+        await AuditExecutedAsync(caller, visibility.Filter!, search, plan, search.SearchId, result.Total, served.Page.Items.Count,
+            served.Dropped, cancellationToken).ConfigureAwait(false);
+
+        RecordDuration(started, plan.QueryClass, "ok");
+        return SearchOutcome.Ok(served.Page with
+        {
+            Facets = Facets(result.Aggregations, facets),
+        });
+    }
+
+    public async Task<SearchOutcome> GetPageAsync(
+        SearchCaller caller, string searchId, SearchPageRequest page, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(page);
+        var started = Stopwatch.GetTimestamp();
+        var selectors = (page.Cursor is not null ? 1 : 0) + (page.Number is not null ? 1 : 0) + (page.Last ? 1 : 0);
+        if (selectors != 1)
+        {
+            return SearchOutcome.InvalidRequest("page", "Give exactly one of cursor, page number or last.");
+        }
+
+        if (!Guid.TryParseExact(searchId, "N", out var id)
+            || await sessions.GetAsync(caller.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { } search)
+        {
+            return SearchOutcome.NotFound;
+        }
+
+        if (search.UserId != caller.Principal.UserId || search.SessionId != caller.SessionId)
+        {
+            // Another user's or another session's handle: indistinguishable from a missing one, but audited.
+            await AuditHandleMismatchAsync(caller, id, cancellationToken).ConfigureAwait(false);
+            return SearchOutcome.NotFound;
+        }
+
+        Navigation navigation;
+        if (page.Cursor is { } raw)
+        {
+            if (!Guid.TryParseExact(raw, "N", out var cursorId)
+                || await sessions.GetCursorAsync(caller.WorkspaceId, id, cursorId, cancellationToken).ConfigureAwait(false) is not { } cursor)
+            {
+                return SearchOutcome.NotFound;
+            }
+
+            navigation = cursor.Direction == SearchCursorDirection.After
+                ? Navigation.After(JsonNode.Parse(cursor.SortValuesJson)!.AsArray(), cursor.PageNumber)
+                : Navigation.Before(JsonNode.Parse(cursor.SortValuesJson)!.AsArray(), cursor.PageNumber);
+        }
+        else if (page.Number is { } number)
+        {
+            var from = ((long)number - 1) * search.PageSize;
+            if (number < 1 || from + search.PageSize + 1 > options.MaxResultWindow)
+            {
+                return SearchOutcome.InvalidRequest("page",
+                    $"Page numbers reach the first {options.MaxResultWindow:N0} results; use Next, Last, a filter or Go to control number (Q-49).");
+            }
+
+            navigation = Navigation.Jump(number, (int)from);
+        }
+        else
+        {
+            navigation = Navigation.LastPage();
+        }
+
+        var visibility = await VisibilityAsync(caller, cancellationToken).ConfigureAwait(false);
+        if (visibility.Outcome is not null)
+        {
+            return visibility.Outcome;
+        }
+
+        var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var plan = await PlanAsync(caller.WorkspaceId, search.QueryText, placement?.Generation, cancellationToken).ConfigureAwait(false);
+        if (placement is null || plan.Errors is not null)
+        {
+            // The workspace lost its placement, or the stored query no longer binds (e.g. a field was deleted).
+            return SearchOutcome.NotFound;
+        }
+
+        var sort = SortKey.FromJson(search.SortJson);
+        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
+        var result = await ExecuteAsync(placement, search, query, sort, navigation, [], cancellationToken).ConfigureAwait(false);
+        var current = search with { PointInTimeId = result.PointInTimeId };
+        var served = await ServeAsync(caller, current, placement, result, navigation, plan.Normalized, cancellationToken).ConfigureAwait(false);
+
+        await sessions.TouchAsync(
+            caller.WorkspaceId,
+            id,
+            result.PointInTimeId == search.PointInTimeId ? null : result.PointInTimeId,
+            time.GetUtcNow() + Settings.SearchIdleTimeout,
+            served.Cursors,
+            cancellationToken).ConfigureAwait(false);
+        await AuditPageServedAsync(caller, visibility.Filter!, id, navigation, served, result, cancellationToken).ConfigureAwait(false);
+
+        RecordDuration(started, plan.QueryClass, "ok");
+        return SearchOutcome.Ok(served.Page);
+    }
+
+    private async Task<(SearchOutcome? Outcome, VisibilityFilter? Filter)> VisibilityAsync(SearchCaller caller, CancellationToken cancellationToken)
+    {
+        var visibility = await authorization.GetVisibilityAsync(caller.Principal, caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        if (visibility.Decision.IsAllowed && visibility.Filter is not null)
+        {
+            return (null, visibility.Filter);
+        }
+
+        return (visibility.Decision.Outcome == AuthorizationOutcome.NotFound ? SearchOutcome.NotFound : SearchOutcome.Forbidden, null);
+    }
+
+    private async Task<Placement?> PlacementAsync(Guid workspaceId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await indexes.ResolveAsync(workspaceId, IndexPurpose.Read, cancellationToken).ConfigureAwait(false);
+        }
+        catch (WorkspaceNotPlacedException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<QueryPlan> PlanAsync(Guid workspaceId, string text, int? generation, CancellationToken cancellationToken)
+    {
+        var parsed = QueryParser.Parse(text, limits);
+        if (parsed.Ast is not { } ast)
+        {
+            return QueryPlan.Failed(parsed.Errors);
+        }
+
+        var translation = await translator.TranslateAsync(
+            ast, new SearchTranslationContext(workspaceId, generation ?? ProjectionMappings.Embedded.CurrentGeneration, limits), cancellationToken)
+            .ConfigureAwait(false);
+        if (!translation.Success)
+        {
+            return QueryPlan.Failed(translation.Errors.Count > 0
+                ? translation.Errors
+                : [new QueryDiagnostic(SearchQueryErrorCodes.UnsupportedForField, "The query cannot be planned.", ast.Span)]);
+        }
+
+        return new QueryPlan(ast, translation.Query, QueryPrinter.Print(ast), translation.QueryClass, null);
+    }
+
+    private async Task<string> OpenPointInTimeAsync(Placement placement, CancellationToken cancellationToken)
+    {
+        var routing = placement.Read.Routing is { } r ? "&routing=" + Escape(r) : string.Empty;
+        var response = await connection.SendAsync(
+            HttpMethod.Post,
+            $"{Escape(placement.Read.Index)}/_search/point_in_time?keep_alive={SearchDsl.Seconds(Settings.PointInTimeKeepAlive)}{routing}",
+            null,
+            cancellationToken).ConfigureAwait(false);
+        return response.Body?["pit_id"]?.GetValue<string>()
+            ?? throw new OpenSearchRequestException("OpenSearch did not return a point-in-time id.");
+    }
+
+    private async Task<SearchResult> ExecuteAsync(
+        Placement placement,
+        SearchSessionRecord search,
+        JsonObject query,
+        IReadOnlyList<SortKey> sort,
+        Navigation navigation,
+        IReadOnlyList<string> facets,
+        CancellationToken cancellationToken)
+    {
+        var refreshed = false;
+        var pit = search.PointInTimeId ?? await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
+        while (true)
+        {
+            var body = SearchDsl.Body(new SearchBodySpec
+            {
+                Query = query,
+                PointInTimeId = pit,
+                KeepAlive = Settings.PointInTimeKeepAlive,
+                Sort = sort,
+                Reverse = navigation.Reverse,
+                SearchAfter = navigation.SearchAfter,
+                From = navigation.From,
+                Size = search.PageSize + 1,
+                TrackTotalHitsUpTo = search.CountExact ? null : Settings.TrackTotalHitsUpTo,
+                Highlight = search.Highlight,
+                SnippetFragmentSize = Settings.SnippetFragmentSize,
+                SnippetsPerHit = Settings.SnippetsPerHit,
+                Facets = facets,
+                FacetBuckets = Settings.FacetBuckets,
+                Timeout = Settings.QueryTimeout,
+            });
+
+            var response = await connection.SendAsync(HttpMethod.Post, "_search", body, cancellationToken, HttpStatusCode.NotFound)
+                .ConfigureAwait(false);
+            if (IsPointInTimeGone(response) && !refreshed)
+            {
+                // Q-33: the live reader expired; reopen it and say so ("results refreshed").
+                LogPointInTimeReopened(logger, search.WorkspaceId, search.SearchId);
+                pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
+                refreshed = true;
+                continue;
+            }
+
+            if (response.Status == HttpStatusCode.NotFound || response.Body is not JsonObject json)
+            {
+                throw new OpenSearchRequestException(
+                    $"OpenSearch search failed with {(int)response.Status} {OpenSearchConnection.ErrorType(response.Body)}.");
+            }
+
+            var hits = json["hits"]?["hits"]?.AsArray() ?? [];
+            var total = json["hits"]?["total"];
+            var totalValue = total?["value"]?.GetValue<long>() ?? 0;
+            var relation = total?["relation"]?.GetValue<string>() == "eq" && json["timed_out"]?.GetValue<bool>() != true
+                ? TotalRelation.Eq
+                : TotalRelation.Gte;
+            return new SearchResult(
+                [.. hits.OfType<JsonObject>()],
+                new TotalCount(totalValue, relation),
+                json["pit_id"]?.GetValue<string>() ?? pit,
+                refreshed,
+                json["aggregations"] as JsonObject);
+        }
+    }
+
+    private static bool IsPointInTimeGone(OpenSearchResponse response)
+    {
+        if (response.Status == HttpStatusCode.OK)
+        {
+            return false;
+        }
+
+        var text = response.Body?.ToJsonString() ?? string.Empty;
+        return text.Contains("search_context_missing_exception", StringComparison.Ordinal)
+            || text.Contains("No search context found", StringComparison.Ordinal)
+            || (response.Status == HttpStatusCode.NotFound && text.Contains("point_in_time", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Post-filters the page (Q-12) and derives page info and server-side cursors from the unfiltered hits.</summary>
+    private async Task<ServedPage> ServeAsync(
+        SearchCaller caller,
+        SearchSessionRecord search,
+        Placement placement,
+        SearchResult result,
+        Navigation navigation,
+        string normalized,
+        CancellationToken cancellationToken)
+    {
+        var size = search.PageSize;
+        long? pageCount = result.Total.Relation == TotalRelation.Eq ? Math.Max(1, (result.Total.Value + size - 1) / size) : null;
+
+        // Q-49: with an exact total the last page keeps the page boundaries (e.g. 3 of 23 at size 5); otherwise it is
+        // simply the final page-size slice.
+        var take = navigation.IsLast && pageCount is { } pages ? (int)(result.Total.Value - ((pages - 1) * size)) : size;
+        take = Math.Clamp(take, 1, size);
+        var more = result.Hits.Count > take;
+        var window = result.Hits.Take(take).ToList();
+        if (navigation.Reverse)
+        {
+            window.Reverse();
+        }
+
+        // Without a lookahead hit the walk direction is exhausted; the other direction follows from how we got here.
+        bool hasNext, hasPrevious;
+        if (navigation.Reverse)
+        {
+            hasPrevious = more;
+            hasNext = !navigation.IsLast;
+        }
+        else
+        {
+            hasNext = more;
+            hasPrevious = navigation.SearchAfter is not null || navigation.From > 0;
+        }
+
+        var number = navigation.IsLast ? (int?)pageCount : navigation.PageNumber;
+
+        var expires = time.GetUtcNow() + Settings.SearchIdleTimeout;
+        var cursors = new List<SearchCursorRecord>();
+        string? next = null, previous = null;
+        if (window.Count > 0 && hasNext)
+        {
+            var cursor = new SearchCursorRecord(search.WorkspaceId, search.SearchId, Guid.NewGuid(), SearchCursorDirection.After,
+                (window[^1]["sort"] ?? new JsonArray()).ToJsonString(), number + 1, expires);
+            cursors.Add(cursor);
+            next = cursor.CursorId.ToString("N");
+        }
+
+        if (window.Count > 0 && hasPrevious)
+        {
+            var cursor = new SearchCursorRecord(search.WorkspaceId, search.SearchId, Guid.NewGuid(), SearchCursorDirection.Before,
+                (window[0]["sort"] ?? new JsonArray()).ToJsonString(), number is > 1 ? number - 1 : null, expires);
+            cursors.Add(cursor);
+            previous = cursor.CursorId.ToString("N");
+        }
+
+        var (items, dropped) = await PostFilterAsync(caller, placement, window, cancellationToken).ConfigureAwait(false);
+        var page = new SearchResultPage
+        {
+            SearchId = search.SearchId.ToString("N"),
+            Normalized = normalized,
+            Items = items,
+            Page = new SearchPageInfo(number, size, pageCount, IsFirst: !hasPrevious, IsLast: !hasNext),
+            Total = result.Total,
+            Freshness = new SearchFreshness(ServedGeneration: null, Current: null, time.GetUtcNow()),
+            NextCursor = next,
+            PreviousCursor = previous,
+            ResultsRefreshed = result.Refreshed,
+        };
+        return new ServedPage(page, cursors, dropped);
+    }
+
+    /// <summary>
+    /// Q-12: re-checks every hit of the page against PostgreSQL. A hit is returned only if the PDP allows
+    /// <c>Document.View</c> on it now; anything else (restricted, walled, deleted, or a projection row that does not
+    /// belong to this workspace) is dropped with its snippets and grid fields. One summary audit per call (Q-59).
+    /// </summary>
+    private async Task<(IReadOnlyList<SearchHit> Items, int Dropped)> PostFilterAsync(
+        SearchCaller caller, Placement placement, List<JsonObject> hits, CancellationToken cancellationToken)
+    {
+        var candidates = new List<(JsonObject Hit, Guid DocumentId)>(hits.Count);
+        var integrity = 0;
+        foreach (var hit in hits)
+        {
+            var source = hit["_source"] as JsonObject;
+            if (source?[ProjectionFields.WorkspaceId]?.GetValue<string>() != placement.WorkspaceFilterValue
+                || !Guid.TryParse(source[ProjectionFields.DocumentId]?.GetValue<string>(), out var documentId))
+            {
+                integrity++;
+                continue;
+            }
+
+            candidates.Add((hit, documentId));
+        }
+
+        if (integrity > 0)
+        {
+            LogIntegrityDrop(logger, caller.WorkspaceId, integrity);
+            Dropped(integrity, "integrity");
+        }
+
+        if (candidates.Count == 0)
+        {
+            return ([], integrity);
+        }
+
+        var decisions = await authorization.AuthorizeManyAsync(
+            caller.Principal, caller.WorkspaceId, Permission.DocumentView, [.. candidates.Select(c => c.DocumentId)], DenialAudit.Summary,
+            cancellationToken).ConfigureAwait(false);
+        var items = new List<SearchHit>(candidates.Count);
+        foreach (var (hit, documentId) in candidates)
+        {
+            if (decisions.TryGetValue(documentId, out var decision) && decision.IsAllowed)
+            {
+                items.Add(ToHit(hit, documentId));
+            }
+            else
+            {
+                Dropped(1, decisions.TryGetValue(documentId, out var denied) ? denied.Reason : AuthorizationReasons.DocumentNotFound);
+            }
+        }
+
+        return (items, integrity + candidates.Count - items.Count);
+    }
+
+    private static SearchHit ToHit(JsonObject hit, Guid documentId)
+    {
+        var s = (JsonObject)hit["_source"]!;
+        var snippets = (hit["highlight"]?[ProjectionFields.Text] as JsonArray ?? [])
+            .Select(f => f?.GetValue<string>())
+            .OfType<string>()
+            .Select(Snippet)
+            .ToList();
+        return new SearchHit(
+            documentId,
+            String(s, ProjectionFields.ControlNumber) ?? string.Empty,
+            String(s, ProjectionFields.FileName),
+            String(s, ProjectionFields.FileType),
+            String(s, ProjectionFields.FileExtension),
+            String(s, ProjectionFields.MimeType),
+            DateTimeOffset.TryParse(String(s, ProjectionFields.DocumentDate), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var date)
+                ? date
+                : null,
+            String(s, ProjectionFields.FamilyId),
+            String(s, ProjectionFields.ParentDocumentId),
+            (int?)Number(s, ProjectionFields.FamilySequence),
+            Number(s, ProjectionFields.FileSize),
+            (int?)Number(s, ProjectionFields.PageCount),
+            snippets);
+    }
+
+    /// <summary>Strips the private-use highlight delimiters and returns the highlighted ranges as offsets.</summary>
+    internal static SearchSnippet Snippet(string fragment)
+    {
+        var text = new System.Text.StringBuilder(fragment.Length);
+        var spans = new List<TextSpan>();
+        int? start = null;
+        foreach (var c in fragment)
+        {
+            if (c == SearchDsl.HighlightStart)
+            {
+                start ??= text.Length;
+            }
+            else if (c == SearchDsl.HighlightEnd)
+            {
+                if (start is { } s && text.Length > s)
+                {
+                    spans.Add(new TextSpan(s, text.Length));
+                }
+
+                start = null;
+            }
+            else
+            {
+                text.Append(c);
+            }
+        }
+
+        return new SearchSnippet(text.ToString(), spans);
+    }
+
+    private static string? String(JsonObject source, string field) => source[field] switch
+    {
+        JsonValue v when v.TryGetValue<string>(out var s) => s,
+        JsonValue v => v.ToJsonString(),
+        _ => null,
+    };
+
+    private static long? Number(JsonObject source, string field) =>
+        source[field] is JsonValue v && v.TryGetValue<long>(out var n) ? n : null;
+
+    private static IReadOnlyList<SearchFacet> Facets(JsonObject? aggregations, IReadOnlyList<string> facets) =>
+        [.. facets.Select(f => new SearchFacet(f, [.. (aggregations?[SearchDsl.FacetPrefix + f]?["buckets"] as JsonArray ?? [])
+            .OfType<JsonObject>()
+            .Select(b => new SearchFacetBucket(b["key"]?.ToString() ?? string.Empty, b["doc_count"]?.GetValue<long>() ?? 0))]))];
+
+    private static SearchResultPage EmptyPage(string normalized, int pageSize, DateTimeOffset now) => new()
+    {
+        SearchId = null,
+        Normalized = normalized,
+        Items = [],
+        Page = new SearchPageInfo(1, pageSize, 1, IsFirst: true, IsLast: true),
+        Total = new TotalCount(0, TotalRelation.Eq),
+        Freshness = new SearchFreshness(ServedGeneration: null, Current: null, now),
+    };
+
+    /// <summary>Search.Executed with the full query text in the restricted details (Q-16), before results are returned.</summary>
+    private async Task AuditExecutedAsync(
+        SearchCaller caller,
+        VisibilityFilter visibility,
+        SearchSessionRecord search,
+        QueryPlan plan,
+        Guid? searchId,
+        TotalCount total,
+        int returned,
+        int dropped,
+        CancellationToken cancellationToken)
+    {
+        var details = new Dictionary<string, string?>
+        {
+            ["pageSize"] = Invariant(search.PageSize),
+            ["sort"] = search.SortJson,
+            ["countExact"] = search.CountExact ? "true" : "false",
+            ["total"] = Invariant(total.Value),
+            ["totalRelation"] = total.Relation == TotalRelation.Eq ? "eq" : "gte",
+            ["returned"] = Invariant(returned),
+            ["postFilterDropped"] = Invariant(dropped),
+            ["queryClass"] = plan.QueryClass,
+        };
+        var restricted = new Dictionary<string, string?>
+        {
+            ["query"] = search.QueryText,
+            ["normalized"] = plan.Normalized,
+        };
+        var ast = QueryAstJson.Serialize(plan.Ast!);
+        if (ast.Length <= AuditEventRules.MaxRestrictedDetailsBytes / 2)
+        {
+            restricted["ast"] = ast;
+        }
+
+        await WriteAuditAsync(caller, visibility.BreakGlass, AuditTaxonomy.SearchCategory, "Executed", searchId, details, restricted, cancellationToken)
+            .ConfigureAwait(false);
+        if (search.CountExact)
+        {
+            await WriteAuditAsync(caller, visibility.BreakGlass, AuditTaxonomy.SearchCategory, "CountExact", searchId,
+                new Dictionary<string, string?> { ["total"] = Invariant(total.Value) }, null, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private Task AuditPageServedAsync(
+        SearchCaller caller, VisibilityFilter visibility, Guid searchId, Navigation navigation, ServedPage served, SearchResult result,
+        CancellationToken cancellationToken) =>
+        WriteAuditAsync(caller, visibility.BreakGlass, AuditTaxonomy.SearchCategory, "ResultsPageServed", searchId,
+            new Dictionary<string, string?>
+            {
+                ["navigation"] = navigation.Kind,
+                ["page"] = served.Page.Page.Number is { } n ? Invariant(n) : null,
+                ["returned"] = Invariant(served.Page.Items.Count),
+                ["postFilterDropped"] = Invariant(served.Dropped),
+                ["resultsRefreshed"] = result.Refreshed ? "true" : "false",
+            },
+            null,
+            cancellationToken);
+
+    private Task AuditHandleMismatchAsync(SearchCaller caller, Guid searchId, CancellationToken cancellationToken)
+    {
+        LogHandleMismatch(logger, caller.WorkspaceId, caller.Principal.UserId);
+        return WriteAuditAsync(caller, false, AuditTaxonomy.AuthZ.Category, AuditTaxonomy.AuthZ.Denied, searchId,
+            new Dictionary<string, string?> { ["permission"] = "Search.Execute" }, null, cancellationToken, AuditOutcome.Denied, HandleMismatchReason);
+    }
+
+    private async Task WriteAuditAsync(
+        SearchCaller caller,
+        bool breakGlass,
+        string category,
+        string action,
+        Guid? searchId,
+        IReadOnlyDictionary<string, string?> details,
+        IReadOnlyDictionary<string, string?>? restricted,
+        CancellationToken cancellationToken,
+        AuditOutcome outcome = AuditOutcome.Success,
+        string? reason = null)
+    {
+        var principal = caller.Principal;
+        await audit.WriteAsync(new AuditEvent
+        {
+            WorkspaceId = caller.WorkspaceId,
+            OccurredAt = time.GetUtcNow(),
+            Category = category,
+            Action = action,
+            ActorType = AuditActorType.User,
+            ActorId = principal.UserId.ToString(),
+            ActorDisplay = principal.DisplayName,
+            AccessPath = breakGlass ? AuditAccessPath.BreakGlass : AuditAccessPath.Normal,
+            ClientIp = principal.ClientIp,
+            UserAgent = principal.UserAgent,
+            ResourceType = ResourceType,
+            ResourceId = searchId?.ToString("N") ?? "none",
+            Outcome = outcome,
+            ReasonCode = reason,
+            CorrelationId = principal.CorrelationId ?? Activity.Current?.GetTagItem(CorrelationTag) as string,
+            SearchGeneration = null,
+            Details = details,
+            RestrictedDetails = restricted,
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private void RecordDuration(long started, string queryClass, string outcome) =>
+        metrics?.Histogram(OpportunityMetricCatalog.SearchRequestDuration).Record(
+            Stopwatch.GetElapsedTime(started).TotalSeconds,
+            new KeyValuePair<string, object?>(SearchClassAttribute, queryClass),
+            new KeyValuePair<string, object?>(TelemetryAttributes.Outcome, outcome));
+
+    private void Dropped(int count, string reason) =>
+        metrics?.Counter(OpportunityMetricCatalog.SearchPostFilterDropped).Add(count, new KeyValuePair<string, object?>(DropReasonAttribute, reason));
+
+    private static string Invariant(long value) => value.ToString(CultureInfo.InvariantCulture);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search {SearchId} in workspace {WorkspaceId}: point-in-time reader expired, reopened")]
+    private static partial void LogPointInTimeReopened(ILogger logger, Guid workspaceId, Guid searchId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Search handle of workspace {WorkspaceId} replayed by user {UserId} or another session; answered 404")]
+    private static partial void LogHandleMismatch(ILogger logger, Guid workspaceId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Dropped {Count} hit(s) in workspace {WorkspaceId} whose projection row names another workspace or no document")]
+    private static partial void LogIntegrityDrop(ILogger logger, Guid workspaceId, int count);
+
+    private sealed record QueryPlan(QueryNode? Ast, JsonObject? Query, string Normalized, string QueryClass, IReadOnlyList<QueryValidationDiagnostic>? Errors)
+    {
+        public static QueryPlan Failed(IReadOnlyList<QueryDiagnostic> errors) => new(null, null, string.Empty, SearchTranslation.Simple,
+            [.. errors.Select(d => new QueryValidationDiagnostic(d.Code, d.Message, new TextSpan(d.Span.Start, d.Span.End), d.Expected))]);
+    }
+
+    private sealed record SearchResult(
+        IReadOnlyList<JsonObject> Hits, TotalCount Total, string PointInTimeId, bool Refreshed, JsonObject? Aggregations);
+
+    private sealed record ServedPage(SearchResultPage Page, IReadOnlyList<SearchCursorRecord> Cursors, int Dropped);
+
+    /// <summary>How a page is reached: from the top, after/before a cursor position, a page jump, or the last page.</summary>
+    private sealed record Navigation(string Kind, JsonArray? SearchAfter, bool Reverse, int From, int? PageNumber, bool IsLast)
+    {
+        public static Navigation First() => new("first", null, false, 0, 1, false);
+
+        public static Navigation After(JsonArray position, int? page) => new("next", position, false, 0, page, false);
+
+        public static Navigation Before(JsonArray position, int? page) => new("previous", position, true, 0, page, false);
+
+        public static Navigation Jump(int page, int from) => new("page", null, false, from, page, false);
+
+        public static Navigation LastPage() => new("last", null, true, 0, null, true);
+    }
+}

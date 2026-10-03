@@ -32,5 +32,8 @@ public static class ProblemCodes
     public const string CsrfValidationFailed = "csrf-validation-failed";
     public const string StepUpRequired = "step-up-required";
 
+    /// <summary>The query text does not parse or bind; the <c>queryErrors</c> extension lists positioned errors.</summary>
+    public const string InvalidQuery = "invalid-query";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }

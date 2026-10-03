@@ -108,6 +108,174 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/searches": {
+      "post": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "Run a query-language search and return its first page of post-filtered results.",
+        "description": "Hits are re-checked against current access rights before the page is returned (restricted and walled documents are omitted). Totals above 10,000 are lower bounds unless countExact is set; counts and facets are approximate while the index catches up (freshness).",
+        "operationId": "RunSearch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResultPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/searches/{searchId}/pages": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "Another page of a search: by cursor (next/previous), page number near the top, or the last page.",
+        "description": "Give exactly one of cursor, page or last=true. Searches expire after inactivity (404).",
+        "operationId": "GetSearchPage",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "searchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "last",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResultPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/jobs/{jobId}": {
       "get": {
         "tags": [
@@ -2196,6 +2364,364 @@
           }
         }
       },
+      "SearchFacet": {
+        "required": [
+          "field",
+          "buckets"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchFacetBucket"
+            }
+          }
+        }
+      },
+      "SearchFacetBucket": {
+        "required": [
+          "value",
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "SearchFreshness": {
+        "required": [
+          "servedGeneration",
+          "current",
+          "asOf"
+        ],
+        "type": "object",
+        "properties": {
+          "servedGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "current": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "asOf": {
+            "format": "date-time"
+          }
+        }
+      },
+      "SearchHit": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "fileName",
+          "fileType",
+          "fileExtension",
+          "mimeType",
+          "documentDate",
+          "familyId",
+          "parentDocumentId",
+          "familySequence",
+          "fileSize",
+          "pageCount",
+          "snippets"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fileType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fileExtension": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "mimeType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "documentDate": {
+            "format": "date-time"
+          },
+          "familyId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "parentDocumentId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "familySequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fileSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pageCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "snippets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchSnippet"
+            }
+          }
+        }
+      },
+      "SearchPageInfo": {
+        "required": [
+          "number",
+          "size",
+          "pageCount",
+          "isFirst",
+          "isLast"
+        ],
+        "type": "object",
+        "properties": {
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "size": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pageCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "isFirst": {
+            "type": "boolean"
+          },
+          "isLast": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SearchRequest": {
+        "required": [
+          "query"
+        ],
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sort": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SearchSortKey"
+            }
+          },
+          "pageSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "countExact": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "highlight": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "facets": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SearchResultPage": {
+        "required": [
+          "normalized",
+          "items",
+          "page",
+          "total",
+          "freshness"
+        ],
+        "type": "object",
+        "properties": {
+          "searchId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "normalized": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/SearchPageInfo"
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/SearchFreshness"
+          },
+          "facets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchFacet"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "previousCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "resultsRefreshed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SearchSnippet": {
+        "required": [
+          "text",
+          "highlights"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "highlights": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TextSpan"
+            }
+          }
+        }
+      },
+      "SearchSortDirection": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "default": "asc"
+      },
+      "SearchSortKey": {
+        "required": [
+          "field"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/SearchSortDirection"
+          }
+        }
+      },
       "StructuralTarget": {
         "enum": [
           "parentId",
@@ -2374,6 +2900,9 @@
     },
     {
       "name": "Opportunity.Api"
+    },
+    {
+      "name": "Search"
     },
     {
       "name": "Jobs"

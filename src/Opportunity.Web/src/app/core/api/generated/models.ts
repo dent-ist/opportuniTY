@@ -47,6 +47,16 @@ export type { QueryValidationDiagnostic } from './models/query-validation-diagno
 export type { QueryValidationRequest } from './models/query-validation-request';
 export type { QueryValidationResult } from './models/query-validation-result';
 export type { RowPreview } from './models/row-preview';
+export type { SearchFacet } from './models/search-facet';
+export type { SearchFacetBucket } from './models/search-facet-bucket';
+export type { SearchFreshness } from './models/search-freshness';
+export type { SearchHit } from './models/search-hit';
+export type { SearchPageInfo } from './models/search-page-info';
+export type { SearchRequest } from './models/search-request';
+export type { SearchResultPage } from './models/search-result-page';
+export type { SearchSnippet } from './models/search-snippet';
+export type { SearchSortDirection } from './models/search-sort-direction';
+export type { SearchSortKey } from './models/search-sort-key';
 export type { StructuralTarget } from './models/structural-target';
 export type { TargetPreview } from './models/target-preview';
 export type { TargetResolution } from './models/target-resolution';
