@@ -83,6 +83,26 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       }
@@ -93,6 +113,7 @@
           "Jobs"
         ],
         "summary": "Job status with separate committed and indexed progress.",
+        "description": "Users always see their own jobs; other users' jobs need Job.ViewAll.",
         "operationId": "GetJob",
         "parameters": [
           {
@@ -119,6 +140,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JobResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}": {
+      "get": {
+        "tags": [
+          "Workspaces"
+        ],
+        "summary": "The workspace and the current user's effective permissions in it.",
+        "description": "A workspace the user is not a member of returns 404, exactly like one that does not exist.",
+        "operationId": "GetWorkspace",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResource"
                 }
               }
             }
@@ -597,6 +670,58 @@
             "format": "int32"
           }
         }
+      },
+      "WorkspaceResource": {
+        "required": [
+          "workspaceId",
+          "name",
+          "matterNumber",
+          "displayTimeZone",
+          "status",
+          "createdAt",
+          "permissions",
+          "breakGlassActive"
+        ],
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "matterNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "displayTimeZone": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkspaceResourceStatus"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "breakGlassActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WorkspaceResourceStatus": {
+        "enum": [
+          "active",
+          "closed"
+        ]
       }
     }
   },
@@ -609,6 +734,9 @@
     },
     {
       "name": "Jobs"
+    },
+    {
+      "name": "Workspaces"
     }
   ]
 }

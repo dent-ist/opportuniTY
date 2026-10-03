@@ -4,7 +4,9 @@ using Opportunity.Api.Conventions;
 using Opportunity.Application.Search;
 using Opportunity.Contracts.Search;
 using Opportunity.Core.QueryLanguage;
+using Opportunity.Core.Security;
 using Opportunity.Hosting.Options;
+using Opportunity.Security.Authorization;
 
 namespace Opportunity.Api.Search;
 
@@ -77,7 +79,10 @@ public sealed class QueryValidationEndpoints : IApiEndpointModule
             .WithName("ValidateQuery")
             .WithSummary("Parse query-language text and return its AST, normalized form and positioned errors.")
             .Produces<QueryValidationResult>()
-            .ProducesValidationProblem();
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .RequirePermission(Permission.SearchExecute);
     }
 }
 

@@ -54,13 +54,13 @@ internal sealed class TelemetryProbeEndpoints : IApiEndpointModule
 
     public void MapEndpoints(ApiRouteGroups routes)
     {
-        routes.Workspace.MapGet("/telemetry-probe", (string? q, ILogger<TelemetryProbeEndpoints> logger) =>
+        routes.MemberOnly().MapGet("/telemetry-probe", (string? q, ILogger<TelemetryProbeEndpoints> logger) =>
         {
             TestLog.ProbeReturned(logger, 3);
             return TypedResults.Ok();
         });
 
-        routes.Workspace.MapGet("/telemetry-sql", async (string? q, NpgsqlDataSource dataSource) =>
+        routes.MemberOnly().MapGet("/telemetry-sql", async (string? q, NpgsqlDataSource dataSource) =>
         {
             await using var command = dataSource.CreateCommand($"SELECT '{SqlLiteral}' WHERE $1 IS NOT NULL");
             command.Parameters.AddWithValue(q ?? string.Empty);

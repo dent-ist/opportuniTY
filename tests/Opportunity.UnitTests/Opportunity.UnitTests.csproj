@@ -11,6 +11,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,6 +21,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Import\Opportunity.Import.csproj" />
     <ProjectReference Include="..\..\tools\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Messaging\Opportunity.Messaging.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Security\Opportunity.Security.csproj" />
   </ItemGroup>
 
   <ItemGroup>
