@@ -1,0 +1,24 @@
+<label class="checkbox" [class.checkbox--disabled]="disabled()">
+  <span class="checkbox__box">
+    <input
+      #input
+      type="checkbox"
+      class="checkbox__input"
+      [checked]="checked()"
+      [disabled]="disabled()"
+      [required]="required()"
+      [attr.aria-invalid]="invalid() || null"
+      [attr.aria-label]="ariaLabel() ?? null"
+      (change)="onChange($event)"
+      (blur)="touch.emit()"
+    />
+    <span class="checkbox__mark" aria-hidden="true">
+      @if (checked()) {
+        <opp-icon name="check" />
+      } @else if (indeterminate()) {
+        <opp-icon name="minus" />
+      }
+    </span>
+  </span>
+  <span class="checkbox__label"><ng-content /></span>
+</label>

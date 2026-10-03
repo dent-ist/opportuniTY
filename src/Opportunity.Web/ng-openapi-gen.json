@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/ng-openapi-gen/ng-openapi-gen-schema.json",
+  "input": "../Opportunity.Api/openapi/opportunity-api-v1.json",
+  "output": "src/app/core/api/generated",
+  "indexFile": true,
+  "services": false,
+  "apiService": "OpportunityApi",
+  "enumStyle": "alias",
+  "removeStaleFiles": true,
+  "ignoreUnusedModels": false,
+  "endOfLineStyle": "lf",
+  "silent": true
+}

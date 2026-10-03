@@ -1,0 +1,111 @@
+:host(.state) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-6) var(--opp-space-4);
+  text-align: center;
+  color: var(--opp-color-text-muted);
+}
+
+:host(.state--loading) {
+  flex-direction: row;
+}
+
+.state__icon {
+  font-size: var(--opp-font-size-2xl);
+}
+
+:host(.state--error) .state__icon {
+  color: var(--opp-color-danger-text);
+}
+
+.state__title {
+  font-size: var(--opp-font-size-lg);
+  color: var(--opp-color-text);
+}
+
+.state__message,
+.state__reference {
+  margin: 0;
+  max-width: 40rem;
+}
+
+.state__reference {
+  font-size: var(--opp-font-size-xs);
+}
+
+.state__actions {
+  display: flex;
+  gap: var(--opp-space-2);
+}
+
+.state__actions:empty {
+  display: none;
+}
+
+.state__spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--opp-color-border);
+  border-block-start-color: var(--opp-color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+:host(.progress) {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  min-width: 6rem;
+}
+
+.progress__track {
+  position: relative;
+  flex: 1;
+  height: 0.5rem;
+  overflow: hidden;
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-pill);
+  background: var(--opp-color-surface-sunken);
+}
+
+.progress__bar {
+  height: 100%;
+  width: calc(var(--progress) * 100%);
+  background: var(--opp-color-accent);
+  transition: width var(--opp-motion-duration) var(--opp-motion-easing);
+}
+
+:host(.progress--indeterminate) .progress__bar {
+  width: 30%;
+  animation: slide 1.2s ease-in-out infinite;
+}
+
+.progress__value {
+  font-size: var(--opp-font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--opp-color-text-muted);
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (forced-colors: active) {
+  .progress__bar {
+    background: Highlight;
+  }
+}

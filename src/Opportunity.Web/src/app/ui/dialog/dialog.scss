@@ -1,0 +1,37 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+}
+
+.dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-3) var(--opp-space-3) var(--opp-space-2) var(--opp-space-4);
+}
+
+.dialog__title {
+  font-size: var(--opp-font-size-lg);
+}
+
+.dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--opp-space-2) var(--opp-space-4) var(--opp-space-4);
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3) var(--opp-space-4);
+  border-block-start: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.dialog__actions:empty {
+  display: none;
+}

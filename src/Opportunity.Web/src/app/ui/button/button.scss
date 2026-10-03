@@ -1,0 +1,77 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--opp-space-1);
+  min-height: var(--opp-control-height);
+  min-width: var(--opp-target-min);
+  padding: 0 var(--opp-control-padding-x);
+  border: var(--opp-border-width) solid transparent;
+  border-radius: var(--opp-radius-md);
+  font: inherit;
+  font-size: var(--opp-font-size-control);
+  font-weight: var(--opp-font-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--opp-motion-duration) var(--opp-motion-easing),
+    border-color var(--opp-motion-duration) var(--opp-motion-easing);
+}
+
+:host(.opp-button--primary) {
+  background: var(--opp-color-accent);
+  color: var(--opp-color-on-accent);
+}
+
+:host(.opp-button--primary:hover) {
+  background: var(--opp-color-accent-hover);
+}
+
+:host(.opp-button--secondary) {
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  border-color: var(--opp-color-border-strong);
+}
+
+:host(.opp-button--secondary:hover),
+:host(.opp-button--ghost:hover) {
+  background: var(--opp-color-hover);
+}
+
+:host(.opp-button--ghost) {
+  background: transparent;
+  color: var(--opp-color-text);
+}
+
+:host(.opp-button--danger) {
+  background: var(--opp-color-danger);
+  color: var(--opp-color-on-danger);
+}
+
+:host(.opp-button--danger:hover) {
+  background: var(--opp-color-danger-hover);
+}
+
+:host(.opp-button--icon) {
+  width: var(--opp-control-height);
+  min-width: var(--opp-target-min);
+  padding: 0;
+}
+
+:host(:disabled),
+:host([aria-disabled='true']) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+:host([aria-busy='true']) {
+  cursor: progress;
+}
+
+@media (forced-colors: active) {
+  :host {
+    border-color: ButtonText;
+  }
+}

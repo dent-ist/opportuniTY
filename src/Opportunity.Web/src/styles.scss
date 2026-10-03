@@ -1,1 +1,6 @@
-/* You can add global styles to this file, and also import other style files */
+// Global styles: tokens, base and the few design-system rules that cannot live in a component stylesheet
+// (directive-based components and CDK overlay panes). See ADR-018 §6.
+@use 'styles/tokens';
+@use 'styles/base';
+@use 'styles/overlay';
+@use 'styles/tabs';

@@ -1,0 +1,84 @@
+:host {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:host(.split--row.split--sized-start) {
+  grid-template-columns: var(--opp-split-size) var(--opp-splitter-size) minmax(0, 1fr);
+}
+
+:host(.split--row.split--sized-end) {
+  grid-template-columns: minmax(0, 1fr) var(--opp-splitter-size) var(--opp-split-size);
+}
+
+:host(.split--column.split--sized-start) {
+  grid-template-rows: var(--opp-split-size) var(--opp-splitter-size) minmax(0, 1fr);
+}
+
+:host(.split--column.split--sized-end) {
+  grid-template-rows: minmax(0, 1fr) var(--opp-splitter-size) var(--opp-split-size);
+}
+
+:host(.split--dragging) {
+  user-select: none;
+}
+
+.split__pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.split__pane[inert] {
+  visibility: hidden;
+}
+
+// The visible bar is 1 px; the grab and focus area is the full splitter track (≥ 8 px wide, 24 px+ long).
+.split__handle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: var(--opp-color-surface-sunken);
+  touch-action: none;
+}
+
+.split__handle::before {
+  content: '';
+  background: var(--opp-color-border-strong);
+}
+
+:host(.split--row) .split__handle {
+  cursor: col-resize;
+}
+
+:host(.split--row) .split__handle::before {
+  width: 1px;
+  height: 100%;
+}
+
+:host(.split--column) .split__handle {
+  cursor: row-resize;
+}
+
+:host(.split--column) .split__handle::before {
+  width: 100%;
+  height: 1px;
+}
+
+.split__handle:hover,
+:host(.split--dragging) .split__handle {
+  background: var(--opp-color-hover);
+}
+
+.split__handle:hover::before,
+:host(.split--dragging) .split__handle::before {
+  background: var(--opp-color-accent);
+}
+
+.split__handle:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}

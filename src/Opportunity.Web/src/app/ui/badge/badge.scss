@@ -1,0 +1,78 @@
+:host(.badge-host) {
+  display: inline-flex;
+}
+
+:host(.badge) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  max-width: 100%;
+  min-height: 1.25rem;
+  padding: 0 var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--badge-border);
+  border-radius: var(--opp-radius-pill);
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  font-size: var(--opp-font-size-xs);
+  font-weight: var(--opp-font-weight-semibold);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+:host(.badge--neutral) {
+  --badge-bg: var(--opp-color-surface-sunken);
+  --badge-text: var(--opp-color-text);
+  --badge-border: var(--opp-color-border-strong);
+}
+
+:host(.badge--info) {
+  --badge-bg: var(--opp-color-info-bg);
+  --badge-text: var(--opp-color-info-text);
+  --badge-border: var(--opp-color-info-border);
+}
+
+:host(.badge--success) {
+  --badge-bg: var(--opp-color-success-bg);
+  --badge-text: var(--opp-color-success-text);
+  --badge-border: var(--opp-color-success-border);
+}
+
+:host(.badge--warning) {
+  --badge-bg: var(--opp-color-warning-bg);
+  --badge-text: var(--opp-color-warning-text);
+  --badge-border: var(--opp-color-warning-border);
+}
+
+:host(.badge--danger) {
+  --badge-bg: var(--opp-color-danger-bg);
+  --badge-text: var(--opp-color-danger-text);
+  --badge-border: var(--opp-color-danger-border);
+}
+
+:host(.badge--privileged) {
+  --badge-bg: var(--opp-color-privileged-bg);
+  --badge-text: var(--opp-color-privileged-text);
+  --badge-border: var(--opp-color-privileged-border);
+}
+
+:host(.badge--aeo) {
+  --badge-bg: var(--opp-color-aeo-bg);
+  --badge-text: var(--opp-color-aeo-text);
+  --badge-border: var(--opp-color-aeo-border);
+}
+
+:host(.badge--restricted) {
+  --badge-bg: var(--opp-color-restricted-bg);
+  --badge-text: var(--opp-color-restricted-text);
+  --badge-border: var(--opp-color-restricted-border);
+}
+
+abbr {
+  text-decoration: none;
+}
+
+@media (forced-colors: active) {
+  :host(.badge) {
+    border-color: CanvasText;
+  }
+}

@@ -1,0 +1,31 @@
+// CDK overlay panes (dialogs). The CDK loads its structural overlay CSS itself; these rules add the product
+// look. Dialog content styles live in DialogLayoutComponent.
+
+.opp-dialog-backdrop {
+  background: color-mix(in srgb, var(--opp-color-backdrop) 55%, transparent);
+}
+
+.opp-dialog-pane {
+  max-width: min(calc(100vw - 2 * var(--opp-space-4)), 48rem);
+  max-height: calc(100dvh - 2 * var(--opp-space-4));
+  display: flex;
+}
+
+.opp-dialog-pane .cdk-dialog-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: inherit;
+  background: var(--opp-color-surface-raised);
+  color: var(--opp-color-text);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  box-shadow: var(--opp-elevation-3);
+  outline: none;
+}
+
+@media (forced-colors: active) {
+  .opp-dialog-pane .cdk-dialog-container {
+    border-color: CanvasText;
+  }
+}

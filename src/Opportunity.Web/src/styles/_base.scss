@@ -1,0 +1,76 @@
+// Global base styles (ADR-018 §6). Components keep their own styles; only document-level rules live here.
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--opp-color-bg);
+  color: var(--opp-color-text);
+  font-family: var(--opp-font-family-sans);
+  font-size: var(--opp-font-size-md);
+  line-height: var(--opp-line-height-normal);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: var(--opp-line-height-tight);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+a {
+  color: var(--opp-color-accent-text);
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--opp-font-family-mono);
+}
+
+// One focus indicator for the whole product (WCAG 2.4.7, 2.4.13). Keyboard focus only.
+:focus-visible {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: var(--opp-focus-ring-offset);
+}
+
+// WCAG 2.4.11: sticky headers and toasts must not hide the focused element.
+html {
+  scroll-padding-block: var(--opp-space-7);
+}
+
+.opp-visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
