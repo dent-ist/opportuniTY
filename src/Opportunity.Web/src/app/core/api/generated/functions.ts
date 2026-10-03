@@ -9,6 +9,8 @@ export type { GetJob$Params as GetJob$Params } from './fn/jobs/get-job';
 export { getJob as getJob } from './fn/jobs/get-job';
 export type { GetWorkspace$Params as GetWorkspace$Params } from './fn/workspaces/get-workspace';
 export { getWorkspace as getWorkspace } from './fn/workspaces/get-workspace';
+export type { ListFields$Params as ListFields$Params } from './fn/fields/list-fields';
+export { listFields as listFields } from './fn/fields/list-fields';
 export type { ListImportTargets$Params as ListImportTargets$Params } from './fn/import/list-import-targets';
 export { listImportTargets as listImportTargets } from './fn/import/list-import-targets';
 export type { ListImportProfiles$Params as ListImportProfiles$Params } from './fn/import/list-import-profiles';

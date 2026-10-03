@@ -1,3 +1,5 @@
+using System.Data;
+
 using Microsoft.EntityFrameworkCore;
 
 using Npgsql;
@@ -25,8 +27,16 @@ internal sealed class WorkspaceTransaction : IAsyncDisposable
 
     public NpgsqlTransaction Transaction { get; }
 
+    public static Task<WorkspaceTransaction> BeginAsync(
+        NpgsqlDataSource dataSource, Guid workspaceId, CancellationToken cancellationToken) =>
+        BeginAsync(dataSource, workspaceId, IsolationLevel.Unspecified, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="BeginAsync(NpgsqlDataSource, Guid, CancellationToken)"/> with an explicit isolation level, e.g.
+    /// <see cref="IsolationLevel.RepeatableRead"/> for several reads that must come from one snapshot (ADR-001 §3).
+    /// </summary>
     public static async Task<WorkspaceTransaction> BeginAsync(
-        NpgsqlDataSource dataSource, Guid workspaceId, CancellationToken cancellationToken)
+        NpgsqlDataSource dataSource, Guid workspaceId, IsolationLevel isolationLevel, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(dataSource);
         if (workspaceId == Guid.Empty)
@@ -37,7 +47,7 @@ internal sealed class WorkspaceTransaction : IAsyncDisposable
         var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            var transaction = await connection.BeginTransactionAsync(isolationLevel, cancellationToken).ConfigureAwait(false);
             await using var command = new NpgsqlCommand("SELECT set_config('app.workspace_id', @ws, true)", connection, transaction);
             command.Parameters.AddWithValue("ws", workspaceId.ToString());
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);

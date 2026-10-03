@@ -755,7 +755,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             }
         }
 
-        for (var n = 1; n <= FieldRules.SlotBudgets[kind]; n++)
+        for (var n = 1; n <= FieldRules.SlotBudgetsFor(field.Storage)[kind]; n++)
         {
             var slot = FieldRules.Slot(kind, n);
             if (!used.Contains(slot))

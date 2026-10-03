@@ -26,6 +26,9 @@ internal sealed class IndexTemplates(OpenSearchConnection connection, IndexNames
             ("number_of_replicas", options.Replicas),
             ("refresh_interval", options.RefreshInterval),
             ("max_result_window", options.MaxResultWindow),
+
+            // Delete tombstones must outlive every in-flight external-versioned write (ADR-001 §4 R2).
+            ("gc_deletes", "10m"),
             ("mapping", Obj(("total_fields", Obj(("limit", options.TotalFieldsLimit))))));
 
         return Obj(
