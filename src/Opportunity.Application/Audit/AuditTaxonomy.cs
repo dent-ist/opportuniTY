@@ -31,6 +31,19 @@ public static class AuditTaxonomy
         public const string BulkChunkApplied = "BulkChunkApplied";
     }
 
+    public static class Security
+    {
+        public const string Category = "Security";
+        public const string RoleAssigned = "RoleAssigned";
+    }
+
+    public static class Workspace
+    {
+        public const string Category = "Workspace";
+        public const string Created = "Created";
+        public const string SettingsChanged = "SettingsChanged";
+    }
+
     public static class Job
     {
         public const string Category = "Job";
