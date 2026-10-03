@@ -139,8 +139,10 @@ services:
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${RABBITMQ_PORT:-5672}:5672"
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    # The check runs as root with HOME=/var/lib/rabbitmq: before the server has written .erlang.cookie, the CLI would
+    # create it root-owned and the server then fails to boot (eacces). Wait for the server's own cookie first.
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD-SHELL", "test -s /var/lib/rabbitmq/.erlang.cookie && rabbitmq-diagnostics -q ping"]
       interval: 10s
       timeout: 10s
       start_period: 60s
