@@ -158,12 +158,23 @@ public static class OpportunityMetricCatalog
         "Claim to commit duration of one chunk attempt, by job type and outcome.",
         [TelemetryAttributes.JobType, TelemetryAttributes.Outcome], "E06-T05", Buckets: DurationBuckets);
 
+    // --- Audit (E14-T01) ------------------------------------------------------------------------------------------------
+
+    /// <summary>Insert buckets in seconds around the ADR-013 §2.5 budget (≤ 2 ms p95 per insert).</summary>
+    public static IReadOnlyList<double> AuditWriteBuckets { get; } =
+        [0.0005, 0.001, 0.002, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1];
+
+    public static MetricDefinition AuditWriteDuration { get; } = new(
+        "opportunity.audit.write.duration", MetricKind.Histogram, "s",
+        "Duration of one standalone audit write (insert and commit), by outcome; ADR-013 budget ≤ 2 ms p95.",
+        [TelemetryAttributes.Outcome], "E14-T01", Buckets: AuditWriteBuckets);
+
     public static IReadOnlyList<MetricDefinition> All { get; } =
     [
         WorkerHeartbeatAge, WorkerLastConsumedAge, MessagingProcessDuration, MessagingConsumedMessages,
         OutboxPending, OutboxOldestAge, QueueDepth, QueueConsumers, DeadLetteredMessages,
         SearchGenerationCommitted, SearchGenerationIndexed, SearchIndexLag, SearchCommitToSearchable,
         SecurityProjectionLag, SearchStaleVersionRejections, IndexChunkTasks, IndexChunkTaskOldestAge,
-        SearchRequestDuration, Jobs, JobsActive, JobChunks, JobChunkDuration,
+        SearchRequestDuration, Jobs, JobsActive, JobChunks, JobChunkDuration, AuditWriteDuration,
     ];
 }

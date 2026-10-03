@@ -22,6 +22,8 @@
     <ProjectReference Include="..\..\tools\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Messaging\Opportunity.Messaging.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Security\Opportunity.Security.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Search\Opportunity.Search.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Jobs\Opportunity.Jobs.csproj" />
   </ItemGroup>
 
   <ItemGroup>

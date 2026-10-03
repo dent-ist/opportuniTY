@@ -9,15 +9,15 @@ import { RequestBuilder } from '../../request-builder';
 
 import { MeResponse } from '../../models/me-response';
 
-export interface ApiV1MeGet$Params {}
+export interface GetCurrentUser$Params {}
 
-export function apiV1MeGet(
+export function getCurrentUser(
   http: HttpClient,
   rootUrl: string,
-  params?: ApiV1MeGet$Params,
+  params?: GetCurrentUser$Params,
   context?: HttpContext,
 ): Observable<StrictHttpResponse<MeResponse>> {
-  const rb = new RequestBuilder(rootUrl, apiV1MeGet.PATH, 'get');
+  const rb = new RequestBuilder(rootUrl, getCurrentUser.PATH, 'get');
   if (params) {
   }
 
@@ -29,4 +29,4 @@ export function apiV1MeGet(
   );
 }
 
-apiV1MeGet.PATH = '/api/v1/me';
+getCurrentUser.PATH = '/api/v1/me';

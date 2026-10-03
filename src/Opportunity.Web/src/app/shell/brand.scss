@@ -1,0 +1,30 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  color: var(--opp-color-text);
+  font-size: var(--opp-font-size-lg);
+  font-weight: var(--opp-font-weight-semibold);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.brand__mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: var(--opp-color-accent);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.brand__ty {
+  color: var(--opp-color-accent-text);
+}
+
+@media (forced-colors: active) {
+  .brand__mark {
+    stroke: CanvasText;
+  }
+}

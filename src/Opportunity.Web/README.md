@@ -21,5 +21,8 @@ The component showcase (development builds only) is at `/dev/components`.
 
 - `src/styles/_tokens.scss`: design tokens; the only place literal colours may appear.
 - `src/app/ui/`: design-system components (`opp-*`), built on Angular CDK and `@angular/aria`.
-- `src/app/core/`: API client, problem-details handling, BFF session, preferences.
+- `src/app/core/`: API client, problem-details handling, BFF session, preferences, workspace context.
+- `src/app/shell/`: application shell (E15-T02): sign-in, authenticated layout, Workspaces list, workspace
+  switcher and section navigation, "Not available", error and About pages.
+- `src/app/features/<area>/`: lazy-loaded feature pages under `/w/:workspaceId/…`.
 - `src/app/dev/`: development-only routes, removed from production builds.

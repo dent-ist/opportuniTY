@@ -47,13 +47,13 @@ public sealed partial class WorkspaceAuthorizationApiTests(MigrationPostgresFixt
         var operations = await WorkspaceOperationsAsync(client);
         operations.Select(o => o.Path).Should().Contain(CommittedWorkspacePaths(), "the committed OpenAPI document is covered");
 
-        foreach (var (method, path) in operations)
+        foreach (var (method, path, mediaType) in operations)
         {
             var bodies = new List<string>();
             foreach (var target in new[] { ws.ToString(), Guid.CreateVersion7().ToString(), "not-a-guid" })
             {
                 _audit.Clear();
-                using var response = await SendAsync(client, method, Expand(path, target), outsider);
+                using var response = await SendAsync(client, method, Expand(path, target), outsider, mediaType: mediaType);
                 var problem = await response.ShouldBeProblemAsync(HttpStatusCode.NotFound, "not-found");
                 bodies.Add(problem.GetProperty("detail").GetString() + "|" + problem.GetProperty("title").GetString());
                 if (target == ws.ToString())
@@ -64,10 +64,10 @@ public sealed partial class WorkspaceAuthorizationApiTests(MigrationPostgresFixt
 
             bodies.Distinct().Should().ContainSingle("{0} {1}: a non-member cannot tell an existing workspace from a missing one", method, path);
 
-            using var anonymous = await SendAsync(client, method, Expand(path, ws.ToString()), user: null);
+            using var anonymous = await SendAsync(client, method, Expand(path, ws.ToString()), user: null, mediaType: mediaType);
             anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "{0} {1}", method, path);
 
-            using var asMember = await SendAsync(client, method, Expand(path, ws.ToString()), member);
+            using var asMember = await SendAsync(client, method, Expand(path, ws.ToString()), member, mediaType: mediaType);
             var body = await asMember.Content.ReadAsStringAsync(Ct);
             (asMember.StatusCode == HttpStatusCode.NotFound && body.Contains("The resource does not exist.", StringComparison.Ordinal))
                 .Should().BeFalse("{0} {1}: PEP-1 admits a member", method, path);
@@ -155,7 +155,34 @@ public sealed partial class WorkspaceAuthorizationApiTests(MigrationPostgresFixt
         (await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{ws}", user)).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    private WebApplicationFactory<Program> Factory(AuthorizationDatabase db) =>
+    [Fact]
+    public async Task Denials_are_stored_in_the_postgresql_audit_trail()
+    {
+        await using var db = await AuthorizationDatabase.CreateAsync(postgres);
+        var ws = await db.Core.CreateWorkspaceAsync();
+        var outsider = await db.CreateUserAsync();
+        var reviewer = await db.CreateUserAsync();
+        await db.AssignAsync(ws, WorkspaceRole.Reviewer, reviewer);
+        var unknown = Guid.CreateVersion7();
+        await using var factory = Factory(db, realAuditStore: true);
+        using var client = factory.CreateClient();
+
+        await (await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{ws}", outsider)).ShouldBeProblemAsync(HttpStatusCode.NotFound, "not-found");
+        await (await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{unknown}", outsider)).ShouldBeProblemAsync(HttpStatusCode.NotFound, "not-found");
+        await (await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{ws}/import-targets", reviewer)).ShouldBeProblemAsync(HttpStatusCode.Forbidden, "forbidden");
+
+        var stored = await db.Core.ColumnAsync(
+            """
+            SELECT concat_ws('|', coalesce(workspace_id::text, 'system'), actor_id, outcome, reason_code, details->>'permission', coalesce(details->>'workspaceId', ''))
+            FROM audit.audit_event WHERE category = 'AuthZ' AND action = 'Denied' ORDER BY recorded_at
+            """);
+        stored.Should().Equal(
+            $"{ws}|{outsider}|Denied|NotAMember|Workspace.Member|",
+            $"system|{outsider}|Denied|WorkspaceNotFound|Workspace.Member|{unknown}",
+            $"{ws}|{reviewer}|Denied|PermissionNotGranted|Import.Run|");
+    }
+
+    private WebApplicationFactory<Program> Factory(AuthorizationDatabase db, bool realAuditStore = false) =>
         new ApiFactory().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:App", db.Core.AppConnectionString);
@@ -163,12 +190,15 @@ public sealed partial class WorkspaceAuthorizationApiTests(MigrationPostgresFixt
             {
                 services.RemoveAll<ISecurityStateReader>();
                 services.AddSingleton<ISecurityStateReader, Data.Security.PostgresSecurityStateReader>();
-                services.AddSingleton<IAuditEventWriter>(_audit);
+                if (!realAuditStore)
+                {
+                    services.AddSingleton<IAuditEventWriter>(_audit);
+                }
             });
         });
 
     private static async Task<HttpResponseMessage> SendAsync(
-        HttpClient client, HttpMethod method, string url, Guid? user, string? groups = null, string? body = null)
+        HttpClient client, HttpMethod method, string url, Guid? user, string? groups = null, string? body = null, string? mediaType = null)
     {
         using var request = new HttpRequestMessage(method, new Uri(url, UriKind.Relative));
         if (user is { } id)
@@ -187,21 +217,26 @@ public sealed partial class WorkspaceAuthorizationApiTests(MigrationPostgresFixt
         if (method != HttpMethod.Get && method != HttpMethod.Delete)
         {
             request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
-            request.Content = new StringContent(body ?? "{}", Encoding.UTF8, "application/json");
+            request.Content = mediaType == "multipart/form-data"
+                ? new MultipartFormDataContent { { new StringContent("x"), "placeholder" } }
+                : new StringContent(body ?? "{}", Encoding.UTF8, "application/json");
         }
 
         return await client.SendAsync(request, Ct);
     }
 
-    private static async Task<List<(HttpMethod Method, string Path)>> WorkspaceOperationsAsync(HttpClient client)
+    private static async Task<List<(HttpMethod Method, string Path, string? MediaType)>> WorkspaceOperationsAsync(HttpClient client)
     {
         using var document = JsonDocument.Parse(await client.GetStringAsync(new Uri("/openapi/v1.json", UriKind.Relative), Ct));
-        var operations = new List<(HttpMethod, string)>();
+        var operations = new List<(HttpMethod, string, string?)>();
         foreach (var path in document.RootElement.GetProperty("paths").EnumerateObject().Where(p => p.Name.Contains("{workspaceId}", StringComparison.Ordinal)))
         {
             foreach (var operation in path.Value.EnumerateObject().Where(o => o.Name is "get" or "post" or "put" or "patch" or "delete"))
             {
-                operations.Add((new HttpMethod(operation.Name.ToUpperInvariant()), path.Name));
+                var mediaType = operation.Value.TryGetProperty("requestBody", out var requestBody)
+                    ? requestBody.GetProperty("content").EnumerateObject().First().Name
+                    : null;
+                operations.Add((new HttpMethod(operation.Name.ToUpperInvariant()), path.Name, mediaType));
             }
         }
 

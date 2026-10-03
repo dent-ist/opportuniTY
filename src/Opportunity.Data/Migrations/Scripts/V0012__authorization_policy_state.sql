@@ -1,4 +1,4 @@
--- V0008: authoritative authorization state read by the policy decision point (E05-T02, ADR-015 D1.1, D5, D6).
+-- V0012: authoritative authorization state read by the policy decision point (E05-T02, ADR-015 D1.1, D5, D6).
 -- Roles and their permission grants are fixed in code (Opportunity.Core.Security.RoleCatalog); PostgreSQL holds the
 -- workspace-scoped relations: role assignments (user or IdP group -> role), restriction classes and their grants
 -- (Q-11), document restrictions, ethical walls with members and materialized coverage (Q-13), and break-glass

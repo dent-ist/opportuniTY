@@ -232,9 +232,16 @@ internal sealed class AuthorizationService(ISecurityStateReader reader, IAuditEv
     {
         var breakGlass = _principalStates.TryGetValue((principal.UserId, workspaceId), out var state)
             && state is not null && PolicyEvaluator.BreakGlassActive(state, time.GetUtcNow());
+        // A workspace that does not exist has no audit chain: the attempt goes to the system chain with the claimed ID.
+        var unknownWorkspace = reason == AuthorizationReasons.WorkspaceNotFound;
+        if (unknownWorkspace)
+        {
+            details["workspaceId"] = workspaceId.ToString();
+        }
+
         await audit.WriteAsync(new AuditEvent
         {
-            WorkspaceId = workspaceId,
+            WorkspaceId = unknownWorkspace ? null : workspaceId,
             OccurredAt = time.GetUtcNow(),
             Category = AuditTaxonomy.AuthZ.Category,
             Action = AuditTaxonomy.AuthZ.Denied,

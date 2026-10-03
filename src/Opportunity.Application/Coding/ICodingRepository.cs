@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 
+using Opportunity.Application.Audit;
 using Opportunity.Core.Coding;
 using Opportunity.Core.Fields;
 
@@ -88,6 +89,13 @@ public sealed record CodingWriteRequest
 
     /// <summary>If-Match for a single-document interactive write: nothing is written when the version differs.</summary>
     public long? ExpectedVersion { get; init; }
+
+    /// <summary>
+    /// Who, from where and why (actor, client, correlation, access path). When set, an applied write stores its
+    /// <c>Coding.Changed</c> / <c>Coding.BulkChunkApplied</c> audit event in the same transaction as the change
+    /// (ADR-013 §2.1); the store fills category, action, resource and details. Not part of the idempotency hash.
+    /// </summary>
+    public AuditEvent? Audit { get; init; }
 }
 
 public enum CodingWriteOutcome

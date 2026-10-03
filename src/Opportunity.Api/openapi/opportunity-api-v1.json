@@ -12,6 +12,7 @@
           "Authentication"
         ],
         "summary": "The signed-in user. Also issues the anti-forgery token cookie for later unsafe requests.",
+        "operationId": "GetCurrentUser",
         "responses": {
           "200": {
             "description": "OK",
@@ -208,10 +209,830 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspaceId}/import-targets": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Mapping targets for load-file columns: structural targets first, then system and custom fields.",
+        "operationId": "ListImportTargets",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfImportTargetResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/import-profiles": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Saved import profiles of the workspace.",
+        "operationId": "ListImportProfiles",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfImportProfileSummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Save an import profile. Posting an exported profile copies it into this workspace.",
+        "operationId": "CreateImportProfile",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportProfileWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportProfileResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/import-profiles/{profileId}": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "An import profile with its ETag; the body is also the profile's JSON export.",
+        "operationId": "GetImportProfile",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "profileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportProfileResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Replace an import profile (If-Match required).",
+        "operationId": "ReplaceImportProfile",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "profileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportProfileWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportProfileResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Delete an import profile (If-Match required).",
+        "operationId": "DeleteImportProfile",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "profileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/import-mapping-previews": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Parse the first rows of a DAT with a profile, auto-map columns and show coerced values with per-column error counts.",
+        "operationId": "PreviewImportMapping",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/MappingPreviewForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappingPreviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "CellError": {
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "CellPreview": {
+        "required": [
+          "column",
+          "target",
+          "raw",
+          "value",
+          "error",
+          "warnings"
+        ],
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "raw": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CellError"
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ColumnMapping": {
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "ignore": {
+            "type": "boolean"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MappingTarget"
+            }
+          },
+          "parsing": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ColumnParsing"
+              }
+            ]
+          }
+        }
+      },
+      "ColumnParsing": {
+        "type": "object",
+        "properties": {
+          "dateFormats": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeColumn": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timeFormats": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceTimeZone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "multiValueDelimiter": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "trueValues": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "falseValues": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "createMissingChoices": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "ColumnPreview": {
+        "required": [
+          "column",
+          "index",
+          "status",
+          "targets",
+          "mergedInto",
+          "sampleValues",
+          "valueCount",
+          "blankCount",
+          "errorCount",
+          "warningCount"
+        ],
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "index": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ColumnStatus"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TargetPreview"
+            }
+          },
+          "mergedInto": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sampleValues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "valueCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "blankCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "errorCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "warningCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ColumnStatus": {
+        "enum": [
+          "mapped",
+          "ignored",
+          "unmapped",
+          "storedAsNewTextField",
+          "mergedIntoDate"
+        ]
+      },
+      "CursorPageOfImportProfileSummary": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportProfileSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfImportTargetResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportTargetResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "DelimiterInfo": {
+        "required": [
+          "char",
+          "codepoint",
+          "decimal"
+        ],
+        "type": "object",
+        "properties": {
+          "char": {
+            "type": "string"
+          },
+          "codepoint": {
+            "type": "string"
+          },
+          "decimal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "HttpValidationProblemDetails": {
         "type": "object",
         "properties": {
@@ -255,6 +1076,257 @@
               "items": {
                 "type": "string"
               }
+            }
+          }
+        }
+      },
+      "IFormFile": {
+        "type": "string",
+        "format": "binary"
+      },
+      "ImportFieldType": {
+        "enum": [
+          "text",
+          "keyword",
+          "integer",
+          "decimal",
+          "date",
+          "dateTime",
+          "boolean",
+          "singleChoice",
+          "multiChoice"
+        ]
+      },
+      "ImportMode": {
+        "enum": [
+          "append",
+          "overlay",
+          "appendOverlay"
+        ]
+      },
+      "ImportProfileDefinition": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "loadFile": {
+            "$ref": "#/components/schemas/LoadFileSettings"
+          },
+          "parsing": {
+            "$ref": "#/components/schemas/ParsingDefaults"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImportMode"
+          },
+          "overlay": {
+            "$ref": "#/components/schemas/OverlaySettings"
+          },
+          "paths": {
+            "$ref": "#/components/schemas/PathSettings"
+          },
+          "unmappedColumns": {
+            "$ref": "#/components/schemas/UnmappedColumnPolicy"
+          },
+          "controlNumberPrefix": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ColumnMapping"
+            }
+          }
+        }
+      },
+      "ImportProfileResource": {
+        "required": [
+          "profileId",
+          "workspaceId",
+          "name",
+          "description",
+          "definition",
+          "version",
+          "createdBy",
+          "createdAt",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "definition": {
+            "$ref": "#/components/schemas/ImportProfileDefinition"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "createdBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ImportProfileSummary": {
+        "required": [
+          "profileId",
+          "name",
+          "description",
+          "mode",
+          "columnCount",
+          "version",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImportMode"
+          },
+          "columnCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ImportProfileWrite": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "definition": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImportProfileDefinition"
+              }
+            ]
+          }
+        }
+      },
+      "ImportTargetResource": {
+        "required": [
+          "target",
+          "label",
+          "type",
+          "isMultiValue",
+          "isStructural",
+          "isCodingField",
+          "isSecurityAffecting",
+          "autoMapEligible",
+          "aliases"
+        ],
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/MappingTarget"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "isMultiValue": {
+            "type": "boolean"
+          },
+          "isStructural": {
+            "type": "boolean"
+          },
+          "isCodingField": {
+            "type": "boolean"
+          },
+          "isSecurityAffecting": {
+            "type": "boolean"
+          },
+          "autoMapEligible": {
+            "type": "boolean"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -481,6 +1553,292 @@
         ]
       },
       "JsonElement": { },
+      "JsonNode": { },
+      "LoadFilePreviewInfo": {
+        "required": [
+          "encoding",
+          "encodingSource",
+          "delimiters",
+          "column",
+          "quote",
+          "newline",
+          "multiValue",
+          "nestedValue",
+          "header",
+          "misdecodeSuspected",
+          "parserIssues"
+        ],
+        "type": "object",
+        "properties": {
+          "encoding": {
+            "type": "string"
+          },
+          "encodingSource": {
+            "type": "string"
+          },
+          "delimiters": {
+            "type": "string"
+          },
+          "column": {
+            "$ref": "#/components/schemas/DelimiterInfo"
+          },
+          "quote": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DelimiterInfo"
+              }
+            ]
+          },
+          "newline": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DelimiterInfo"
+              }
+            ]
+          },
+          "multiValue": {
+            "$ref": "#/components/schemas/DelimiterInfo"
+          },
+          "nestedValue": {
+            "$ref": "#/components/schemas/DelimiterInfo"
+          },
+          "header": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "misdecodeSuspected": {
+            "type": "boolean"
+          },
+          "parserIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MappingIssue"
+            }
+          }
+        }
+      },
+      "LoadFileSettings": {
+        "type": "object",
+        "properties": {
+          "delimiters": {
+            "type": "string"
+          },
+          "column": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "quote": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "newline": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "multiValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "nestedValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "datEncoding": {
+            "type": "string"
+          },
+          "textEncoding": {
+            "type": "string"
+          },
+          "firstLineContainsFieldNames": {
+            "type": "boolean"
+          },
+          "convertNewlineCharacter": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MappingIssue": {
+        "required": [
+          "severity",
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "severity": {
+            "$ref": "#/components/schemas/MappingIssueSeverity"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "column": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "MappingIssueSeverity": {
+        "enum": [
+          "warning",
+          "error"
+        ]
+      },
+      "MappingPreviewForm": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/IFormFile"
+          },
+          "request": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "MappingPreviewResult": {
+        "required": [
+          "file",
+          "columns",
+          "missingColumns",
+          "newColumns",
+          "rows",
+          "newFields",
+          "issues",
+          "canImport",
+          "effectiveProfile"
+        ],
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/LoadFilePreviewInfo"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ColumnPreview"
+            }
+          },
+          "missingColumns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "newColumns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RowPreview"
+            }
+          },
+          "newFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NewFieldPreview"
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MappingIssue"
+            }
+          },
+          "canImport": {
+            "type": "boolean"
+          },
+          "effectiveProfile": {
+            "$ref": "#/components/schemas/ImportProfileDefinition"
+          }
+        }
+      },
+      "MappingTarget": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MappingTargetKind"
+          },
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fieldName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "structural": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StructuralTarget"
+              }
+            ]
+          },
+          "newField": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NewFieldSpec"
+              }
+            ]
+          }
+        }
+      },
+      "MappingTargetKind": {
+        "enum": [
+          "field",
+          "structural",
+          "newField"
+        ]
+      },
+      "MatchKind": {
+        "enum": [
+          "profile",
+          "exactName",
+          "normalizedName",
+          "alias"
+        ]
+      },
       "MeResponse": {
         "required": [
           "userId",
@@ -515,6 +1873,139 @@
           },
           "sessionExpiresAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "NewFieldPreview": {
+        "required": [
+          "name",
+          "type",
+          "isMultiValue",
+          "choicesToCreate",
+          "sampleChoices"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ImportFieldType"
+          },
+          "isMultiValue": {
+            "type": "boolean"
+          },
+          "choicesToCreate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "sampleChoices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NewFieldSpec": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ImportFieldType"
+          },
+          "isMultiValue": {
+            "type": "boolean"
+          },
+          "decimalPrecision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int16"
+          },
+          "decimalScale": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int16"
+          }
+        }
+      },
+      "OverlaySettings": {
+        "type": "object",
+        "properties": {
+          "keyFieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "allowCodingFieldOverlay": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ParsingDefaults": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "type": "string"
+          },
+          "dateFormats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceTimeZone": {
+            "type": "string"
+          },
+          "unparseableDatesAsBlank": {
+            "type": "boolean"
+          },
+          "trueValues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "falseValues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PathSettings": {
+        "type": "object",
+        "properties": {
+          "volumeRoot": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stripPrefix": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -646,6 +2137,126 @@
           }
         }
       },
+      "RowPreview": {
+        "required": [
+          "rowNumber",
+          "lineNumber",
+          "controlNumber",
+          "rejected",
+          "parserIssues",
+          "cells",
+          "errorCount"
+        ],
+        "type": "object",
+        "properties": {
+          "rowNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "lineNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rejected": {
+            "type": "boolean"
+          },
+          "parserIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MappingIssue"
+            }
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CellPreview"
+            }
+          },
+          "errorCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "StructuralTarget": {
+        "enum": [
+          "parentId",
+          "groupId",
+          "nativePath",
+          "textPath",
+          "folderPath",
+          "duplicateGroupId",
+          "dedupeHash",
+          "emailThreadId",
+          null
+        ]
+      },
+      "TargetPreview": {
+        "required": [
+          "target",
+          "label",
+          "type",
+          "isMultiValue",
+          "resolution",
+          "matchedBy",
+          "alias"
+        ],
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/MappingTarget"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "isMultiValue": {
+            "type": "boolean"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/TargetResolution"
+          },
+          "matchedBy": {
+            "$ref": "#/components/schemas/MatchKind"
+          },
+          "alias": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "TargetResolution": {
+        "enum": [
+          "resolved",
+          "resolvedByName",
+          "resolvedById",
+          "existingField",
+          "willCreate",
+          "unresolved"
+        ]
+      },
       "TextSpan": {
         "required": [
           "start",
@@ -670,6 +2281,38 @@
             "format": "int32"
           }
         }
+      },
+      "TotalCount": {
+        "required": [
+          "value",
+          "relation"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/TotalRelation"
+          }
+        }
+      },
+      "TotalRelation": {
+        "enum": [
+          "eq",
+          "gte"
+        ]
+      },
+      "UnmappedColumnPolicy": {
+        "enum": [
+          "ignore",
+          "createTextField"
+        ]
       },
       "WorkspaceResource": {
         "required": [
@@ -737,6 +2380,9 @@
     },
     {
       "name": "Workspaces"
+    },
+    {
+      "name": "Import"
     }
   ]
 }

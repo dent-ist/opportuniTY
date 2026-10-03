@@ -1,9 +1,11 @@
 using System.Reflection;
 
 using Opportunity.Api.Conventions;
+using Opportunity.Api.Import;
 using Opportunity.Api.Jobs;
 using Opportunity.Api.Search;
 using Opportunity.Api.Workspaces;
+using Opportunity.Data.Audit;
 using Opportunity.Data.Identity;
 using Opportunity.Hosting;
 using Opportunity.Security.Authentication;
@@ -30,6 +32,8 @@ builder.Services.AddJobEndpoints();
 builder.Services.AddWorkspaceEndpoints();
 builder.Services.AddPostgresIdentityStores();
 builder.Services.AddPostgresSecurityState();
+builder.Services.AddImportMappingEndpoints();
+builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();
 

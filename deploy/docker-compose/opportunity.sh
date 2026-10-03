@@ -181,6 +181,10 @@ cmd_seed() {
 command="${1:-}"
 [[ $# -gt 0 ]] && shift
 [[ -f "$versions_env" ]] || die "missing $versions_env"
+# After a pull, .env.example may list new secrets (e.g. KEYCLOAK_ADMIN_PASSWORD); add them before compose needs them.
+if [[ -f "$env_file" && "$command" != init && "$command" != help && -n "$command" ]]; then
+  cmd_init | grep -v '^.env exists' || true
+fi
 case "$command" in
   init) cmd_init ;;
   preflight) cmd_preflight ;;

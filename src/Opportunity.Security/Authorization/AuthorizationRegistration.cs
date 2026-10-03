@@ -17,7 +17,6 @@ public static class AuthorizationRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<IAuditEventWriter, NullAuditEventWriter>();
         services.TryAddScoped<IAuthorizationService, AuthorizationService>();
         return services;
     }

@@ -94,7 +94,7 @@ public sealed class AuthorizeManyBenchmarkTests(MigrationPostgresFixture postgre
         for (var i = 0; i < Warmup + Iterations; i++)
         {
             var batch = Enumerable.Range(0, BatchSize).Select(_ => ids[random.Next(ids.Count)]).ToList();
-            var pdp = new AuthorizationService(db.Reader, new NullAuditEventWriter(), TimeProvider.System);
+            var pdp = new AuthorizationService(db.Reader, new InMemoryAuditEventWriter(), TimeProvider.System);
             if (warmScope)
             {
                 (await pdp.AuthorizeAsync(principal, ws, Permission.SearchExecute, Ct)).IsAllowed.Should().BeTrue();

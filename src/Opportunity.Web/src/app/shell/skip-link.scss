@@ -1,0 +1,23 @@
+.skip-link {
+  position: fixed;
+  inset-block-start: var(--opp-space-2);
+  inset-inline-start: var(--opp-space-2);
+  z-index: var(--opp-z-toast);
+  padding: var(--opp-space-2) var(--opp-space-3);
+  background: var(--opp-color-accent);
+  color: var(--opp-color-on-accent);
+  border-radius: var(--opp-radius-md);
+  font-weight: var(--opp-font-weight-semibold);
+  text-decoration: none;
+  transform: translateY(calc(-100% - var(--opp-space-4)));
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+@media (forced-colors: active) {
+  .skip-link {
+    border: var(--opp-border-width) solid CanvasText;
+  }
+}

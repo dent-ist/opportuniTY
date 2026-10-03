@@ -102,7 +102,7 @@ public static class RestrictionClasses
     public const string Confidential = "Confidential";
     public const string AttorneysEyesOnly = "AttorneysEyesOnly";
 
-    /// <summary>Seeded for every workspace by V0008 (the SQL seed is checked against this list by a test).</summary>
+    /// <summary>Seeded for every workspace by V0012 (the SQL seed is checked against this list by a test).</summary>
     public static IReadOnlyList<(string ClassKey, string DisplayName, IReadOnlyList<WorkspaceRole> Roles)> BuiltIn { get; } =
     [
         (Privileged, "Privileged", ReviewRoles),

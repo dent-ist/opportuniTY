@@ -83,6 +83,7 @@ public static class AuthenticationEndpoints
                     SessionExpiresAt: session is null ? null : SessionLifetime.ExpiresAt(session, settings.Session.ToTimeouts())));
             })
             .RequireAuthorization()
+            .WithName("GetCurrentUser")
             .WithTags("Authentication")
             .WithSummary("The signed-in user. Also issues the anti-forgery token cookie for later unsafe requests.")
             .ProducesProblem(StatusCodes.Status401Unauthorized);

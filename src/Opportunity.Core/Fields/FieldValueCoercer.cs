@@ -175,7 +175,8 @@ public static partial class FieldValueCoercer
                     return Error("too-long", $"Text values are limited to {settings.MaxTextLength} characters.");
                 }
 
-                if (builder.Length > 0)
+                // Multi-value text is de-duplicated exactly (first occurrence and order kept), like Keyword.
+                if (builder.Length > 0 && !cleaned.Contains(builder.ToString(), StringComparer.Ordinal))
                 {
                     cleaned.Add(builder.ToString());
                 }

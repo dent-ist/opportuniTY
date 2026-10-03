@@ -6,7 +6,7 @@ using Opportunity.IntegrationTests.Migrations;
 namespace Opportunity.IntegrationTests.Authorization;
 
 /// <summary>
-/// A migrated database with helpers that arrange V0008 security state (as the superuser) for PDP tests. The reader
+/// A migrated database with helpers that arrange V0012 security state (as the superuser) for PDP tests. The reader
 /// runs as an <c>opportunity_app</c> login, so RLS applies to it as in production.
 /// </summary>
 internal sealed class AuthorizationDatabase : IAsyncDisposable

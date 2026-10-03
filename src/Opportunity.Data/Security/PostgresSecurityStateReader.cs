@@ -9,7 +9,7 @@ using Opportunity.Core.Workspaces;
 namespace Opportunity.Data.Security;
 
 /// <summary>
-/// Reads the PDP's state (V0008) in one batched round trip inside the workspace's RLS context (ADR-015 D5.5: no
+/// Reads the PDP's state (V0012) in one batched round trip inside the workspace's RLS context (ADR-015 D5.5: no
 /// cross-request cache). Deleted documents are reported as absent, so they are NotFound for everyone.
 /// </summary>
 public sealed class PostgresSecurityStateReader(NpgsqlDataSource dataSource) : ISecurityStateReader

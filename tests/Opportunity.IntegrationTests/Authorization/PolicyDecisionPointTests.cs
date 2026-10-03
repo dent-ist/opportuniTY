@@ -11,7 +11,7 @@ using Opportunity.Security.Authorization;
 namespace Opportunity.IntegrationTests.Authorization;
 
 /// <summary>
-/// E05-T02: the PDP over authoritative PostgreSQL state (V0008) read as the RLS-bound app role: roles through users
+/// E05-T02: the PDP over authoritative PostgreSQL state (V0012) read as the RLS-bound app role: roles through users
 /// and groups, default deny, class grants (Q-11), walls over every grant (Q-13), read-only break-glass (Q-45), and
 /// that no state from another workspace ever counts.
 /// </summary>
@@ -79,7 +79,7 @@ public sealed class PolicyDecisionPointTests(MigrationPostgresFixture postgres)
         read.Principal!.ClassGrants.Keys.Should().BeEquivalentTo(RestrictionClasses.BuiltIn.Select(c => c.ClassKey));
         foreach (var (classKey, _, roles) in RestrictionClasses.BuiltIn)
         {
-            read.Principal.ClassGrants[classKey].Should().BeEquivalentTo(roles, "V0008 seeds the defaults in RestrictionClasses ({0})", classKey);
+            read.Principal.ClassGrants[classKey].Should().BeEquivalentTo(roles, "V0012 seeds the defaults in RestrictionClasses ({0})", classKey);
         }
     }
 

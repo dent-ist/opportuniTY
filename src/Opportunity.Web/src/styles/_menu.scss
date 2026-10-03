@@ -1,0 +1,84 @@
+// Menu panels (src/app/ui/menu) render in a CDK overlay, so their styles are global.
+
+.opp-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 14rem;
+  max-width: min(24rem, calc(100vw - 2 * var(--opp-space-4)));
+  max-height: min(32rem, calc(100dvh - 4rem));
+  overflow-y: auto;
+  padding-block: var(--opp-space-1);
+  background: var(--opp-color-surface-raised);
+  color: var(--opp-color-text);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  box-shadow: var(--opp-elevation-2);
+  font-size: var(--opp-font-size-md);
+}
+
+.opp-menu__heading {
+  padding: var(--opp-space-2) var(--opp-space-3) var(--opp-space-1);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.opp-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  min-height: 2rem;
+  padding-inline: var(--opp-space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.opp-menu__item:hover,
+.opp-menu__item:focus {
+  background: var(--opp-color-hover);
+}
+
+.opp-menu__item:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+.opp-menu__item[aria-current='page'] {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.opp-menu__check {
+  flex: none;
+  width: 1rem;
+  visibility: hidden;
+}
+
+.opp-menu__item[aria-checked='true'] .opp-menu__check {
+  visibility: visible;
+}
+
+.opp-menu__detail {
+  margin-inline-start: auto;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+}
+
+.opp-menu__separator {
+  height: 0;
+  margin-block: var(--opp-space-1);
+  border-block-start: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+@media (forced-colors: active) {
+  .opp-menu {
+    border-color: CanvasText;
+  }
+
+  .opp-menu__item:focus {
+    outline: var(--opp-focus-ring-width) solid Highlight;
+  }
+}

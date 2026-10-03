@@ -22,7 +22,8 @@ public static class AuthenticationRegistration
     /// OIDC sign-in through the BFF session scheme, the authenticated-by-default fallback policy, anti-forgery and the
     /// shared Data Protection key ring. Needs the <see cref="ISessionStore"/>, <see cref="IUserDirectory"/>,
     /// <see cref="IDataProtectionKeyStore"/> and <see cref="IWorkspaceAuthenticationPolicy"/> ports (PostgreSQL in
-    /// <c>Opportunity.Data</c>) and an <see cref="IAuditEventWriter"/> (no-op until E14-T01).
+    /// <c>Opportunity.Data</c>) and an <see cref="IAuditEventWriter"/> (the PostgreSQL audit store, E14-T01): there is
+    /// deliberately no no-op fallback, so a host without an audit store cannot resolve sign-in instead of signing in unaudited.
     /// </summary>
     public static IServiceCollection AddOpportunityAuthentication(this IServiceCollection services)
     {
@@ -35,7 +36,6 @@ public static class AuthenticationRegistration
         services.AddSingleton<IValidateOptions<OpportunityAuthenticationOptions>, OpportunityAuthenticationOptionsValidator>();
 
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<IAuditEventWriter, NullAuditEventWriter>();
         services.TryAddSingleton<SessionTokenProtector>();
         services.TryAddSingleton<AuthenticationAudit>();
         services.TryAddSingleton<OidcPrincipalRefresher>();

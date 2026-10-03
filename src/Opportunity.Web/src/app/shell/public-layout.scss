@@ -1,0 +1,34 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.public__header {
+  display: flex;
+  align-items: center;
+  padding: var(--opp-space-3) var(--opp-space-5);
+  background: var(--opp-color-surface);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.public__main {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--opp-space-7) var(--opp-space-4);
+}
+
+.public__main:focus {
+  outline: none;
+}
+
+.public__card {
+  width: min(28rem, 100%);
+  padding: var(--opp-space-6);
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  box-shadow: var(--opp-elevation-1);
+}
