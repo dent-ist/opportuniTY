@@ -230,7 +230,8 @@ public sealed class ProjectionMappingTests
 
         foreach (var field in Opportunity.Core.Fields.SystemFields.Create(Guid.NewGuid()))
         {
-            var path = ProjectionFieldPaths.Structural[field.FieldId];
+            // Column fields map to structural properties; Metadata-storage system fields (E09-T02) use reserved slots.
+            var path = ProjectionFieldPaths.For(field) ?? throw new InvalidOperationException($"system field {field.FieldId} is not mapped");
             AssertBacked(path, field.Capabilities, Resolve(path)!);
             if (field.Capabilities.HasFlag(FieldCapabilities.Rangeable) && field.Type == FieldType.Keyword)
             {

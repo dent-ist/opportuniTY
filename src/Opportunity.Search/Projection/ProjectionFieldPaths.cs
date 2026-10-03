@@ -42,6 +42,9 @@ internal static class ProjectionFieldPaths
         [SystemFields.TextMissing] = "textMissing",
         [SystemFields.NativeMissing] = "nativeMissing",
         [SystemFields.ImagesIncomplete] = "imagesIncomplete",
+        [SystemFields.DuplicateGroup] = "duplicateGroupId",
+        [SystemFields.DuplicatePrimary] = "isDuplicatePrimary",
+        [SystemFields.EmailThreadGroup] = "emailThreadId",
     };
 
     /// <summary>Natural-sort companions of the structural keyword fields (ADR-009 R5).</summary>

@@ -23,11 +23,15 @@ public static class AuthorizationRegistration
 
         services.AddOptions<InstallationAuthorizationOptions>().BindConfiguration(InstallationAuthorizationOptions.SectionName);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IAuthorizationHandler, InstallationPermissionHandler>());
-        services.AddAuthorizationBuilder()
-            .AddPolicy(InstallationAuthorizationConventions.PolicyName(InstallationPermissions.ManageWorkspaces), policy => policy
+        // Core authorization only: the policies are plain options, so non-web hosts (workers, test harnesses) can use the
+        // PDP without ASP.NET routing. The API's full authorization services come from AddOpportunityAuthentication.
+        services.AddAuthorizationCore(options =>
+        {
+            options.AddPolicy(InstallationAuthorizationConventions.PolicyName(InstallationPermissions.ManageWorkspaces), policy => policy
                 .RequireAuthenticatedUser()
                 .AddRequirements(new InstallationPermissionRequirement(InstallationPermissions.ManageWorkspaces)));
-        services.AddAuthorizationBuilder().AddPolicy(OwnProfileAuthorization.PolicyName, OwnProfileAuthorization.Policy);
+            options.AddPolicy(OwnProfileAuthorization.PolicyName, OwnProfileAuthorization.Policy);
+        });
         return services;
     }
 }
