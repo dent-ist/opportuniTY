@@ -343,7 +343,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
         var pageSetId = await db.InsertPageSetAsync(ws, document.DocumentId);
         var instant = new DateTimeOffset(2025, 3, 1, 14, 5, 0, TimeSpan.FromHours(-5));
 
-        // Group and thread rows exist before a document references them (V0013 foreign keys).
+        // Group and thread rows exist before a document references them (V0016 foreign keys).
         var groupId = Guid.NewGuid();
         var threadId = Guid.NewGuid();
         await db.ExecuteAsync(

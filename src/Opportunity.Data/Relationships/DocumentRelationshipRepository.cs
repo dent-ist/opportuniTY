@@ -9,7 +9,7 @@ namespace Opportunity.Data.Relationships;
 
 /// <summary>
 /// PostgreSQL implementation of <see cref="IDocumentRelationshipRepository"/> over <c>duplicate_group</c>,
-/// <c>email_thread</c> and the document relationship columns (V0013). Writes use <see cref="RelationshipWriter"/> in a
+/// <c>email_thread</c> and the document relationship columns (V0016). Writes use <see cref="RelationshipWriter"/> in a
 /// transaction of their own; documents whose primary flag changed get SearchOutbox rows (ADR-001 R1).
 /// </summary>
 public sealed class DocumentRelationshipRepository(NpgsqlDataSource dataSource) : IDocumentRelationshipRepository

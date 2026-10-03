@@ -1,4 +1,4 @@
--- V0013: duplicate groups and email threads imported from upstream processing (E09-T02).
+-- V0016: duplicate groups and email threads imported from upstream processing (E09-T02).
 -- Binding: ADR-009 R13 (upstream group first, UUIDv5 ids), R15 (DuplicateGroup records which hash drove grouping;
 -- primary = earliest FamilyDate, then lowest ControlNumberSortKey), R16 (label, never suppress), R17 (upstream hashes
 -- as lower-case hex), R18-R19 (EmailThreadId from an upstream thread group or, opt-in, the ConversationIndex root;
