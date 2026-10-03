@@ -57,6 +57,13 @@ public class FieldValueCoercerTests
     }
 
     [Fact]
+    public void Multi_value_text_is_de_duplicated_exactly_keeping_first_occurrence_order()
+    {
+        var result = Coerce(Field(FieldType.Text, multi: true), "A; B; A; a", Us);
+        result.Value!.ToJsonString().Should().Be("""["A","B","a"]""");
+    }
+
+    [Fact]
     public void Keyword_multi_values_are_deduplicated_case_insensitively_keeping_first_spelling_and_order()
     {
         var result = Coerce(Field(FieldType.Keyword, multi: true), "Smith, J; Doe; smith, j ;DOE;Alpha", Us);

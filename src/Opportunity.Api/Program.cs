@@ -1,6 +1,7 @@
 using System.Reflection;
 
 using Opportunity.Api.Conventions;
+using Opportunity.Api.Import;
 using Opportunity.Api.Jobs;
 using Opportunity.Api.Search;
 using Opportunity.Data.Identity;
@@ -25,6 +26,7 @@ builder.AddOpportunityHostDefaults();
 builder.Services.AddApiConventions();
 builder.Services.AddQueryValidation();
 builder.Services.AddJobEndpoints();
+builder.Services.AddImportMappingEndpoints();
 builder.Services.AddPostgresIdentityStores();
 builder.Services.AddOpportunityAuthentication();
 

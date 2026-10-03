@@ -7,3 +7,17 @@ export type { ValidateQuery$Params as ValidateQuery$Params } from './fn/opportun
 export { validateQuery as validateQuery } from './fn/opportunity-api/validate-query';
 export type { GetJob$Params as GetJob$Params } from './fn/jobs/get-job';
 export { getJob as getJob } from './fn/jobs/get-job';
+export type { ListImportTargets$Params as ListImportTargets$Params } from './fn/import/list-import-targets';
+export { listImportTargets as listImportTargets } from './fn/import/list-import-targets';
+export type { ListImportProfiles$Params as ListImportProfiles$Params } from './fn/import/list-import-profiles';
+export { listImportProfiles as listImportProfiles } from './fn/import/list-import-profiles';
+export type { CreateImportProfile$Params as CreateImportProfile$Params } from './fn/import/create-import-profile';
+export { createImportProfile as createImportProfile } from './fn/import/create-import-profile';
+export type { GetImportProfile$Params as GetImportProfile$Params } from './fn/import/get-import-profile';
+export { getImportProfile as getImportProfile } from './fn/import/get-import-profile';
+export type { ReplaceImportProfile$Params as ReplaceImportProfile$Params } from './fn/import/replace-import-profile';
+export { replaceImportProfile as replaceImportProfile } from './fn/import/replace-import-profile';
+export type { DeleteImportProfile$Params as DeleteImportProfile$Params } from './fn/import/delete-import-profile';
+export { deleteImportProfile as deleteImportProfile } from './fn/import/delete-import-profile';
+export type { PreviewImportMapping$Params as PreviewImportMapping$Params } from './fn/import/preview-import-mapping';
+export { previewImportMapping as previewImportMapping } from './fn/import/preview-import-mapping';
