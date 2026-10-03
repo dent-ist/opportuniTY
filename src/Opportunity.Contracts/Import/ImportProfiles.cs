@@ -49,11 +49,14 @@ public enum StructuralTarget
     /// <summary>Upstream duplicate group identifier.</summary>
     DuplicateGroupId,
 
-    /// <summary>Upstream de-duplication or email hash.</summary>
+    /// <summary>Upstream de-duplication hash (hex).</summary>
     DedupeHash,
 
     /// <summary>Upstream email thread group identifier.</summary>
     EmailThreadId,
+
+    /// <summary>Upstream email hash (hex); the dedupe key of an email when no dedupe hash is mapped.</summary>
+    EmailHash,
 }
 
 /// <summary>Type of a field a load creates (the nine field types of §6; dates split by precision).</summary>
@@ -96,8 +99,20 @@ public sealed record ImportProfileDefinition
     /// <summary>Optional prefix prepended to every control number of the load (Q-27).</summary>
     public string? ControlNumberPrefix { get; init; }
 
+    public RelationshipSettings Relationships { get; init; } = new();
+
     /// <summary>One row per load-file column, by header name.</summary>
     public IReadOnlyList<ColumnMapping> Columns { get; init; } = [];
+}
+
+/// <summary>Upstream duplicate and email-thread options (ADR-009 R13-R19, Q-09).</summary>
+public sealed record RelationshipSettings
+{
+    /// <summary>
+    /// Without a mapped email thread group, group emails by the 22-byte header of their Conversation Index. Off by
+    /// default: the header is shared by every reply in an Outlook conversation, including forks other tools split.
+    /// </summary>
+    public bool DeriveEmailThreadFromConversationIndex { get; init; }
 }
 
 /// <summary>

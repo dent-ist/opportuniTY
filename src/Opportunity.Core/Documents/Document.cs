@@ -57,6 +57,9 @@ public sealed class Document
     /// <summary>Upstream dedupe/email hash as lower-case hex.</summary>
     public string? UpstreamDedupeHash { get; set; }
 
+    /// <summary>Which upstream hash <see cref="UpstreamDedupeHash"/> holds; set exactly when it is.</summary>
+    public DuplicateHashKind? UpstreamDedupeHashKind { get; set; }
+
     public string? FileName { get; set; }
 
     public string? FileExtension { get; set; }

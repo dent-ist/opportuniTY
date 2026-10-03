@@ -52,6 +52,7 @@ export type { ProblemDetails } from './models/problem-details';
 export type { QueryValidationDiagnostic } from './models/query-validation-diagnostic';
 export type { QueryValidationRequest } from './models/query-validation-request';
 export type { QueryValidationResult } from './models/query-validation-result';
+export type { RelationshipSettings } from './models/relationship-settings';
 export type { RowPreview } from './models/row-preview';
 export type { StructuralTarget } from './models/structural-target';
 export type { TargetPreview } from './models/target-preview';

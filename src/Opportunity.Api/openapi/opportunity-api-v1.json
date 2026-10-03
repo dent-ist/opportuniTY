@@ -1139,6 +1139,9 @@
               "string"
             ]
           },
+          "relationships": {
+            "$ref": "#/components/schemas/RelationshipSettings"
+          },
           "columns": {
             "type": "array",
             "items": {
@@ -2137,6 +2140,14 @@
           }
         }
       },
+      "RelationshipSettings": {
+        "type": "object",
+        "properties": {
+          "deriveEmailThreadFromConversationIndex": {
+            "type": "boolean"
+          }
+        }
+      },
       "RowPreview": {
         "required": [
           "rowNumber",
@@ -2206,6 +2217,7 @@
           "duplicateGroupId",
           "dedupeHash",
           "emailThreadId",
+          "emailHash",
           null
         ]
       },
