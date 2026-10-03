@@ -9,7 +9,7 @@ namespace Opportunity.Data.Jobs;
 /// <summary>
 /// PostgreSQL implementation of <see cref="IJobChunkRepository"/>: claims with leases and fencing tokens, fences F1–F3,
 /// attempt counting with backoff, lease recovery (ADR-010 §2–§3, §7); and of <see cref="IJobChunkDispatchRepository"/>,
-/// the dispatcher's publish claims (V0013).
+/// the dispatcher's publish claims (V0017).
 /// </summary>
 public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkRepository, IJobChunkDispatchRepository
 {

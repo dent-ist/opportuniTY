@@ -84,7 +84,7 @@ internal static class JobSql
     /// <summary>The SET clause (besides status) of each chunk transition.</summary>
     public static string ChunkSet(JobChunkTrigger trigger) => trigger switch
     {
-        // The dispatcher's publish claim (V0013) ends with the dispatch, or when a worker claims the chunk first.
+        // The dispatcher's publish claim (V0017) ends with the dispatch, or when a worker claims the chunk first.
         JobChunkTrigger.Dispatch => "dispatched_at = now(), claim_owner = NULL, claim_expires_at = NULL, updated_at = now()",
         JobChunkTrigger.Claim or JobChunkTrigger.Reclaim =>
             "lease_owner = @worker, lease_expires_at = now() + @lease, lease_token = lease_token + 1, " +

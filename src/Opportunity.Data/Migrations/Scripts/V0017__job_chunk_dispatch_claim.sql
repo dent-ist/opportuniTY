@@ -1,4 +1,4 @@
--- V0013: the dispatcher's publish claim on job_chunk (E06-T04).
+-- V0017: the dispatcher's publish claim on job_chunk (E06-T04).
 -- Binding: ADR-001 §6.1 (JobChunk rows are claimed like SearchOutbox rows, through ClaimOwner/ClaimExpiresAt columns;
 -- their Status stays Pending/RetryWait while claimed), ADR-010 §2 (the claim is not a chunk status), §6 (per-job and
 -- per-workspace concurrency, index backpressure). Expand-only: nullable columns, no backfill.

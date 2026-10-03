@@ -8,7 +8,7 @@ using Opportunity.IntegrationTests.Migrations;
 namespace Opportunity.IntegrationTests.SearchWork;
 
 /// <summary>
-/// E06-T04: the dispatcher's publish claims on <c>job_chunk</c> (V0013) under RLS — ADR-010 §6 concurrency limits, index
+/// E06-T04: the dispatcher's publish claims on <c>job_chunk</c> (V0017) under RLS — ADR-010 §6 concurrency limits, index
 /// backpressure and the security throttle, RetryWait and lost-message re-dispatch, and which jobs are dispatched at all.
 /// </summary>
 public sealed class JobChunkDispatchTests(MigrationPostgresFixture postgres) : IClassFixture<MigrationPostgresFixture>
