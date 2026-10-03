@@ -5,5 +5,323 @@
     "description": "Conventions: docs/adr/0019-layering-and-api-conventions.md §2.",
     "version": "v1"
   },
-  "paths": { }
+  "paths": {
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Job status with separate committed and indexed progress.",
+        "operationId": "GetJob",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JobCommittedProgress": {
+        "required": [
+          "chunksTotal",
+          "chunksCommitted",
+          "chunksFailed",
+          "chunksCancelled",
+          "chunksPending",
+          "itemsApplied",
+          "itemsUnchanged",
+          "itemsSkippedConcurrentEdit",
+          "itemsExcludedNoAccess",
+          "itemsFailed"
+        ],
+        "type": "object",
+        "properties": {
+          "chunksTotal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "chunksCommitted": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "chunksFailed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "chunksCancelled": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "chunksPending": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemsApplied": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemsUnchanged": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemsSkippedConcurrentEdit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemsExcludedNoAccess": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "itemsFailed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "JobIndexState": {
+        "enum": [
+          "indexing",
+          "current"
+        ]
+      },
+      "JobIndexedProgress": {
+        "required": [
+          "state",
+          "indexTasksTotal",
+          "indexTasksApplied"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/JobIndexState"
+          },
+          "indexTasksTotal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexTasksApplied": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "JobResource": {
+        "required": [
+          "jobId",
+          "workspaceId",
+          "jobType",
+          "status",
+          "statusReason",
+          "initiatedBy",
+          "targetSnapshotId",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "committed",
+          "indexed"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobType": {
+            "$ref": "#/components/schemas/JobResourceType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobResourceStatus"
+          },
+          "statusReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "initiatedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetSnapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          },
+          "committed": {
+            "$ref": "#/components/schemas/JobCommittedProgress"
+          },
+          "indexed": {
+            "$ref": "#/components/schemas/JobIndexedProgress"
+          }
+        }
+      },
+      "JobResourceStatus": {
+        "enum": [
+          "created",
+          "preparing",
+          "running",
+          "paused",
+          "cancelling",
+          "cancelled",
+          "completed",
+          "completedWithErrors",
+          "failed"
+        ]
+      },
+      "JobResourceType": {
+        "enum": [
+          "import",
+          "bulkCoding",
+          "relationshipFixup",
+          "reindex",
+          "export",
+          "production",
+          "render"
+        ]
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Jobs"
+    }
+  ]
 }
