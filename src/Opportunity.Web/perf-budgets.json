@@ -1,0 +1,15 @@
+{
+  "$comment": "UI performance budgets (ADR-018 §14, Q-37), enforced in CI by E15-T04: bundle sizes by scripts/check-bundle-budgets.mjs, page metrics by e2e/performance.spec.ts. Tighten freely; loosening needs the UI/UX owner's sign-off.",
+  "bundle": {
+    "initialJsGzipKb": 250,
+    "lazyChunkGzipKb": 150,
+    "mustBeLazy": ["src/app/features/", "src/app/shell/pages/section-page.ts"]
+  },
+  "page": {
+    "cpuSlowdown": 2,
+    "lcpMs": 2500,
+    "cls": 0.1,
+    "totalBlockingTimeMs": 300,
+    "interactionMs": 200
+  }
+}

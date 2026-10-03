@@ -1,7 +1,11 @@
 // Global styles: tokens, base and the few design-system rules that cannot live in a component stylesheet
 // (directive-based components and CDK overlay panes). See ADR-018 §6.
+@use '@angular/cdk';
 @use 'styles/tokens';
 @use 'styles/base';
 @use 'styles/overlay';
 @use 'styles/tabs';
 @use 'styles/menu';
+
+// Hides the CDK live-announcer region (and other `.cdk-visually-hidden` helpers) from sighted users.
+@include cdk.a11y-visually-hidden();

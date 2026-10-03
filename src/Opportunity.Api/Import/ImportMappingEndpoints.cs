@@ -1,22 +1,22 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.Json;
-
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-
 using Opportunity.Api.Conventions;
 using Opportunity.Application.Fields;
 using Opportunity.Application.Import;
 using Opportunity.Contracts.Api;
 using Opportunity.Contracts.Import;
+using Opportunity.Core.Security;
 using Opportunity.Data.Fields;
 using Opportunity.Data.Import;
 using Opportunity.Hosting.Options;
 using Opportunity.Import.Mapping;
 using Opportunity.Security.Authentication;
+using Opportunity.Security.Authorization;
 
 namespace Opportunity.Api.Import;
 
@@ -43,23 +43,27 @@ public sealed class ImportMappingEndpoints : IApiEndpointModule
     public void MapEndpoints(ApiRouteGroups routes)
     {
         ArgumentNullException.ThrowIfNull(routes);
-        var group = routes.Workspace;
+        // Import setup (targets, profiles, previews) is part of running an import: Import.Run (E05-T02).
+        var group = routes.Workspace.MapGroup(string.Empty).RequirePermission(Permission.ImportRun);
 
         group.MapGet(TargetsPath, ListTargetsAsync)
             .WithName("ListImportTargets")
             .WithTags("Import")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .WithSummary("Mapping targets for load-file columns: structural targets first, then system and custom fields.")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet(ProfilesPath, ListProfilesAsync)
             .WithName("ListImportProfiles")
             .WithTags("Import")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .WithSummary("Saved import profiles of the workspace.")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost(ProfilesPath, CreateProfileAsync)
             .WithName("CreateImportProfile")
             .WithTags("Import")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .WithSummary("Save an import profile. Posting an exported profile copies it into this workspace.")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -68,12 +72,14 @@ public sealed class ImportMappingEndpoints : IApiEndpointModule
         group.MapGet(ProfilesPath + "/{profileId}", GetProfileAsync)
             .WithName("GetImportProfile")
             .WithTags("Import")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .WithSummary("An import profile with its ETag; the body is also the profile's JSON export.")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPut(ProfilesPath + "/{profileId}", ReplaceProfileAsync)
             .WithName("ReplaceImportProfile")
             .WithTags("Import")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .WithSummary("Replace an import profile (If-Match required).")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -84,6 +90,7 @@ public sealed class ImportMappingEndpoints : IApiEndpointModule
         group.MapDelete(ProfilesPath + "/{profileId}", DeleteProfileAsync)
             .WithName("DeleteImportProfile")
             .WithTags("Import")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .WithSummary("Delete an import profile (If-Match required).")
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status412PreconditionFailed)
@@ -93,6 +100,7 @@ public sealed class ImportMappingEndpoints : IApiEndpointModule
         group.MapPost(PreviewPath, PreviewAsync)
             .WithName("PreviewImportMapping")
             .WithTags("Import")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .WithSummary("Parse the first rows of a DAT with a profile, auto-map columns and show coerced values with per-column error counts.")
             .DisableAntiforgery()
             .Accepts<MappingPreviewForm>("multipart/form-data")

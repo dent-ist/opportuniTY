@@ -13,6 +13,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Opportunity.UnitTests" />
+    <InternalsVisibleTo Include="Opportunity.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />

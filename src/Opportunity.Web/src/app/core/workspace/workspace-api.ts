@@ -2,14 +2,16 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
+import type { WorkspaceResource } from '../api/generated/models';
+
 /**
- * Workspace directory contract the shell relies on. The API does not publish these routes yet (workspace
- * listing and the caller's effective permissions arrive with E05-T02 / E04-T02), so the types are written
- * by hand from ADR-019 conventions; switch to the generated client once the OpenAPI document has them.
+ * Workspace directory contract the shell relies on.
  *
- * - `GET /api/v1/workspaces?limit=&cursor=` → cursor page of the workspaces the caller is a member of.
- * - `GET /api/v1/workspaces/{workspaceId}` → the workspace with the caller's effective permissions;
- *   404 when it does not exist **or** the caller has no access (ADR-019 §2.3, no enumeration).
+ * - `GET /api/v1/workspaces/{workspaceId}` (E05-T02, generated `WorkspaceResource`) → the workspace with the
+ *   caller's effective permissions; 404 when it does not exist **or** the caller has no access (no enumeration).
+ * - `GET /api/v1/workspaces?limit=&cursor=` → cursor page of the workspaces the caller is a member of. Not
+ *   published yet (it needs a cross-workspace membership lookup, deferred from E05-T02), so `WorkspaceSummary`
+ *   is still written by hand from ADR-019 conventions.
  */
 export const WORKSPACES_URL = '/api/v1/workspaces';
 
@@ -19,10 +21,8 @@ export interface WorkspaceSummary {
   matterNumber?: string | null;
 }
 
-export interface Workspace extends WorkspaceSummary {
-  /** Effective permissions of the caller in this workspace (closed catalogue, E05-T02). */
-  permissions: readonly string[];
-}
+/** Effective permissions are the closed catalogue names (docs/security/permission-matrix.md). */
+export type Workspace = WorkspaceResource;
 
 export interface CursorPage<T> {
   items: T[];

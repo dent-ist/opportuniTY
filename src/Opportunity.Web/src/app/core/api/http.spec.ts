@@ -24,6 +24,11 @@ describe('API HTTP stack', () => {
     TestBed.inject(ActiveWorkspace).enter({
       workspaceId: 'w1',
       name: 'Matter one',
+      matterNumber: null,
+      displayTimeZone: 'UTC',
+      status: 'active',
+      createdAt: '2026-10-03T00:00:00.000Z',
+      breakGlassActive: false,
       permissions: [],
     });
   });

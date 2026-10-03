@@ -10,6 +10,7 @@ The PR pipeline is [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It
 | `.NET build, unit and architecture tests` | Restores, then builds `Opportunity.slnx` in Release with `-warnaserror`. Runs `tests/Opportunity.UnitTests` and `tests/Opportunity.ArchitectureTests` (ADR-019 layering rules) | `test-results-dotnet` (TRX + Markdown) |
 | `Integration tests (Testcontainers)` | Sets `vm.max_map_count=262144` for OpenSearch, then builds and runs `tests/Opportunity.IntegrationTests` against real containers on the runner's Docker daemon | `test-results-integration` (TRX + Markdown) |
 | `Angular build and unit tests` | `npm ci`, `prettier --check`, `npm run api:check` (generated API client matches the OpenAPI document, ADR-018 §4), `npm run build`, `ng test --watch=false` (Vitest, incl. axe, token contrast and colour-lint specs) | `test-results-web` (JUnit XML) |
+| `Angular accessibility and performance gates` | `E15-T04`, see [Accessibility and UI-performance gates](#accessibility-and-ui-performance-gates). Production build with `--stats-json`, bundle-size budgets, type-check of `e2e/`, then Playwright (Chromium pinned by `@playwright/test` = `PLAYWRIGHT` in `versions.env`) runs axe, keyboard-only and page-performance tests against that build with the API mocked in the browser | `test-results-web-gates` (JUnit XML, Playwright traces of failures) |
 | `Dependency vulnerabilities (NuGet, npm)` | `dotnet list package --vulnerable --include-transitive` and `npm audit` (lockfile only, dev toolchain included), then `tools/ci/security/check-vulnerabilities.py` fails on High/Critical findings that have no unexpired exception | `dependency-audit` (raw JSON + Markdown) |
 | `Secret scan (gitleaks)` | A checksum-verified gitleaks binary scans the full git history, with secrets redacted in the output | `gitleaks-report` (SARIF, on failure only) |
 | `Licenses and SBOM (CycloneDX)` | Builds CycloneDX SBOMs of shipped code (non-test .NET projects and npm production dependencies). `tools/ci/security/check-licenses.py` then enforces the license policy | `sbom` (two `.cdx.json` files + `license-report.md`, 90 days) |
@@ -47,9 +48,29 @@ npm ci
 npx prettier --check .
 npm run build
 npx ng test --watch=false
+
+# Accessibility and UI-performance gates (E15-T04)
+npx ng build --stats-json
+npm run budget:bundle
+npx playwright install chromium   # once; or OPP_E2E_CHROMIUM=/path/to/chrome to use an existing build
+npm run e2e
 ```
 
 `dotnet test --solution Opportunity.slnx` runs every suite at once (including `ScaleTests`, which CI does not run on PRs).
+
+## Accessibility and UI-performance gates
+
+`E15-T04` enforces ADR-018 §10.3 and §14 in the `Angular accessibility and performance gates` job. Budgets live in [`src/Opportunity.Web/perf-budgets.json`](../src/Opportunity.Web/perf-budgets.json). Tightening a budget is always fine. Loosening one needs sign-off from the UI/UX owner.
+
+| Gate | What fails the build |
+|---|---|
+| Bundle budgets (`scripts/check-bundle-budgets.mjs`) | Initial JavaScript (entry plus its static imports, from the esbuild metafile) > 250 kB gzip; any lazy chunk > 150 kB gzip; any file under `src/app/features/` (viewer, review, admin features) or the admin section page in the initial bundle. `app.routes.spec.ts` checks the same rule on the route table. Angular's own raw-size budgets (`angular.json`) still apply to every build |
+| axe (`e2e/accessibility.spec.ts`) | Any **serious** or **critical** axe-core violation (WCAG 2.0–2.2 A/AA plus best practice, colour contrast included) on every app-shell route and open menu, in the light, dark and high-contrast themes. Moderate and minor findings are attached to the test report but do not block |
+| Keyboard (`e2e/keyboard.spec.ts`) | Skip link, opening a workspace, section and Admin navigation and the user menu stop working with the keyboard only, or a focused element has no visible focus indicator |
+| Page performance (`e2e/performance.spec.ts`) | With the CPU slowed ×2: LCP > 2.5 s, CLS > 0.1, total blocking time > 300 ms or interaction latency (Event Timing) > 200 ms on the Workspaces, Documents and an admin page. The numbers go to the job summary. This is a smoke check of UI latency, not a benchmark |
+| Every browser test | Uncaught errors, console errors and CSP violations. The test server (`e2e/support/serve.mjs`) sends the production headers from `deploy/docker/web/security-headers.conf` and serves the build as nginx does. It also fails on calls to API endpoints that the mock (`e2e/support/mock-api.ts`) does not know |
+
+The tests run against the production build with `/api` and `/bff` mocked in the page, so they need neither the Compose stack nor a backend. The L8 vertical-slice E2E against the developer Compose profile (test strategy) builds on the same fixtures. The grid frame-budget test (≥ 50 fps while scrolling 10k loaded rows) is a `test.fixme` in `performance.spec.ts` until the review grid (`E16-T02`) exists. The axe-core engine is the `axe-core` devDependency that the unit specs already use, evaluated in the page through the DevTools protocol. This replaces `@axe-core/playwright` (ADR-018 §15.2): the CSP stays on and no further dependency is needed. The WCAG 2.2 AA conformance checklist is [docs/accessibility/wcag-2.2-aa-checklist.md](accessibility/wcag-2.2-aa-checklist.md).
 
 ## Security and supply-chain gates
 

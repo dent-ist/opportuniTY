@@ -13,6 +13,12 @@ npx ng test --watch=false
 npx prettier --check .
 npm run api:generate     # regenerate src/app/core/api/generated from the API's OpenAPI document
 npm run api:check        # fail if the committed client is out of date (CI)
+
+# Accessibility and UI-performance gates (E15-T04, docs/ci.md); budgets in perf-budgets.json
+npx ng build --stats-json
+npm run budget:bundle    # gzip budgets of initial/lazy JavaScript, feature code stays lazy
+npx playwright install chromium   # once (or set OPP_E2E_CHROMIUM to an existing Chromium binary)
+npm run e2e              # axe in every theme, keyboard-only and page-performance tests, API mocked
 ```
 
 The component showcase (development builds only) is at `/dev/components`.
@@ -26,3 +32,5 @@ The component showcase (development builds only) is at `/dev/components`.
   switcher and section navigation, "Not available", error and About pages.
 - `src/app/features/<area>/`: lazy-loaded feature pages under `/w/:workspaceId/…`.
 - `src/app/dev/`: development-only routes, removed from production builds.
+- `e2e/`: Playwright browser gates against the production build (`e2e/support`: static server with the
+  production headers, API mock, axe runner).
