@@ -9,7 +9,7 @@ namespace Opportunity.Data.Search;
 
 /// <summary>
 /// PostgreSQL implementation of <see cref="IIndexPlacementStore"/> over <c>workspace_index_placement</c> (tenant, RLS)
-/// and <c>search_shared_index</c> (installation-level) from V0008.
+/// and <c>search_shared_index</c> (installation-level) from V0009.
 /// </summary>
 public sealed class IndexPlacementStore(NpgsqlDataSource dataSource) : IIndexPlacementStore
 {

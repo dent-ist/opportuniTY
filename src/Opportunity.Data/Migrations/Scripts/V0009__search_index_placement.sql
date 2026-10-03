@@ -1,4 +1,4 @@
--- V0008: search index placement (E07-T01, ADR-006 R2/R6).
+-- V0009: search index placement (E07-T01, ADR-006 R2/R6).
 -- PostgreSQL is authoritative for where each workspace's projection lives. Rows hold placement facts only (tier, shared
 -- pool number, projection generation, shard count); Opportunity.Search derives physical index and alias names from them,
 -- so no physical name is ever stored or leaves the search module (ADR-006 R1).

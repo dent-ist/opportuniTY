@@ -9,7 +9,7 @@ using Opportunity.IntegrationTests.Migrations;
 
 namespace Opportunity.IntegrationTests.Search;
 
-/// <summary>E07-T01: the PostgreSQL placement record (V0008, ADR-006 R2/R6), as the app role under RLS.</summary>
+/// <summary>E07-T01: the PostgreSQL placement record (V0009, ADR-006 R2/R6), as the app role under RLS.</summary>
 [Collection(MigrationPostgresGroup.Name)]
 public sealed class IndexPlacementStoreTests(MigrationPostgresFixture postgres)
 {
