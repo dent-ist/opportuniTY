@@ -31,5 +31,18 @@
     "CC-BY-ND-*",
     "CC-BY-SA-*"
   ],
-  "exceptions": []
+  "exceptions": [
+    {
+      "component": "pkg:nuget/Apache.Arrow@22.1.0",
+      "license": "Apache-2.0",
+      "reason": "Package metadata declares no license; the Apache Arrow project is Apache-2.0 (https://github.com/apache/arrow/blob/main/LICENSE.txt). Pinned to this version so upgrades are re-checked.",
+      "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    },
+    {
+      "component": "pkg:nuget/System.Security.Cryptography.ProtectedData@4.5.0",
+      "license": "MIT",
+      "reason": "Legacy Microsoft package metadata only has a licenseUrl; it is MIT (https://github.com/dotnet/corefx/blob/master/LICENSE.TXT). Pinned to this version so upgrades are re-checked.",
+      "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    }
+  ]
 }

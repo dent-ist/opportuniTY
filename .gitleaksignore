@@ -1,0 +1,10 @@
+# Reviewed gitleaks false positives (fingerprint = commit:file:rule:line).
+# Add entries only after review; each must say why it is not a secret.
+# fake "secret" value in a docker-inspect test fixture
+7e236ca04c394ec451775a025331fdd5d184a67c:tests/Opportunity.Benchmarks.Tests/DockerCaptureTests.cs:generic-api-key:114
+# synthetic Garage test key (hex sequence) used only by the contract suite
+11723e261031b70038dda500bcafa544c6657ddf:tests/Opportunity.IntegrationTests/Storage/S3Providers.cs:generic-api-key:139
+# synthetic Garage test key (hex sequence) used only by the contract suite
+11723e261031b70038dda500bcafa544c6657ddf:tests/Opportunity.IntegrationTests/Storage/S3Providers.cs:generic-api-key:148
+# Azurite's publicly documented development account key
+83f4a692024194c61da532e1470003c7eb2e0e28:tests/Opportunity.IntegrationTests/Storage/AzuriteFixture.cs:generic-api-key:19
