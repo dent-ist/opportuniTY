@@ -20,7 +20,7 @@ RUN npm run build -- --configuration production
 # ---------------------------------------------------------------------------------------------------------------------
 # Runs as the unprivileged nginx user (UID 101) on port 8080 with a read-only root filesystem; mount a tmpfs at /tmp
 # (pid file and nginx temp paths). nginx starts directly, skipping the image's entrypoint scripts, which rewrite config.
-FROM nginxinc/nginx-unprivileged:1.30-alpine-slim@sha256:e28dcf0a161ddcbf228c7364b4a14f9bad4763ae8f5317c437b896afa3df4b84 AS web
+FROM nginxinc/nginx-unprivileged:1.31-alpine-slim@sha256:c81a27f28bc2d9c2da8998444e653c7b85b9bbbaa92e44ef18d8920784e06507 AS web
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
 ARG CREATED
