@@ -1,0 +1,409 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opportunity:benchmarks:environment-manifest:v1",
+  "title": "opportuniTY benchmark environment manifest, v1",
+  "description": "What a benchmark ran on: hardware, software versions and image digests, JVM/OpenSearch and PostgreSQL settings, durability and shard topology (baseline §17, §29; E17-T03). Written by `opportunity-bench capture-env`; embedded in every result bundle. Minor versions (1.x) only add optional properties.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "capturedUtc", "capturedBy", "profile", "hosts", "software", "durability"],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^1\\.[0-9]+$" },
+    "capturedUtc": { "$ref": "#/$defs/utc" },
+    "capturedBy": { "$ref": "#/$defs/tool" },
+    "profile": { "$ref": "#/$defs/profile" },
+    "hosts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/host" } },
+    "software": { "$ref": "#/$defs/software" },
+    "containers": { "type": "array", "items": { "$ref": "#/$defs/container" } },
+    "postgres": { "type": "array", "items": { "$ref": "#/$defs/postgresInstance" } },
+    "opensearch": { "$ref": "#/$defs/opensearchCluster" },
+    "rabbitmq": { "$ref": "#/$defs/rabbitmq" },
+    "objectStore": { "$ref": "#/$defs/objectStore" },
+    "workers": { "type": "array", "items": { "$ref": "#/$defs/workerPool" } },
+    "durability": { "$ref": "#/$defs/durability" },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "utc": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "imageDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "profile": {
+      "description": "developer-regression = Compose developer profile (§29, nightly/T2 and the Q-03 1M spike); enterprise-reference = the §29 reference topology (T4, deferred until sponsor hardware).",
+      "enum": ["developer-regression", "enterprise-reference"]
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": { "name": { "type": "string", "minLength": 1 }, "version": { "type": "string", "minLength": 1 } }
+    },
+    "stringMap": { "type": "object", "additionalProperties": { "type": "string" } },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "cpu", "memory", "disks", "os", "platform"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1, "description": "e.g. all-in-one, opensearch, postgres-primary, load-generator." },
+        "hostname": { "type": "string" },
+        "cpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["model", "architecture", "logicalCores", "physicalCores", "sockets"],
+          "properties": {
+            "model": { "type": "string", "minLength": 1 },
+            "vendor": { "type": "string" },
+            "architecture": { "type": "string", "minLength": 1 },
+            "logicalCores": { "type": "integer", "minimum": 1 },
+            "physicalCores": { "type": "integer", "minimum": 1 },
+            "sockets": { "type": "integer", "minimum": 1 },
+            "maxMhz": { "type": "number", "minimum": 0 },
+            "hypervisor": { "type": "boolean" },
+            "scalingGovernor": { "type": "string" },
+            "flags": { "type": "array", "items": { "type": "string" }, "description": "Selected ISA flags (avx2, avx512f, sse4_2, aes)." }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["totalBytes"],
+          "properties": {
+            "totalBytes": { "type": "integer", "minimum": 1 },
+            "swapTotalBytes": { "type": "integer", "minimum": 0 },
+            "transparentHugePages": { "type": "string" }
+          }
+        },
+        "disks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "sizeBytes"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "model": { "type": "string" },
+              "type": { "enum": ["nvme", "ssd", "hdd", "virtual", "unknown"] },
+              "rotational": { "type": "boolean" },
+              "sizeBytes": { "type": "integer", "minimum": 0 },
+              "scheduler": { "type": "string" },
+              "backs": { "type": "array", "items": { "type": "string" }, "description": "Paths on this device that matter, e.g. the container runtime root." }
+            }
+          }
+        },
+        "os": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kernel"],
+          "properties": {
+            "kernel": { "type": "string", "minLength": 1 },
+            "distribution": { "type": "string" },
+            "maxMapCount": { "type": "integer" },
+            "swappiness": { "type": "integer" }
+          }
+        },
+        "containerRuntime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "version": { "type": "string" },
+            "composeVersion": { "type": "string" },
+            "storageDriver": { "type": "string" },
+            "cgroupVersion": { "type": "string" },
+            "cgroupDriver": { "type": "string" },
+            "rootDir": { "type": "string" },
+            "cpus": { "type": "integer" },
+            "memoryBytes": { "type": "integer" }
+          }
+        },
+        "platform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["bare-metal", "vm", "cloud", "unknown"] },
+            "vendor": { "type": "string" },
+            "product": { "type": "string" },
+            "cloudProvider": { "type": "string" },
+            "instanceType": { "type": "string" },
+            "region": { "type": "string" }
+          }
+        }
+      }
+    },
+    "software": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["versionsEnv", "images"],
+      "properties": {
+        "versionsEnv": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256", "values"],
+          "properties": {
+            "path": { "type": "string" },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "values": { "$ref": "#/$defs/stringMap" }
+          }
+        },
+        "images": {
+          "type": "array",
+          "description": "Pinned dependency images from versions.env (KEY + KEY_DIGEST).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "repository", "tag"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "repository": { "type": "string", "minLength": 1 },
+              "tag": { "type": "string", "minLength": 1 },
+              "digest": { "$ref": "#/$defs/imageDigest" }
+            }
+          }
+        },
+        "dotnetRuntime": { "type": "string" },
+        "applicationImages": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "image"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "service": { "type": "string" },
+        "composeProject": { "type": "string" },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reference", "id"],
+          "properties": {
+            "reference": { "type": "string", "minLength": 1 },
+            "id": { "$ref": "#/$defs/imageDigest" },
+            "repoDigests": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "pin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key", "expectedDigest", "matches"],
+          "properties": {
+            "key": { "type": "string" },
+            "expectedDigest": { "$ref": "#/$defs/imageDigest" },
+            "matches": { "type": "boolean" }
+          }
+        },
+        "command": { "type": "array", "items": { "type": "string" } },
+        "environment": { "$ref": "#/$defs/stringMap", "description": "Allow-listed, non-secret variables only (JVM options, cluster settings, worker selection)." },
+        "nanoCpus": { "type": "integer", "minimum": 0 },
+        "memoryLimitBytes": { "type": "integer", "minimum": 0 },
+        "shmSizeBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "pgSetting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": { "type": "string" },
+        "unit": { "type": "string" },
+        "source": { "type": "string" }
+      }
+    },
+    "postgresInstance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "serverVersion", "role", "settings", "durability"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "endpoint": { "type": "string", "description": "host:port/database; never credentials." },
+        "serverVersion": { "type": "string", "minLength": 1 },
+        "role": { "enum": ["primary", "replica"] },
+        "settings": { "type": "object", "additionalProperties": { "$ref": "#/$defs/pgSetting" } },
+        "durability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fsync", "synchronousCommit", "fullPageWrites", "walLevel", "walSyncMethod", "synchronousStandbyNames"],
+          "properties": {
+            "fsync": { "type": "string" },
+            "synchronousCommit": { "type": "string" },
+            "fullPageWrites": { "type": "string" },
+            "walLevel": { "type": "string" },
+            "walSyncMethod": { "type": "string" },
+            "synchronousStandbyNames": { "type": "string" },
+            "dataChecksums": { "type": "string" }
+          }
+        },
+        "replication": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["applicationName", "state", "syncState"],
+            "properties": {
+              "applicationName": { "type": "string" },
+              "state": { "type": "string" },
+              "syncState": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "opensearchCluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clusterName", "version", "nodes", "clusterSettings", "indices"],
+      "properties": {
+        "endpoint": { "type": "string" },
+        "clusterName": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "distribution": { "type": "string" },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "roles", "jvm"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "roles": { "type": "array", "items": { "type": "string" } },
+              "jvm": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["version", "heapMaxBytes", "inputArguments"],
+                "properties": {
+                  "version": { "type": "string" },
+                  "vmName": { "type": "string" },
+                  "vmVendor": { "type": "string" },
+                  "heapInitBytes": { "type": "integer", "minimum": 0 },
+                  "heapMaxBytes": { "type": "integer", "minimum": 1 },
+                  "inputArguments": { "type": "array", "items": { "type": "string" } },
+                  "gcCollectors": { "type": "array", "items": { "type": "string" } }
+                }
+              },
+              "availableProcessors": { "type": "integer", "minimum": 1 },
+              "allocatedProcessors": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "clusterSettings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["persistent", "transient"],
+          "properties": {
+            "persistent": { "$ref": "#/$defs/stringMap" },
+            "transient": { "$ref": "#/$defs/stringMap" },
+            "defaults": { "$ref": "#/$defs/stringMap", "description": "Selected defaults that matter for benchmarks (allocation, indexing buffer, thread pools)." }
+          }
+        },
+        "indices": {
+          "type": "array",
+          "description": "Shard topology and durability per (non-system) index.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "primaryShards", "replicas", "refreshInterval", "translogDurability"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "primaryShards": { "type": "integer", "minimum": 1 },
+              "replicas": { "type": "integer", "minimum": 0 },
+              "refreshInterval": { "type": "string" },
+              "translogDurability": { "type": "string" },
+              "translogSyncInterval": { "type": "string" },
+              "codec": { "type": "string" },
+              "docsCount": { "type": "integer", "minimum": 0 },
+              "storeBytes": { "type": "integer", "minimum": 0 },
+              "shards": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["shard", "primary", "state"],
+                  "properties": {
+                    "shard": { "type": "integer", "minimum": 0 },
+                    "primary": { "type": "boolean" },
+                    "state": { "type": "string" },
+                    "node": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rabbitmq": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "erlangVersion": { "type": "string" },
+        "clusterName": { "type": "string" },
+        "nodes": { "type": "array", "items": { "type": "string" } },
+        "queues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "durable"],
+            "properties": {
+              "name": { "type": "string" },
+              "vhost": { "type": "string" },
+              "type": { "type": "string" },
+              "durable": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "objectStore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
+      "properties": {
+        "provider": { "enum": ["FileSystem", "S3", "AzureBlob"] },
+        "implementation": { "type": "string", "description": "e.g. seaweedfs 4.48, AWS S3, local volume." },
+        "endpoint": { "type": "string" }
+      }
+    },
+    "workerPool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "instances"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1, "description": "all (combined Lite worker), import, indexing, bulk-coding, rendering, export, production, dispatcher." },
+        "instances": { "type": "integer", "minimum": 0 },
+        "concurrency": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "durability": {
+      "description": "Q-05: production-like durability is required for reference runs; relaxed settings are allowed only on the developer profile and must be listed here with a justification.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "deviations"],
+      "properties": {
+        "mode": { "enum": ["production", "relaxed"] },
+        "deviations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["component", "instance", "setting", "actual", "expected"],
+            "properties": {
+              "component": { "enum": ["postgres", "opensearch", "rabbitmq"] },
+              "instance": { "type": "string" },
+              "setting": { "type": "string" },
+              "actual": { "type": "string" },
+              "expected": { "type": "string" }
+            }
+          }
+        },
+        "justification": { "type": "string" }
+      },
+      "if": { "properties": { "mode": { "const": "relaxed" } } },
+      "then": { "required": ["justification"], "properties": { "deviations": { "minItems": 1 }, "justification": { "minLength": 10 } } },
+      "else": { "properties": { "deviations": { "maxItems": 0 } } }
+    }
+  }
+}

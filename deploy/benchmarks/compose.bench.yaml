@@ -1,0 +1,65 @@
+# Developer-regression benchmark profile (E17-T03, baseline §29): an override for deploy/docker-compose/compose.yaml.
+# Used by ./bench.sh up --profile dev. It changes no topology, only makes every setting that moves a benchmark
+# number explicit, so capture-env records it and two runs on the same machine are comparable.
+#
+# Durability is production-like here (Q-05). The relaxed nightly variant is compose.bench-relaxed.yaml; capture-env
+# refuses to write a manifest for it unless the run states why (--relaxed-durability).
+
+services:
+  postgres:
+    # Explicit even where equal to the default, so the manifest never depends on image defaults.
+    command:
+      - postgres
+      - -c
+      - fsync=on
+      - -c
+      - synchronous_commit=on
+      - -c
+      - full_page_writes=on
+      - -c
+      - wal_level=replica
+      - -c
+      - shared_buffers=${BENCH_PG_SHARED_BUFFERS:-2GB}
+      - -c
+      - effective_cache_size=${BENCH_PG_EFFECTIVE_CACHE_SIZE:-6GB}
+      - -c
+      - work_mem=${BENCH_PG_WORK_MEM:-32MB}
+      - -c
+      - maintenance_work_mem=${BENCH_PG_MAINTENANCE_WORK_MEM:-512MB}
+      - -c
+      - max_wal_size=${BENCH_PG_MAX_WAL_SIZE:-8GB}
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - max_connections=${BENCH_PG_MAX_CONNECTIONS:-200}
+      - -c
+      - track_io_timing=on
+    shm_size: ${BENCH_PG_SHM_SIZE:-2g}
+    labels:
+      opportunity.bench.profile: developer-regression
+
+  opensearch:
+    environment:
+      OPENSEARCH_JAVA_OPTS: -Xms${BENCH_OPENSEARCH_HEAP:-4g} -Xmx${BENCH_OPENSEARCH_HEAP:-4g}
+      # Locking the heap keeps swapping out of the latency histograms. Hosts that cannot raise rlimits (rootless
+      # Docker, sandboxed CI) use ./bench.sh up --no-ulimits; the manifest records bootstrap.memory_lock either way.
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    labels:
+      opportunity.bench.profile: developer-regression
+
+  rabbitmq:
+    labels:
+      opportunity.bench.profile: developer-regression
+
+  worker:
+    environment:
+      Workers__Enabled: all
+    labels:
+      opportunity.bench.profile: developer-regression

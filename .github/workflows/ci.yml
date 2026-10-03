@@ -128,6 +128,13 @@ jobs:
           --results-directory TestResults/integration
           --report-xunit-trx --report-xunit-trx-filename integration.trx
           --report-xunit-markdown --report-xunit-markdown-filename integration.md
+      # Benchmark harness (E17-T03): result-bundle schema, gates.yaml, environment capture against PostgreSQL/OpenSearch.
+      - name: Benchmark harness tests
+        if: ${{ !cancelled() }}
+        run: >-
+          dotnet test --project tests/Opportunity.Benchmarks.Tests -c "$CONFIGURATION"
+          --results-directory TestResults/integration
+          --report-xunit-trx --report-xunit-trx-filename benchmarks.trx
       - name: Test summary
         if: ${{ !cancelled() }}
         run: |
