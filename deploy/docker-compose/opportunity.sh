@@ -148,6 +148,10 @@ cmd_up() {
   lite_warning
   local build=(--build)
   [[ "$images" == ghcr ]] && build=(--no-build --pull missing)
+  # Group roles added by newer migrations must exist before the migrator runs (it cannot create roles).
+  compose up -d --wait --wait-timeout "${OPPORTUNITY_WAIT_TIMEOUT:-600}" postgres
+  compose exec -T postgres psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+    -f /docker-entrypoint-initdb.d/20-group-roles.sql
   compose up -d "${build[@]}" --wait --wait-timeout "${OPPORTUNITY_WAIT_TIMEOUT:-600}" "$@"
   compose ps
   local web api
@@ -181,6 +185,10 @@ cmd_seed() {
 command="${1:-}"
 [[ $# -gt 0 ]] && shift
 [[ -f "$versions_env" ]] || die "missing $versions_env"
+# After a pull, .env.example may list new secrets (e.g. KEYCLOAK_ADMIN_PASSWORD); add them before compose needs them.
+if [[ -f "$env_file" && "$command" != init && "$command" != help && -n "$command" ]]; then
+  cmd_init | grep -v '^.env exists' || true
+fi
 case "$command" in
   init) cmd_init ;;
   preflight) cmd_preflight ;;

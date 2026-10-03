@@ -1,0 +1,75 @@
+<opp-skip-link />
+<header class="shell__header">
+  <a class="shell__brand" [routerLink]="paths.workspaces" title="All workspaces"><opp-brand /></a>
+  @if (workspace(); as ws) {
+    <span class="shell__divider" aria-hidden="true"></span>
+    <opp-workspace-switcher [workspace]="ws" />
+    <nav class="shell__nav" aria-label="Workspace sections">
+      <ul class="shell__tabs">
+        @for (section of sections(); track section.path) {
+          <li>
+            <a
+              class="shell__tab"
+              [routerLink]="['/w', ws.workspaceId, section.path]"
+              routerLinkActive="is-active"
+              ariaCurrentWhenActive="page"
+              >{{ section.label }}</a
+            >
+          </li>
+        }
+        @if (adminAreas().length) {
+          <li>
+            <button
+              type="button"
+              class="shell__tab"
+              [class.is-active]="inAdmin()"
+              [cdkMenuTriggerFor]="adminMenu"
+            >
+              Admin <opp-icon name="chevron-down" />
+            </button>
+          </li>
+        }
+      </ul>
+    </nav>
+    <ng-template #adminMenu>
+      <div cdkMenu class="opp-menu" aria-label="Admin">
+        @for (area of adminAreas(); track area.path) {
+          <a
+            cdkMenuItem
+            class="opp-menu__item"
+            [routerLink]="['/w', ws.workspaceId, 'admin', area.path]"
+            routerLinkActive
+            ariaCurrentWhenActive="page"
+            >{{ area.label }}</a
+          >
+        }
+      </div>
+    </ng-template>
+  } @else {
+    <nav class="shell__nav" aria-label="Installation">
+      <ul class="shell__tabs">
+        <li>
+          <a
+            class="shell__tab"
+            [routerLink]="paths.workspaces"
+            routerLinkActive="is-active"
+            ariaCurrentWhenActive="page"
+            >Workspaces</a
+          >
+        </li>
+      </ul>
+    </nav>
+  }
+  <opp-user-menu class="shell__user" />
+</header>
+<main id="main" class="shell__main" tabindex="-1">
+  @if (sessionEnded()) {
+    <div class="shell__ended">
+      <h1 class="shell__ended-title">Your session has ended</h1>
+      <p>Sign in again to continue.</p>
+      <button type="button" oppButton="primary" (click)="signIn()">Sign in again</button>
+    </div>
+  } @else {
+    <router-outlet />
+  }
+</main>

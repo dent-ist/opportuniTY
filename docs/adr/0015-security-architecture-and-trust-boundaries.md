@@ -343,7 +343,7 @@ and may relax it only through an amendment to this ADR.
    message is rejected. Otherwise the worker takes **every** scope input from PG: workspace, document set or
    snapshot, chunk range, `ProjectionGeneration`, initiating actor (`Job.CreatedBy`). A forged message can at most
    ask a worker to run work PG already authorized.
-3. **Rejection:** nack without requeue to the DLQ, plus an installation-level `Integrity.MessageRejected` audit
+3. **Rejection:** nack without requeue to the DLQ, plus an installation-level `Integrity.EnvelopeMismatch` audit
    event (claimed workspace, message type, reason). No data is written (`E05-T07` acceptance).
 4. **Async re-authorization:** user-initiated jobs (export, production, privilege log, bulk coding, term reports,
    overlay import) rebuild the initiator's principal from PG at each chunk and re-check the job's permission plus
@@ -444,7 +444,7 @@ and may relax it only through an amendment to this ADR.
    protected-content retrieval and presigned URL issuance; `Search.Executed` with full query text (Q-16); coding
    changes to security-affecting fields; role, class-grant, wall and membership changes; break-glass activation,
    expiry and every action under it; export and production create, exclusions (Q-15) and download;
-   `Integrity.MessageRejected`; quarantine and quarantined-content access; secret and key operations; deletion
+   `Integrity.EnvelopeMismatch`; quarantine and quarantined-content access; secret and key operations; deletion
    requests and approvals; legal-hold changes.
 3. Audit reads are themselves audited. Search text requires `Audit.ReadSearchText`. Walls apply to document
    details in audit results (PEP-7).

@@ -12,3 +12,4 @@ export * from './state/state';
 export * from './tabs/tabs';
 export * from './toast/announcer';
 export * from './toast/toast';
+export * from './menu/menu';

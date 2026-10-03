@@ -40,6 +40,7 @@ public class QueryPropertyTests
     {
         var random = new Random(68);
         var slowest = TimeSpan.Zero;
+        var slowestText = string.Empty;
         var total = Stopwatch.StartNew();
         int parsed = 0;
         for (var i = 0; i < FuzzInputs; i++)
@@ -51,6 +52,7 @@ public class QueryPropertyTests
             if (i > 1_000 && watch.Elapsed > slowest)
             {
                 slowest = watch.Elapsed;
+                slowestText = text;
             }
 
             AssertWellFormed(text, result);
@@ -62,7 +64,14 @@ public class QueryPropertyTests
 
         total.Stop();
         parsed.Should().BeGreaterThan(FuzzInputs / 20, "the fuzzer must also reach the success paths");
-        slowest.Should().BeLessThan(TimeSpan.FromSeconds(1), "parsing is linear; only a GC pause could take this long");
+        // A pathological input is slow every time; a GC pause or a busy machine is not. Re-time the slowest input.
+        var retimed = Enumerable.Range(0, 3).Min(_ =>
+        {
+            var watch = Stopwatch.StartNew();
+            QueryParser.Parse(slowestText);
+            return watch.Elapsed;
+        });
+        retimed.Should().BeLessThan(TimeSpan.FromSeconds(1), $"parsing is linear (first measured {slowest} for {slowestText.Length} characters)");
         total.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(60));
     }
 

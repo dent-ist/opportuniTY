@@ -5,7 +5,11 @@ import axe from 'axe-core';
  * Colour contrast is skipped here because jsdom does not compute styles; tokens.spec.ts checks every
  * colour pair of every theme instead. Test-only: axe-core (MPL-2.0) is a devDependency and never shipped.
  */
-export async function expectNoAxeViolations(element: Element): Promise<void> {
+export async function expectNoAxeViolations(
+  element: Element,
+  /** `page`: a whole page (shell), so landmark and heading-structure rules apply too. */
+  { page = false }: { page?: boolean } = {},
+): Promise<void> {
   const results = await axe.run(element, {
     runOnly: {
       type: 'tag',
@@ -13,10 +17,10 @@ export async function expectNoAxeViolations(element: Element): Promise<void> {
     },
     rules: {
       'color-contrast': { enabled: false },
-      // Fragments are tested in isolation; landmarks are checked on the showcase page.
-      region: { enabled: false },
-      'page-has-heading-one': { enabled: false },
-      'landmark-one-main': { enabled: false },
+      // Fragments are tested in isolation; landmarks are checked on whole pages.
+      region: { enabled: page },
+      'page-has-heading-one': { enabled: page },
+      'landmark-one-main': { enabled: page },
     },
     resultTypes: ['violations'],
   });

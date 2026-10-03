@@ -1,17 +1,14 @@
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { App } from './app';
-import { routes } from './app.routes';
+import { provideAppRouting } from './app.config';
 import { provideOpportunityHttp } from './core/api/http';
-import { Home } from './home';
-import { expectNoAxeViolations } from './ui/testing/axe.testing';
 
 describe('App', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), ...provideOpportunityHttp(), provideHttpClientTesting()],
+      providers: [...provideAppRouting(), ...provideOpportunityHttp(), provideHttpClientTesting()],
     });
   });
 
@@ -21,18 +18,12 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('opp-toast-region')).not.toBeNull();
   });
 
-  it('renders the start page accessibly', async () => {
-    const harness = await RouterTestingHarness.create();
-    await harness.navigateByUrl('/', Home);
-    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain('opportuniTY');
-    await expectNoAxeViolations(harness.routeNativeElement!);
-  });
-
-  it('serves the component showcase on the dev route', async () => {
+  it('serves the component showcase on the dev route without a session', async () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/dev/components');
     expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain(
       'Component showcase',
     );
+    expect(document.title).toBe('Component showcase · opportuniTY');
   });
 });

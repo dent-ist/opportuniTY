@@ -1,0 +1,32 @@
+:host {
+  display: flex;
+  min-width: 0;
+}
+
+.switcher__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  min-width: 0;
+  max-width: 20rem;
+  min-height: 2rem;
+  padding-inline: var(--opp-space-2);
+  border: var(--opp-border-width) solid transparent;
+  border-radius: var(--opp-radius-md);
+  background: transparent;
+  color: var(--opp-color-text);
+  font: inherit;
+  font-weight: var(--opp-font-weight-semibold);
+  cursor: pointer;
+}
+
+.switcher__trigger:hover,
+.switcher__trigger[aria-expanded='true'] {
+  background: var(--opp-color-hover);
+}
+
+.switcher__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -4,9 +4,11 @@ using Npgsql;
 
 using NpgsqlTypes;
 
+using Opportunity.Application.Audit;
 using Opportunity.Application.Jobs;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.Workspaces;
+using Opportunity.Data.Audit;
 
 namespace Opportunity.Data.Jobs;
 
@@ -280,8 +282,71 @@ internal static class JobSql
             throw new InvalidOperationException("The locked job row changed under its lock.");
         }
 
+        if (status == JobStatus.CompletedWithErrors && locked.Job.Status != JobStatus.CompletedWithErrors)
+        {
+            await AuditAsync(tx, locked.Job, AuditTaxonomy.Job.CompletedWithErrors, null, cancellationToken,
+                AuditOutcome.Failure, "ChunksFailed", CountDetails(counters)).ConfigureAwait(false);
+        }
+
         return status;
     }
+
+    /// <summary>Service identity of job-engine actions taken on behalf of the job's initiator (ADR-013 §4).</summary>
+    public const string JobEngineActor = "service:jobs";
+
+    /// <summary>
+    /// Writes a <c>Job.*</c> audit event (ADR-013 §5) in the caller's transaction, so the job change and its event commit
+    /// together. <paramref name="userId"/> is the acting user; without one the job engine acts on behalf of the
+    /// initiator. IDs, enums and counts only: status reasons can hold free text and are not copied (ADR-013 §7).
+    /// </summary>
+    public static async Task AuditAsync(
+        WorkspaceTransaction tx, JobInfo job, string action, Guid? userId, CancellationToken cancellationToken,
+        AuditOutcome outcome = AuditOutcome.Success, string? reasonCode = null, IReadOnlyDictionary<string, string?>? details = null)
+    {
+        string? display = null;
+        if (userId is { } user)
+        {
+            await using var lookup = tx.Command("SELECT coalesce(display_name, subject) FROM opportunity.app_user WHERE user_id = @user");
+            lookup.Parameters.AddWithValue("user", user);
+            display = await lookup.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+        }
+
+        var allDetails = new Dictionary<string, string?> { ["JobType"] = job.JobType.ToString() };
+        foreach (var (key, value) in details ?? new Dictionary<string, string?>())
+        {
+            allDetails[key] = value;
+        }
+
+        await AuditSql.InsertAsync(tx, new AuditEvent
+        {
+            WorkspaceId = job.WorkspaceId,
+            OccurredAt = DateTimeOffset.UtcNow,
+            Category = AuditTaxonomy.Job.Category,
+            Action = action,
+            ActorType = userId is null ? AuditActorType.Service : AuditActorType.User,
+            ActorId = userId?.ToString() ?? JobEngineActor,
+            ActorDisplay = userId is null ? "Job engine" : Truncate(display ?? userId.Value.ToString(), AuditEventRules.MaxActorDisplayLength),
+            OnBehalfOf = userId is null ? job.InitiatedBy : null,
+            ResourceType = "Job",
+            ResourceId = job.JobId.ToString(),
+            Outcome = outcome,
+            ReasonCode = reasonCode,
+            CorrelationId = string.IsNullOrEmpty(job.CorrelationId) ? null : job.CorrelationId,
+            JobId = job.JobId,
+            SnapshotId = job.TargetSnapshotId,
+            Details = allDetails,
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static Dictionary<string, string?> CountDetails(JobCounters counters) => new()
+    {
+        ["ChunksTotal"] = counters.ChunksTotal.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["ChunksCommitted"] = counters.ChunksCommitted.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["ChunksFailed"] = counters.ChunksFailed.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["ChunksCancelled"] = counters.ChunksCancelled.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["ItemsApplied"] = counters.ItemsApplied.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["ItemsFailed"] = counters.ItemsFailed.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
 
     /// <summary>Cancels every open (not Running) chunk of the job; returns how many.</summary>
     public static async Task<int> CancelOpenChunksAsync(
