@@ -28,6 +28,9 @@ public sealed record AuditEvent
 
     public required string ActorDisplay { get; init; }
 
+    /// <summary>The initiating user of a worker or system action (the job's <c>InitiatedBy</c>).</summary>
+    public Guid? OnBehalfOf { get; init; }
+
     public AuditAccessPath AccessPath { get; init; } = AuditAccessPath.Normal;
 
     public string? ClientIp { get; init; }
@@ -46,9 +49,29 @@ public sealed record AuditEvent
     /// <summary>Required for <see cref="AuditOutcome.Denied"/> and <see cref="AuditOutcome.Failure"/>.</summary>
     public string? ReasonCode { get; init; }
 
+    /// <summary>From the request or message envelope; the store falls back to the current trace ID, then a new ID.</summary>
     public string? CorrelationId { get; init; }
 
+    public string? CausationId { get; init; }
+
+    public Guid? JobId { get; init; }
+
+    public int? ChunkSequence { get; init; }
+
+    /// <summary>The materialized snapshot the action used (§22).</summary>
+    public Guid? SnapshotId { get; init; }
+
+    /// <summary>The index generation a search or report ran against (§28).</summary>
+    public long? SearchGeneration { get; init; }
+
+    /// <summary>Action-specific IDs and enums, at most <see cref="AuditEventRules.MaxDetailsBytes"/> as JSON.</summary>
     public IReadOnlyDictionary<string, string?> Details { get; init; } = new Dictionary<string, string?>();
+
+    /// <summary>
+    /// <c>Search.*</c> only: the full executed query text and parsed AST (Q-16), readable only with
+    /// <c>Audit.ReadSearchText</c>. At most <see cref="AuditEventRules.MaxRestrictedDetailsBytes"/> as JSON.
+    /// </summary>
+    public IReadOnlyDictionary<string, string?>? RestrictedDetails { get; init; }
 }
 
 public enum AuditActorType
@@ -62,6 +85,9 @@ public enum AuditAccessPath
 {
     Normal,
     BreakGlass,
+
+    /// <summary>Reserved by ADR-013 §4; not offered in the MVP.</summary>
+    Impersonation,
 }
 
 public enum AuditOutcome
@@ -71,31 +97,3 @@ public enum AuditOutcome
     Failure,
 }
 
-/// <summary>The ADR-013 §5 taxonomy entries written so far. The full closed list is enforced by the store (E14-T01).</summary>
-public static class AuditTaxonomy
-{
-    public static class Auth
-    {
-        public const string Category = "Auth";
-        public const string SignIn = "SignIn";
-        public const string SignInFailed = "SignInFailed";
-        public const string SignOut = "SignOut";
-        public const string SessionExpired = "SessionExpired";
-        public const string SessionRevoked = "SessionRevoked";
-        public const string StepUp = "StepUp";
-    }
-
-    public static class AuthZ
-    {
-        public const string Category = "AuthZ";
-        public const string Denied = "Denied";
-    }
-
-    public static class Integrity
-    {
-        public const string Category = "Integrity";
-
-        /// <summary>A worker rejected a message whose envelope disagrees with PostgreSQL (ADR-015 D9.3).</summary>
-        public const string MessageRejected = "MessageRejected";
-    }
-}

@@ -13,7 +13,7 @@ public static class JobChunkConsumerRegistration
     /// Registers <see cref="JobChunkConsumer"/> (scoped, like every message handler). Bind it to the worker's queue with
     /// <c>AddMessageHandler&lt;JobChunkMessage, JobChunkConsumer&gt;(queue)</c> from <c>Opportunity.Messaging</c> and add
     /// one executor per operation kind with <see cref="AddJobChunkExecutor{TExecutor}"/>. The host must also register
-    /// <see cref="IJobChunkRepository"/>. Audit falls back to <see cref="NullAuditEventWriter"/> until E14-T01.
+    /// <see cref="IJobChunkRepository"/> and the audit store (<c>AddPostgresAuditStore</c>).
     /// </summary>
     public static IServiceCollection AddJobChunkConsumer(
         this IServiceCollection services, JobChunkConsumerOptions? options = null, JobLeaseOptions? lease = null)
@@ -22,7 +22,6 @@ public static class JobChunkConsumerRegistration
         services.TryAddSingleton(options ?? new JobChunkConsumerOptions());
         services.TryAddSingleton(lease ?? new JobLeaseOptions());
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<IAuditEventWriter, NullAuditEventWriter>();
         services.TryAddSingleton<IMessageProcessingMeter>(NullMessageProcessingMeter.Instance);
         services.TryAddScoped<JobChunkConsumer>();
         return services;

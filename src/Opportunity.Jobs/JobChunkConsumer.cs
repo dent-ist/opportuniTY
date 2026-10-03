@@ -32,7 +32,7 @@ public sealed class JobChunkConsumerOptions
 /// <item>Envelope validation: the hinted workspace and job must be present.</item>
 /// <item>Claim under RLS with the hinted workspace — the claim is the inbox (conditional transition, ADR-010 §5.3).
 /// An invisible row, or one whose job, operation, sequence or idempotency key disagrees with the envelope, is
-/// rejected: <c>Integrity.MessageRejected</c> audit event, dead-lettered, nothing written. Every other unclaimable
+/// rejected: <c>Integrity.EnvelopeMismatch</c> audit event, dead-lettered, nothing written. Every other unclaimable
 /// outcome (duplicate, settled, lease held, job paused or cancelling, workspace not Active) is acked and dropped.</item>
 /// <item>The executor for the chunk's <see cref="ChunkOperationKind"/> runs with workspace, actor and parameters from
 /// PostgreSQL, under a heartbeat that extends the lease and stops the work at fence F2.</item>
@@ -402,7 +402,7 @@ public sealed partial class JobChunkConsumer : IMessageHandler<JobChunkMessage>
             WorkspaceId = null,
             OccurredAt = _time.GetUtcNow(),
             Category = AuditTaxonomy.Integrity.Category,
-            Action = AuditTaxonomy.Integrity.MessageRejected,
+            Action = AuditTaxonomy.Integrity.EnvelopeMismatch,
             ActorType = AuditActorType.Service,
             ActorId = _options.WorkerId,
             ActorDisplay = message.Queue.WorkerType,

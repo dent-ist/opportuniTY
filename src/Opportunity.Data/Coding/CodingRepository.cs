@@ -6,9 +6,11 @@ using Npgsql;
 
 using NpgsqlTypes;
 
+using Opportunity.Application.Audit;
 using Opportunity.Application.Coding;
 using Opportunity.Core.Coding;
 using Opportunity.Core.Fields;
+using Opportunity.Data.Audit;
 using Opportunity.Data.Fields;
 
 namespace Opportunity.Data.Coding;
@@ -122,7 +124,11 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
                 }
 
                 plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.ValueChanged, currentValue, desired, newVersion));
-                plan.TouchesSecurity |= op.Field.IsSecurityAffecting;
+                if (op.Field.IsSecurityAffecting)
+                {
+                    plan.TouchesSecurity = true;
+                    plan.SecurityFieldIds.Add(op.Field.FieldId);
+                }
             }
 
             if (changed)
@@ -136,7 +142,13 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
             results.Add(new DocumentCodingResult(target.DocumentId, outcome, changed ? newVersion : version, skipped));
         }
 
-        // 6. Current state + events + version bumps, one round trip, same transaction.
+        // 6. The audit event first, then current state + events + version bumps: one transaction, so neither the change
+        //    nor its audit can commit alone (ADR-013 §2.1).
+        if (request.Audit is { } audit)
+        {
+            await AuditSql.InsertAsync(tx, CodingAudit(audit, request, writeId, plan, results), cancellationToken).ConfigureAwait(false);
+        }
+
         if (plan.Events.Count > 0)
         {
             await WriteAsync(tx, request, writeId, plan, cancellationToken).ConfigureAwait(false);
@@ -293,6 +305,58 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         events.RemoveAt(events.Count - 1);
         return new CodingEventPage(events, new CodingEventCursor(events[^1].OccurredAt, events[^1].EventId));
     }
+
+    /// <summary>Creates <c>coding_event</c> partitions <paramref name="monthsAhead"/> months ahead (V0004); returns how many.</summary>
+    internal static async Task<int> EnsureEventPartitionsAsync(WorkspaceTransaction tx, int monthsAhead, CancellationToken cancellationToken)
+    {
+        await using var command = tx.Command("SELECT opportunity.coding_event_ensure_partitions(now() + make_interval(months => @months))");
+        command.Parameters.AddWithValue("months", monthsAhead);
+        return (int)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+    }
+
+    /// <summary>
+    /// <c>Coding.Changed</c> (interactive) or <c>Coding.BulkChunkApplied</c> (job chunk), ADR-013 §5/§6: counts, the field
+    /// IDs and the coding write that links to the CodingEvents; old and new values only for security-affecting fields
+    /// of a single-document write.
+    /// </summary>
+    private static AuditEvent CodingAudit(
+        AuditEvent template, CodingWriteRequest request, Guid writeId, WritePlan plan, List<DocumentCodingResult> results)
+    {
+        var details = new Dictionary<string, string?>(template.Details)
+        {
+            ["CodingWriteId"] = writeId.ToString(),
+            ["Fields"] = string.Join(',', request.Operations.Select(o => o.FieldId).Distinct().Order()),
+            ["Documents"] = Invariant(results.Count),
+            ["Changed"] = Invariant(results.Count(r => r.Outcome == DocumentCodingOutcome.Changed)),
+            ["Skipped"] = Invariant(results.Count(r => r.Outcome == DocumentCodingOutcome.Skipped)),
+            ["NotFound"] = Invariant(results.Count(r => r.Outcome == DocumentCodingOutcome.NotFound)),
+            ["CodingEvents"] = Invariant(plan.Events.Count),
+            ["SecurityAffecting"] = plan.TouchesSecurity ? "true" : "false",
+        };
+        if (results.Count == 1)
+        {
+            foreach (var e in plan.Events.Where(e => e.Kind == CodingEventKind.ValueChanged && plan.SecurityFieldIds.Contains(e.FieldId)))
+            {
+                details[$"Field.{Invariant(e.FieldId)}.Old"] = e.Prior?.ToJsonString();
+                details[$"Field.{Invariant(e.FieldId)}.New"] = e.New?.ToJsonString();
+            }
+        }
+
+        var single = request.Documents.Count == 1;
+        return template with
+        {
+            EventId = Guid.CreateVersion7(),
+            WorkspaceId = request.WorkspaceId,
+            Category = AuditTaxonomy.Coding.Category,
+            Action = request.JobId is null ? AuditTaxonomy.Coding.Changed : AuditTaxonomy.Coding.BulkChunkApplied,
+            ResourceType = single ? "Document" : request.JobId is null ? null : "Job",
+            ResourceId = single ? request.Documents[0].DocumentId.ToString() : request.JobId?.ToString(),
+            JobId = request.JobId ?? template.JobId,
+            Details = details,
+        };
+    }
+
+    private static string Invariant(int value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private static List<FieldError> ValidateShape(CodingWriteRequest request)
     {
@@ -717,5 +781,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         public List<PlannedEvent> Events { get; } = [];
 
         public bool TouchesSecurity { get; set; }
+
+        public HashSet<int> SecurityFieldIds { get; } = [];
     }
 }
