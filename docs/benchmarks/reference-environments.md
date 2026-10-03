@@ -21,7 +21,7 @@ result bundle that carries them. Use synthetic corpora only (test strategy §7).
 | Codified as | `deploy/docker-compose/compose.yaml` + `deploy/benchmarks/compose.bench.yaml` | `deploy/benchmarks/compose.reference.yaml` |
 | Hardware | Whatever developer machine or self-hosted runner is available (Q-03); recorded, never assumed | Sponsored or rented hardware, shapes in §3. **Not provisioned yet** (Q-03): 10M/M4 waits for a sponsor |
 | Tiers | T2 nightly regression, T3 1M comparative spike (Q-03) | T4 10M validation (`E18-T07`..`T09`); T3 reruns if a sponsor arrives first |
-| Durability | Production-like by default; relaxed **only** for nightly runs and only when recorded with a justification (Q-05) | Production-like, always. The validator rejects relaxed reference bundles (Q-05) |
+| Durability | Production-like by default; relaxed **only** for nightly (T2) runs and only when recorded with a justification (Q-05). T3 spike runs need production-like durability | Production-like, always. The validator rejects relaxed reference bundles (Q-05) |
 | Absolute latency gates (index lag ≤ 2 min, coding→searchable ≤ 1 s) | **Comparative** (Q-44): a miss disqualifies a candidate only if it is also worse than the other candidates on the same machine in the same run | **Hard** |
 | Relative gates (p95 degradation vs idle), correctness, security | Hard | Hard |
 
@@ -168,7 +168,8 @@ A bundle that fails any rule is rejected by `validate`, by the writer (`BundleWr
    and document count match `corpus`.
 3. Percentiles agree exactly with the bundled HDR histograms (the histogram is authoritative).
 4. Durability deviations are recomputed from the recorded settings and must equal the declared ones; relaxed
-   durability needs a justification and is rejected on `enterprise-reference` (Q-05).
+   durability needs a justification and is accepted only on `developer-regression` bundles of tier T2 (nightly);
+   it is rejected for T1, T3 (the 1M comparative spike) and T4, and on `enterprise-reference` (Q-05).
 5. T3/T4 runs need a **frozen** gates file (Q-04), a clean git tree and `repetition.of ≥ 3`; T4 runs only on
    `enterprise-reference`, which must have a PostgreSQL replica and 3 OpenSearch nodes.
 6. Scenarios marked valid must respect the gates' validity limits (dropped iterations ≤ 0.5%, load-generator CPU <
@@ -215,7 +216,7 @@ afterwards a change may only tighten a threshold. The gate evaluator (E17-T08) r
 
 ```bash
 # developer regression: provision, capture, destroy
-deploy/benchmarks/bench.sh up --profile dev            # add --relaxed (nightly only), --no-ulimits (constrained hosts)
+deploy/benchmarks/bench.sh up --profile dev            # add --relaxed (nightly T2 only), --no-ulimits (constrained hosts)
 deploy/benchmarks/bench.sh capture --profile dev       # -> artifacts/bench/environment-developer-regression-<utc>.json
 deploy/benchmarks/bench.sh down --profile dev          # removes containers and volumes
 
@@ -230,15 +231,21 @@ dotnet run --project tools/Opportunity.Benchmarks -- validate --bundle artifacts
 dotnet run --project tools/Opportunity.Benchmarks -- publish  --bundle artifacts/bench/<runId> --dest /mnt/opportunity-benchmarks
 dotnet run --project tools/Opportunity.Benchmarks -- gates
 dotnet run --project tools/Opportunity.Benchmarks -- schema --name result-bundle
+
+# workloads (E17-T04, query-taxonomy.md §7)
+dotnet run --project tools/Opportunity.Benchmarks -- queries --corpus-manifest <corpus>/corpus-manifest.json --seed 42 --out queries.json
+QUERIES=queries.json tools/Opportunity.Benchmarks/k6/run.sh mixed.js artifacts/bench/<k6-run>
+dotnet run --project tools/Opportunity.Benchmarks -- ingest-k6 --raw artifacts/bench/<k6-run>/k6-raw.json.gz ...
+dotnet run --project tools/Opportunity.Benchmarks -- stub-api --queries queries.json   # fake API for script validation
 ```
 
 `capture-env` on bare-metal services (no Docker): `--no-docker --postgres primary=env:PG --opensearch https://user:pass@os:9200 --rabbitmq-management env:RMQ --object-store S3=<impl> --worker indexing=4`.
 
 ## 9. Not in this ticket
 
-- Running workloads and filling scenarios: k6 workloads (E17-T04), coding→searchable probe and index-lag series
-  (E17-T06), shadow-ledger oracle (E17-T07), gate evaluator and report (E17-T08). They write bundles through
-  `BundleWriter`, which already enforces §5.1. Until E17-T04 exists there is no single "run a profile" command.
+- Filling the remaining scenario data: coding→searchable probe and index-lag series (E17-T06), shadow-ledger oracle
+  (E17-T07), gate evaluator and report (E17-T08). They write bundles through `BundleWriter`, which already enforces
+  §5.1. The k6 workloads and `ingest-k6` (E17-T04) are described in [query-taxonomy.md](query-taxonomy.md).
 - Cloud IaC (e.g. Terraform for the shapes in §3.2) waits for a sponsor (Q-03); the Compose definition is the
   reference until then.
 - Direct S3 upload from `publish`; today it publishes to a directory that is mounted or synced.

@@ -64,6 +64,31 @@ public class BundleValidatorTests
         reference.Should().Throw<BundleRejectedException>().Which.Errors.Should().Contain(e => e.Contains("requires production durability", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("T1")]
+    [InlineData("T3")]
+    public void Relaxed_durability_is_rejected_outside_the_nightly_developer_tier_Q05(string tier)
+    {
+        // Q-05: relaxed settings only on the nightly developer tier (T2); the T3 1M comparative spike runs on developer
+        // hardware but needs production-like durability.
+        DurabilityDeviation fsync = new("postgres", "primary", "fsync", "off", "on");
+        ResultBundle Relax(ResultBundle b, string t) => b with
+        {
+            Run = b.Run with { Tier = t },
+            Environment = b.Environment with
+            {
+                Postgres = [b.Environment.Postgres![0] with { Durability = b.Environment.Postgres[0].Durability with { Fsync = "off" } }],
+                Durability = new DurabilityInfo { Mode = DurabilityMode.Relaxed, Deviations = [fsync], Justification = "fsync off to save time" },
+            },
+        };
+
+        Action other = () => SampleBundle.Write(b => Relax(b, tier));
+        Action nightly = () => SampleBundle.Write(b => Relax(b, "T2"));
+
+        other.Should().Throw<BundleRejectedException>().Which.Errors.Should().Contain(e => e.Contains($"tier {tier} requires production-like durability", StringComparison.Ordinal));
+        nightly.Should().NotThrow();
+    }
+
     [Fact]
     public void Comparative_tiers_need_frozen_gates_a_clean_tree_and_three_repetitions()
     {

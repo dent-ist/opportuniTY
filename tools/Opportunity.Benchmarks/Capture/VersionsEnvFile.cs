@@ -16,6 +16,7 @@ public sealed class VersionsEnvFile
         ["RABBITMQ"] = "rabbitmq",
         ["SEAWEEDFS"] = "chrislusf/seaweedfs",
         ["TOXIPROXY"] = "ghcr.io/shopify/toxiproxy",
+        ["K6"] = "grafana/k6",
     };
 
     private VersionsEnvFile(string path, string sha256, IReadOnlyDictionary<string, string> values)

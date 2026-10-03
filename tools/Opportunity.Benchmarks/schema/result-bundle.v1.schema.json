@@ -183,7 +183,7 @@
       "additionalProperties": false,
       "required": ["name", "requests", "errors", "latency"],
       "properties": {
-        "name": { "type": "string", "minLength": 1, "description": "Gated classes: simple, complex. Also per taxonomy bucket (E17-T04), e.g. boolean, proximity-wildcard, grid-sort-coding." },
+        "name": { "type": "string", "minLength": 1, "description": "Gated classes: simple, complex. Also one per taxonomy class (E17-T04, docs/benchmarks/query-taxonomy.md), e.g. term, boolean, grid-coding, and the reviewer/bulk operations document-view, coding-write, bulk-submit." },
         "gated": { "type": "boolean" },
         "requests": { "$ref": "#/$defs/count" },
         "errors": { "$ref": "#/$defs/count" },

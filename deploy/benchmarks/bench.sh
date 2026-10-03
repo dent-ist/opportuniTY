@@ -9,7 +9,7 @@
 #   ./bench.sh ps|config|logs --profile dev|reference
 #
 #   dev        developer-regression: the Compose developer profile + compose.bench.yaml (+ compose.bench-relaxed.yaml
-#              with --relaxed, nightly only per Q-05). Project opportunity-bench-dev.
+#              with --relaxed, nightly T2 only per Q-05; never for the T3 spike). Project opportunity-bench-dev.
 #   reference  enterprise-reference: compose.reference.yaml (3 OpenSearch nodes, PostgreSQL primary + replica,
 #              RabbitMQ, SeaweedFS, API x2, worker pools). Project opportunity-ref. --infra-only skips app services.
 #   --no-ulimits  hosts that cannot raise rlimits (rootless Docker, sandboxed CI): no memlock/nofile, no heap locking.
