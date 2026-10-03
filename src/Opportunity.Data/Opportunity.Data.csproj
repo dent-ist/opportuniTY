@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Opportunity.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Migrations\Scripts\*.sql" LogicalName="Opportunity.Data.Migrations.Scripts.%(Filename)%(Extension)" />
   </ItemGroup>
 

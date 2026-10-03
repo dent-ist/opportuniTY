@@ -458,7 +458,15 @@ public sealed class CodingStoreTests(MigrationPostgresFixture postgres)
         (await db.ScalarAsync<int>("SELECT opportunity.coding_event_ensure_partitions(now() + interval '24 months')")).Should().Be(0);
         (await db.ScalarAsync<int>("SELECT opportunity.coding_event_ensure_partitions(now() + interval '25 months')")).Should().Be(1);
 
-        foreach (var table in new[] { "opportunity.coding_event", "opportunity.coding_write", "opportunity.coding_event_p" + DateTime.UtcNow.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture) })
+        // Partitions are reachable only through the parent (ADR-015 D7.4.1, V0005), including those created later.
+        foreach (var partition in new[] { DateTime.UtcNow, DateTime.UtcNow.AddMonths(25) }
+                     .Select(d => "opportunity.coding_event_p" + d.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture)))
+        {
+            (await db.ScalarAsync<bool>("SELECT has_table_privilege('opportunity_app', @t, 'SELECT, INSERT, UPDATE, DELETE')", ("t", partition)))
+                .Should().BeFalse(partition);
+        }
+
+        foreach (var table in new[] { "opportunity.coding_event", "opportunity.coding_write" })
         {
             foreach (var privilege in new[] { "UPDATE", "DELETE" })
             {
