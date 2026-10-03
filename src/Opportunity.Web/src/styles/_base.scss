@@ -47,6 +47,11 @@ pre {
   outline-offset: var(--opp-focus-ring-offset);
 }
 
+// Page headings receive focus programmatically after navigation (ADR-018 §3.4); they are not controls.
+[data-route-focus]:focus {
+  outline: none;
+}
+
 // WCAG 2.4.11: sticky headers and toasts must not hide the focused element.
 html {
   scroll-padding-block: var(--opp-space-7);

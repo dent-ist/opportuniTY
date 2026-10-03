@@ -1,0 +1,122 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.shell__header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--opp-z-sticky);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-1) var(--opp-space-3);
+  min-height: 3rem;
+  padding-inline: var(--opp-space-4);
+  background: var(--opp-color-surface);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.shell__brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding-inline: var(--opp-space-1);
+  border-radius: var(--opp-radius-md);
+  text-decoration: none;
+}
+
+.shell__divider {
+  align-self: center;
+  width: var(--opp-border-width);
+  height: 1.5rem;
+  background: var(--opp-color-border);
+}
+
+.shell__nav {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.shell__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shell__tabs > li {
+  display: flex;
+}
+
+.shell__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  min-height: 3rem;
+  padding-inline: var(--opp-space-3);
+  border: 0;
+  border-block-end: 3px solid transparent;
+  background: transparent;
+  color: var(--opp-color-text-muted);
+  font: inherit;
+  font-weight: var(--opp-font-weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.shell__tab:hover {
+  color: var(--opp-color-text);
+  background: var(--opp-color-hover);
+}
+
+.shell__tab.is-active {
+  color: var(--opp-color-text);
+  border-block-end-color: var(--opp-color-accent);
+}
+
+.shell__tab:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+.shell__user {
+  margin-inline-start: auto;
+}
+
+.shell__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.shell__main:focus {
+  outline: none;
+}
+
+.shell__ended {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-7) var(--opp-space-4);
+  text-align: center;
+}
+
+.shell__ended p {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+}
+
+.shell__ended-title {
+  font-size: var(--opp-font-size-xl);
+}
+
+@media (forced-colors: active) {
+  .shell__tab.is-active {
+    border-block-end-color: Highlight;
+  }
+}
