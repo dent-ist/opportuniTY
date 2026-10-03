@@ -34,8 +34,11 @@ public static class BundleValidator
     private const double DefaultMaxDroppedIterationsRatio = 0.005;
     private const double DefaultMaxLoadGeneratorCpuPercent = 70;
 
-    /// <summary>The only tier that may run with relaxed durability (Q-05: "nightly developer profile").</summary>
+    /// <summary>The nightly developer-regression tier (Q-05).</summary>
     public const string NightlyTier = "T2";
+
+    /// <summary>The PR smoke tier: exempt from the durability rule because it never feeds a benchmark decision (Q-46).</summary>
+    public const string PullRequestTier = "T1";
 
     public static BundleValidationReport Validate(string path, BundleValidationOptions? options = null)
     {
@@ -170,15 +173,15 @@ public static class BundleValidator
             errors.Add($"durability: declared deviation {extra} does not match the recorded settings.");
         }
 
-        // Q-05: relaxed settings only on the nightly developer tier (T2); the T3 1M comparative spike, T4 and PR runs
-        // need production-like durability even on developer hardware.
+        // Q-05/Q-46: relaxed settings only on the nightly developer tier (T2) and the PR smoke tier (T1); the T3 1M
+        // comparative spike and T4 need production-like durability even on developer hardware.
         if (reference && env.Durability.Mode == DurabilityMode.Relaxed)
         {
             errors.Add("durability: the enterprise-reference profile requires production durability; relaxed settings are allowed only on nightly developer-regression runs (tier T2, Q-05).");
         }
-        else if (env.Durability.Mode == DurabilityMode.Relaxed && bundle.Run.Tier != NightlyTier)
+        else if (env.Durability.Mode == DurabilityMode.Relaxed && bundle.Run.Tier is not (NightlyTier or PullRequestTier))
         {
-            errors.Add($"durability: tier {bundle.Run.Tier} requires production-like durability; relaxed settings are allowed only on nightly developer-regression runs (tier {NightlyTier}, Q-05).");
+            errors.Add($"durability: tier {bundle.Run.Tier} requires production-like durability; relaxed settings are allowed only on nightly developer-regression ({NightlyTier}) and PR smoke ({PullRequestTier}) runs (Q-05, Q-46).");
         }
 
         foreach (ContainerInfo container in env.Containers ?? [])

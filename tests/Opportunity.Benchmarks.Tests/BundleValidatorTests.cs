@@ -65,12 +65,12 @@ public class BundleValidatorTests
     }
 
     [Theory]
-    [InlineData("T1")]
     [InlineData("T3")]
-    public void Relaxed_durability_is_rejected_outside_the_nightly_developer_tier_Q05(string tier)
+    [InlineData("T4")]
+    public void Relaxed_durability_is_rejected_outside_the_nightly_and_PR_smoke_tiers_Q05_Q46(string tier)
     {
-        // Q-05: relaxed settings only on the nightly developer tier (T2); the T3 1M comparative spike runs on developer
-        // hardware but needs production-like durability.
+        // Q-05/Q-46: relaxed settings only on the nightly developer tier (T2) and PR smoke runs (T1); the T3 1M
+        // comparative spike runs on developer hardware but needs production-like durability.
         DurabilityDeviation fsync = new("postgres", "primary", "fsync", "off", "on");
         ResultBundle Relax(ResultBundle b, string t) => b with
         {
@@ -84,9 +84,11 @@ public class BundleValidatorTests
 
         Action other = () => SampleBundle.Write(b => Relax(b, tier));
         Action nightly = () => SampleBundle.Write(b => Relax(b, "T2"));
+        Action pullRequest = () => SampleBundle.Write(b => Relax(b, "T1"));
 
         other.Should().Throw<BundleRejectedException>().Which.Errors.Should().Contain(e => e.Contains($"tier {tier} requires production-like durability", StringComparison.Ordinal));
         nightly.Should().NotThrow();
+        pullRequest.Should().NotThrow();
     }
 
     [Fact]

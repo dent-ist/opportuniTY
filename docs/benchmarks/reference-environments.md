@@ -21,7 +21,7 @@ result bundle that carries them. Use synthetic corpora only (test strategy §7).
 | Codified as | `deploy/docker-compose/compose.yaml` + `deploy/benchmarks/compose.bench.yaml` | `deploy/benchmarks/compose.reference.yaml` |
 | Hardware | Whatever developer machine or self-hosted runner is available (Q-03); recorded, never assumed | Sponsored or rented hardware, shapes in §3. **Not provisioned yet** (Q-03): 10M/M4 waits for a sponsor |
 | Tiers | T2 nightly regression, T3 1M comparative spike (Q-03) | T4 10M validation (`E18-T07`..`T09`); T3 reruns if a sponsor arrives first |
-| Durability | Production-like by default; relaxed **only** for nightly (T2) runs and only when recorded with a justification (Q-05). T3 spike runs need production-like durability | Production-like, always. The validator rejects relaxed reference bundles (Q-05) |
+| Durability | Production-like by default; relaxed **only** for nightly (T2) and PR smoke (T1) runs, and only when recorded with a justification (Q-05, Q-46). T3 spike runs need production-like durability | Production-like, always. The validator rejects relaxed reference bundles (Q-05) |
 | Absolute latency gates (index lag ≤ 2 min, coding→searchable ≤ 1 s) | **Comparative** (Q-44): a miss disqualifies a candidate only if it is also worse than the other candidates on the same machine in the same run | **Hard** |
 | Relative gates (p95 degradation vs idle), correctness, security | Hard | Hard |
 
@@ -216,7 +216,7 @@ afterwards a change may only tighten a threshold. The gate evaluator (E17-T08) r
 
 ```bash
 # developer regression: provision, capture, destroy
-deploy/benchmarks/bench.sh up --profile dev            # add --relaxed (nightly T2 only), --no-ulimits (constrained hosts)
+deploy/benchmarks/bench.sh up --profile dev            # add --relaxed (nightly T2 / PR smoke T1 only), --no-ulimits (constrained hosts)
 deploy/benchmarks/bench.sh capture --profile dev       # -> artifacts/bench/environment-developer-regression-<utc>.json
 deploy/benchmarks/bench.sh down --profile dev          # removes containers and volumes
 
