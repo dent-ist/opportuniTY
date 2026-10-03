@@ -43,7 +43,9 @@ public sealed class CodingStoreTests(MigrationPostgresFixture postgres)
         current.DocumentVersion.Should().Be(2);
         Values(current).Should().BeEquivalentTo(new Dictionary<int, string?>
         {
-            [w.Responsive] = "true", [w.Issues] = $"[{w.Pricing}]", [w.Notes] = "\"Key memo\"",
+            [w.Responsive] = "true",
+            [w.Issues] = $"[{w.Pricing}]",
+            [w.Notes] = "\"Key memo\"",
         });
         current.Fields.Should().OnlyContain(f => f.ChangedAtVersion == 2 && f.ChangedByJobId == null && f.ChangedBy == Reviewer);
 
@@ -482,14 +484,14 @@ public sealed class CodingStoreTests(MigrationPostgresFixture postgres)
 
     private static CodingWriteRequest Bulk(
         Guid ws, Guid jobId, string key, IEnumerable<CodingTarget> targets, params CodingFieldOperation[] operations) => new()
-    {
-        WorkspaceId = ws,
-        IdempotencyKey = key,
-        Actor = new CodingActor(OtherReviewer, CodingActorType.BulkHuman),
-        JobId = jobId,
-        Documents = [.. targets],
-        Operations = operations,
-    };
+        {
+            WorkspaceId = ws,
+            IdempotencyKey = key,
+            Actor = new CodingActor(OtherReviewer, CodingActorType.BulkHuman),
+            JobId = jobId,
+            Documents = [.. targets],
+            Operations = operations,
+        };
 
     private static Dictionary<int, string?> Values(DocumentCoding coding) =>
         coding.Fields.ToDictionary(f => f.FieldId, f => f.Value?.ToJsonString());

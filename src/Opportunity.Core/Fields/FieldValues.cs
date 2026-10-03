@@ -46,53 +46,53 @@ public static class FieldValues
         switch (definition.Type)
         {
             case FieldType.Text or FieldType.Keyword:
-            {
-                var max = definition.Type == FieldType.Text ? FieldLimits.MaxTextLength : FieldLimits.MaxKeywordLength;
-                if (value is JsonArray array)
                 {
-                    if (!definition.IsMultiValue)
+                    var max = definition.Type == FieldType.Text ? FieldLimits.MaxTextLength : FieldLimits.MaxKeywordLength;
+                    if (value is JsonArray array)
                     {
-                        error = Fail("not-multi-value", $"Field {definition.Name} holds a single value.");
-                        return false;
-                    }
-
-                    var items = new List<string>(array.Count);
-                    foreach (var item in array)
-                    {
-                        if (!TryString(item, out var s) || !TryCheckText(definition, s, max, Fail, out error))
+                        if (!definition.IsMultiValue)
                         {
-                            error ??= Fail("invalid-type", "Expected an array of strings.");
+                            error = Fail("not-multi-value", $"Field {definition.Name} holds a single value.");
                             return false;
                         }
 
-                        items.Add(s);
+                        var items = new List<string>(array.Count);
+                        foreach (var item in array)
+                        {
+                            if (!TryString(item, out var s) || !TryCheckText(definition, s, max, Fail, out error))
+                            {
+                                error ??= Fail("invalid-type", "Expected an array of strings.");
+                                return false;
+                            }
+
+                            items.Add(s);
+                        }
+
+                        if (definition.Type == FieldType.Keyword
+                            && items.Distinct(StringComparer.OrdinalIgnoreCase).Count() != items.Count)
+                        {
+                            error = Fail("duplicate-value", "Keyword values must be unique (case-insensitively).");
+                            return false;
+                        }
+
+                        canonical = items.Count == 0 ? null : new JsonArray([.. items.Select(i => (JsonNode)JsonValue.Create(i))]);
+                        return true;
                     }
 
-                    if (definition.Type == FieldType.Keyword
-                        && items.Distinct(StringComparer.OrdinalIgnoreCase).Count() != items.Count)
+                    if (!TryString(value, out var single))
                     {
-                        error = Fail("duplicate-value", "Keyword values must be unique (case-insensitively).");
+                        error = Fail("invalid-type", "Expected a string.");
                         return false;
                     }
 
-                    canonical = items.Count == 0 ? null : new JsonArray([.. items.Select(i => (JsonNode)JsonValue.Create(i))]);
+                    if (!TryCheckText(definition, single, max, Fail, out error))
+                    {
+                        return false;
+                    }
+
+                    canonical = definition.IsMultiValue ? new JsonArray(JsonValue.Create(single)) : JsonValue.Create(single);
                     return true;
                 }
-
-                if (!TryString(value, out var single))
-                {
-                    error = Fail("invalid-type", "Expected a string.");
-                    return false;
-                }
-
-                if (!TryCheckText(definition, single, max, Fail, out error))
-                {
-                    return false;
-                }
-
-                canonical = definition.IsMultiValue ? new JsonArray(JsonValue.Create(single)) : JsonValue.Create(single);
-                return true;
-            }
 
             case FieldType.Integer:
                 if (value is JsonValue iv && iv.GetValueKind() == JsonValueKind.Number && iv.TryGetValue<long>(out var l)
@@ -156,32 +156,32 @@ public static class FieldValues
                 return false;
 
             case FieldType.MultiChoice:
-            {
-                if (value is not JsonArray ids)
                 {
-                    error = Fail("invalid-choice", "Expected an array of choice ids.");
-                    return false;
-                }
-
-                var set = new SortedSet<int>();
-                foreach (var item in ids)
-                {
-                    if (!TryChoiceId(item, out var cid) || !set.Add(cid))
+                    if (value is not JsonArray ids)
                     {
-                        error = Fail("invalid-choice", "Expected unique choice ids.");
+                        error = Fail("invalid-choice", "Expected an array of choice ids.");
                         return false;
                     }
 
-                    error = CheckChoice(definition, cid, choices, forAssignment, Fail);
-                    if (error is not null)
+                    var set = new SortedSet<int>();
+                    foreach (var item in ids)
                     {
-                        return false;
-                    }
-                }
+                        if (!TryChoiceId(item, out var cid) || !set.Add(cid))
+                        {
+                            error = Fail("invalid-choice", "Expected unique choice ids.");
+                            return false;
+                        }
 
-                canonical = ChoiceArray(set);
-                return true;
-            }
+                        error = CheckChoice(definition, cid, choices, forAssignment, Fail);
+                        if (error is not null)
+                        {
+                            return false;
+                        }
+                    }
+
+                    canonical = ChoiceArray(set);
+                    return true;
+                }
 
             case FieldType.User:
                 if (TryString(value, out var us) && Guid.TryParseExact(us, "D", out var userId))

@@ -140,15 +140,22 @@ public class FieldModelTests
     {
         Codes(new FieldDefinition
         {
-            Name = "Privilege Status", Type = FieldType.SingleChoice, Storage = FieldStorage.Coding,
-            IsSecurityAffecting = true, SecurityClass = SecurityClass.PrivilegeStatus,
+            Name = "Privilege Status",
+            Type = FieldType.SingleChoice,
+            Storage = FieldStorage.Coding,
+            IsSecurityAffecting = true,
+            SecurityClass = SecurityClass.PrivilegeStatus,
         }).Should().BeEmpty();
         Codes(new FieldDefinition { Name = "Privilege Status", Type = FieldType.SingleChoice, Storage = FieldStorage.Coding, IsSecurityAffecting = true })
             .Should().Contain("security-class");
         Codes(new FieldDefinition
         {
-            Name = "Wall", Type = FieldType.Keyword, Storage = FieldStorage.Column, IsSystem = true,
-            IsSecurityAffecting = true, SecurityClass = SecurityClass.EthicalWall,
+            Name = "Wall",
+            Type = FieldType.Keyword,
+            Storage = FieldStorage.Column,
+            IsSystem = true,
+            IsSecurityAffecting = true,
+            SecurityClass = SecurityClass.EthicalWall,
         }).Should().Contain("security-affecting-storage");
     }
 
