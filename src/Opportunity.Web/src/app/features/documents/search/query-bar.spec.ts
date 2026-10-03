@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideAppRouting } from '../../../app.config';
+import { CommandRegistry } from '../../../core/commands';
 import { FakeApi, provideFakeApi } from '../../../core/api/fake-api.testing';
 import type { QueryValidationRequest } from '../../../core/api/generated/models';
 import { provideOpportunityHttp } from '../../../core/api/http';
@@ -318,9 +319,24 @@ describe('Query bar (Documents search panel)', () => {
     expect(query('[role="listbox"]')).toBeNull();
   });
 
-  it('focuses the keyword box with Alt+Shift+K', async () => {
+  it('focuses the keyword box with Alt+Shift+K, or / while single-key shortcuts are on', async () => {
     await setup();
+    const keymap = await TestBed.inject(CommandRegistry).ready();
     (document.activeElement as HTMLElement | null)?.blur();
+    key('K', { altKey: true, shiftKey: true, code: 'KeyK' }, document.body);
+    expect(document.activeElement).toBe(textbox());
+
+    // In the keyword box, / is typed, not a shortcut.
+    expect(key('/', { code: 'Slash' }).defaultPrevented).toBe(false);
+    textbox().blur();
+    expect(key('/', { code: 'Slash' }, document.body).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(textbox());
+
+    // WCAG 2.1.4: with single-key shortcuts off, / does nothing; Alt+Shift+K still works.
+    keymap.singleKeyEnabled.set(false);
+    textbox().blur();
+    expect(key('/', { code: 'Slash' }, document.body).defaultPrevented).toBe(false);
+    expect(document.activeElement).not.toBe(textbox());
     key('K', { altKey: true, shiftKey: true, code: 'KeyK' }, document.body);
     expect(document.activeElement).toBe(textbox());
   });

@@ -332,6 +332,8 @@ Our own map. It follows the spirit of reviewer conventions (keyboard-only code �
 | | Apply to Family… | `Alt+Shift+F` | `⌥⇧F` | — |
 | | Shortcut cheat sheet | `Alt+Shift+/` | `⌥⇧/` | `?` |
 
+This table is implemented as the command registry's default map (`src/Opportunity.Web/src/app/core/commands/command-catalog.ts`). Rebinding, the single-key switch and the `?` cheat sheet are reached from the user menu ("Keyboard shortcuts…"), and the key map is saved to the user profile (`/api/v1/me/preferences`). The conflict matrix in docs/accessibility/wcag-2.2-aa-checklist.md marks `Alt+Shift+B`, `Alt+Shift+I` and `Alt+Shift+A` as "page first" overlaps with Chromium browser-UI keys, still to be confirmed in the M1 manual pass.
+
 ADR-018 / `E15-T04` must run a conflict matrix (Chrome, Edge, Firefox, Safari × Windows, macOS, Linux × NVDA, JAWS, VoiceOver) and may change a default if a conflict is found. If a default changes, update this table in the same PR.
 
 ---

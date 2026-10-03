@@ -12,6 +12,7 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, map, skip } from 'rxjs';
+import { CommandRegistry, cycleRegion } from '../core/commands';
 import { SessionService } from '../core/session/session';
 import { WorkspaceDirectory } from '../core/workspace/workspace-api';
 import { ActiveWorkspace } from '../core/workspace/workspace-context';
@@ -20,6 +21,7 @@ import { Button, DialogService, Icon, MENU } from '../ui';
 import { Brand } from './brand';
 import { SHELL_PATHS } from './navigation';
 import { SessionEndedDialog } from './session-ended-dialog';
+import { ShortcutDialogs } from './shortcuts/shortcut-dialogs';
 import { SkipLink } from './skip-link';
 import { UserMenu } from './user-menu';
 import { WorkspaceSwitcher } from './workspace-switcher';
@@ -77,6 +79,7 @@ export class AppShell {
   protected readonly inAdmin = computed(() => /^\/w\/[^/]+\/admin(\/|$)/.test(this.url()));
 
   constructor() {
+    this.registerShellCommands();
     effect(() => {
       if (this.sessionEnded()) untracked(() => this.onSessionEnded());
     });
@@ -87,6 +90,19 @@ export class AppShell {
         takeUntilDestroyed(),
       )
       .subscribe(() => afterNextRender(() => this.focusPageHeading(), { injector: this.injector }));
+  }
+
+  /** Keyboard commands that work on every page (familiarity guide §4); features register their own. */
+  private registerShellCommands(): void {
+    const commands = inject(CommandRegistry);
+    const shortcuts = inject(ShortcutDialogs);
+    commands.start();
+    commands.handle('help.shortcuts', () => void shortcuts.help());
+    const hasRegions = () => this.document.querySelector('[data-command-region]') !== null;
+    commands.handle('region.next', () => cycleRegion(this.document, 1), { enabled: hasRegions });
+    commands.handle('region.previous', () => cycleRegion(this.document, -1), {
+      enabled: hasRegions,
+    });
   }
 
   protected signIn(): void {

@@ -27,6 +27,7 @@ public static class AuthorizationRegistration
             .AddPolicy(InstallationAuthorizationConventions.PolicyName(InstallationPermissions.ManageWorkspaces), policy => policy
                 .RequireAuthenticatedUser()
                 .AddRequirements(new InstallationPermissionRequirement(InstallationPermissions.ManageWorkspaces)));
+        services.AddAuthorizationBuilder().AddPolicy(OwnProfileAuthorization.PolicyName, OwnProfileAuthorization.Policy);
         return services;
     }
 }
