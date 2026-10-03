@@ -224,9 +224,10 @@ architectural consequences.
 2. **Layout:** left browser (saved searches and folders), centre document list (dense grid), document viewer with
    Extracted Text / Native / Image / Production modes, coding pane on the right, related-items pane. It is built from
    nested `opp-split-pane`s; every pane is resizable by pointer and keyboard and collapsible where it is optional.
-3. **Persistent pane layouts:** pane sizes and collapsed state persist per user under a stable `storageKey`. Today
-   `PreferenceStorage` keeps them in the browser; `E15-T03` moves them to the user-preferences API so a layout follows
-   the reviewer across machines. Grid column layouts follow the same rule (E16).
+3. **Persistent pane layouts:** pane sizes and collapsed state persist per user under a stable `storageKey`.
+   `PreferenceStorage` saves the profile keys (`ui`, `shortcuts`, `pane.*`, `grid.*`) to the user-preferences API
+   (`/api/v1/me/preferences`, `E15-T03`) so a layout follows the reviewer across machines; the browser keeps a cache
+   for the first paint. Grid column layouts follow the same rule (E16).
 4. **Dense by default for review:** the review workspace uses compact density for the grid; comfortable remains the
    default elsewhere and is a user preference.
 5. **Keyboard-driven review:** every review action has a command and binding through the command registry

@@ -18,6 +18,7 @@ public static class AuthorizationRegistration
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAuthorizationService, AuthorizationService>();
+        services.AddAuthorizationBuilder().AddPolicy(OwnProfileAuthorization.PolicyName, OwnProfileAuthorization.Policy);
         return services;
     }
 }

@@ -60,6 +60,7 @@ export type { TextSpan } from './models/text-span';
 export type { TotalCount } from './models/total-count';
 export type { TotalRelation } from './models/total-relation';
 export type { UnmappedColumnPolicy } from './models/unmapped-column-policy';
+export type { UserPreferencesResource } from './models/user-preferences-resource';
 export type { WorkspaceResource } from './models/workspace-resource';
 export type { WorkspaceResourceStatus } from './models/workspace-resource-status';
 
@@ -85,3 +86,9 @@ export type { DeleteImportProfile$Params as DeleteImportProfile$Params } from '.
 export { deleteImportProfile as deleteImportProfile } from './fn/import/delete-import-profile';
 export type { PreviewImportMapping$Params as PreviewImportMapping$Params } from './fn/import/preview-import-mapping';
 export { previewImportMapping as previewImportMapping } from './fn/import/preview-import-mapping';
+export type { GetUserPreferences$Params as GetUserPreferences$Params } from './fn/preferences/get-user-preferences';
+export { getUserPreferences as getUserPreferences } from './fn/preferences/get-user-preferences';
+export type { SetUserPreference$Params as SetUserPreference$Params } from './fn/preferences/set-user-preference';
+export { setUserPreference as setUserPreference } from './fn/preferences/set-user-preference';
+export type { DeleteUserPreference$Params as DeleteUserPreference$Params } from './fn/preferences/delete-user-preference';
+export { deleteUserPreference as deleteUserPreference } from './fn/preferences/delete-user-preference';

@@ -1,0 +1,115 @@
+.help__context {
+  margin: 0 0 var(--opp-space-2);
+}
+
+.help__group {
+  margin-top: var(--opp-space-4);
+}
+
+.help__group-title {
+  margin: 0 0 var(--opp-space-2);
+  font-size: var(--opp-font-size-md);
+}
+
+.help__list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--opp-space-1) var(--opp-space-4);
+  margin: 0;
+}
+
+.help__row {
+  display: contents;
+}
+
+.help__list dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-1);
+  justify-content: flex-end;
+  margin: 0;
+}
+
+.help__where,
+.help__none {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.help__where {
+  display: block;
+}
+
+.settings__hint {
+  margin: var(--opp-space-1) 0 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.settings__group {
+  margin-top: var(--opp-space-4);
+}
+
+.settings__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-1) var(--opp-space-3);
+  align-items: center;
+  padding: var(--opp-space-2) 0;
+  border-top: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.settings__command {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.settings__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-1);
+  align-items: center;
+}
+
+.settings__chip {
+  display: inline-flex;
+  gap: var(--opp-space-1);
+  align-items: center;
+}
+
+.settings__chip--off kbd {
+  text-decoration: line-through;
+}
+
+.settings__actions {
+  display: flex;
+  gap: var(--opp-space-1);
+}
+
+.settings__capture {
+  flex-basis: 100%;
+}
+
+.settings__capture-box {
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) dashed var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+  background: var(--opp-color-surface-sunken);
+}
+
+.settings__capture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+.settings__error {
+  margin: var(--opp-space-1) 0 0;
+  color: var(--opp-color-danger-text);
+}

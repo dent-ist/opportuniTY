@@ -22,7 +22,7 @@ interface StoredLayout {
 /**
  * Two resizable panes with a WAI-ARIA window splitter between them. Nest split panes to build the
  * review layout (ADR-018 §9): browser | (list / viewer) | coding pane. Sizes are percentages of the
- * container and persist per `storageKey` through `PreferenceStorage` (moved to the user profile by E15-T03).
+ * container and persist per `storageKey` through `PreferenceStorage` (saved to the user profile, E15-T03).
  *
  * Keyboard on the splitter: Arrow keys move it by 2 % (Shift: 10 %), Home/End jump to min/max, Enter
  * collapses/restores the sized pane when `collapsible`. Dragging is optional (WCAG 2.5.7); double-click

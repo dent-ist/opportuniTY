@@ -312,8 +312,12 @@ describe('Application shell', () => {
     harness.routeNativeElement!.querySelector<HTMLButtonElement>('opp-user-menu button')!.click();
     harness.detectChanges();
     const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items.map((i) => i.textContent?.trim())).toEqual(['About opportuniTY', 'Sign out']);
-    items[1].click();
+    expect(items.map((i) => i.textContent?.trim())).toEqual([
+      'Keyboard shortcuts…',
+      'About opportuniTY',
+      'Sign out',
+    ]);
+    items[2].click();
     expect(logout).toHaveBeenCalled();
   });
 
