@@ -131,7 +131,7 @@ public class ObjectStoreFixture : DependencyFixture
                 await DeleteBucketAsync(probe).ConfigureAwait(false);
                 return;
             }
-            catch (Exception ex) when (ex is AmazonServiceException or HttpRequestException or TaskCanceledException or IOException)
+            catch (Exception ex) when (ex is AmazonServiceException or HttpRequestException or TaskCanceledException or TimeoutException or IOException)
             {
                 if (stopwatch.Elapsed > budget)
                 {
