@@ -21,6 +21,8 @@ export type { GetSearchPage$Params as GetSearchPage$Params } from './fn/search/g
 export { getSearchPage as getSearchPage } from './fn/search/get-search-page';
 export type { GetJob$Params as GetJob$Params } from './fn/jobs/get-job';
 export { getJob as getJob } from './fn/jobs/get-job';
+export type { ListFields$Params as ListFields$Params } from './fn/fields/list-fields';
+export { listFields as listFields } from './fn/fields/list-fields';
 export type { ListImportTargets$Params as ListImportTargets$Params } from './fn/import/list-import-targets';
 export { listImportTargets as listImportTargets } from './fn/import/list-import-targets';
 export type { ListImportProfiles$Params as ListImportProfiles$Params } from './fn/import/list-import-profiles';
@@ -53,3 +55,9 @@ export type { GetDocumentPageThumbnail$Jpeg$Params as GetDocumentPageThumbnail$J
 export { getDocumentPageThumbnail$Jpeg as getDocumentPageThumbnail$Jpeg } from './fn/document-content/get-document-page-thumbnail-jpeg';
 export type { RecordDocumentView$Params as RecordDocumentView$Params } from './fn/document-content/record-document-view';
 export { recordDocumentView as recordDocumentView } from './fn/document-content/record-document-view';
+export type { GetUserPreferences$Params as GetUserPreferences$Params } from './fn/preferences/get-user-preferences';
+export { getUserPreferences as getUserPreferences } from './fn/preferences/get-user-preferences';
+export type { SetUserPreference$Params as SetUserPreference$Params } from './fn/preferences/set-user-preference';
+export { setUserPreference as setUserPreference } from './fn/preferences/set-user-preference';
+export type { DeleteUserPreference$Params as DeleteUserPreference$Params } from './fn/preferences/delete-user-preference';
+export { deleteUserPreference as deleteUserPreference } from './fn/preferences/delete-user-preference';

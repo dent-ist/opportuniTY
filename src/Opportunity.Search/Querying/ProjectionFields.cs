@@ -13,10 +13,11 @@ public static class ProjectionFields
     /// <summary>keyword, <c>Guid.ToString("D")</c>, unique per workspace: the post-filter key and the sort tie-breaker.</summary>
     public const string DocumentId = "documentId";
 
-    /// <summary>keyword with normalizer; <see cref="ControlNumberSort"/> is the exact-case sort sub-field.</summary>
+    /// <summary>keyword with normalizer; <see cref="ControlNumberSort"/> is the natural-sort key.</summary>
     public const string ControlNumber = "controlNumber";
 
-    public const string ControlNumberSort = "controlNumber.sort";
+    /// <summary>Top-level natural-sort key (ADR-009 R5), written by the projection builder (projection v2).</summary>
+    public const string ControlNumberSort = "controlNumberSort";
 
     /// <summary>keyword, multi-valued, see <see cref="SecurityTags"/>. Injected only, never user-addressable (ADR-007).</summary>
     public const string SecurityTags = "securityTags";
