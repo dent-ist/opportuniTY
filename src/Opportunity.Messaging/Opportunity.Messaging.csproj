@@ -1,8 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>RabbitMQ transport adapters.</Description>
+    <Description>RabbitMQ transport adapters. The only project that references RabbitMQ.Client (ADR-019).</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />

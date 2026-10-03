@@ -1,0 +1,20 @@
+{
+  "messageId": "01923f6e-4c1a-7b2e-9a3d-5e6f7a8b9c0d",
+  "messageType": "jobs.jobChunk",
+  "schemaVersion": "1.0",
+  "workspaceId": "6f1c2b3a-4d5e-4f60-8a9b-0c1d2e3f4a5b",
+  "jobId": "0b6c7d8e-9f01-4a23-b456-789abcdef012",
+  "correlationId": "req-7c9e6679",
+  "causationId": "01923f6e-0000-7000-8000-000000000001",
+  "idempotencyKey": "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff0000000011111111",
+  "createdAt": "2026-10-02T14:03:22.123Z",
+  "attempt": 1,
+  "headers": {
+    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+  },
+  "payload": {
+    "chunkId": "5e4d3c2b-1a09-4f8e-b7d6-c5b4a3928170",
+    "sequence": 7,
+    "operation": "bulkCodingChunk"
+  }
+}

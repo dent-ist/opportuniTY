@@ -23,8 +23,9 @@ One machine, one of everything (architecture baseline §16/§29 developer regres
   referenced as `tag@digest`, never `latest`. Compose reads it through `--env-file ../../versions.env`; the helper
   script always passes it.
 - **Start order** is enforced with `depends_on`: postgres, opensearch and rabbitmq must be `service_healthy` before
-  the migrator runs (bootstrap steps for index templates and exchanges will run there); api and worker wait for
-  `migrator: service_completed_successfully`; web waits for a healthy api.
+  the migrator runs (it declares the RabbitMQ topology from `ConnectionStrings__RabbitMq`: work exchange, one quorum
+  queue per lane and worker type, retry tiers, DLX/`*.dlq` and parking queues; index templates follow with E07); api
+  and worker wait for `migrator: service_completed_successfully`; web waits for a healthy api.
 - **Object store**: the filesystem provider on the named volume `objects`, shared by api and worker (ADR-020 rule 1).
   For S3 semantics, start SeaweedFS with `COMPOSE_PROFILES=s3` and set `OPPORTUNITY_OBJECT_STORAGE=S3` in `.env`.
 - **No Redis/Valkey** (§16, §34). CI fails if one appears.

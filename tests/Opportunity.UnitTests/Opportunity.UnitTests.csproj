@@ -19,6 +19,11 @@
     <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Import\Opportunity.Import.csproj" />
     <ProjectReference Include="..\..\tools\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Messaging\Opportunity.Messaging.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Messaging/Golden/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

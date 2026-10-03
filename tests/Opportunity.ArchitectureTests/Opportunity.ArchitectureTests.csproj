@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Production\Opportunity.Production.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Hosting\Opportunity.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Api\Opportunity.Api.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Migrator\Opportunity.Migrator.csproj" />
   </ItemGroup>
 
 </Project>
