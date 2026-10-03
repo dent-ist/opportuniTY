@@ -343,6 +343,16 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
         var pageSetId = await db.InsertPageSetAsync(ws, document.DocumentId);
         var instant = new DateTimeOffset(2025, 3, 1, 14, 5, 0, TimeSpan.FromHours(-5));
 
+        // Group and thread rows exist before a document references them (V0016 foreign keys).
+        var groupId = Guid.NewGuid();
+        var threadId = Guid.NewGuid();
+        await db.ExecuteAsync(
+            """
+            INSERT INTO opportunity.duplicate_group (workspace_id, duplicate_group_id, source, hash_kind, hash_value) VALUES (@ws, @g, 1, 1, 'DG-1');
+            INSERT INTO opportunity.email_thread (workspace_id, email_thread_id, source, thread_key) VALUES (@ws, @t, 1, 'T-1');
+            """,
+            ("ws", ws), ("g", groupId), ("t", threadId));
+
         var changes = new (string Field, Action<Document> Change)[]
         {
             ("BegBates", d => d.BegBates = "ABC000001"),
@@ -350,15 +360,16 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             ("BegAttach", d => d.BegAttach = "D-0001"),
             ("EndAttach", d => d.EndAttach = "D-0003"),
             ("FamilyStatus", d => d.FamilyStatus = FamilyStatus.Resolved),
-            ("DuplicateGroupId", d => d.DuplicateGroupId = Guid.NewGuid()),
+            ("DuplicateGroupId", d => d.DuplicateGroupId = groupId),
             ("IsDuplicatePrimary", d => d.IsDuplicatePrimary = true),
-            ("EmailThreadId", d => { d.EmailThreadId = Guid.NewGuid(); d.EmailThreadSource = EmailThreadSource.Upstream; }),
+            ("EmailThreadId", d => { d.EmailThreadId = threadId; d.EmailThreadSource = EmailThreadSource.Upstream; }),
             ("EmailThreadSource", d => d.EmailThreadSource = EmailThreadSource.ConversationIndex),
             ("Md5", d => d.Md5 = new byte[16]),
             ("Sha1", d => d.Sha1 = new byte[20]),
             ("Sha256", d => d.Sha256 = SHA256.HashData([1])),
             ("Sha256 bytes", d => d.Sha256 = SHA256.HashData([2])),
-            ("UpstreamDedupeHash", d => d.UpstreamDedupeHash = "0a1b2c"),
+            ("UpstreamDedupeHash", d => { d.UpstreamDedupeHash = "0a1b2c"; d.UpstreamDedupeHashKind = DuplicateHashKind.UpstreamDedupeHash; }),
+            ("UpstreamDedupeHashKind", d => d.UpstreamDedupeHashKind = DuplicateHashKind.UpstreamEmailHash),
             ("FileName", d => d.FileName = "a.msg"),
             ("FileExtension", d => d.FileExtension = "msg"),
             ("FileType", d => d.FileType = "Email"),

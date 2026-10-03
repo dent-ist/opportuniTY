@@ -295,6 +295,44 @@ public sealed class CompiledMapping
             return Cell(result.Status, JsonValue.Create(hash), hash != result.Value.GetValue<string>(), null, null);
         }
 
+        if (target.Structural is StructuralTarget.DedupeHash or StructuralTarget.EmailHash && result.Value is not null)
+        {
+            // ADR-009 R17: upstream hashes are stored as lower-case hex; any digest length up to SHA-512.
+            var original = result.Value.GetValue<string>();
+            var hash = original.ToLowerInvariant();
+            if (hash.Length > 128 || !hash.All(char.IsAsciiHexDigit))
+            {
+                return Cell(CoercionStatus.Error, null, false, null,
+                    new CellError("invalid-hash", $"{target.Label} must be 1–128 hexadecimal digits."));
+            }
+
+            return Cell(result.Status, JsonValue.Create(hash), result.KeepRaw || hash != original, null, null);
+        }
+
+        if (target.Structural is StructuralTarget.DuplicateGroupId or StructuralTarget.EmailThreadId && result.Value is not null
+            && result.Value.GetValue<string>().Length > RelationshipIds.MaxUpstreamValueLength)
+        {
+            return Cell(CoercionStatus.Error, null, false, null,
+                new CellError("identifier-too-long", $"{target.Label} is longer than {RelationshipIds.MaxUpstreamValueLength} characters."));
+        }
+
+        if (target.FieldId == SystemFields.ConversationIndex && result.Value is not null)
+        {
+            var original = result.Value.GetValue<string>();
+            if (!Core.Documents.ConversationIndex.TryNormalize(original, out var hex, out var fromBase64))
+            {
+                return Cell(CoercionStatus.Error, null, false, null, new CellError("invalid-conversation-index",
+                    $"{target.Label} must be hexadecimal or base64 of at least {Core.Documents.ConversationIndex.HeaderBytes} bytes."));
+            }
+
+            if (fromBase64)
+            {
+                warnings.Add($"{target.Label} was base64; stored as hexadecimal.");
+            }
+
+            return Cell(result.Status, JsonValue.Create(hex), result.KeepRaw || hex != original, null, null);
+        }
+
         if (target.Structural == StructuralTarget.ParentId && result.Value is not null)
         {
             // Parent IDs reference control numbers, so they take the same import prefix.

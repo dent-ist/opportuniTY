@@ -41,6 +41,9 @@ internal static class TestAuthentication
     /// <summary>Comma-separated IdP groups of the signed-in user.</summary>
     public const string GroupsHeader = "X-Test-Groups";
 
+    /// <summary>Comma-separated <c>amr</c> values of the signed-in user (e.g. to satisfy an MFA requirement).</summary>
+    public const string AmrHeader = "X-Test-Amr";
+
     /// <summary>A sub-group of the workspace routes whose endpoints need membership only (test probe endpoints).</summary>
     public static RouteGroupBuilder MemberOnly(this ApiRouteGroups routes) =>
         routes.Workspace.MapGroup(string.Empty).RequireWorkspaceMember();
@@ -119,6 +122,11 @@ internal static class TestAuthentication
             if (Request.Headers.TryGetValue(GroupsHeader, out var groups))
             {
                 claims.AddRange(groups.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries).Select(g => new Claim("groups", g)));
+            }
+
+            if (Request.Headers.TryGetValue(AmrHeader, out var amr))
+            {
+                claims.AddRange(amr.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries).Select(a => new Claim("amr", a)));
             }
 
             var identity = new ClaimsIdentity(claims, TestAuthentication.Scheme, "name", "groups");

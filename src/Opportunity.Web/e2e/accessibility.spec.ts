@@ -50,6 +50,20 @@ for (const theme of THEMES) {
       });
     }
 
+    test('keyboard shortcut dialogs open', async ({ page }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      await page.locator('main#main').focus();
+      await page.keyboard.press('Shift+Slash');
+      const help = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+      await expect(help).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await help.getByRole('button', { name: 'Customise shortcuts…' }).click();
+      await expect(
+        page.getByRole('dialog', { name: 'Customise keyboard shortcuts' }),
+      ).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
     for (const popup of POPUPS) {
       test(`${popup.name} open`, async ({ page }, testInfo) => {
         await openPage(page, popup.path);

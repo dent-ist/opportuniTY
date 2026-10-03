@@ -130,7 +130,7 @@ public sealed class ImportMappingApiTests(MigrationPostgresFixture postgres)
         Cell(rows[1], "DATESENT").GetProperty("error").ValueKind.Should().Be(JsonValueKind.Null);
         Cell(rows[1], "Confidential").GetProperty("error").GetProperty("code").GetString().Should().Be("invalid-boolean");
         first.GetProperty("newFields").EnumerateArray().Select(f => f.GetProperty("name").GetString())
-            .Should().BeEquivalentTo(["Custodian", "All Custodians", "Confidential Flag"]);
+            .Should().BeEquivalentTo(["Custodian", "Confidential Flag"], "All Custodians is a system field (E09-T02)");
 
         // Save as Import profile.
         var effective = JsonNode.Parse(first.GetProperty("effectiveProfile").GetRawText());

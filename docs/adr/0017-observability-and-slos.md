@@ -125,6 +125,8 @@ file name into a third-party backend.
 | `messaging.client.consumed.messages` | counter | {message} | same as above | `E19-T04` `WorkerTelemetry` |
 | `opportunity.outbox.pending` | gauge | {record} | `opportunity.lane` | `E06-T04` dispatcher |
 | `opportunity.outbox.oldest_age` | gauge | s | `opportunity.lane` | `E06-T04` dispatcher |
+| `opportunity.outbox.publish_latency` | histogram | s | `opportunity.lane` | `E06-T04` dispatcher (commit → broker confirm) |
+| `opportunity.dispatcher.published` | counter | {message} | destination, `opportunity.outcome` (confirmed, unconfirmed) | `E06-T04` dispatcher |
 | `opportunity.queue.depth` | gauge | {message} | destination, `opportunity.queue.state` (ready, unacked, dlq) | `E06-T01` |
 | `opportunity.queue.consumers` | gauge | {consumer} | destination | `E06-T01` |
 | `opportunity.dlq.messages` | counter | {message} | destination, `error.type` | `E06-T06` dead-letter recorder |
@@ -137,6 +139,7 @@ file name into a third-party backend.
 | `opportunity.index.chunk_tasks` | gauge | {task} | `opportunity.status`, `opportunity.lane` | `E07-T06` |
 | `opportunity.index.chunk_task.oldest_age` | gauge | s | `opportunity.status`, `opportunity.lane` | `E07-T06` |
 | `opportunity.search.request.duration` | histogram | s | `opportunity.search.class` (simple, complex), `opportunity.outcome` | `E07-T07` |
+| `opportunity.search.post_filter.dropped` | counter | {document} | `opportunity.search.drop_reason` (PDP reason, `integrity`) | `E07-T05` (Q-12 page post-filter) |
 | `opportunity.jobs` | counter | {job} | `opportunity.job.type`, `opportunity.status` | `E06-T05` |
 | `opportunity.jobs.active` | up-down counter | {job} | `opportunity.job.type` | `E06-T05` |
 | `opportunity.job.chunks` | counter | {chunk} | `opportunity.job.type`, `opportunity.outcome`, `error.type` | `E06-T05` |

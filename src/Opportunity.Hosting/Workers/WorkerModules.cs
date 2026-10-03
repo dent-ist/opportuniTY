@@ -5,6 +5,8 @@ using Microsoft.Extensions.Hosting;
 using Opportunity.Data.Audit;
 using Opportunity.Data.SearchWork;
 using Opportunity.Jobs;
+using Opportunity.Jobs.Dispatch;
+using Opportunity.Messaging;
 
 namespace Opportunity.Hosting.Workers;
 
@@ -29,14 +31,32 @@ public static class WorkerModuleCatalog
             services.AddImportWorker(configuration);
         }
 
-        // Audit (ADR-013 §1.1) and coding-event partitions are created ahead by the dispatcher (E14-T01), and so are the
-        // search work day partitions, with their retention and lost-work recovery (E06-T03, ADR-001 §1 R4, §6.3).
         if (type == WorkerTypes.Dispatcher)
         {
-            services.AddPartitionMaintenance();
-            services.AddPostgresSearchWorkStore();
-            services.AddSearchWorkHousekeeping();
+            AddDispatcher(services, configuration);
         }
+    }
+
+    private static void AddDispatcher(IServiceCollection services, IConfiguration configuration)
+    {
+        // Audit (ADR-013 §1.1) and coding-event partitions are created ahead by the dispatcher (E14-T01), and so are the
+        // search work day partitions, with their retention and lost-work recovery (E06-T03, ADR-001 §1 R4, §6.3).
+        services.AddPartitionMaintenance();
+        services.AddPostgresSearchWorkStore();
+        services.AddSearchWorkHousekeeping();
+
+        // Job chunk leases are swept (ADR-010 §3.3) and SearchOutbox rows, IndexChunkTasks and job chunks are published
+        // (E06-T04, ADR-001 §6) by the dispatcher. Each loop resolves its stores lazily: a dispatcher without PostgreSQL
+        // or RabbitMQ configured reports the loop disabled instead of failing to start.
+        services.AddPostgresJobChunkStore();
+        services.AddJobLeaseSweeper();
+        if (!string.IsNullOrWhiteSpace(configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)))
+        {
+            services.AddRabbitMqMessaging(RabbitMqOptions.Bind(configuration));
+            services.AddRabbitMqQueueMetrics();
+        }
+
+        services.AddOutboxDispatcher(configuration.GetSection(OutboxDispatcherOptions.SectionName).Get<OutboxDispatcherOptions>());
     }
 
     private static void AddPlaceholder(IServiceCollection services, string type) =>

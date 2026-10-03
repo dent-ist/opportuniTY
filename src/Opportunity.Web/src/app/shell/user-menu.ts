@@ -11,6 +11,7 @@ import {
 import { SessionService } from '../core/session/session';
 import { Icon, MENU, ToastService } from '../ui';
 import { PRODUCT_NAME, SHELL_PATHS } from './navigation';
+import { ShortcutDialogs } from './shortcuts/shortcut-dialogs';
 
 const THEME_LABELS: Record<Theme, string> = {
   system: 'Match system',
@@ -23,7 +24,7 @@ const DENSITY_LABELS: Record<Density, string> = {
   compact: 'Compact',
 };
 
-/** The signed-in user's menu: display preferences, About, Sign out (familiarity guide §2.2). */
+/** The signed-in user's menu: display preferences, keyboard shortcuts, About, Sign out (familiarity guide §2.2). */
 @Component({
   selector: 'opp-user-menu',
   imports: [Icon, RouterLink, ...MENU],
@@ -67,6 +68,14 @@ const DENSITY_LABELS: Record<Density, string> = {
           }
         </div>
         <div class="opp-menu__separator" role="separator"></div>
+        <button
+          type="button"
+          cdkMenuItem
+          class="opp-menu__item"
+          (cdkMenuItemTriggered)="openShortcuts()"
+        >
+          Keyboard shortcuts…
+        </button>
         <a cdkMenuItem class="opp-menu__item" [routerLink]="about">About {{ productName }}</a>
         <button
           type="button"
@@ -86,6 +95,7 @@ export class UserMenu {
   protected readonly prefs = inject(UiPreferences);
   private readonly session = inject(SessionService);
   private readonly toasts = inject(ToastService);
+  private readonly shortcuts = inject(ShortcutDialogs);
 
   protected readonly productName = PRODUCT_NAME;
   protected readonly about = SHELL_PATHS.about;
@@ -106,6 +116,10 @@ export class UserMenu {
       .map((part) => part[0].toUpperCase())
       .join(''),
   );
+
+  protected openShortcuts(): void {
+    void this.shortcuts.settings();
+  }
 
   protected async signOut(): Promise<void> {
     if (this.signingOut()) return;

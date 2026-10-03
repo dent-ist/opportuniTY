@@ -62,7 +62,6 @@ public class ImportProfileTests
         // The first load created the proposed fields; the second load finds them.
         var catalog = Catalog(
             Custom(1000, "Custodian", FieldType.Keyword),
-            Custom(1001, "All Custodians", FieldType.Keyword, multi: true),
             Custom(1002, "Vendor Flag", FieldType.Boolean));
         var second = Concordance(FirstVolumeHeader, ["VOL002-0001", "VOL002-0001", "Doe", "Doe;Doe", "12/01/2019", "11:00:00", "N"]);
 

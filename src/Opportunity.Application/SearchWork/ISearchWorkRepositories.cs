@@ -88,6 +88,9 @@ public interface ISearchWorkMaintenance
 
     Task<SearchWorkBacklog> GetBacklogAsync(Guid workspaceId, CancellationToken cancellationToken = default);
 
+    /// <summary>SearchOutbox backlog of one workspace per lane (lanes without rows are left out).</summary>
+    Task<IReadOnlyList<OutboxLaneBacklog>> GetOutboxLaneBacklogAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+
     /// <summary>Workspaces whose work the dispatcher and the recovery visit (every workspace not yet purged).</summary>
     Task<IReadOnlyList<Guid>> GetWorkspacesAsync(CancellationToken cancellationToken = default);
 

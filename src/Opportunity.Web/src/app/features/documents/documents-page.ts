@@ -1,4 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, signal, viewChild } from '@angular/core';
+import {
+  CommandRegionDirective,
+  CommandRegistry,
+  CommandScopeDirective,
+} from '../../core/commands';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import { EmptyState } from '../../ui';
 import { QueryBar, QuerySubmission } from './search/query-bar';
@@ -8,17 +13,18 @@ import { QueryBar, QuerySubmission } from './search/query-bar';
  * the keyword query bar (E16-T01); the conditions builder, the document list (E16-T02) and review mode
  * follow with E16. Until the search endpoint exists a valid search is acknowledged, not run.
  *
- * Keyboard: Alt+Shift+K (⌥⇧K) focuses the keyword search (guide §4).
+ * Keyboard (guide §4, command registry E15-T03): "Focus keyword search" (Alt+Shift+K, or `/` while single-key
+ * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel and the list.
  */
 @Component({
   selector: 'opp-documents-page',
-  imports: [EmptyState, QueryBar],
+  imports: [CommandRegionDirective, CommandScopeDirective, EmptyState, QueryBar],
   template: `<h1 class="documents__title">Documents</h1>
-    <section class="documents__search" aria-labelledby="documents-search-heading">
+    <section class="documents__search" aria-labelledby="documents-search-heading" oppCommandRegion>
       <h2 id="documents-search-heading" class="opp-visually-hidden">Search</h2>
       <opp-query-bar (search)="lastSearch.set($event)" />
     </section>
-    <section aria-label="Document list">
+    <section aria-label="Document list" oppCommandRegion oppCommandScope="grid">
       @if (lastSearch(); as search) {
         <opp-empty-state
           title="Document list not available yet"
@@ -41,23 +47,13 @@ import { QueryBar, QuerySubmission } from './search/query-bar';
     </section>`,
   styleUrl: './documents-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '(document:keydown)': 'onShortcut($event)' },
 })
 export class DocumentsPage {
   protected readonly context = inject(WorkspaceContext);
   protected readonly lastSearch = signal<QuerySubmission | null>(null);
   private readonly queryBar = viewChild.required(QueryBar);
 
-  protected onShortcut(event: KeyboardEvent): void {
-    if (
-      event.altKey &&
-      event.shiftKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      event.code === 'KeyK'
-    ) {
-      event.preventDefault();
-      this.queryBar().focus();
-    }
+  constructor() {
+    inject(CommandRegistry).handle('search.focus', () => this.queryBar().focus());
   }
 }

@@ -11,8 +11,8 @@ import { CursorPageOfImportResource } from '../../models/cursor-page-of-import-r
 
 export interface ListImports$Params {
   workspaceId: string;
-  Limit?: number | string;
-  Cursor?: string;
+  limit?: number | string;
+  cursor?: string;
 }
 
 export function listImports(
@@ -24,8 +24,8 @@ export function listImports(
   const rb = new RequestBuilder(rootUrl, listImports.PATH, 'get');
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
-    rb.query('Limit', params.Limit, {});
-    rb.query('Cursor', params.Cursor, {});
+    rb.query('limit', params.limit, {});
+    rb.query('cursor', params.cursor, {});
   }
 
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(

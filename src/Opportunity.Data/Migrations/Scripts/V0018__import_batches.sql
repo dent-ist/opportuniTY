@@ -1,4 +1,4 @@
--- V0013: import batches, their row membership and row-level outcomes (E08-T03).
+-- V0018: import batches, their row membership and row-level outcomes (E08-T03).
 -- Binding: ADR-010 §4 (ImportRows membership: ImportBatchMember rows written by the import chunk's own transaction),
 -- §5 (idempotency), §6 (500 rows per chunk); ADR-009 R3/R4 (control numbers unique per workspace, never reused);
 -- ADR-011 (the DAT lives in object storage under ws/{id}/imports/...; rows hold its logical key, no file content);

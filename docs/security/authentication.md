@@ -30,6 +30,7 @@ Browser (SPA, no tokens)              API (BFF)                               Id
 | `POST /bff/logout` | session + CSRF | Ends the session; returns `{ "endSessionUrl": "…" }` (the IdP end-session URL with `client_id` and `post_logout_redirect_uri = <public origin>/`) |
 | `POST /bff/backchannel-logout` | IdP-signed `logout_token` | OpenID Connect Back-Channel Logout 1.0. Register `https://<api>/bff/backchannel-logout` at the IdP |
 | `GET /api/v1/me` | session | The signed-in user (`userId`, `displayName`, `email`, `groups`, `mfa`, `sessionExpiresAt`); 401 problem otherwise |
+| `GET /api/v1/me/preferences`, `PUT`/`DELETE /api/v1/me/preferences/{key}` | session + `OwnProfile` policy (+ CSRF on unsafe methods) | The caller's UI preferences (E15-T03: key map, theme, density, pane sizes). The user id comes only from the session, never from the route or body, so no user can reach another user's preferences. Values are opaque client JSON (≤ 16 KiB each, ≤ 100 keys), carry no workspace data and are not audited |
 
 The `/bff` routes are browser-navigation and protocol endpoints and are not in the versioned OpenAPI document.
 Every other endpoint requires a session (authorization fallback policy) unless it is explicitly anonymous (health

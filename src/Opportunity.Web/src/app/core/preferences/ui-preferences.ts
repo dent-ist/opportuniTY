@@ -1,4 +1,12 @@
-import { DOCUMENT, Injectable, effect, inject, signal } from '@angular/core';
+import {
+  DOCUMENT,
+  Injectable,
+  computed,
+  effect,
+  inject,
+  linkedSignal,
+  untracked,
+} from '@angular/core';
 import { PreferenceStorage } from './preference-storage';
 
 export type Theme = 'system' | 'light' | 'dark' | 'high-contrast';
@@ -16,16 +24,24 @@ interface Stored {
   locale?: DisplayLocale;
 }
 
-/** Theme, density and display locale as signals, applied to `<html>` as `data-theme` / `data-density`. */
+/**
+ * Theme, density and display locale as signals, applied to `<html>` as `data-theme` / `data-density`. They
+ * follow the user profile (`PreferenceStorage`): a value loaded from the server after sign-in replaces the
+ * cached one, and a change made here is saved to the profile.
+ */
 @Injectable({ providedIn: 'root' })
 export class UiPreferences {
   private readonly storage = inject(PreferenceStorage);
   private readonly root = inject(DOCUMENT).documentElement;
-  private readonly stored = this.storage.read<Stored>('ui') ?? {};
+  private readonly stored = computed(() => this.storage.read<Stored>('ui') ?? {});
 
-  readonly theme = signal<Theme>(oneOf(this.stored.theme, THEMES, 'system'));
-  readonly density = signal<Density>(oneOf(this.stored.density, DENSITIES, 'comfortable'));
-  readonly locale = signal<DisplayLocale>(oneOf(this.stored.locale, DISPLAY_LOCALES, 'en-US'));
+  readonly theme = linkedSignal<Theme>(() => oneOf(this.stored().theme, THEMES, 'system'));
+  readonly density = linkedSignal<Density>(() =>
+    oneOf(this.stored().density, DENSITIES, 'comfortable'),
+  );
+  readonly locale = linkedSignal<DisplayLocale>(() =>
+    oneOf(this.stored().locale, DISPLAY_LOCALES, 'en-US'),
+  );
 
   constructor() {
     effect(() => {
@@ -34,9 +50,20 @@ export class UiPreferences {
       else this.root.setAttribute('data-theme', theme);
       this.root.setAttribute('data-density', this.density());
       this.root.setAttribute('lang', this.locale());
-      this.storage.write('ui', { theme, density: this.density(), locale: this.locale() });
+      const value = { theme, density: this.density(), locale: this.locale() };
+      // Only a change made here is saved; the stored value (or the defaults) must not be written back, or it
+      // would mask the profile that `PreferenceStorage.load()` is about to bring.
+      if (untracked(() => !sameAsStored(this.stored(), value))) this.storage.write('ui', value);
     });
   }
+}
+
+function sameAsStored(stored: Stored, value: Required<Stored>): boolean {
+  return (
+    oneOf(stored.theme, THEMES, 'system') === value.theme &&
+    oneOf(stored.density, DENSITIES, 'comfortable') === value.density &&
+    oneOf(stored.locale, DISPLAY_LOCALES, 'en-US') === value.locale
+  );
 }
 
 function oneOf<T>(value: T | undefined, allowed: readonly T[], fallback: T): T {

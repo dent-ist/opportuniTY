@@ -2,13 +2,15 @@ import type { Page, Route } from '@playwright/test';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
- * shell needs (`/api/v1/me`, the workspace directory) and 404 problem details for anything else, so a page that
+ * shell needs (`/api/v1/me`, the user's preferences, the workspace directory) and 404 problem details for anything else, so a page that
  * starts calling a new endpoint fails visibly instead of hanging.
  */
 export interface MockApiOptions {
   signedIn?: boolean;
   /** Effective permissions in every workspace; defaults to all (so admin routes are reachable). */
   permissions?: readonly string[];
+  /** The signed-in user's stored preferences (`/api/v1/me/preferences`); starts empty. */
+  preferences?: Record<string, unknown>;
 }
 
 export const ALL_PERMISSIONS = [
@@ -41,9 +43,16 @@ export const ALL_PERMISSIONS = [
   'Workspace.RequestDeletion',
 ] as const;
 
+const WORKSPACE_DEFAULTS = {
+  displayTimeZone: 'UTC',
+  status: 'active',
+  createdAt: '2026-10-03T00:00:00.000Z',
+} as const;
+
+/** `WorkspaceSummary` items of `GET /api/v1/workspaces`. */
 export const WORKSPACES = [
-  { workspaceId: 'ws-1', name: 'Acme v. Widget', matterNumber: 'M-1001' },
-  { workspaceId: 'ws-2', name: 'Beta Holdings', matterNumber: 'M-1002' },
+  { workspaceId: 'ws-1', name: 'Acme v. Widget', matterNumber: 'M-1001', ...WORKSPACE_DEFAULTS },
+  { workspaceId: 'ws-2', name: 'Beta Holdings', matterNumber: 'M-1002', ...WORKSPACE_DEFAULTS },
 ] as const;
 
 const principal = {
@@ -66,6 +75,8 @@ function problem(status: number, title: string) {
 /** Installs the mock; returns the list it fills with requests it had no answer for. */
 export async function mockApi(page: Page, options: MockApiOptions = {}): Promise<string[]> {
   const { signedIn = true, permissions = ALL_PERMISSIONS } = options;
+  // The "server" copy of the preferences outlives reloads of the page, like the real profile.
+  const preferences: Record<string, unknown> = { ...options.preferences };
   const json = (route: Route, body: unknown) => route.fulfill({ json: body });
   const unhandled: string[] = [];
 
@@ -75,10 +86,46 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     if (path === '/api/v1/me') {
       return signedIn ? json(route, principal) : route.fulfill(problem(401, 'Unauthorized'));
     }
+    const method = route.request().method();
+    if (signedIn && path === '/api/v1/me/preferences' && method === 'GET') {
+      return json(route, { values: preferences });
+    }
+    const preference = /^\/api\/v1\/me\/preferences\/([A-Za-z][\w.-]*)$/.exec(path);
+    if (signedIn && preference && (method === 'PUT' || method === 'DELETE')) {
+      if (method === 'PUT') preferences[preference[1]] = route.request().postDataJSON();
+      else delete preferences[preference[1]];
+      return route.fulfill({ status: 204 });
+    }
+    if (
+      signedIn &&
+      method === 'POST' &&
+      /^\/api\/v1\/workspaces\/[^/]+\/query-validations$/.test(path)
+    ) {
+      const query = String((route.request().postDataJSON() as { query?: string })?.query ?? '');
+      return json(route, {
+        valid: true,
+        astVersion: 1,
+        normalized: query.trim(),
+        errors: [],
+        warnings: [],
+      });
+    }
     if (signedIn && path === '/api/v1/workspaces')
-      return json(route, { items: WORKSPACES, nextCursor: null });
+      return json(route, {
+        items: WORKSPACES,
+        nextCursor: null,
+        total: { value: WORKSPACES.length, relation: 'eq' },
+      });
     const ws = WORKSPACES.find((w) => path === `/api/v1/workspaces/${w.workspaceId}`);
-    if (signedIn && ws) return json(route, { ...ws, permissions });
+    if (signedIn && ws)
+      return json(route, {
+        ...ws,
+        permissions,
+        breakGlassActive: false,
+        storageProfile: 'default',
+        version: 1,
+        searchPlacement: null,
+      });
     unhandled.push(`${route.request().method()} ${path}`);
     return route.fulfill(problem(404, 'Not found'));
   });

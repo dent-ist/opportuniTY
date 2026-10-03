@@ -90,7 +90,11 @@ internal sealed class AuthorizationService(ISecurityStateReader reader, IAuditEv
                 results[id] = workspaceDecision.Value;
             }
 
-            await AuditAsync(principal, workspaceId, permission, workspaceDecision.Value, null, cancellationToken).ConfigureAwait(false);
+            if (audit != DenialAudit.Caller)
+            {
+                await AuditAsync(principal, workspaceId, permission, workspaceDecision.Value, null, cancellationToken).ConfigureAwait(false);
+            }
+
             return results;
         }
 
@@ -172,7 +176,7 @@ internal sealed class AuthorizationService(ISecurityStateReader reader, IAuditEv
         CancellationToken cancellationToken)
     {
         var denied = results.Where(r => !r.Value.IsAllowed).ToList();
-        if (denied.Count == 0)
+        if (denied.Count == 0 || mode == DenialAudit.Caller)
         {
             return;
         }

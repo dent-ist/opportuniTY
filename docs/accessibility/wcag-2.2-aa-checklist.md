@@ -33,7 +33,7 @@ This is a living checklist for the reviewer UI (`src/Opportunity.Web`). The targ
 | 1.4.13 | AA | Content on hover or focus | Menus are dismissible (Esc), hoverable and persistent. No hover-only tooltips | keyboard-e2e, manual | Supports |
 | 2.1.1 | A | Keyboard | Every shell function is reachable and operable by keyboard | keyboard-e2e | Partial (vertical slice in E16) |
 | 2.1.2 | A | No keyboard trap | Dialogs trap focus deliberately and close with Esc. Focus is restored | unit, keyboard-e2e | Supports |
-| 2.1.4 | A | Character key shortcuts | Single-key shortcuts only outside text inputs, remappable, can be turned off (guide §6) | unit (E15-T03) | Open (E15-T03) |
+| 2.1.4 | A | Character key shortcuts | Character-key shortcuts (`/`, `?`, `[`, `]`, `n`, `+`, `-`, `0`) never act while typing in a text field. Each can be removed or remapped per user, and one preference turns them all off (user menu → Keyboard shortcuts…). Saved to the user profile (E15-T03) | unit, keyboard-e2e | Supports |
 | 2.2.1 | A | Timing adjustable | Session timeouts are security controls (Q-45). The session-ended dialog keeps the place to resume after sign-in. A warning before expiry is still to be decided | manual | Partial |
 | 2.2.2 | A | Pause, stop, hide | No auto-updating content yet. Freshness and job progress (E16-T07) must stay quiet or be throttled | manual | Open (E16-T07) |
 | 2.3.1 | A | Three flashes | No flashing content. `prefers-reduced-motion` is honoured | manual | Supports |
@@ -69,7 +69,43 @@ This is a living checklist for the reviewer UI (`src/Opportunity.Web`). The targ
 
 ## Keyboard shortcut conflict matrix
 
-When the command registry lands (`E15-T03`), list every default single-key and modified shortcut from the familiarity guide here, against Chrome, Edge, Firefox and Safari on Windows and macOS, and against NVDA, JAWS and VoiceOver browse-mode keys (docs/ux/ticket-review.md, E15-T04). A default that conflicts changes in the guide and in the registry together.
+Every default binding of the command registry (`src/app/core/commands/command-catalog.ts`, familiarity guide §4) against the browsers on Windows and macOS (Chrome, Edge, Firefox, Safari) and the screen readers (NVDA, JAWS, VoiceOver). The registry also refuses to let a user bind a reserved key: tab, window and history keys, copy and paste, developer tools, F5–F7 and F10–F12, Ctrl/⌘+digit, Alt+letter without Shift (browser menus), Ctrl+Alt (AltGr) on Windows, Control+Option (the VoiceOver key) on macOS, Insert and Caps Lock (screen-reader modifiers), and bare arrow, Home and End keys (`reserved-keys.ts`). Two commands may share a chord only when their regions are never active together (for example the viewer and the document list). A unit test (`keymap.spec.ts`) fails when a default is reserved or two defaults conflict.
+
+This matrix is an analysis of the documented browser, OS and screen-reader keys. It has not yet been run on every browser and screen-reader combination; that run is part of the M1 manual pass below. A default that conflicts changes in the guide and in the registry together.
+
+**Legend.** **Free**: no browser, OS or screen-reader function. **Scoped override**: the default replaces a browser function only while focus is in the named region, on purpose (guide §4). Everywhere else the browser function still works, so browser zoom (WCAG 1.4.4) and find remain available. **Page first**: a browser uses the chord for its own UI, but the page receives the key first, so the command wins while it is available and the browser acts otherwise. These still need confirmation in the manual pass. **Browse mode**: the screen reader keeps unmodified character keys for quick navigation in browse/virtual mode (NVDA, JAWS, VoiceOver with Quick Nav). The page receives them only in focus/forms mode, so screen-reader users use the modified chord or turn single keys off.
+
+| Command | Windows / Linux | macOS | Region | Browsers | Screen readers | Result |
+|---|---|---|---|---|---|---|
+| Save & Next / Save & Previous | `Ctrl+Enter` / `Ctrl+Shift+Enter` | `⌘↩` / `⌘⇧↩` | Review | Free | Passed through | Free |
+| Save | `Ctrl+S` | `⌘S` | Review | Save page (all) | Passed through | Scoped override |
+| Cancel unsaved edits | `Alt+Shift+Z` | `⌥⇧Z` | Review | Free | Passed through | Free |
+| Next / previous document | `Alt+Shift+.` / `Alt+Shift+,`; `]` / `[` | `⌥⇧.` / `⌥⇧,`; `]` / `[` | Review | Free | Single keys: browse mode | Free; single keys optional |
+| Back to list | `Alt+Shift+L`; `Esc` | `⌥⇧L`; `Esc` | Review | Free (`Esc` is never taken inside dialogs, menus or text fields) | Passed through | Free |
+| Open focused row | `Enter` | `↩` | Document list | Free | Passed through (focus mode in the grid) | Free |
+| Viewer modes | `Alt+Shift+1` … `5` | `⌥⇧1` … `5` | Review | Free. On Windows, Alt+Shift pressed and released on its own switches the input language; with a digit in between it does not | Passed through | Free |
+| Next / previous hit | `F3` / `Shift+F3`; `n` / `Shift+N` | `⌘G` / `⌘⇧G`; `n` / `Shift+N` | Review | Find next / previous (all) | `n`: browse mode (NVDA and JAWS: next non-link text) | Scoped override; single keys optional |
+| Toggle highlighting | `Alt+Shift+H` | `⌥⇧H` | Review | Free | Passed through | Free |
+| Find in document | `Ctrl+F` | `⌘F` | Viewer | Find in page (all) | Passed through | Scoped override |
+| Next / previous page | `Page Down` / `Page Up` | same | Viewer | Scroll (all) | Passed through | Scoped override |
+| Zoom in / out / fit | `Ctrl+=` / `Ctrl+-` / `Ctrl+0`; `+` / `-` / `0` | `⌘=` / `⌘-` / `⌘0`; `+` / `-` / `0` | Viewer | Browser zoom (all) | Single keys: browse mode | Scoped override; single keys optional |
+| Rotate page | `Alt+Shift+R` | `⌥⇧R` | Viewer | Free | Passed through | Free |
+| Next / previous region | `Alt+Shift+G` / `Alt+Shift+B` | `⌥⇧G` / `⌥⇧B` | Everywhere | `Alt+Shift+B`: Chrome and Edge focus the bookmarks bar | Passed through | Page first (`B`) |
+| Focus coding pane (then 1–9 = field n) | `Alt+Shift+C` | `⌥⇧C` | Review | Free | Passed through | Free |
+| Focus keyword search | `Alt+Shift+K`; `/` | `⌥⇧K`; `/` | Everywhere (handled on Documents) | `/`: Firefox Quick Find (not in text fields) | `/`: browse mode | Free; `/` is page first in Firefox, optional |
+| Focus related items | `Alt+Shift+I` | `⌥⇧I` | Review | `Alt+Shift+I`: Chrome and Edge open the feedback form | Passed through | Page first |
+| Select / clear focused row | `Space` | `Space` | Document list | Scroll (all) | Focus mode in the grid | Scoped override |
+| Select all on page | `Ctrl+A` | `⌘A` | Document list | Select all text (all) | Passed through | Scoped override |
+| Select all results / clear selection | `Alt+Shift+A` / `Alt+Shift+0` | `⌥⇧A` / `⌥⇧0` | Document list | `Alt+Shift+A`: Chrome focuses an inactive browser dialog, if one is showing | Passed through | Page first (`A`) |
+| Mass Edit / Apply to Family | `Alt+Shift+E` / `Alt+Shift+F` | `⌥⇧E` / `⌥⇧F` | Document list / Review | Free | Passed through | Free |
+| Shortcut cheat sheet | `Alt+Shift+/`; `?` | `⌥⇧/`; `?` | Everywhere | Free | `?`: browse mode | Free; single key optional |
+
+Notes:
+
+- **Screen readers.** No default uses the NVDA or JAWS modifier (Insert or Caps Lock) or the VoiceOver key (Control+Option). NVDA and JAWS pass modified chords they do not use through to the page in both browse and focus mode.
+- **macOS.** Option+Shift+letter types a symbol in text fields. Bindings use `KeyboardEvent.code`, so the command still fires, and the registry prevents the symbol from being typed when it runs. `F3` is Mission Control on macOS, so next/previous hit use `⌘G` / `⌘⇧G` there.
+- **Page first.** `Alt+Shift+B`, `Alt+Shift+I` and `Alt+Shift+A` overlap Chromium browser-UI keys. The registry calls `preventDefault()` only while the command has a handler, so the browser key keeps working everywhere else. If the manual pass shows that Chrome or Edge acts before the page, these three defaults change in the guide and in `command-catalog.ts` together.
+- **Single keys** (`/`, `?`, `[`, `]`, `n`, `Shift+N`, `+`, `-`, `0`) are alternatives, never the only binding. They are inactive in text fields and inside dialogs and menus, and one preference turns them all off (WCAG 2.1.4).
 
 ## Manual passes
 

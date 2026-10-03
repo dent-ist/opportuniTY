@@ -87,12 +87,25 @@ describe('Application shell', () => {
       api.on('GET', `/api/v1/workspaces/${ws.workspaceId}`, { body: ws });
     api.on('GET', '/api/v1/workspaces', {
       body: {
-        items: [acme, beta].map(({ workspaceId, name, matterNumber }): WorkspaceSummary => ({
-          workspaceId,
-          name,
-          matterNumber,
-        })),
+        items: [acme, beta].map(
+          ({
+            workspaceId,
+            name,
+            matterNumber,
+            displayTimeZone,
+            status,
+            createdAt,
+          }): WorkspaceSummary => ({
+            workspaceId,
+            name,
+            matterNumber,
+            displayTimeZone,
+            status,
+            createdAt,
+          }),
+        ),
         nextCursor: null,
+        total: { value: 2, relation: 'eq' },
       },
     });
     api.on('GET', '/api/v1/workspaces/ws-1/documents', { body: { items: [] } });
@@ -312,8 +325,12 @@ describe('Application shell', () => {
     harness.routeNativeElement!.querySelector<HTMLButtonElement>('opp-user-menu button')!.click();
     harness.detectChanges();
     const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items.map((i) => i.textContent?.trim())).toEqual(['About opportuniTY', 'Sign out']);
-    items[1].click();
+    expect(items.map((i) => i.textContent?.trim())).toEqual([
+      'Keyboard shortcuts…',
+      'About opportuniTY',
+      'Sign out',
+    ]);
+    items[2].click();
     expect(logout).toHaveBeenCalled();
   });
 

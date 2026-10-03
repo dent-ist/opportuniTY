@@ -24,7 +24,7 @@ public static class FieldRules
 {
     public const string OverflowSlot = "overflow";
 
-    /// <summary>Slot budget per kind (ADR-007 R3). Coding fields use the same kinds in their own namespace.</summary>
+    /// <summary>Metadata slot budget per kind (ADR-007 R3). Coding fields use the same kinds in their own namespace.</summary>
     public static readonly IReadOnlyDictionary<string, int> SlotBudgets = new Dictionary<string, int>(StringComparer.Ordinal)
     {
         ["txt"] = 100,
@@ -37,6 +37,28 @@ public static class FieldRules
         ["ch"] = 200,
         ["usr"] = 50,
     };
+
+    /// <summary>
+    /// Coding slot budget per kind: the interim Candidate A layout <c>coding.&lt;kind&gt;.s&lt;NNN&gt;</c> of projection
+    /// generation 2 (ADR-007 §3, ADR-004b). Smaller than the metadata budgets so the mapping stays well inside the
+    /// 2,000-field limit; a workspace beyond them projects further coding fields into the coding overflow.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, int> CodingSlotBudgets = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        ["txt"] = 20,
+        ["idt"] = 5,
+        ["kw"] = 20,
+        ["int"] = 10,
+        ["dec"] = 10,
+        ["dt"] = 20,
+        ["bool"] = 50,
+        ["ch"] = 100,
+        ["usr"] = 10,
+    };
+
+    /// <summary>The slot budgets of a storage's namespace: <c>metadata.*</c> or <c>coding.*</c>.</summary>
+    public static IReadOnlyDictionary<string, int> SlotBudgetsFor(FieldStorage storage) =>
+        storage == FieldStorage.Coding ? CodingSlotBudgets : SlotBudgets;
 
     public static string SlotKind(FieldType type, TextAnalysis? analysis) => type switch
     {

@@ -38,7 +38,10 @@ public enum JobTrigger
 /// <summary>What moves a chunk (ADR-010 §2, §3).</summary>
 public enum JobChunkTrigger
 {
-    /// <summary>Published with a broker confirm.</summary>
+    /// <summary>
+    /// Published with a broker confirm: a Pending chunk, or a RetryWait chunk whose backoff elapsed (the re-dispatch of
+    /// ADR-010 §2), so the dispatcher does not publish it again on every pass while it waits for a worker.
+    /// </summary>
     Dispatch,
 
     /// <summary>Claim: conditional UPDATE, AttemptCount + 1, new LeaseToken. Doubles as the consumer inbox.</summary>
@@ -137,6 +140,7 @@ public static class JobChunkStateMachine
     private static readonly (JobChunkStatus From, JobChunkTrigger Trigger, JobChunkStatus To)[] Edges =
     [
         (JobChunkStatus.Pending, JobChunkTrigger.Dispatch, JobChunkStatus.Dispatched),
+        (JobChunkStatus.RetryWait, JobChunkTrigger.Dispatch, JobChunkStatus.Dispatched),
         (JobChunkStatus.Pending, JobChunkTrigger.Claim, JobChunkStatus.Running),
         (JobChunkStatus.Dispatched, JobChunkTrigger.Claim, JobChunkStatus.Running),
         (JobChunkStatus.RetryWait, JobChunkTrigger.Claim, JobChunkStatus.Running),

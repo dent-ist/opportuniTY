@@ -98,9 +98,7 @@ public class AutoMapTests
         custodian.FieldId.Should().Be(1000);
         custodian.MatchedBy.Should().Be(MatchKind.ExactName);
         var all = Single(mapping, "AllCustodians");
-        all.Resolution.Should().Be(TargetResolution.WillCreate);
-        all.CreatesField!.Type.Should().Be(ImportFieldType.Keyword);
-        all.CreatesField.IsMultiValue.Should().BeTrue();
+        all.FieldId.Should().Be(SystemFields.AllCustodians, "All Custodians is a system field (ADR-009 R13)");
         all.MatchedBy.Should().Be(MatchKind.NormalizedName);
         Single(mapping, "EMAIL_SUBJECT").CreatesField!.Name.Should().Be("Subject");
         Single(mapping, "EMAIL_SUBJECT").Alias.Should().Be("EmailSubject");

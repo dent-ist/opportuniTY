@@ -891,6 +891,50 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         await batch.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Current non-null coding values of live definitions per document, read inside the caller's transaction (the
+    /// projection source reader's snapshot, ADR-001 §3).
+    /// </summary>
+    internal static async Task<Dictionary<Guid, Dictionary<int, JsonNode>>> ReadCurrentValuesAsync(
+        WorkspaceTransaction tx, Guid workspaceId, Guid[] documentIds, CancellationToken cancellationToken)
+    {
+        var coding = new Dictionary<Guid, Dictionary<int, JsonNode>>();
+        await using var command = tx.Command(
+            """
+            SELECT f.document_id, f.field_id, fd.field_type, f.value::text,
+                   (SELECT array_agg(c.choice_id ORDER BY c.choice_id) FROM opportunity.document_coding_choice c
+                    WHERE c.workspace_id = f.workspace_id AND c.document_id = f.document_id AND c.field_id = f.field_id)
+            FROM opportunity.document_coding_field f
+            JOIN opportunity.field_definition fd
+              ON fd.workspace_id = f.workspace_id AND fd.field_id = f.field_id AND NOT fd.is_deleted
+            WHERE f.workspace_id = @ws AND f.document_id = ANY(@ids)
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("ids", documentIds);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var value = ReadValue(
+                (FieldType)reader.GetInt16(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetFieldValue<int[]>(4));
+            if (value is null)
+            {
+                continue;
+            }
+
+            var documentId = reader.GetGuid(0);
+            if (!coding.TryGetValue(documentId, out var fields))
+            {
+                coding[documentId] = fields = [];
+            }
+
+            fields[reader.GetInt32(1)] = value;
+        }
+
+        return coding;
+    }
+
     private static JsonNode? ReadValue(FieldType type, string? json, int[]? choiceIds) => type switch
     {
         FieldType.MultiChoice => FieldValues.ChoiceArray(choiceIds ?? []),

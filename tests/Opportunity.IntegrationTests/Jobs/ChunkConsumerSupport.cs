@@ -53,22 +53,23 @@ internal sealed class StateBasedExecutor : IJobChunkExecutor
     }
 }
 
-/// <summary>Builds the messages the dispatcher (E06-T04) would publish for chunks, and consumers without a broker.</summary>
+/// <summary>
+/// The messages the dispatcher publishes for chunks (built by <see cref="JobChunkRelay.Message"/>, E06-T04), for tests that
+/// publish a chunk by hand to control timing or forge an envelope, and consumers without a broker.
+/// </summary>
 internal static class ChunkMessages
 {
     public static readonly JobChunkConsumerOptions WorkerOptions = new() { WorkerId = "integration-worker" };
 
-    public static JobChunkMessage Payload(JobChunkInfo chunk) =>
-        new() { ChunkId = chunk.ChunkId, Sequence = chunk.Sequence, Operation = JobChunkOperation.BulkCodingChunk };
+    public static JobChunkMessage Payload(JobChunkInfo chunk) => Outgoing(chunk).Payload;
 
-    public static OutgoingMessage<JobChunkMessage> Outgoing(JobChunkInfo chunk, Guid? workspaceId = null) => new(
-        WorkQueues.BulkCoding,
-        Payload(chunk),
-        new MessageCorrelation($"corr-{chunk.JobId:N}", WorkspaceId: workspaceId ?? chunk.WorkspaceId, JobId: chunk.JobId),
-        chunk.IdempotencyKey)
+    public static OutgoingMessage<JobChunkMessage> Outgoing(JobChunkInfo chunk, Guid? workspaceId = null)
     {
-        Attempt = chunk.AttemptCount,
-    };
+        var message = JobChunkRelay.Message(new ClaimedJobChunk(
+            chunk.WorkspaceId, chunk.JobId, chunk.ChunkId, chunk.Sequence, chunk.Status, ChunkOperationKind.BulkCodingChunk,
+            chunk.IdempotencyKey, chunk.AttemptCount, $"corr-{chunk.JobId:N}"));
+        return message with { Correlation = message.Correlation with { WorkspaceId = workspaceId ?? chunk.WorkspaceId } };
+    }
 
     /// <summary>A delivery as the transport hands it to the handler.</summary>
     public static ReceivedMessage Received(JobChunkInfo chunk, bool redelivered = false, Guid? workspaceId = null)

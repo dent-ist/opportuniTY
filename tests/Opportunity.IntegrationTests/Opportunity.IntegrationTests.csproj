@@ -35,6 +35,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Api\Opportunity.Api.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Migrator\Opportunity.Migrator.csproj" />
     <ProjectReference Include="..\Opportunity.Testing\Opportunity.Testing.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Import\Opportunity.Import.csproj" />
     <ProjectReference Include="..\..\tools\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
   </ItemGroup>
 

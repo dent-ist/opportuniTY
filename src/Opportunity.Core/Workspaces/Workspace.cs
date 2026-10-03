@@ -32,6 +32,12 @@ public sealed class Workspace
     /// <summary>ADR-009 R2; fixed once the workspace holds a document.</summary>
     public bool ControlNumberCaseSensitive { get; set; }
 
+    /// <summary>Named object-storage profile of the installation (E04-T05); fixed once the workspace stores an object.</summary>
+    public string StorageProfile { get; set; } = WorkspaceRules.DefaultStorageProfile;
+
+    /// <summary>Optimistic concurrency version of the settings, the API's ETag (ADR-019 §2.7).</summary>
+    public long RowVersion { get; set; } = 1;
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
