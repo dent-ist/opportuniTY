@@ -9,7 +9,7 @@ address, word and value is invented: people are built from syllables and script 
 |---|---|
 | `tools/Opportunity.DataGenerator` | CLI (`opportunity-datagen`) |
 | `tools/Opportunity.DataGenerator.Corpus` | Generation model as a library (planner, chunk generator, text synthesizer, writers, statistics). Tooling only: `src/` must never reference it (enforced by `ToolingIsolationTests`). |
-| `tests/Opportunity.DataGenerator.Tests` | Determinism, distribution, integrity, text/needle and streaming-memory tests |
+| `tests/Opportunity.DataGenerator.Tests` | Determinism, distribution, integrity, text/needle, streaming-memory, load-file volume and defect tests |
 
 ## Usage
 
@@ -38,7 +38,8 @@ opportunity-datagen profile-hash --profile my-profile.json # validate + print th
 | `corpus-manifest.json` | Seed, `profileHash`, generator name/version, output sizes + SHA-256, counts, distribution report (target vs actual with relative deviation), calibration, field catalog, needle summaries (docs with hits, occurrences, family-expanded docs) and the full effective profile. Contains no timestamps, host or thread count, so it is byte-identical across runs. |
 
 `md5`/`sha256` are synthetic identity hashes of the simulated native file (shared by all copies of a document);
-they are not hashes of bytes written here.
+they are not hashes of bytes written here. Load-file volumes carry real hashes of the natives they write (see
+[native hash rule](#native-hash-rule)).
 
 ## Determinism model
 
@@ -134,9 +135,142 @@ DateCreated, DateLastModified, PageCount (1–2000), Language, HasHiddenContent,
 The duplicate rate and family mean are driven by heavy-tailed family sizes (containers up to 1,000 members), so
 their seed-to-seed spread at 1M is about ±2% relative; the manifest reports the exact deviation for every run.
 
-## Extension point (E17-T02 load-file volumes)
+## Extension point
 
 Implement `ICorpusSink` (receives `GeneratedChunk`s in load order on one thread; must stream) and pass it via
-`CorpusRunOptions.ExtraSinks`. Use `TextSynthesizer.Write(doc.Content.Text, sink)` to stream extracted text, and
-`FieldCatalog` for DAT column order. DAT/OPT/TXT/NATIVES/IMAGES writers and defect injection are not part of
-E17-T01.
+`CorpusRunOptions.ExtraSinks`, or via `CorpusRunOptions.SinkFactories` when the sink needs the run's
+`GenerationContext` (vocabulary, catalog, seed). Use `TextSynthesizer.Write(doc.Content.Text, sink)` to stream
+extracted text, and `FieldCatalog` for column order. The load-file volume writer below is such a sink.
+
+## Load-file volumes with defect injection (E17-T02)
+
+`generate --volumes` additionally writes production-style volumes that exercise the importer (E08-T01…T07) with
+realistic structure and known defects. Code: `tools/Opportunity.DataGenerator.Corpus/Volumes` (`VolumeWriter`).
+
+```bash
+# 10K-document clean volume (E08-T03: must import with 0 errors)
+opportunity-datagen generate --seed 42 --documents 10000 --out ./vol-10k --volumes
+
+# Same corpus as UTF-16LE "vendor" DAT, US dates in New York winter time, 2% of every defect, 5% overlay
+opportunity-datagen generate --seed 42 --documents 10000 --out ./vol-10k-defects --volumes \
+  --dat-preset vendor --dat-encoding utf-16le --date-format us --time-zone-offset -05:00 \
+  --defect-rate 0.02 --defect missingNative=0.05 --defect badDate=0.01 --overlay-rate 0.05
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--volumes` | off | Write volumes and the volume ground truth |
+| `--dat-preset` | `concordance` | `concordance` (column U+0014, quote `þ`, newline `®`), `vendor` (column `¶`, quote `þ`, newline `®`), `csv` (RFC 4180) |
+| `--dat-encoding` | `utf-8-bom` | `utf-8`, `utf-8-bom`, `utf-16le` (with BOM), `windows-1252` (unrepresentable characters become `?`) |
+| `--text-encoding` | `utf-8` | Same choices, for extracted-text files, independent of the DAT |
+| `--date-format` | `iso` | `iso` = `yyyy-MM-ddTHH:mm:ss±hh:mm` in the value's own offset; `us` = `MM/dd/yyyy hh:mm:ss tt`; `eu` = `dd/MM/yyyy HH:mm:ss` (date fields: date part only) |
+| `--time-zone-offset` | `+00:00` | Zone that `us`/`eu` DateTime values are converted to (they carry no offset; it is the import's "source time zone", ADR-009 R22) |
+| `--image-format` | `auto` | `auto` = single-page TIFF G4, JPG for image natives; `tiff`, `jpg`, `png`, `multipage-tiff` (one file and one OPT row per document) |
+| `--volume-prefix`, `--docs-per-volume` | `VOL`, 0 | `VOL001`, `VOL002`… ; a new volume starts at a family boundary once the current one holds ≥ N documents (0 = one volume) |
+| `--files-per-folder` | 1000 | Files per `IMAGES/IMG0001`, `NATIVES/NATIVE0001`, `TEXT/TEXT0001` folder; a document's pages are never split, so a document with more pages than the limit gets its own folder |
+| `--no-natives`, `--no-text`, `--no-images` | off | Skip an artifact kind (its link column stays empty / no OPT rows) |
+| `--native-text-chars` | 2000 | Characters of extracted text embedded in each native |
+| `--overlay-rate` | 0 | Share of documents also listed in `DATA/<VOL>_OVERLAY.dat` |
+| `--defect-rate` | 0 | Rate for every defect type; `--defect <type>=<rate>` (repeatable) overrides one type |
+
+### Layout
+
+```
+<out>/VOL001/DATA/VOL001.dat            DAT (header row + one row per document, CRLF rows)
+<out>/VOL001/DATA/VOL001.opt            Opticon OPT (ASCII)
+<out>/VOL001/DATA/VOL001_OVERLAY.dat    overlay DAT (with --overlay-rate)
+<out>/VOL001/IMAGES/IMG0001/OPP0000000001.tif, OPP0000000001.0002.tif …
+<out>/VOL001/NATIVES/NATIVE0001/OPP0000000001.eml …
+<out>/VOL001/TEXT/TEXT0001/OPP0000000001.txt …
+<out>/volume-manifest.json   settings, DAT columns, per-volume counts + load-file SHA-256, per-defect target/eligible/injected/actual rate
+<out>/volume-defects.jsonl   ground truth: one line per injected defect
+<out>/volume-overlays.jsonl  ground truth: expected values after the overlay
+```
+
+Ground truth sits outside the volume folders so an importer pointed at `VOL001` never sees it. The DAT, OPT,
+overlay, defects, overlays and manifest files are also listed (bytes + SHA-256) in `corpus-manifest.json`.
+
+**DAT columns:** `ControlNumber, BegAttach, EndAttach, ParentID, GroupIdentifier, Custodian, AllCustodians,
+DuplicateCustodians, DuplicateGroupID, EmailThreadGroup, MD5Hash, SHA256Hash, NativeLink, TextLink`, then the
+field catalog in order. Families can therefore be rebuilt by range (A), pointer (B: `ParentID` = immediate parent)
+or group (C: `GroupIdentifier` = parent control number) per ADR-009; standalone documents have
+`BegAttach = EndAttach = ControlNumber`. Every value is qualified; a quote character inside a value is escaped by
+doubling it; line breaks become `®` (CRLF, CR and LF each one `®`) except for `csv`, which keeps them literally
+inside the quotes. As in any Concordance load, a literal `®` in a value is indistinguishable from an encoded line
+break. Multi-value fields are joined with `; `; booleans are `Y`/`N`; links are volume-relative with `\`.
+
+**OPT rows:** `ImageKey,Volume,Path,DocBreak,FolderBreak,BoxBreak,PageCount`, one row per page, `Y` and the page
+count on the first row only. Page 1's key is the control number (E08-T05 matches the break row to the document);
+page *n* ≥ 2 is `<ControlNumber>.<nnnn>`. Image files are named by the page key. Documents without a page count
+(zip containers) have no images. Page counts come from the corpus `PageCount` field (1–2,000).
+
+**Page images** are hand-encoded, blank and deterministic (no imaging library): bitonal CCITT G4 TIFF
+2550 × 3300 at 300 DPI (~0.5 KB per page; multi-page TIFF has one IFD per page), baseline grayscale JPG and 1-bit
+PNG 850 × 1100 at 100 DPI. Each carries its page key in the description/comment.
+
+**Natives** are built from the document content and the first `--native-text-chars` of its extracted text:
+
+| Corpus type | Native written |
+|---|---|
+| `msg` (all emails) | RFC 5322 `.eml`: From/To/Cc/Subject/Date/Message-ID/In-Reply-To (RFC 2047 for non-ASCII), base64 UTF-8 body. Written as `.eml` because a valid Outlook MSG (CFB) is not feasible here; `FileExtension` stays `msg` |
+| `pdf` | One-page PDF 1.4 (Helvetica, ASCII text; other characters as `?`) |
+| `docx`, `xlsx` | Minimal OOXML packages (stored ZIP; one paragraph / one row per text line) |
+| `zip` | Stored ZIP with a `contents.txt` |
+| `txt`, `csv`, `html` | The text excerpt (CSV as `Row,Text` rows, HTML in `<pre>`) |
+| `jpg`, `png` | Blank 320 × 240 image |
+| `pptx` (and any other type) | **Placeholder**: text file with the claimed extension starting `OPPORTUNITY SYNTHETIC PLACEHOLDER NATIVE` (a valid presentation needs master/layout/theme parts; counted as `placeholderNatives`) |
+
+Every native embeds the document's content key, so different contents never produce identical bytes.
+
+### Native hash rule
+
+`MD5Hash` and `SHA256Hash` in the DAT are computed over the exact bytes written to `NATIVES`, and `FileSize` is
+their length. Native bytes are a pure function of the document **content** (content key, file type, content
+metadata, text excerpt) — never of the copy's placement (control number, custodian, path) — so every duplicate
+copy gets byte-identical natives and the DAT hash groups are exactly the corpus duplicate groups (verified by
+`A_clean_volume_round_trips_every_value_link_hash_and_page`). The `md5`/`sha256` in `documents.jsonl` stay
+synthetic identity hashes. With `--no-natives` the synthetic hashes and the simulated `FileSize` are written.
+
+### Defects
+
+Each type has an eligibility rule; its rate is the share of eligible items that get the defect. Selection is
+deterministic "jittered systematic" sampling (`DefectSchedule`): eligible items are cut into intervals of 1/rate
+and one seeded random item is picked per interval, so `injected = eligible × rate ± 1` at any corpus size while
+positions stay irregular. Types use independent streams and may co-occur on one row. Every injected defect is one
+line in `volume-defects.jsonl` (`type`, `volume`, `controlNumber` as it appears in the DAT/OPT, plus the fields
+below); the manifest lists `targetRate`, `eligible`, `injected` and `actualRate` per type.
+
+| Type | Eligible | What is written | Extra ground-truth fields |
+|---|---|---|---|
+| `orphanAttachments` | families with ≥ 2 documents | parent's row, files and OPT rows withheld; attachments still point to it | `orphanCount`, `orphans` |
+| `brokenFamilyRange` | families with ≥ 2 documents | every member's BegAttach/EndAttach is `truncated` (last member outside), `reversed`, or `prefixMismatch` (`X` + EndAttach) | `variant`, `begAttach`, `endAttach`, `expected…`, `familySize` |
+| `duplicateControlNumber` | standalone documents after the first | ControlNumber and OPT keys repeat the previous standalone row's (files keep the original name) | `originalControlNumber`, `datRow` |
+| `missingNative` | documents (natives on) | NativeLink written, file absent | `path` |
+| `hashMismatch` | documents whose native was written | DAT MD5Hash/SHA256Hash differ from the file | `datMd5`, `actualMd5`, `datSha256`, `actualSha256`, `path` |
+| `missingText` | documents (text on) | TextLink written, file absent | `path` |
+| `textEncoding` | written text files that would differ: any for UTF-16LE volumes, otherwise those with non-ASCII characters | file written as Windows-1252 (UTF-8 for 1252 volumes), no BOM | `declaredEncoding`, `actualEncoding`, `path` |
+| `missingImage` | imaged documents | one page file absent (the whole file for multi-page TIFF; `page` 0) | `path`, `page` |
+| `optPageCountMismatch` | imaged documents | break-row PageCount off by 1–3 | `optLine`, `declaredPages`, `actualPages` |
+| `badDate` | rows with a date value | one of DateSent/DateReceived/DateCreated/DateLastModified/RecordDate replaced by an unparseable value (`2019-02-30`, `13/32/2018`, `N/A`…) | `datRow`, `field`, `value`, `expected` |
+| `unescapedQualifier` | every row | a raw quote character in the middle of Subject (else FileName), not doubled | `datRow`, `field` |
+| `fieldCountMismatch` | every row | one field more or fewer than the header | `datRow`, `expectedFields`, `actualFields` |
+| `datRowEncoding` | rows containing non-ASCII in UTF-8/1252 DATs (all Concordance rows: `þ`) | row encoded as Windows-1252 in a UTF-8 file, or UTF-8 in a 1252 file | `datRow`, `declaredEncoding`, `actualEncoding` |
+| `overlayUnknownKey` | overlay rows | extra overlay row whose key (`<ControlNumber>X`) is not in the volume | `overlayRow` |
+
+`datRow` is the 1-based data-row number in that volume's DAT (header excluded); `optLine` is the 1-based OPT line.
+Overlay rows (`ControlNumber, Confidentiality, ProjectCode`) change Confidentiality to a different value and
+blank ProjectCode (exercises the "blank values overwrite" option, E08-T07); `volume-overlays.jsonl` lists the new
+and previous values per row. Only documents written under their own control number are overlay candidates.
+
+### Determinism, memory and throughput
+
+Volumes are byte-identical for the same (seed, profile, options, writer version) across runs and `--threads`
+values (`Volumes_are_byte_identical_…`); defect choices are keyed by `hash(seed, type, index)`. Bump
+`VolumeWriter.Version` when output for unchanged inputs changes. The writer holds one document (plus its native,
+at most a few KB) at a time and keeps no per-corpus state, so memory is the corpus generator's bounded window.
+Measured peak RSS (Release, 4 threads, multi-page TIFF, 1% defects, 5% overlay): 188 MB at 20K documents with
+text, 233 MB at 100K documents without text (~810 docs/s). The ≤ 2 GB at 10M documents target follows from
+this flat profile but was not run here (it needs roughly 0.7 TB of disk with text).
+Throughput is dominated by file creation: page images (mean ~18 pages per document with default text sizes) are
+millions of files at 1M documents; use `--image-format multipage-tiff` or `--no-images` for large metadata/text
+benchmarks.
