@@ -15,6 +15,10 @@ updates:
   - package-ecosystem: npm
     directory: /src/Opportunity.Web
     schedule: { interval: weekly }
+    ignore:
+      # The TypeScript major is dictated by the Angular major; upgrade both together (ng update), not via Dependabot.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       angular:
         patterns: ["@angular/*", "@angular-devkit/*"]
@@ -28,3 +32,7 @@ updates:
   - package-ecosystem: docker
     directory: /deploy/docker
     schedule: { interval: weekly }
+    ignore:
+      # Node majors are a deliberate LTS decision pinned in versions.env (NODE) and .nvmrc; CI checks they agree.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
