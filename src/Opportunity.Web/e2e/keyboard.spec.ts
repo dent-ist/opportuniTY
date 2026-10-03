@@ -11,10 +11,23 @@ async function tabTo(page: Page, target: Locator, maxStops = 40): Promise<void> 
     const indicator = await page.evaluate(() => {
       const el = document.activeElement;
       if (!el || el === document.body) return { label: 'body', visible: true };
-      const style = getComputedStyle(el);
-      const visible =
-        (style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0) ||
-        style.boxShadow !== 'none';
+      const ring = (node: Element) => {
+        const style = getComputedStyle(node);
+        return (
+          (style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0) ||
+          style.boxShadow !== 'none'
+        );
+      };
+      // A composite control may draw the ring on a close wrapper via :focus-within (e.g. the query bar's textarea
+      // sits over its highlight layer); that is still a visible indicator for this stop.
+      let visible = ring(el);
+      for (
+        let up = el.parentElement, depth = 0;
+        !visible && up && depth < 3;
+        up = up.parentElement, depth++
+      ) {
+        visible = up.matches(':focus-within') && ring(up);
+      }
       return { label: el.outerHTML.slice(0, 120), visible };
     });
     expect(indicator.visible, `No visible focus indicator on ${indicator.label}`).toBe(true);
