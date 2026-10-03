@@ -3,6 +3,7 @@ using System.Reflection;
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Jobs;
 using Opportunity.Api.Search;
+using Opportunity.Data.Audit;
 using Opportunity.Data.Identity;
 using Opportunity.Hosting;
 using Opportunity.Security.Authentication;
@@ -26,6 +27,7 @@ builder.Services.AddApiConventions();
 builder.Services.AddQueryValidation();
 builder.Services.AddJobEndpoints();
 builder.Services.AddPostgresIdentityStores();
+builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 
 var app = builder.Build();
