@@ -320,6 +320,16 @@ jobs:
       - name: No Redis/Valkey service
         run: |
           ! ./opportunity.sh compose --profile '*' config --services | grep -Ei 'redis|valkey'
+      # E19-T04: the optional observability profile is not booted here; its configuration must still be valid.
+      - name: Validate observability profile configuration
+        run: |
+          set -a; . ../../versions.env; set +a
+          ./opportunity.sh compose --profile observability config --quiet
+          docker run --rm -v "$PWD/observability/otel-collector.yaml:/c.yaml:ro" \
+            "otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR}@${OTEL_COLLECTOR_DIGEST}" validate --config=/c.yaml
+          docker run --rm -v "$PWD/observability/prometheus.yaml:/p.yaml:ro" --entrypoint promtool \
+            "prom/prometheus:${PROMETHEUS}@${PROMETHEUS_DIGEST}" check config /p.yaml
+          python3 -m json.tool observability/grafana/dashboards/opportunity-overview.json >/dev/null
       - name: Preflight, build and start; waits until every service is healthy
         run: ./opportunity.sh up
       - name: Smoke checks

@@ -1,0 +1,45 @@
+# Provisioned from the repository (E19-T04); edits in the Grafana UI are not saved back.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+
+  - name: Jaeger
+    type: jaeger
+    uid: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: false
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+      tracesToMetrics:
+        datasourceUid: prometheus
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        # OTLP logs keep trace_id as structured metadata; link each log line to its trace.
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: jaeger
+          url: "$${__value.raw}"
+          urlDisplayLabel: View trace

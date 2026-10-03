@@ -3,7 +3,7 @@
 # source of truth) and .env (local secrets). Run from anywhere; see README.md.
 #
 #   ./opportunity.sh [--images local|ghcr] <command> [args]
-#     init        create .env from .env.example with random secrets (keeps an existing .env)
+#     init        create .env from .env.example with random secrets (keeps an existing .env, adds new secrets)
 #     preflight   check Docker/Compose versions, memory and vm.max_map_count
 #     up          init + preflight + build + start, then wait until every service is healthy
 #     down        stop and remove containers (volumes are kept)
@@ -53,11 +53,20 @@ env_value() { [[ -f "$env_file" ]] && sed -n "s/^$1=//p" "$env_file" | tail -n 1
 random_secret() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 || true; }
 
 cmd_init() {
+  local line key
   if [[ -f "$env_file" ]]; then
-    echo ".env exists; keeping it."
+    # Secrets added to .env.example after this .env was created (e.g. GRAFANA_ADMIN_PASSWORD) get generated values.
+    local added=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      key="${line%%=*}"
+      if [[ "$line" =~ ^[A-Z0-9_]+(PASSWORD|SECRET_KEY)=$ ]] && ! grep -q "^$key=" "$env_file"; then
+        printf '%s=%s\n' "$key" "$(random_secret)" >>"$env_file"
+        added=1
+      fi
+    done <"$here/.env.example"
+    ((added)) && echo "Added new secrets to $env_file." || echo ".env exists; keeping it."
     return
   fi
-  local line key
   umask 077
   while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
@@ -147,6 +156,13 @@ cmd_up() {
   echo "Web:  http://127.0.0.1:${web:-8080}/"
   echo "API:  http://127.0.0.1:${api:-8081}/health/ready"
   echo "RabbitMQ management: http://127.0.0.1:$(env_value RABBITMQ_MANAGEMENT_PORT | grep . || echo 15672)/"
+  if [[ ",${COMPOSE_PROFILES:-$(env_value COMPOSE_PROFILES)}," == *,observability,* ]]; then
+    echo "Grafana:    http://127.0.0.1:$(env_value GRAFANA_PORT | grep . || echo 3000)/ (anonymous viewer; admin password GRAFANA_ADMIN_PASSWORD)"
+    echo "Prometheus: http://127.0.0.1:$(env_value PROMETHEUS_PORT | grep . || echo 9090)/"
+    echo "Jaeger:     http://127.0.0.1:$(env_value JAEGER_UI_PORT | grep . || echo 16686)/"
+    [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-$(env_value OTEL_EXPORTER_OTLP_ENDPOINT)}" ]] \
+      || yellow "OTEL_EXPORTER_OTLP_ENDPOINT is not set: api/worker export no telemetry (set it to http://otel-collector:4317)."
+  fi
 }
 
 cmd_reset() {

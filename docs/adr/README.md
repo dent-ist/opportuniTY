@@ -56,7 +56,7 @@ Decided in [ADR-019](0019-layering-and-api-conventions.md) (resolves review find
 | [ADR-014](0014-retention-and-deletion-lifecycle.md) | Retention / deletion lifecycle | §15 | Proposed (interim binding) | Backend | #32 (`E02-T06`) |
 | [ADR-015](0015-security-architecture-and-trust-boundaries.md) | Security architecture & trust boundaries (STRIDE) | §3, §15, §24 | Proposed (D1–D17 binding) | Security & Compliance | #34 (`E02-T08`) |
 | ADR-016 | Backup/DR & restore consistency | §16, §17 | Not yet written | DevOps / SRE | #163 (`E19-T07`) |
-| ADR-017 | Observability & SLOs | §4, §17, §28 | Not yet written | DevOps / SRE | #160 (`E19-T04`), #161 (`E19-T05`) |
+| [ADR-017](0017-observability-and-slos.md) | Observability & SLOs | §4, §17, §28 | Proposed (§1–§5, §7 binding; §6 SLOs accepted with `E19-T05`) | DevOps / SRE | #160 (`E19-T04`), #161 (`E19-T05`) |
 | ADR-018 | Frontend architecture & UX baseline | §3, §4, §28 | Not yet written | UI/UX | #122 (`E15-T01`) |
 | [ADR-019](0019-layering-and-api-conventions.md) | Solution layering, API conventions and message-contract versioning | §2, §11, §18, §20, §32 | **Accepted** | Backend | #27 (`E02-T01`) |
 | [ADR-020](0020-bundled-object-storage.md) | Bundled object storage (Lite filesystem, Full SeaweedFS, RustFS fallback) | §4, §15, §16, §17 | **Accepted** | DevOps / SRE | #158 (`E19-T02`) |

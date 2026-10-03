@@ -17,6 +17,7 @@
     <PackageReference Include="Azure.Storage.Blobs" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="OpenTelemetry.Exporter.InMemory" />
   </ItemGroup>
 
   <ItemGroup>
