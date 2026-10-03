@@ -62,12 +62,26 @@ public sealed partial class JobLeaseSweeper(IJobChunkRepository chunks, JobLease
     private static partial void LogRecovered(ILogger logger, int pending, int failed, int cancelled);
 }
 
-/// <summary>Runs <see cref="JobLeaseSweeper"/> every <see cref="JobLeaseOptions.SweepInterval"/>.</summary>
-public sealed partial class JobLeaseSweeperService(JobLeaseSweeper sweeper, JobLeaseOptions options, ILogger<JobLeaseSweeperService> logger)
+/// <summary>
+/// Runs <see cref="JobLeaseSweeper"/> every <see cref="JobLeaseOptions.SweepInterval"/>. The sweeper is resolved lazily,
+/// so a host without PostgreSQL logs that sweeping is disabled instead of failing to start.
+/// </summary>
+public sealed partial class JobLeaseSweeperService(IServiceProvider services, JobLeaseOptions options, ILogger<JobLeaseSweeperService> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        JobLeaseSweeper sweeper;
+        try
+        {
+            sweeper = services.GetRequiredService<JobLeaseSweeper>();
+        }
+        catch (InvalidOperationException ex)
+        {
+            LogDisabled(logger, ex.Message);
+            return;
+        }
+
         using var timer = new PeriodicTimer(options.SweepInterval);
         do
         {
@@ -85,6 +99,9 @@ public sealed partial class JobLeaseSweeperService(JobLeaseSweeper sweeper, JobL
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Lease sweep failed; retrying at the next interval")]
     private static partial void LogSweepFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Lease sweeper disabled: {Reason}")]
+    private static partial void LogDisabled(ILogger logger, string reason);
 }
 
 public static class JobLeaseSweeperRegistration

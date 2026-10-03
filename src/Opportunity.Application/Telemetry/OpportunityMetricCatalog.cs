@@ -74,6 +74,16 @@ public static class OpportunityMetricCatalog
         "Age of the oldest SearchOutbox row not yet dispatched, by lane (alert > 60 s).",
         [TelemetryAttributes.Lane], "E06-T04");
 
+    public static MetricDefinition OutboxPublishLatency { get; } = new(
+        "opportunity.outbox.publish_latency", MetricKind.Histogram, "s",
+        "CommittedAt to broker confirm of a SearchOutbox row or IndexChunkTask, by lane (outbox p95 < 100 ms at idle).",
+        [TelemetryAttributes.Lane], "E06-T04", Buckets: DurationBuckets);
+
+    public static MetricDefinition DispatcherPublished { get; } = new(
+        "opportunity.dispatcher.published", MetricKind.Counter, "{message}",
+        "Messages the outbox dispatcher published, by destination and outcome (confirmed, unconfirmed).",
+        [TelemetryAttributes.MessagingDestinationName, TelemetryAttributes.Outcome], "E06-T04");
+
     public static MetricDefinition QueueDepth { get; } = new(
         "opportunity.queue.depth", MetricKind.Gauge, "{message}",
         "Messages in a queue by state (ready, unacked, dlq); DLQ depth > 0 alerts (ADR-010 §7.6).",
@@ -172,7 +182,7 @@ public static class OpportunityMetricCatalog
     public static IReadOnlyList<MetricDefinition> All { get; } =
     [
         WorkerHeartbeatAge, WorkerLastConsumedAge, MessagingProcessDuration, MessagingConsumedMessages,
-        OutboxPending, OutboxOldestAge, QueueDepth, QueueConsumers, DeadLetteredMessages,
+        OutboxPending, OutboxOldestAge, OutboxPublishLatency, DispatcherPublished, QueueDepth, QueueConsumers, DeadLetteredMessages,
         SearchGenerationCommitted, SearchGenerationIndexed, SearchIndexLag, SearchCommitToSearchable,
         SecurityProjectionLag, SearchStaleVersionRejections, IndexChunkTasks, IndexChunkTaskOldestAge,
         SearchRequestDuration, Jobs, JobsActive, JobChunks, JobChunkDuration, AuditWriteDuration,

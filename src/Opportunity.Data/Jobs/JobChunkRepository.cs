@@ -8,9 +8,10 @@ namespace Opportunity.Data.Jobs;
 
 /// <summary>
 /// PostgreSQL implementation of <see cref="IJobChunkRepository"/>: claims with leases and fencing tokens, fences F1–F3,
-/// attempt counting with backoff, lease recovery (ADR-010 §2–§3, §7).
+/// attempt counting with backoff, lease recovery (ADR-010 §2–§3, §7); and of <see cref="IJobChunkDispatchRepository"/>,
+/// the dispatcher's publish claims (V0013).
 /// </summary>
-public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkRepository
+public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkRepository, IJobChunkDispatchRepository
 {
     private const int MaxWorkerIdLength = 200;
 
@@ -599,6 +600,172 @@ public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkR
         command.Parameters.AddWithValue("reason_codes", results.Select(r => r.ReasonCode).ToArray());
         command.Parameters.AddWithValue("details", results.Select(r => JobSql.TruncateOrNull(r.Detail, JobItemResult.MaxDetailLength)).ToArray());
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    // In flight: Dispatched or Running, or held by a live publish claim. Budgets (ADR-010 §6): per job, the per-job limit
+    // minus its in-flight chunks; none while more than the backpressure limit of its index tasks are un-applied; with
+    // security-bulk tasks, the security throttle counts un-applied tasks plus in-flight chunks. The workspace budget
+    // takes the next chunk of every job in turn. Dispatched chunks no worker claimed for a while are re-dispatched
+    // outside the budgets (they are in flight already). FOR UPDATE SKIP LOCKED after the selection re-checks each row,
+    // so a chunk another dispatcher holds is skipped, never substituted, and the limits hold across dispatchers.
+    private static readonly string ClaimForDispatchSql =
+        $"""
+        WITH running AS (
+            SELECT j.job_id
+            FROM opportunity.job j
+            JOIN opportunity.workspace w ON w.workspace_id = j.workspace_id
+            WHERE j.workspace_id = @ws AND j.status = 'Running' AND w.status = '{nameof(WorkspaceStatus.Active)}'
+              AND j.operation_kind = ANY(@kinds)),
+        in_flight AS (
+            SELECT c.job_id, count(*) AS n
+            FROM opportunity.job_chunk c
+            WHERE c.workspace_id = @ws AND (c.status IN (2, 3) OR (c.claim_owner IS NOT NULL AND c.claim_expires_at > now()))
+            GROUP BY c.job_id),
+        index_load AS (
+            SELECT t.job_id, count(*) AS unapplied, bool_or(t.lane = 3) AS security
+            FROM opportunity.index_chunk_task t
+            WHERE t.workspace_id = @ws AND t.status IN (1, 2, 3, 4)
+            GROUP BY t.job_id),
+        budget AS (
+            SELECT r.job_id, greatest(0, least(
+                @per_job - coalesce(f.n, 0),
+                CASE WHEN coalesce(i.security, false) THEN @security_tasks - coalesce(i.unapplied, 0) - coalesce(f.n, 0)
+                     WHEN coalesce(i.unapplied, 0) > @index_tasks THEN 0
+                     ELSE @per_job END)) AS n
+            FROM running r
+            LEFT JOIN in_flight f ON f.job_id = r.job_id
+            LEFT JOIN index_load i ON i.job_id = r.job_id),
+        fresh AS (
+            SELECT n.chunk_id, row_number() OVER (PARTITION BY b.job_id ORDER BY n.chunk_sequence) AS turn, b.job_id
+            FROM budget b
+            CROSS JOIN LATERAL (
+                SELECT c.chunk_id, c.chunk_sequence
+                FROM opportunity.job_chunk c
+                WHERE c.workspace_id = @ws AND c.job_id = b.job_id AND c.status IN (1, 4) AND c.available_at <= now()
+                  AND (c.claim_expires_at IS NULL OR c.claim_expires_at <= now())
+                ORDER BY c.chunk_sequence
+                LIMIT b.n) n
+            WHERE b.n > 0),
+        chosen AS (
+            (SELECT chunk_id FROM fresh
+             ORDER BY turn, job_id
+             LIMIT greatest(0, least(@limit,
+                 @per_workspace - (SELECT coalesce(sum(f.n), 0) FROM in_flight f JOIN running r ON r.job_id = f.job_id))))
+            UNION ALL
+            (SELECT c.chunk_id
+             FROM opportunity.job_chunk c
+             JOIN running r ON r.job_id = c.job_id
+             WHERE c.workspace_id = @ws AND c.status = 2 AND coalesce(c.dispatched_at, c.updated_at) < now() - @redispatch
+               AND (c.claim_expires_at IS NULL OR c.claim_expires_at <= now())
+             LIMIT @limit)),
+        locked AS (
+            SELECT c.workspace_id, c.chunk_id
+            FROM opportunity.job_chunk c
+            WHERE c.workspace_id = @ws AND c.chunk_id IN (SELECT chunk_id FROM chosen) AND c.status IN (1, 2, 4)
+              AND (c.claim_expires_at IS NULL OR c.claim_expires_at <= now())
+            FOR UPDATE SKIP LOCKED)
+        UPDATE opportunity.job_chunk c
+        SET claim_owner = @owner, claim_expires_at = clock_timestamp() + @claim, updated_at = now()
+        FROM locked l, opportunity.job j
+        WHERE c.workspace_id = l.workspace_id AND c.chunk_id = l.chunk_id AND j.workspace_id = c.workspace_id AND j.job_id = c.job_id
+        RETURNING c.job_id, c.chunk_id, c.chunk_sequence, c.status, j.operation_kind, c.idempotency_key, c.attempt_count, j.correlation_id
+        """;
+
+    public async Task<IReadOnlyList<ClaimedJobChunk>> ClaimForDispatchAsync(
+        Guid workspaceId, string owner, JobChunkDispatchLimits limits, TimeSpan claimDuration, CancellationToken cancellationToken = default)
+    {
+        ValidateOwner(owner);
+        ArgumentNullException.ThrowIfNull(limits);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limits.BatchSize);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(claimDuration, TimeSpan.Zero);
+        if (limits.Operations.Count == 0)
+        {
+            return [];
+        }
+
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(ClaimForDispatchSql);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("kinds", limits.Operations.Select(k => k.ToString()).ToArray());
+        command.Parameters.AddWithValue("per_job", limits.MaxInFlightPerJob);
+        command.Parameters.AddWithValue("per_workspace", limits.MaxInFlightPerWorkspace);
+        command.Parameters.AddWithValue("index_tasks", limits.MaxUnappliedIndexTasksPerJob);
+        command.Parameters.AddWithValue("security_tasks", limits.MaxUnappliedSecurityIndexTasksPerJob);
+        command.Parameters.AddWithValue("redispatch", limits.RedispatchAfter);
+        command.Parameters.AddWithValue("limit", limits.BatchSize);
+        command.Parameters.AddWithValue("owner", owner);
+        command.Parameters.AddWithValue("claim", claimDuration);
+        var claimed = new List<ClaimedJobChunk>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                claimed.Add(new ClaimedJobChunk(
+                    workspaceId, reader.GetGuid(0), reader.GetGuid(1), reader.GetInt32(2), (JobChunkStatus)reader.GetInt16(3),
+                    Enum.Parse<ChunkOperationKind>(reader.GetString(4)), reader.GetString(5), reader.GetInt32(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return [.. claimed.OrderBy(c => c.JobId).ThenBy(c => c.Sequence)];
+    }
+
+    public Task<int> MarkDispatchedAsync(
+        Guid workspaceId, string owner, IReadOnlyCollection<Guid> chunkIds, CancellationToken cancellationToken = default) =>
+        UpdateDispatchClaimAsync(workspaceId, owner, chunkIds,
+            """
+            status = CASE WHEN c.status = ANY(@sources) THEN @dispatched ELSE c.status END,
+            dispatched_at = CASE WHEN c.status = ANY(@sources) OR c.status = @dispatched THEN now() ELSE c.dispatched_at END,
+            claim_owner = NULL, claim_expires_at = NULL, updated_at = now()
+            """,
+            command =>
+            {
+                command.Parameters.AddWithValue("sources", JobSql.Sources(JobChunkTrigger.Dispatch));
+                command.Parameters.AddWithValue("dispatched", (short)JobChunkStatus.Dispatched);
+            },
+            cancellationToken);
+
+    public Task<int> ReleaseDispatchClaimAsync(
+        Guid workspaceId, string owner, IReadOnlyCollection<Guid> chunkIds, TimeSpan retryAfter, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(retryAfter, TimeSpan.Zero);
+        return UpdateDispatchClaimAsync(workspaceId, owner, chunkIds,
+            "claim_expires_at = clock_timestamp() + @after, updated_at = now()",
+            command => command.Parameters.AddWithValue("after", retryAfter),
+            cancellationToken);
+    }
+
+    private async Task<int> UpdateDispatchClaimAsync(
+        Guid workspaceId, string owner, IReadOnlyCollection<Guid> chunkIds, string set, Action<NpgsqlCommand> parameters,
+        CancellationToken cancellationToken)
+    {
+        ValidateOwner(owner);
+        ArgumentNullException.ThrowIfNull(chunkIds);
+        if (chunkIds.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            $"""
+            UPDATE opportunity.job_chunk c SET {set}
+            WHERE c.workspace_id = @ws AND c.chunk_id = ANY(@chunks) AND c.claim_owner = @owner
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("chunks", chunkIds.ToArray());
+        command.Parameters.AddWithValue("owner", owner);
+        parameters(command);
+        var updated = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return updated;
+    }
+
+    private static void ValidateOwner(string owner)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(owner.Length, MaxWorkerIdLength, nameof(owner));
     }
 
     private static ClaimedChunk ToClaimed(JobInfo job, JobChunkInfo chunk, string workerId) => new()

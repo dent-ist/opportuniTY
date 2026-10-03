@@ -193,3 +193,9 @@ public sealed record SearchWorkBacklog(
 /// <summary>One examined day partition of the retention pass.</summary>
 /// <param name="UnappliedRows">Rows not Applied: such a partition is kept and must raise an alert (ADR-001 R4).</param>
 public sealed record SearchWorkPartition(string Table, string Partition, DateTimeOffset RangeEnd, long UnappliedRows, bool Dropped);
+
+/// <summary>
+/// SearchOutbox rows of one lane in one workspace: <paramref name="Unapplied"/> rows not yet Applied, and the oldest
+/// commit among the rows not yet dispatched (Pending, Claimed or Failed) — the <c>opportunity.outbox.*</c> gauges.
+/// </summary>
+public sealed record OutboxLaneBacklog(MessageLane Lane, long Unapplied, DateTimeOffset? OldestUndispatchedCommittedAt);

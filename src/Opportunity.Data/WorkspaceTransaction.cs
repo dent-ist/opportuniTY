@@ -70,6 +70,29 @@ internal sealed class WorkspaceTransaction : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// A session subscribed to <paramref name="channel"/> (<c>LISTEN</c>), for wake-up notifications only: no
+    /// transaction and no workspace context, so it cannot read tenant rows. The caller owns the connection; disposing it
+    /// returns it to the pool, whose reset (<c>DISCARD ALL</c>) also ends the subscription.
+    /// </summary>
+    public static async Task<NpgsqlConnection> ListenAsync(NpgsqlDataSource dataSource, string channel, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(dataSource);
+        ArgumentException.ThrowIfNullOrWhiteSpace(channel);
+        var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var command = new NpgsqlCommand($"LISTEN \"{channel.Replace("\"", "\"\"", StringComparison.Ordinal)}\"", connection);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
     public NpgsqlCommand Command(string sql) => new(sql, Connection, Transaction);
 
     /// <summary>Several statements in one round trip, inside this transaction.</summary>
