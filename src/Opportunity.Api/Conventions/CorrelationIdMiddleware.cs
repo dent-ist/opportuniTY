@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using Opportunity.Application.Telemetry;
 
 namespace Opportunity.Api.Conventions;
 
 /// <summary>
 /// ADR-019 §2.10: echoes <c>X-Correlation-Id</c> (or the W3C trace id when the client sent none or an unusable one)
-/// and adds it to the logging scope. <c>traceparent</c> itself is handled by ASP.NET Core's activity propagation.
+/// and adds it to the logging scope and the request span (<c>opportunity.correlation_id</c>). <c>traceparent</c>
+/// itself is handled by ASP.NET Core's activity propagation.
 /// </summary>
 internal sealed class CorrelationIdMiddleware(RequestDelegate next, ILogger<CorrelationIdMiddleware> logger)
 {
@@ -18,13 +20,14 @@ internal sealed class CorrelationIdMiddleware(RequestDelegate next, ILogger<Corr
             ? supplied
             : Activity.Current?.TraceId.ToHexString() ?? context.TraceIdentifier;
 
+        Activity.Current?.SetTag(TelemetryAttributes.CorrelationId, correlationId);
         context.Response.OnStarting(() =>
         {
             context.Response.Headers[HeaderName] = correlationId;
             return Task.CompletedTask;
         });
 
-        using (logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId }))
+        using (logger.BeginScope(new Dictionary<string, object> { [LogScopeKeys.CorrelationId] = correlationId }))
         {
             await next(context).ConfigureAwait(false);
         }

@@ -1,0 +1,304 @@
+# Enterprise performance reference topology (baseline §29; E17-T03), codified so it can be stood up unchanged on
+# sponsored or rented hardware (decision Q-03: 10M validation waits for that hardware). See
+# docs/benchmarks/reference-environments.md for instance shapes and the settings recorded with every result.
+#
+#   ./bench.sh up --profile reference [--infra-only]      ./bench.sh down --profile reference
+#
+# On one large host every service runs here. On a real multi-host reference, run each tier on its own host(s) with
+# the same file (docker compose up <service>) or translate it to the IaC of the target; the manifest records hosts.
+# Durability is production-like and must stay so (Q-05): the validator rejects relaxed reference bundles.
+# BENCHMARK ONLY: the OpenSearch security plugin is off on a private network, like the developer profile; Full
+# (E19-T06) enables it. Never load real client data.
+
+name: ${COMPOSE_PROJECT_NAME:-opportunity-ref}
+
+x-opensearch: &opensearch
+  image: opensearchproject/opensearch:${OPENSEARCH:?run with --env-file ../../versions.env}@${OPENSEARCH_DIGEST:?run with --env-file ../../versions.env}
+  ulimits:
+    memlock: { soft: -1, hard: -1 }
+    nofile: { soft: 65536, hard: 65536 }
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fsS 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+    interval: 10s
+    timeout: 10s
+    start_period: 120s
+    start_interval: 3s
+    retries: 12
+  restart: unless-stopped
+
+x-opensearch-env: &opensearch-env
+  cluster.name: opportunity-ref
+  discovery.seed_hosts: os1,os2,os3
+  cluster.initial_cluster_manager_nodes: os1,os2,os3
+  bootstrap.memory_lock: "true"
+  # 31g on reference hardware (half of a 64 GB data node, below the compressed-oops limit); small default for a dry run.
+  OPENSEARCH_JAVA_OPTS: -Xms${REF_OPENSEARCH_HEAP:-1g} -Xmx${REF_OPENSEARCH_HEAP:-1g}
+  DISABLE_SECURITY_PLUGIN: "true"
+  DISABLE_INSTALL_DEMO_CONFIG: "true"
+  OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?set OPENSEARCH_INITIAL_ADMIN_PASSWORD in .env}
+
+# Production-like PostgreSQL settings, identical on primary and replica (Q-05). Sized for a 64 GB / 16 vCPU host;
+# override with REF_PG_* on other shapes. Every value lands in the manifest via capture-env.
+x-postgres-args: &postgres-args
+  - -c
+  - fsync=on
+  - -c
+  - synchronous_commit=on
+  - -c
+  - full_page_writes=on
+  - -c
+  - wal_level=replica
+  - -c
+  - max_wal_senders=10
+  - -c
+  - max_replication_slots=10
+  - -c
+  - hot_standby=on
+  - -c
+  - wal_compression=lz4
+  - -c
+  - shared_buffers=${REF_PG_SHARED_BUFFERS:-16GB}
+  - -c
+  - effective_cache_size=${REF_PG_EFFECTIVE_CACHE_SIZE:-48GB}
+  - -c
+  - work_mem=${REF_PG_WORK_MEM:-64MB}
+  - -c
+  - maintenance_work_mem=${REF_PG_MAINTENANCE_WORK_MEM:-2GB}
+  - -c
+  - max_wal_size=${REF_PG_MAX_WAL_SIZE:-32GB}
+  - -c
+  - checkpoint_timeout=15min
+  - -c
+  - checkpoint_completion_target=0.9
+  - -c
+  - random_page_cost=1.1
+  - -c
+  - effective_io_concurrency=200
+  - -c
+  - max_connections=${REF_PG_MAX_CONNECTIONS:-400}
+  - -c
+  - max_worker_processes=16
+  - -c
+  - max_parallel_workers=8
+  - -c
+  - max_parallel_workers_per_gather=4
+  - -c
+  - track_io_timing=on
+  - -c
+  - huge_pages=${REF_PG_HUGE_PAGES:-try}
+
+x-postgres-env: &postgres-env
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (deploy/docker-compose/opportunity.sh init)}
+  POSTGRES_DB: postgres
+  # Page checksums, as on production clusters (PostgreSQL 17 initdb leaves them off). Recorded as data_checksums.
+  POSTGRES_INITDB_ARGS: --data-checksums
+  OPPORTUNITY_DB: ${OPPORTUNITY_DB:-opportunity}
+  OPPORTUNITY_DB_OWNER_USER: ${OPPORTUNITY_DB_OWNER_USER:-opportunity_owner}
+  OPPORTUNITY_DB_OWNER_PASSWORD: ${OPPORTUNITY_DB_OWNER_PASSWORD:?set OPPORTUNITY_DB_OWNER_PASSWORD in .env}
+  OPPORTUNITY_DB_APP_USER: ${OPPORTUNITY_DB_APP_USER:-opportunity_runtime}
+  OPPORTUNITY_DB_APP_PASSWORD: ${OPPORTUNITY_DB_APP_PASSWORD:?set OPPORTUNITY_DB_APP_PASSWORD in .env}
+  REPLICATION_PASSWORD: ${REF_PG_REPLICATION_PASSWORD:-${POSTGRES_PASSWORD}}
+  # '' = asynchronous replica (RPO <= 5 min target, §17); 'FIRST 1 (pg_replica)' = synchronous. Recorded either way.
+  REF_PG_SYNC_STANDBY: ${REF_PG_SYNC_STANDBY:-}
+
+x-app: &app
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+  restart: unless-stopped
+  profiles: [app]
+  depends_on:
+    migrator: { condition: service_completed_successfully }
+    pg-primary: { condition: service_healthy }
+    os1: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+    seaweedfs: { condition: service_healthy }
+
+x-app-environment: &app-environment
+  DOTNET_ENVIRONMENT: Production
+  ConnectionStrings__App: >-
+    Host=pg-primary;Database=${OPPORTUNITY_DB:-opportunity};Username=${OPPORTUNITY_DB_APP_USER:-opportunity_runtime};Password=${OPPORTUNITY_DB_APP_PASSWORD};GSS Encryption Mode=Disable
+  ConnectionStrings__OpenSearch: http://os1:9200
+  ConnectionStrings__RabbitMq: amqp://${RABBITMQ_USER:-opportunity}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+  ObjectStorage__Provider: S3
+  ObjectStorage__S3__ServiceUrl: http://seaweedfs:8333
+  ObjectStorage__S3__Bucket: opportunity
+  ObjectStorage__S3__AccessKey: ${S3_ACCESS_KEY:-opportunity}
+  ObjectStorage__S3__SecretKey: ${S3_SECRET_KEY:-}
+
+services:
+  os1:
+    <<: *opensearch
+    hostname: os1
+    environment: { <<: *opensearch-env, node.name: os1 }
+    volumes: [os1-data:/usr/share/opensearch/data]
+    ports: ["${OPPORTUNITY_BIND:-127.0.0.1}:${OPENSEARCH_PORT:-9200}:9200"]
+    labels: { opportunity.bench.profile: enterprise-reference }
+  os2:
+    <<: *opensearch
+    hostname: os2
+    environment: { <<: *opensearch-env, node.name: os2 }
+    volumes: [os2-data:/usr/share/opensearch/data]
+    labels: { opportunity.bench.profile: enterprise-reference }
+  os3:
+    <<: *opensearch
+    hostname: os3
+    environment: { <<: *opensearch-env, node.name: os3 }
+    volumes: [os3-data:/usr/share/opensearch/data]
+    labels: { opportunity.bench.profile: enterprise-reference }
+
+  pg-primary:
+    image: postgres:${POSTGRES:?run with --env-file ../../versions.env}@${POSTGRES_DIGEST:?run with --env-file ../../versions.env}
+    hostname: pg-primary
+    # The image entrypoint prepends `postgres` when the first argument is an option.
+    command: *postgres-args
+    environment: *postgres-env
+    volumes:
+      - pg-primary-data:/var/lib/postgresql/data
+      - ../docker-compose/postgres/init/10-opportunity.sh:/docker-entrypoint-initdb.d/10-opportunity.sh:ro
+      - ./postgres/20-replication.sh:/docker-entrypoint-initdb.d/20-replication.sh:ro
+    ports: ["${OPPORTUNITY_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"]
+    shm_size: ${REF_PG_SHM_SIZE:-1g}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d \"$${OPPORTUNITY_DB}\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 1s
+      retries: 6
+    restart: unless-stopped
+    labels: { opportunity.bench.profile: enterprise-reference }
+
+  pg-replica:
+    image: postgres:${POSTGRES:?run with --env-file ../../versions.env}@${POSTGRES_DIGEST:?run with --env-file ../../versions.env}
+    hostname: pg-replica
+    user: postgres
+    entrypoint: ["/usr/local/bin/replica-entrypoint.sh"]
+    command: *postgres-args
+    environment:
+      PRIMARY_HOST: pg-primary
+      REPLICATION_PASSWORD: ${REF_PG_REPLICATION_PASSWORD:-${POSTGRES_PASSWORD}}
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - pg-replica-data:/var/lib/postgresql/data
+      - ./postgres/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    ports: ["${OPPORTUNITY_BIND:-127.0.0.1}:${REF_PG_REPLICA_PORT:-5433}:5432"]
+    shm_size: ${REF_PG_SHM_SIZE:-1g}
+    depends_on:
+      pg-primary: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres && psql -h 127.0.0.1 -U postgres -tAc 'select pg_is_in_recovery()' | grep -q t"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      start_interval: 2s
+      retries: 6
+    restart: unless-stopped
+    labels: { opportunity.bench.profile: enterprise-reference }
+
+  rabbitmq:
+    image: rabbitmq:${RABBITMQ:?run with --env-file ../../versions.env}@${RABBITMQ_DIGEST:?run with --env-file ../../versions.env}
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-opportunity}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ../docker-compose/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    ports:
+      - "${OPPORTUNITY_BIND:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      start_period: 60s
+      start_interval: 2s
+      retries: 6
+    restart: unless-stopped
+    labels: { opportunity.bench.profile: enterprise-reference }
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:${SEAWEEDFS:?run with --env-file ../../versions.env}@${SEAWEEDFS_DIGEST:?run with --env-file ../../versions.env}
+    command: ["server", "-dir=/data", "-ip.bind=0.0.0.0", "-volume.max=0", "-s3", "-s3.config=/etc/seaweedfs/s3.json"]
+    configs:
+      - source: seaweedfs-s3
+        target: /etc/seaweedfs/s3.json
+    volumes: [seaweedfs-data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/status"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 2s
+      retries: 6
+    restart: unless-stopped
+    labels: { opportunity.bench.profile: enterprise-reference }
+
+  migrator:
+    <<: *app
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-migrator:${OPPORTUNITY_IMAGE_TAG:-dev}
+    restart: "no"
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__Migrator: >-
+        Host=pg-primary;Database=${OPPORTUNITY_DB:-opportunity};Username=${OPPORTUNITY_DB_OWNER_USER:-opportunity_owner};Password=${OPPORTUNITY_DB_OWNER_PASSWORD};GSS Encryption Mode=Disable
+    depends_on:
+      pg-primary: { condition: service_healthy }
+      os1: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  # Two API instances behind the load generator's round-robin (no proxy in the measured path).
+  api:
+    <<: *app
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-api:${OPPORTUNITY_IMAGE_TAG:-dev}
+    environment: *app-environment
+    deploy: { replicas: "${REF_API_INSTANCES:-2}" }
+    labels: { opportunity.bench.profile: enterprise-reference }
+
+  worker-dispatcher:
+    <<: *app
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-worker:${OPPORTUNITY_IMAGE_TAG:-dev}
+    environment: { <<: *app-environment, Workers__Enabled: dispatcher }
+    deploy: { replicas: "${REF_DISPATCHER_WORKERS:-1}" }
+    labels: { opportunity.bench.profile: enterprise-reference }
+  worker-indexing:
+    <<: *app
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-worker:${OPPORTUNITY_IMAGE_TAG:-dev}
+    environment: { <<: *app-environment, Workers__Enabled: indexing }
+    deploy: { replicas: "${REF_INDEXING_WORKERS:-4}" }
+    labels: { opportunity.bench.profile: enterprise-reference }
+  worker-bulk-coding:
+    <<: *app
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-worker:${OPPORTUNITY_IMAGE_TAG:-dev}
+    environment: { <<: *app-environment, Workers__Enabled: bulk-coding }
+    deploy: { replicas: "${REF_BULK_CODING_WORKERS:-2}" }
+    labels: { opportunity.bench.profile: enterprise-reference }
+  worker-import:
+    <<: *app
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-worker:${OPPORTUNITY_IMAGE_TAG:-dev}
+    environment: { <<: *app-environment, Workers__Enabled: import }
+    deploy: { replicas: "${REF_IMPORT_WORKERS:-2}" }
+    labels: { opportunity.bench.profile: enterprise-reference }
+  worker-other:
+    <<: *app
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-worker:${OPPORTUNITY_IMAGE_TAG:-dev}
+    environment: { <<: *app-environment, Workers__Enabled: "rendering,export,production" }
+    deploy: { replicas: "${REF_OTHER_WORKERS:-1}" }
+    labels: { opportunity.bench.profile: enterprise-reference }
+
+configs:
+  seaweedfs-s3:
+    content: |
+      {"identities":[{"name":"opportunity","credentials":[{"accessKey":"${S3_ACCESS_KEY:-opportunity}","secretKey":"${S3_SECRET_KEY:-}"}],
+        "actions":["Admin","Read","List","Tagging","Write"]}]}
+
+volumes:
+  os1-data:
+  os2-data:
+  os3-data:
+  pg-primary-data:
+  pg-replica-data:
+  rabbitmq-data:
+  seaweedfs-data:

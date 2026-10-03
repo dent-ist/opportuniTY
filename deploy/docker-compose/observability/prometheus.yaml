@@ -1,0 +1,32 @@
+# Prometheus (Apache-2.0) for the `observability` profile. Application metrics arrive over OTLP from the collector
+# (--web.enable-otlp-receiver): `opportunity.search.index_lag` (unit s) becomes `opportunity_search_index_lag_seconds`,
+# job="opportunity/<service.name>", instance=<service.instance.id>. Infrastructure is scraped directly.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+otlp:
+  promote_resource_attributes:
+    - service.name
+    - service.namespace
+    - service.instance.id
+    - service.version
+    - deployment.environment.name
+
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+
+scrape_configs:
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+  - job_name: opensearch
+    static_configs:
+      - targets: ["opensearch-exporter:9114"]
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]

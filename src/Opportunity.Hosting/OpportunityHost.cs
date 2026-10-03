@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Opportunity.Hosting.Health;
+using Opportunity.Hosting.Telemetry;
 
 namespace Opportunity.Hosting;
 
@@ -13,6 +14,7 @@ public static class OpportunityHost
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.TryAddSingleton(TimeProvider.System);
+        builder.AddOpportunityTelemetry();
         builder.Services.AddOpportunityHealthChecks();
         builder.Services.AddOpportunityPostgres();
         return builder;

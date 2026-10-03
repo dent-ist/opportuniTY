@@ -32,6 +32,7 @@
     <Project Path="tests/Opportunity.Testing/Opportunity.Testing.csproj" />
     <Project Path="tests/Opportunity.UnitTests/Opportunity.UnitTests.csproj" />
     <Project Path="tests/Opportunity.DataGenerator.Tests/Opportunity.DataGenerator.Tests.csproj" />
+    <Project Path="tests/Opportunity.Benchmarks.Tests/Opportunity.Benchmarks.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Opportunity.Benchmarks/Opportunity.Benchmarks.csproj" />

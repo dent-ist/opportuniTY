@@ -1,1 +1,413 @@
-Console.WriteLine("Opportunity.Benchmarks: not implemented yet.");
+using System.CommandLine;
+using System.Globalization;
+using System.Text.Json.Nodes;
+
+using Opportunity.Benchmarks;
+using Opportunity.Benchmarks.Bundles;
+using Opportunity.Benchmarks.Capture;
+using Opportunity.Benchmarks.Gates;
+using Opportunity.Benchmarks.Infrastructure;
+using Opportunity.Benchmarks.Workloads;
+
+// ---- capture-env -------------------------------------------------------------------------------------------------
+var profileOption = new Option<string>("--profile")
+{
+    Description = "developer-regression (Compose dev profile) or enterprise-reference (§29).",
+    DefaultValueFactory = _ => "developer-regression",
+};
+var outOption = new Option<FileInfo?>("--out") { Description = "Write the manifest here (default: stdout)." };
+var roleOption = new Option<string>("--role") { Description = "Host role recorded for this machine.", DefaultValueFactory = _ => "all-in-one" };
+var noHostnameOption = new Option<bool>("--no-hostname") { Description = "Do not record the host name." };
+var cloudOption = new Option<string?>("--cloud-provider") { Description = "Cloud provider (aws, azure, gcp, hetzner, ...) when not auto-detected." };
+var instanceTypeOption = new Option<string?>("--instance-type") { Description = "Instance shape, e.g. r7i.2xlarge." };
+var regionOption = new Option<string?>("--region") { Description = "Cloud region." };
+var versionsOption = new Option<FileInfo?>("--versions") { Description = "versions.env (default: found above the working directory)." };
+var composeProjectOption = new Option<string?>("--compose-project") { Description = "Inspect every container of this Compose project, e.g. opportunity-dev." };
+var containerOption = new Option<string[]>("--container") { Description = "Also inspect this container (name or id). Repeatable.", AllowMultipleArgumentsPerToken = true };
+var postgresOption = new Option<string[]>("--postgres")
+{
+    Description = "name=<connection string> or name=env:VAR (keeps the password off the command line). Repeatable (primary, replica).",
+    AllowMultipleArgumentsPerToken = true,
+};
+var openSearchOption = new Option<string?>("--opensearch") { Description = "OpenSearch REST endpoint, e.g. http://127.0.0.1:9200 (user:password@ allowed), or env:VAR." };
+var systemIndicesOption = new Option<bool>("--include-system-indices") { Description = "Also record indices whose name starts with '.'." };
+var rabbitOption = new Option<string?>("--rabbitmq-management") { Description = "RabbitMQ management URL (http://user:password@127.0.0.1:15672) or env:VAR." };
+var objectStoreOption = new Option<string?>("--object-store") { Description = "Provider[=implementation], e.g. S3=seaweedfs 4.48 or FileSystem. Default: detected from containers." };
+var workerOption = new Option<string[]>("--worker") { Description = "type=instances[:concurrency], e.g. indexing=4:8. Repeatable. Default: detected from containers.", AllowMultipleArgumentsPerToken = true };
+var relaxedOption = new Option<string?>("--relaxed-durability") { Description = "Justification required when durability is relaxed (Q-05: nightly developer-regression runs, tier T2, only)." };
+var noteOption = new Option<string[]>("--note") { Description = "Free-text note recorded in the manifest. Repeatable.", AllowMultipleArgumentsPerToken = true };
+var noDockerOption = new Option<bool>("--no-docker") { Description = "Skip the container runtime (bare-metal services)." };
+
+var captureEnv = new Command("capture-env", "Capture the benchmark environment manifest: hardware, versions and digests, JVM/OpenSearch and PostgreSQL settings, durability, shard topology.")
+{
+    profileOption, outOption, roleOption, noHostnameOption, cloudOption, instanceTypeOption, regionOption, versionsOption,
+    composeProjectOption, containerOption, postgresOption, openSearchOption, systemIndicesOption, rabbitOption, objectStoreOption,
+    workerOption, relaxedOption, noteOption, noDockerOption,
+};
+captureEnv.SetAction(async (parse, cancellationToken) =>
+{
+    var options = new CaptureOptions
+    {
+        Profile = ParseProfile(parse.GetValue(profileOption)!),
+        Host = new HostOverrides
+        {
+            Role = parse.GetValue(roleOption)!,
+            IncludeHostname = !parse.GetValue(noHostnameOption),
+            CloudProvider = parse.GetValue(cloudOption),
+            InstanceType = parse.GetValue(instanceTypeOption),
+            Region = parse.GetValue(regionOption),
+        },
+        VersionsEnvPath = parse.GetValue(versionsOption)?.FullName,
+        ComposeProject = parse.GetValue(composeProjectOption),
+        Containers = parse.GetValue(containerOption) ?? [],
+        Postgres = [.. (parse.GetValue(postgresOption) ?? []).Select(ParsePostgres)],
+        OpenSearch = parse.GetValue(openSearchOption) is { } os ? new Uri(ResolveEnv(os, "--opensearch")) : null,
+        IncludeSystemIndices = parse.GetValue(systemIndicesOption),
+        RabbitMqManagement = parse.GetValue(rabbitOption) is { } rabbit ? new Uri(ResolveEnv(rabbit, "--rabbitmq-management")) : null,
+        ObjectStore = parse.GetValue(objectStoreOption) is { } store ? ParseObjectStore(store) : null,
+        Workers = [.. (parse.GetValue(workerOption) ?? []).Select(ParseWorker)],
+        RelaxedDurabilityJustification = parse.GetValue(relaxedOption),
+        Notes = parse.GetValue(noteOption) ?? [],
+        SkipDocker = parse.GetValue(noDockerOption),
+    };
+
+    EnvironmentManifest manifest = await new EnvironmentCapturer().CaptureAsync(options, cancellationToken).ConfigureAwait(false);
+    if (manifest.Durability.Mode == DurabilityMode.Relaxed && string.IsNullOrWhiteSpace(manifest.Durability.Justification))
+    {
+        await Console.Error.WriteLineAsync("error: durability is relaxed; record why with --relaxed-durability \"<justification>\" (Q-05):").ConfigureAwait(false);
+        foreach (DurabilityDeviation d in manifest.Durability.Deviations)
+        {
+            await Console.Error.WriteLineAsync($"  {d.Component} {d.Instance}: {d.Setting}={d.Actual} (production: {d.Expected})").ConfigureAwait(false);
+        }
+
+        return 3;
+    }
+
+    IReadOnlyList<string> errors = BundleSchemas.ValidateEnvironment(BundleSchemas.ToNode(manifest));
+    if (errors.Count > 0)
+    {
+        foreach (string error in errors)
+        {
+            await Console.Error.WriteLineAsync("schema: " + error).ConfigureAwait(false);
+        }
+
+        return 4;
+    }
+
+    string json = BenchJson.Serialize(manifest);
+    if (parse.GetValue(outOption) is { } file)
+    {
+        Directory.CreateDirectory(file.DirectoryName!);
+        await File.WriteAllTextAsync(file.FullName, json, cancellationToken).ConfigureAwait(false);
+        await Console.Error.WriteLineAsync($"Environment manifest ({parse.GetValue(profileOption)}, durability {(manifest.Durability.Mode == DurabilityMode.Production ? "production" : "relaxed")}) -> {file.FullName}").ConfigureAwait(false);
+    }
+    else
+    {
+        await Console.Out.WriteAsync(json).ConfigureAwait(false);
+    }
+
+    return 0;
+});
+
+// ---- validate / publish -----------------------------------------------------------------------------------------
+var bundleOption = new Option<DirectoryInfo>("--bundle") { Description = "Run directory containing bundle.json.", Required = true };
+var gatesOption = new Option<FileInfo?>("--gates") { Description = "gates.yaml the run must have used (hash check), e.g. the frozen file in the repository." };
+
+var validate = new Command("validate", "Validate a result bundle against the schema and the bundle rules (complete manifest, hashes, Q-04/Q-05).") { bundleOption, gatesOption };
+validate.SetAction(parse => Report(BundleValidator.Validate(parse.GetValue(bundleOption)!.FullName, ValidationOptions(parse))));
+
+var destinationOption = new Option<DirectoryInfo>("--dest") { Description = "Publication root (local, mounted bucket or sync staging directory).", Required = true };
+var publish = new Command("publish", "Validate and publish a run directory write-once to <dest>/<profile>/<runId>/ and append it to <dest>/index.jsonl.")
+{
+    bundleOption, gatesOption, destinationOption,
+};
+publish.SetAction(parse =>
+{
+    try
+    {
+        PublishedRun run = BundlePublisher.Publish(parse.GetValue(bundleOption)!.FullName, parse.GetValue(destinationOption)!.FullName, ValidationOptions(parse));
+        Console.WriteLine(BenchJson.Serialize(run).TrimEnd());
+        return 0;
+    }
+    catch (BundleRejectedException ex)
+    {
+        Console.Error.WriteLine("rejected: " + ex.Message);
+        return 1;
+    }
+});
+
+// ---- gates ------------------------------------------------------------------------------------------------------
+var gatesFileOption = new Option<FileInfo?>("--gates") { Description = "gates.yaml (default: tools/Opportunity.Benchmarks/gates.yaml)." };
+var gatesCheck = new Command("gates", "Parse and check gates.yaml, check every gate path against the result-bundle schema, print its SHA-256.") { gatesFileOption };
+gatesCheck.SetAction(parse =>
+{
+    string path = parse.GetValue(gatesFileOption)?.FullName ?? GatesFile.Locate() ?? throw new FileNotFoundException("gates.yaml not found; pass --gates.");
+    GatesFile gates = GatesFile.Load(path);
+    var errors = gates.Check().Concat(gates.CheckAgainstSchema(JsonNode.Parse(BundleSchemas.ReadResource(BundleSchemas.ResultBundleResource))!)).ToList();
+    foreach (string error in errors)
+    {
+        Console.Error.WriteLine("error: " + error);
+    }
+
+    Console.WriteLine($"{gates.Sha256}  {path}  ({gates.Document.Status}, version {gates.Document.GatesVersion}, {gates.Document.Gates.Count} gates)");
+    return errors.Count == 0 ? 0 : 1;
+});
+
+var schemaNameOption = new Option<string>("--name") { Description = "result-bundle or environment-manifest.", DefaultValueFactory = _ => "result-bundle" };
+var schema = new Command("schema", "Print an embedded JSON Schema.") { schemaNameOption };
+schema.SetAction(parse =>
+{
+    Console.Write(BundleSchemas.ReadResource(parse.GetValue(schemaNameOption) switch
+    {
+        "environment-manifest" => BundleSchemas.EnvironmentManifestResource,
+        "result-bundle" => BundleSchemas.ResultBundleResource,
+        var other => throw new ArgumentException($"Unknown schema '{other}'."),
+    }));
+    return 0;
+});
+
+// ---- queries (E17-T04) ------------------------------------------------------------------------------------------
+var corpusManifestOption = new Option<FileInfo>("--corpus-manifest") { Description = "corpus-manifest.json of the loaded corpus (E17-T01).", Required = true };
+var querySeedOption = new Option<ulong>("--seed") { Description = "Query seed; the same seed and corpus give a byte-identical query file.", Required = true };
+var queryCountOption = new Option<int>("--count") { Description = "Number of distinct queries.", DefaultValueFactory = _ => 1_000 };
+var textSampleOption = new Option<int>("--text-sample") { Description = "Documents whose text is synthesised to count text queries (exact when >= corpus size).", DefaultValueFactory = _ => 5_000 };
+var queriesOutOption = new Option<FileInfo>("--out") { Description = "Query file to write.", DefaultValueFactory = _ => new FileInfo("queries.json") };
+var threadsOption = new Option<int>("--threads") { Description = "Generator threads (output is identical for any value).", DefaultValueFactory = _ => 0 };
+var queries = new Command("queries", "Generate the versioned query set (taxonomy classes, expected hit counts, selectivity bands, replay schedule) from a corpus manifest.")
+{
+    corpusManifestOption, querySeedOption, queryCountOption, textSampleOption, queriesOutOption, threadsOption,
+};
+queries.SetAction(parse =>
+{
+    QueryCorpus corpus = QueryCorpus.Open(parse.GetValue(corpusManifestOption)!.FullName, parse.GetValue(threadsOption));
+    QuerySet set = QuerySetGenerator.Generate(corpus, new QuerySetOptions
+    {
+        QuerySeed = parse.GetValue(querySeedOption),
+        QueryCount = parse.GetValue(queryCountOption),
+        TextSampleDocuments = parse.GetValue(textSampleOption),
+    });
+    FileInfo file = parse.GetValue(queriesOutOption)!;
+    Directory.CreateDirectory(file.DirectoryName!);
+    File.WriteAllText(file.FullName, set.ToJson());
+    foreach (var group in set.Queries.GroupBy(q => q.Class))
+    {
+        Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"  {group.Key,-15} {group.Count(),5}  {string.Join(" ", group.GroupBy(q => q.Selectivity).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key}={g.Count()}"))}"));
+    }
+
+    Console.Error.WriteLine($"{set.Queries.Count} queries (taxonomy {set.TaxonomyVersion}, text {set.Evaluation.TextMode} over {set.Evaluation.TextSampleDocuments} docs) -> {file.FullName}");
+    return 0;
+});
+
+// ---- stub-api (E17-T04) -----------------------------------------------------------------------------------------
+var stubQueriesOption = new Option<FileInfo>("--queries") { Description = "Query file the workloads replay; only its queries are accepted.", Required = true };
+var stubPortOption = new Option<int>("--port") { Description = "Port to listen on (127.0.0.1).", DefaultValueFactory = _ => 8080 };
+var stubWorkspaceOption = new Option<string>("--workspace") { Description = "Workspace id the scripts must use (WORKSPACE_ID).", DefaultValueFactory = _ => "bench" };
+var stubSimpleOption = new Option<int>("--simple-ms") { Description = "Service time of simple searches.", DefaultValueFactory = _ => 2 };
+var stubComplexOption = new Option<int>("--complex-ms") { Description = "Service time of complex searches.", DefaultValueFactory = _ => 6 };
+var stubApi = new Command("stub-api", "Run a fake of the M1 API contract (search, document view, coding, bulk jobs) to validate the k6 scripts. Ctrl+C stops it and prints what it saw.")
+{
+    stubQueriesOption, stubPortOption, stubWorkspaceOption, stubSimpleOption, stubComplexOption,
+};
+stubApi.SetAction(async (parse, cancellationToken) =>
+{
+    await using StubApi stub = await StubApi.StartAsync(QuerySet.Load(parse.GetValue(stubQueriesOption)!.FullName), new StubApiOptions
+    {
+        Port = parse.GetValue(stubPortOption),
+        WorkspaceId = parse.GetValue(stubWorkspaceOption)!,
+        SimpleDelay = TimeSpan.FromMilliseconds(parse.GetValue(stubSimpleOption)),
+        ComplexDelay = TimeSpan.FromMilliseconds(parse.GetValue(stubComplexOption)),
+    }, cancellationToken).ConfigureAwait(false);
+    await Console.Error.WriteLineAsync($"stub API listening on {stub.BaseAddress} (BASE_URL={stub.BaseAddress.ToString().TrimEnd('/')}); Ctrl+C to stop").ConfigureAwait(false);
+    try
+    {
+        await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+    }
+    catch (OperationCanceledException)
+    {
+    }
+
+    foreach (var (operation, count) in stub.Stats.Counts.OrderBy(c => c.Key, StringComparer.Ordinal))
+    {
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{operation,-16} {count}"));
+    }
+
+    foreach (string violation in stub.Stats.Violations)
+    {
+        Console.WriteLine("violation: " + violation);
+    }
+
+    return stub.Stats.Violations.Count == 0 ? 0 : 1;
+});
+
+// ---- ingest-k6 (E17-T04) ----------------------------------------------------------------------------------------
+var rawOption = new Option<FileInfo>("--raw") { Description = "k6 --out json= file (.json or .json.gz).", Required = true };
+var summaryOption = new Option<FileInfo?>("--summary") { Description = "k6 --summary-export file." };
+var cpuOption = new Option<FileInfo?>("--loadgen-cpu") { Description = "Load-generator CPU samples (JSON lines {time, cpuPercent}) from k6/run.sh." };
+var ingestQueriesOption = new Option<FileInfo>("--queries") { Description = "Query file the run replayed.", Required = true };
+var scriptsOption = new Option<DirectoryInfo?>("--scripts") { Description = "k6 script directory (default: tools/Opportunity.Benchmarks/k6)." };
+var environmentOption = new Option<FileInfo>("--environment") { Description = "Environment manifest from capture-env.", Required = true };
+var ingestCorpusOption = new Option<FileInfo>("--corpus-manifest") { Description = "corpus-manifest.json of the loaded corpus.", Required = true };
+var ingestGatesOption = new Option<FileInfo?>("--gates") { Description = "gates.yaml (default: the repository file)." };
+var ingestOutOption = new Option<DirectoryInfo>("--out") { Description = "Parent directory of the run directory.", DefaultValueFactory = _ => new DirectoryInfo(Path.Combine("artifacts", "bench")) };
+var tierOption = new Option<string>("--tier") { Description = "test-strategy tier T1..T4.", Required = true };
+var suiteOption = new Option<string>("--suite") { Description = "Suite name, e.g. adr004/degradation or nightly/regression.", Required = true };
+var candidateOption = new Option<string?>("--candidate") { Description = "ADR-004 / PG coding candidate id." };
+var repetitionOption = new Option<string>("--repetition") { Description = "index/of, e.g. 1/3.", DefaultValueFactory = _ => "1/1" };
+var cacheOption = new Option<string>("--cache-state") { Description = "cold or warm.", DefaultValueFactory = _ => "warm" };
+var operatorOption = new Option<string>("--operator") { Description = "Who ran it (login or ci:<job>).", DefaultValueFactory = _ => Environment.UserName };
+var loadPathOption = new Option<string>("--load-path") { Description = "import, fast-path or cache-restore.", DefaultValueFactory = _ => "import" };
+var workloadOption = new Option<string>("--workload") { Description = "Workload name (search-mix, reviewer-sessions, bulk-coding, mixed).", DefaultValueFactory = _ => "mixed" };
+var modelOption = new Option<string>("--model") { Description = "open, closed or mixed.", DefaultValueFactory = _ => "mixed" };
+var phaseOption = new Option<string[]>("--phase") { Description = "phase=role, e.g. idle=idle-baseline (defaults: idle, bulk, smoke, calibration by name). Repeatable.", AllowMultipleArgumentsPerToken = true };
+var warmupOption = new Option<double>("--warmup") { Description = "Seconds at the start of each phase excluded from latency histograms." };
+var drainOption = new Option<double>("--drain") { Description = "Drain seconds recorded with each scenario." };
+var offeredQpsOption = new Option<double?>("--offered-qps") { Description = "Offered open-model search rate (SEARCH_RATE)." };
+var offeredBulkOption = new Option<double?>("--offered-bulk-docs") { Description = "Offered bulk rate in docs/s (BULK_DOCS_PER_SEC)." };
+var reviewersOption = new Option<int?>("--reviewers") { Description = "Concurrent reviewers (REVIEWERS)." };
+var oraclesOption = new Option<FileInfo?>("--oracles") { Description = "Oracle results JSON (bundle 'oracles' object); default: not-run." };
+var gitShaOption = new Option<string?>("--git-sha") { Description = "Override the git SHA (default: HEAD of the repository)." };
+var notesOption = new Option<string?>("--notes") { Description = "Free-text run notes." };
+var ingest = new Command("ingest-k6", "Convert a k6 run (raw JSON samples, summary, load-generator CPU) into a validated result bundle with HDR histograms per query class and phase.")
+{
+    rawOption, summaryOption, cpuOption, ingestQueriesOption, scriptsOption, environmentOption, ingestCorpusOption, ingestGatesOption, ingestOutOption,
+    tierOption, suiteOption, candidateOption, repetitionOption, cacheOption, operatorOption, loadPathOption, workloadOption, modelOption, phaseOption,
+    warmupOption, drainOption, offeredQpsOption, offeredBulkOption, reviewersOption, oraclesOption, gitShaOption, notesOption,
+};
+ingest.SetAction(async (parse, cancellationToken) =>
+{
+    string repository = Path.GetDirectoryName(VersionsEnvFile.Locate() ?? Path.Combine(Directory.GetCurrentDirectory(), VersionsEnvFile.FileName))!;
+    References.GitState git = parse.GetValue(gitShaOption) is { } sha
+        ? new References.GitState(sha, false, null)
+        : await References.GitAsync(repository, cancellationToken: cancellationToken).ConfigureAwait(false);
+    string[] repetition = parse.GetValue(repetitionOption)!.Split('/');
+    var roles = new Dictionary<string, ScenarioRole>(StringComparer.Ordinal);
+    foreach (string mapping in parse.GetValue(phaseOption) ?? [])
+    {
+        string[] parts = mapping.Split('=', 2);
+        roles[parts[0]] = parts.Length == 2
+            ? BenchJson.Deserialize<ScenarioRole>($"\"{parts[1]}\"")
+            : throw new ArgumentException($"--phase '{mapping}': expected phase=role.");
+    }
+
+    string path = K6Ingest.Ingest(new K6IngestOptions
+    {
+        RawPath = parse.GetValue(rawOption)!.FullName,
+        SummaryPath = parse.GetValue(summaryOption)?.FullName,
+        LoadGeneratorCpuPath = parse.GetValue(cpuOption)?.FullName,
+        QuerySetPath = parse.GetValue(ingestQueriesOption)!.FullName,
+        ScriptsDirectory = parse.GetValue(scriptsOption)?.FullName ?? Path.Combine(repository, "tools", "Opportunity.Benchmarks", "k6"),
+        EnvironmentPath = parse.GetValue(environmentOption)!.FullName,
+        CorpusManifestPath = parse.GetValue(ingestCorpusOption)!.FullName,
+        GatesPath = parse.GetValue(ingestGatesOption)?.FullName ?? GatesFile.Locate() ?? throw new FileNotFoundException("gates.yaml not found; pass --gates."),
+        OutputDirectory = parse.GetValue(ingestOutOption)!.FullName,
+        Tier = parse.GetValue(tierOption)!,
+        Suite = parse.GetValue(suiteOption)!,
+        Candidate = parse.GetValue(candidateOption),
+        Repetition = int.Parse(repetition[0], CultureInfo.InvariantCulture),
+        RepetitionOf = int.Parse(repetition.Length > 1 ? repetition[1] : repetition[0], CultureInfo.InvariantCulture),
+        CacheState = BenchJson.Deserialize<CacheState>($"\"{parse.GetValue(cacheOption)}\""),
+        Operator = parse.GetValue(operatorOption)!,
+        Git = git,
+        LoadPath = BenchJson.Deserialize<CorpusLoadPath>($"\"{parse.GetValue(loadPathOption)}\""),
+        WorkloadName = parse.GetValue(workloadOption)!,
+        Model = BenchJson.Deserialize<WorkloadModel>($"\"{parse.GetValue(modelOption)}\""),
+        PhaseRoles = roles,
+        WarmupSeconds = parse.GetValue(warmupOption),
+        DrainSeconds = parse.GetValue(drainOption),
+        OfferedQueriesPerSecond = parse.GetValue(offeredQpsOption),
+        OfferedBulkDocsPerSecond = parse.GetValue(offeredBulkOption),
+        Reviewers = parse.GetValue(reviewersOption),
+        Oracles = parse.GetValue(oraclesOption) is { } oracles ? BenchJson.Deserialize<Oracles>(await File.ReadAllTextAsync(oracles.FullName, cancellationToken).ConfigureAwait(false)) : null,
+        Notes = parse.GetValue(notesOption),
+    });
+    Console.WriteLine(path);
+    return 0;
+});
+
+var root = new RootCommand($"{HarnessInfo.Name} {HarnessInfo.Version}: opportuniTY benchmark harness (E17). Synthetic data only.")
+{
+    captureEnv, validate, publish, gatesCheck, schema, queries, stubApi, ingest,
+};
+
+try
+{
+    return await root.Parse(args).InvokeAsync(new InvocationConfiguration { EnableDefaultExceptionHandler = false }).ConfigureAwait(false);
+}
+catch (Exception ex) when (ex is ArgumentException or FormatException or FileNotFoundException or InvalidOperationException or HttpRequestException or Npgsql.NpgsqlException or BundleRejectedException or System.Text.Json.JsonException)
+{
+    await Console.Error.WriteLineAsync("error: " + ex.Message).ConfigureAwait(false);
+    return 2;
+}
+
+static int Report(BundleValidationReport report)
+{
+    foreach (string warning in report.Warnings)
+    {
+        Console.Error.WriteLine("warning: " + warning);
+    }
+
+    foreach (string error in report.Errors)
+    {
+        Console.Error.WriteLine("error: " + error);
+    }
+
+    Console.WriteLine(report.IsValid ? "bundle is valid" : string.Create(CultureInfo.InvariantCulture, $"bundle is INVALID ({report.Errors.Count} errors)"));
+    return report.IsValid ? 0 : 1;
+}
+
+BundleValidationOptions ValidationOptions(ParseResult parse) => new() { GatesPath = parse.GetValue(gatesOption)?.FullName };
+
+static BenchmarkProfile ParseProfile(string value) => value switch
+{
+    "developer-regression" or "dev" => BenchmarkProfile.DeveloperRegression,
+    "enterprise-reference" or "reference" => BenchmarkProfile.EnterpriseReference,
+    _ => throw new ArgumentException($"Unknown --profile '{value}' (developer-regression or enterprise-reference)."),
+};
+
+static string ResolveEnv(string value, string option)
+{
+    if (!value.StartsWith("env:", StringComparison.Ordinal))
+    {
+        return value;
+    }
+
+    string name = value[4..];
+    return Environment.GetEnvironmentVariable(name) is { Length: > 0 } resolved
+        ? resolved
+        : throw new ArgumentException($"{option}: environment variable {name} is not set.");
+}
+
+static PostgresTarget ParsePostgres(string spec)
+{
+    int eq = spec.IndexOf('=', StringComparison.Ordinal);
+    return eq > 0
+        ? new PostgresTarget(spec[..eq], ResolveEnv(spec[(eq + 1)..], "--postgres"))
+        : throw new ArgumentException($"--postgres '{spec}': expected name=<connection string> or name=env:VAR.");
+}
+
+static ObjectStoreInfo ParseObjectStore(string spec)
+{
+    string[] parts = spec.Split('=', 2);
+    return parts[0] is "FileSystem" or "S3" or "AzureBlob"
+        ? new ObjectStoreInfo { Provider = parts[0], Implementation = parts.Length > 1 ? parts[1] : null }
+        : throw new ArgumentException($"--object-store '{spec}': provider must be FileSystem, S3 or AzureBlob.");
+}
+
+static WorkerPool ParseWorker(string spec)
+{
+    string[] parts = spec.Split('=', 2);
+    string[] counts = parts.Length == 2 ? parts[1].Split(':', 2) : [];
+    if (counts.Length == 0 || !int.TryParse(counts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int instances)
+        || (counts.Length == 2 && !int.TryParse(counts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+    {
+        throw new ArgumentException($"--worker '{spec}': expected type=instances[:concurrency].");
+    }
+
+    return new WorkerPool
+    {
+        Type = parts[0],
+        Instances = instances,
+        Concurrency = counts.Length == 2 ? int.Parse(counts[1], CultureInfo.InvariantCulture) : null,
+    };
+}

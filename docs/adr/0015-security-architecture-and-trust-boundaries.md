@@ -586,8 +586,8 @@ and may relax it only through an amendment to this ADR.
 1. **AR-01, AR-02, AR-03** in the [accepted-risk register](../security/threat-model.md#7-accepted-risk-register)
    need sign-off: the IdP group-change window (default 15 min), the trusted-operator limit, and no rate limits or
    export encryption before M5.
-2. **Break-glass scope (D6.4):** read-only (view, search, audit), 60 min default, 4 h max, MFA. Is view-only
-   sufficient for emergencies, or must break-glass also allow download?
+2. **Break-glass scope (D6.4):** ✅ **Confirmed by the product owner as Q-45 (2026-10-03).** Read-only (view, search, audit), 60 min default, 4 h max, MFA. View-only;
+   no download or export.
 3. **Exclusion report wording (D9.4):** Q-15 asks to list each excluded document "and the reason". This ADR shows
    the requester a generic `AccessChanged` reason and keeps the specific reason (for example an ethical wall) in
    audit, so the report does not reveal a wall. Please confirm.
