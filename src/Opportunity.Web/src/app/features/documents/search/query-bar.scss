@@ -1,0 +1,245 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+}
+
+.qb__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-2);
+}
+
+.qb__label {
+  min-width: 6rem;
+  line-height: var(--opp-control-height);
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.qb__actions {
+  display: flex;
+  gap: var(--opp-space-1);
+}
+
+// The textarea and the highlight layer share every metric so the coloured text sits under the caret.
+.qb__editor {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.qb__editor:focus-within {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: var(--opp-focus-ring-offset);
+}
+
+.qb__editor:has([aria-invalid='true']) {
+  border-color: var(--opp-color-danger-border);
+}
+
+.qb__mirror,
+.qb__input {
+  margin: 0;
+  padding: calc((var(--opp-control-height) - 1.5em) / 2) var(--opp-control-padding-x);
+  border: 0;
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-control);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.qb__editor--expanded :is(.qb__mirror, .qb__input) {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  scrollbar-gutter: stable;
+}
+
+.qb__mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: var(--opp-color-text);
+  pointer-events: none;
+}
+
+.qb__input {
+  position: relative;
+  display: block;
+  width: 100%;
+  resize: none;
+  overflow: auto hidden;
+  scrollbar-width: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--opp-color-text);
+}
+
+.qb__editor--expanded .qb__input {
+  resize: vertical;
+  overflow: hidden auto;
+  scrollbar-width: auto;
+}
+
+.qb__input:focus {
+  outline: none;
+}
+
+.qb__input::placeholder {
+  color: var(--opp-color-text-muted);
+}
+
+.qb__input::selection {
+  background: color-mix(in srgb, var(--opp-color-focus) 30%, transparent);
+}
+
+.qb-t--operator,
+.qb-t--proximity,
+.qb-t--range-to {
+  color: var(--opp-color-syntax-operator);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.qb-t--field,
+.qb-t--exists {
+  color: var(--opp-color-syntax-field);
+}
+
+.qb-t--phrase {
+  color: var(--opp-color-syntax-phrase);
+}
+
+.qb-t--range-bracket,
+.qb-t--range-bound {
+  color: var(--opp-color-syntax-range);
+}
+
+.qb-t--wildcard {
+  font-style: italic;
+}
+
+// Errors are a wavy underline plus a tint (not colour alone); empty spans show a bar at the position.
+.qb-t--error {
+  color: var(--opp-color-danger-text);
+  background: var(--opp-color-danger-bg);
+  text-decoration: underline wavy var(--opp-color-danger-border);
+}
+
+.qb-t--point {
+  display: inline-block;
+  width: 0;
+  height: 1.2em;
+  vertical-align: text-bottom;
+  border-inline-start: 2px solid var(--opp-color-danger-border);
+}
+
+.qb-t--warning {
+  text-decoration: underline dotted var(--opp-color-warning-border);
+  text-underline-offset: 3px;
+}
+
+.qb__list {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% + var(--opp-space-1));
+  z-index: var(--opp-z-overlay);
+  max-height: 18rem;
+  margin: 0;
+  padding: var(--opp-space-1) 0;
+  overflow-y: auto;
+  list-style: none;
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface-raised);
+  box-shadow: var(--opp-elevation-2);
+}
+
+.qb__option {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+  min-height: var(--opp-target-min);
+  padding: var(--opp-space-1) var(--opp-space-3);
+  cursor: pointer;
+}
+
+.qb__option:hover,
+.qb__option[aria-selected='true'] {
+  background: var(--opp-color-selected);
+}
+
+.qb__option[aria-selected='true'] {
+  box-shadow: inset 3px 0 0 var(--opp-color-accent);
+}
+
+.qb__option-label {
+  overflow: hidden;
+  font-family: var(--opp-font-family-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qb__option-detail,
+.qb__option--empty,
+.qb__msg--muted {
+  color: var(--opp-color-text-muted);
+}
+
+.qb__messages,
+.qb__msgs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--opp-font-size-sm);
+}
+
+.qb__msg {
+  display: flex;
+  align-items: baseline;
+  gap: var(--opp-space-2);
+  margin: 0;
+}
+
+.qb__msgs--error {
+  color: var(--opp-color-danger-text);
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.qb__msgs--warning {
+  color: var(--opp-color-warning-text);
+}
+
+.qb__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--opp-color-accent-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (forced-colors: active) {
+  .qb__mirror {
+    display: none;
+  }
+
+  .qb__input {
+    color: CanvasText;
+  }
+}
+
+@media (max-width: 40rem) {
+  .qb__row {
+    flex-wrap: wrap;
+  }
+
+  .qb__label {
+    width: 100%;
+  }
+}

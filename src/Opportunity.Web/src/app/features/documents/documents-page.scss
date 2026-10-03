@@ -8,3 +8,10 @@
 .documents__title {
   font-size: var(--opp-font-size-2xl);
 }
+
+.documents__search {
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}

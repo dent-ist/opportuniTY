@@ -1,0 +1,144 @@
+<div class="qb__row">
+  <label class="qb__label" [for]="ids.input">{{ label() }}</label>
+  <div class="qb__editor" [class.qb__editor--expanded]="expanded()">
+    <div #mirror class="qb__mirror" aria-hidden="true">
+      @for (segment of segments(); track $index) {
+        <span [class]="segmentClass(segment)">{{ segment.text }}</span>
+      }
+      <span>{{ ' ' }}</span>
+    </div>
+    <textarea
+      #input
+      class="qb__input"
+      [id]="ids.input"
+      [rows]="expanded() ? 5 : 1"
+      [attr.wrap]="expanded() ? 'soft' : 'off'"
+      [value]="text()"
+      placeholder='Words, "phrases", field:value, AND / OR / NOT, W/n'
+      spellcheck="false"
+      autocomplete="off"
+      autocapitalize="off"
+      aria-autocomplete="list"
+      [attr.aria-controls]="popup() ? ids.list : null"
+      [attr.aria-activedescendant]="activeId()"
+      [attr.aria-invalid]="errors().length ? true : null"
+      [attr.aria-describedby]="describedBy()"
+      (input)="onInput($event)"
+      (keydown)="onKeydown($event)"
+      (keyup)="onCaretMove()"
+      (click)="onCaretMove()"
+      (scroll)="syncScroll()"
+      (blur)="onBlur()"
+    ></textarea>
+    @if (popup(); as p) {
+      <ul
+        class="qb__list"
+        role="listbox"
+        [id]="ids.list"
+        [attr.aria-label]="p.mode === 'history' ? 'Recent searches' : 'Suggestions'"
+      >
+        @for (option of options(); track $index; let i = $index) {
+          <li
+            role="option"
+            class="qb__option"
+            [id]="ids.list + '-' + i"
+            [attr.aria-selected]="i === active()"
+            (mousedown)="$event.preventDefault()"
+            (click)="choose(i)"
+          >
+            <span class="qb__option-label">{{ option.label }}</span>
+            <span class="qb__option-detail">{{ option.detail }}</span>
+          </li>
+        } @empty {
+          <li role="option" class="qb__option qb__option--empty" aria-disabled="true">
+            No recent searches in this workspace yet.
+          </li>
+        }
+      </ul>
+    }
+  </div>
+  <div class="qb__actions">
+    <button type="button" oppButton="primary" [busy]="checking()" (click)="submit()">Search</button>
+    <button
+      type="button"
+      oppIconButton
+      label="Recent searches"
+      aria-haspopup="listbox"
+      [attr.aria-expanded]="popup()?.mode === 'history'"
+      (mousedown)="$event.preventDefault()"
+      (click)="toggleHistory()"
+    >
+      <opp-icon name="clock" />
+    </button>
+    <button
+      type="button"
+      oppIconButton
+      label="Multi-line editor"
+      [attr.aria-pressed]="expanded()"
+      (click)="toggleExpanded()"
+    >
+      <opp-icon [name]="expanded() ? 'fold' : 'unfold'" />
+    </button>
+    <button
+      type="button"
+      oppIconButton
+      label="Search syntax help"
+      [attr.aria-expanded]="helpOpen()"
+      [attr.aria-controls]="ids.help"
+      (click)="helpOpen.set(!helpOpen())"
+    >
+      <opp-icon name="help" />
+    </button>
+  </div>
+</div>
+
+<p class="opp-visually-hidden" [id]="ids.hint">
+  Enter searches. Shift+Enter adds a line. Down Arrow or Control+Space shows field suggestions.
+  Alt+Down Arrow shows recent searches.
+</p>
+
+<div class="qb__messages">
+  @if (errors().length) {
+    <ul class="qb__msgs qb__msgs--error">
+      @for (e of errors(); track $index; let i = $index) {
+        <li class="qb__msg">
+          <opp-icon name="error" />
+          <span [id]="ids.errors + '-' + i">
+            <span class="opp-visually-hidden">Error:</span>
+            {{ describe(e) }}
+          </span>
+          <button type="button" class="qb__link" (click)="goTo(e)">Go to error</button>
+        </li>
+      }
+    </ul>
+  }
+  @if (warnings().length) {
+    <ul class="qb__msgs qb__msgs--warning">
+      @for (w of warnings(); track $index; let i = $index) {
+        <li class="qb__msg">
+          <opp-icon name="warning" />
+          <span [id]="ids.warnings + '-' + i">
+            <span class="opp-visually-hidden">Warning:</span>
+            {{ describe(w) }}
+          </span>
+          <button type="button" class="qb__link" (click)="goTo(w)">Show</button>
+        </li>
+      }
+    </ul>
+  }
+  @if (checkFailed(); as failure) {
+    <p class="qb__msg qb__msg--muted">
+      <opp-icon name="info" />
+      {{ failureText(failure) }}
+    </p>
+  }
+  @if (interpretation(); as normalized) {
+    <p class="qb__msg qb__msg--muted">
+      Searches for <code class="qb__code">{{ normalized }}</code>
+    </p>
+  }
+</div>
+
+@if (helpOpen()) {
+  <opp-query-syntax-help [id]="ids.help" />
+}
