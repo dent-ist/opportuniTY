@@ -48,4 +48,6 @@ public enum StreamTag : ulong
     Filler = 18,
     ConversationIndex = 19,
     FamilyKey = 20,
+    VolumeDefect = 21,
+    VolumeChoice = 22,
 }

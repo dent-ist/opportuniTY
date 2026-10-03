@@ -19,6 +19,9 @@ public sealed class CorpusRunOptions
     /// <summary>Additional sinks (e.g. load-file volume writers) fed alongside the built-in outputs.</summary>
     public IReadOnlyList<ICorpusSink> ExtraSinks { get; init; } = [];
 
+    /// <summary>Sinks that need the run's <see cref="GenerationContext"/> (e.g. the load-file volume writer).</summary>
+    public IReadOnlyList<Func<GenerationContext, ICorpusSink>> SinkFactories { get; init; } = [];
+
     public IProgress<long>? Progress { get; init; }
 }
 
@@ -50,6 +53,7 @@ public static class CorpusRunner
         sinks.AddRange(options.ExtraSinks);
         try
         {
+            sinks.AddRange(options.SinkFactories.Select(factory => factory(context)));
             foreach (GeneratedChunk chunk in generator.GenerateChunks())
             {
                 stats.Write(chunk);
