@@ -3,6 +3,10 @@ updates:
   - package-ecosystem: nuget
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # 9.x moved to the OSMF EULA; stay on the last MIT-licensed major (see Directory.Packages.props).
+      - dependency-name: JsonSchema.Net
+        update-types: ["version-update:semver-major"]
     groups:
       microsoft:
         patterns: ["Microsoft.*", "System.*"]

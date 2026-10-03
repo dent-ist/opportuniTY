@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opportunity:benchmarks:result-bundle:v1",
+  "title": "opportuniTY benchmark result bundle, v1",
+  "description": "bundle.json at the root of one benchmark run directory (one repetition of one suite). Everything needed to recompute a gate verdict: environment, corpus, workload, gates file hash, raw HDR histograms per query class, throughput, index lag, coding→searchable probe and oracle counters (baseline §17, §26, §29; E17-T03). Files referenced in `files` live next to bundle.json and are integrity-checked by `opportunity-bench validate`. Minor versions (1.x) only add optional properties.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "run", "environment", "corpus", "workload", "gates", "scenarios", "oracles", "files"],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^1\\.[0-9]+$" },
+    "runId": { "$ref": "#/$defs/runId" },
+    "run": { "$ref": "#/$defs/run" },
+    "environment": {
+      "description": "A complete environment manifest: the capture must include every tier of the topology.",
+      "allOf": [
+        { "$ref": "urn:opportunity:benchmarks:environment-manifest:v1" },
+        {
+          "required": ["containers", "postgres", "opensearch", "rabbitmq", "objectStore", "workers"],
+          "properties": {
+            "postgres": { "minItems": 1 },
+            "workers": { "minItems": 1 },
+            "opensearch": { "properties": { "indices": { "minItems": 1 } } }
+          }
+        }
+      ]
+    },
+    "corpus": { "$ref": "#/$defs/corpus" },
+    "workload": { "$ref": "#/$defs/workload" },
+    "gates": { "$ref": "#/$defs/gatesRef" },
+    "scenarios": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/scenario" } },
+    "oracles": { "$ref": "#/$defs/oracles" },
+    "files": { "type": "array", "items": { "$ref": "#/$defs/file" } }
+  },
+  "$defs": {
+    "utc": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "runId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{7,127}$" },
+    "relativePath": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._/-]+$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "rate": { "type": "number", "minimum": 0 },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gitSha", "gitDirty", "startedUtc", "endedUtc", "operator", "tier", "suite", "repetition", "cacheState", "tool"],
+      "properties": {
+        "gitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "gitDirty": { "type": "boolean", "description": "A dirty tree is recorded; the evaluator refuses dirty runs for T3/T4 verdicts." },
+        "gitRef": { "type": "string" },
+        "startedUtc": { "$ref": "#/$defs/utc" },
+        "endedUtc": { "$ref": "#/$defs/utc" },
+        "operator": { "type": "string", "minLength": 1, "description": "Person or CI identity that ran the benchmark (e.g. a GitHub login or `ci:nightly`)." },
+        "tier": { "enum": ["T1", "T2", "T3", "T4"], "description": "test-strategy §3 tier." },
+        "suite": { "type": "string", "minLength": 1, "description": "e.g. adr004/degradation-simple, nightly/regression." },
+        "candidate": { "type": "string", "description": "ADR-004 / PG coding spike candidate id, when comparing designs." },
+        "repetition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["index", "of"],
+          "properties": { "index": { "type": "integer", "minimum": 1 }, "of": { "type": "integer", "minimum": 1 } }
+        },
+        "cacheState": { "enum": ["cold", "warm"], "description": "Cold = caches dropped/services restarted before the run; warm = after a warm-up pass." },
+        "tool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": { "name": { "type": "string" }, "version": { "type": "string" } }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generator", "seed", "profileName", "profileHash", "documentCount", "manifestSha256", "loadPath"],
+      "properties": {
+        "manifestFile": { "$ref": "#/$defs/relativePath", "description": "corpus-manifest.json copied into the bundle." },
+        "manifestSha256": { "$ref": "#/$defs/sha256" },
+        "generator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": { "name": { "type": "string" }, "version": { "type": "string" } }
+        },
+        "seed": { "type": "integer", "minimum": 0 },
+        "profileName": { "type": "string" },
+        "profileHash": { "type": "string", "pattern": "^(sha256:)?[0-9a-f]{64}$", "description": "As written by the generator (sha256:<hex>)." },
+        "documentCount": { "type": "integer", "minimum": 1 },
+        "loadPath": { "enum": ["import", "fast-path", "cache-restore"] },
+        "cacheKey": { "type": "string" },
+        "textCapChars": { "type": "integer", "minimum": 0, "description": "Indexed-text cap when lowered for nightly runs (E17-T05); absent = product default (Q-29)." }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "taxonomyVersion", "querySeed", "model", "scripts", "workloadSha256"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "taxonomyVersion": { "type": "string", "minLength": 1, "description": "Query taxonomy version (E17-T04)." },
+        "querySeed": { "type": "integer", "minimum": 0 },
+        "model": { "enum": ["open", "closed", "mixed"] },
+        "scripts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256"],
+            "properties": { "path": { "$ref": "#/$defs/relativePath" }, "sha256": { "$ref": "#/$defs/sha256" } }
+          }
+        },
+        "workloadSha256": { "$ref": "#/$defs/sha256", "description": "SHA-256 over the sorted lines `<sha256>  <path>` of scripts." },
+        "mix": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 },
+          "description": "Share per query bucket, e.g. simple 0.6, boolean 0.3, proximity-wildcard 0.1 (§29)."
+        },
+        "offeredRate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "queriesPerSecond": { "$ref": "#/$defs/rate" },
+            "bulkDocsPerSecond": { "$ref": "#/$defs/rate" }
+          }
+        },
+        "reviewers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count"],
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "thinkTimeMedianSeconds": { "$ref": "#/$defs/rate" },
+            "thinkTimeP90Seconds": { "$ref": "#/$defs/rate" }
+          }
+        }
+      }
+    },
+    "gatesRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "gatesVersion", "status"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "gatesVersion": { "type": "string" },
+        "status": { "enum": ["draft", "frozen"], "description": "Q-04: T3/T4 verdicts need a frozen (signed-off) gates file." }
+      }
+    },
+    "hdr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding", "lowestTrackableValue", "highestTrackableValue", "significantDigits", "payload"],
+      "properties": {
+        "encoding": { "const": "hdrhistogram-v2-compressed-base64", "description": "HdrHistogram V2 compressed encoding (interoperable with the Java/Go/JS ports), base64." },
+        "lowestTrackableValue": { "type": "integer", "minimum": 1 },
+        "highestTrackableValue": { "type": "integer", "minimum": 2 },
+        "significantDigits": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "payload": { "type": "string", "contentEncoding": "base64", "minLength": 4 }
+      }
+    },
+    "latency": {
+      "description": "Latency distribution in microseconds. Percentiles are derived from the raw histogram, which is authoritative.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "count", "min", "p50", "p95", "p99", "max", "mean", "hdr"],
+      "properties": {
+        "unit": { "const": "us" },
+        "count": { "$ref": "#/$defs/count" },
+        "min": { "$ref": "#/$defs/count" },
+        "p50": { "$ref": "#/$defs/count" },
+        "p90": { "$ref": "#/$defs/count" },
+        "p95": { "$ref": "#/$defs/count" },
+        "p99": { "$ref": "#/$defs/count" },
+        "p999": { "$ref": "#/$defs/count" },
+        "max": { "$ref": "#/$defs/count" },
+        "mean": { "type": "number", "minimum": 0 },
+        "hdr": { "$ref": "#/$defs/hdr" }
+      }
+    },
+    "queryClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "requests", "errors", "latency"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Gated classes: simple, complex. Also one per taxonomy class (E17-T04, docs/benchmarks/query-taxonomy.md), e.g. term, boolean, grid-coding, and the reviewer/bulk operations document-view, coding-write, bulk-submit." },
+        "gated": { "type": "boolean" },
+        "requests": { "$ref": "#/$defs/count" },
+        "errors": { "$ref": "#/$defs/count" },
+        "latency": { "$ref": "#/$defs/latency" },
+        "postFilterLatency": { "$ref": "#/$defs/latency", "description": "Q-12 per-page PostgreSQL re-check cost, reported separately." }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "startedUtc", "endedUtc", "warmupSeconds", "drainSeconds", "validity", "queryClasses", "throughput"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "role": {
+          "enum": ["idle-baseline", "bulk-load", "bulk-ceiling", "fault-window", "calibration", "smoke", "other"],
+          "description": "Gates select scenarios by role (gates.yaml)."
+        },
+        "startedUtc": { "$ref": "#/$defs/utc" },
+        "endedUtc": { "$ref": "#/$defs/utc" },
+        "warmupSeconds": { "type": "number", "minimum": 0 },
+        "drainSeconds": { "type": "number", "minimum": 0 },
+        "validity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["valid", "droppedIterationsRatio", "loadGeneratorCpuMaxPercent", "reasons"],
+          "properties": {
+            "valid": { "type": "boolean" },
+            "droppedIterationsRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "loadGeneratorCpuMaxPercent": { "type": "number", "minimum": 0 },
+            "reasons": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "queryClasses": { "type": "array", "items": { "$ref": "#/$defs/queryClass" } },
+        "throughput": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "queriesPerSecond": { "$ref": "#/$defs/rate" },
+            "bulkDocsPerSecond": { "$ref": "#/$defs/rate", "description": "Docs committed in PG and reflected in the search watermark per second." },
+            "codingOpsPerSecond": { "$ref": "#/$defs/rate" },
+            "importDocsPerSecond": { "$ref": "#/$defs/rate" }
+          }
+        },
+        "offeredBulkDocsPerSecond": { "$ref": "#/$defs/rate" },
+        "indexLag": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resolutionSeconds", "samples", "maxSeconds", "p95Seconds"],
+          "properties": {
+            "resolutionSeconds": { "type": "number", "exclusiveMinimum": 0 },
+            "samples": { "$ref": "#/$defs/count" },
+            "maxSeconds": { "type": "number", "minimum": 0 },
+            "p95Seconds": { "type": "number", "minimum": 0 },
+            "seriesFile": { "$ref": "#/$defs/relativePath" }
+          }
+        },
+        "codingToSearchable": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["samples", "pollIntervalMs", "latency"],
+          "properties": {
+            "samples": { "$ref": "#/$defs/count" },
+            "pollIntervalMs": { "type": "number", "exclusiveMinimum": 0 },
+            "probeTrafficRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "latency": { "$ref": "#/$defs/latency" }
+          }
+        },
+        "metricsFiles": { "type": "array", "items": { "$ref": "#/$defs/relativePath" } }
+      }
+    },
+    "oracleStatus": { "enum": ["passed", "failed", "not-run"] },
+    "oracles": {
+      "description": "Correctness and security oracles (test-strategy §5). `not-run` counts as unproven, never as passed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shadowLedger", "security", "idempotency"],
+      "properties": {
+        "shadowLedger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "$ref": "#/$defs/oracleStatus" },
+            "touchedDocs": { "$ref": "#/$defs/count" },
+            "staleOverwrites": { "$ref": "#/$defs/count" },
+            "versionRegressions": { "$ref": "#/$defs/count" },
+            "missingDocs": { "$ref": "#/$defs/count" },
+            "valueMismatches": { "$ref": "#/$defs/count" },
+            "versionConflictRejections": { "$ref": "#/$defs/count" }
+          },
+          "if": { "properties": { "status": { "enum": ["passed", "failed"] } } },
+          "then": { "required": ["touchedDocs", "staleOverwrites", "versionRegressions", "missingDocs", "valueMismatches"] }
+        },
+        "security": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "$ref": "#/$defs/oracleStatus" },
+            "checks": { "$ref": "#/$defs/count" },
+            "unauthorizedRetrievals": { "$ref": "#/$defs/count" }
+          },
+          "if": { "properties": { "status": { "enum": ["passed", "failed"] } } },
+          "then": { "required": ["checks", "unauthorizedRetrievals"] }
+        },
+        "idempotency": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "$ref": "#/$defs/oracleStatus" },
+            "trials": { "$ref": "#/$defs/count" },
+            "idempotentTrials": { "$ref": "#/$defs/count" },
+            "idempotentRatio": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "if": { "properties": { "status": { "enum": ["passed", "failed"] } } },
+          "then": { "required": ["trials", "idempotentTrials", "idempotentRatio"] }
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "bytes": { "$ref": "#/$defs/count" },
+        "mediaType": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    }
+  }
+}

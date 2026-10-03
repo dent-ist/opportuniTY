@@ -1,0 +1,143 @@
+# opportuniTY benchmark gates: baseline §26 (ADR-004 decision gates) in machine-readable form.
+#
+# Governance (decision Q-04): the product owner and the lead architect sign this file off *before* the comparative
+# run; from then on a threshold may only be tightened, never relaxed. Every report states this file's SHA-256, and
+# every result bundle records it (`gates.sha256`). Status stays `draft` until both sign-offs are filled in.
+#
+# Hardware (Q-03, Q-44): the 1M spike runs on developer hardware. Relative gates (degradation vs the idle baseline
+# measured on the same machine in the same run set) and correctness/security gates are hard. Absolute latency gates
+# are "comparative" on developer hardware: a miss disqualifies a candidate only if it also does worse than the other
+# candidates measured on the same machine in the same run. On the enterprise reference they are hard.
+#
+# `source` is a path into bundle.json (tools/Opportunity.Benchmarks/schema/result-bundle.v1.schema.json):
+# dot-separated properties, `name[key=value]` selects array items. The gate evaluator (E17-T08) reads these paths;
+# GatesFileTests proves every path resolves on a schema-valid bundle.
+
+schemaVersion: 1
+gatesVersion: 0.1.0
+status: draft
+signOff:
+  productOwner: null
+  leadArchitect: null
+  frozenUtc: null
+
+policy:
+  tightenOnly: true                    # Q-04
+  correctnessBeforePerformance: true   # §26: throughput never compensates for a correctness/security failure
+  repetitions:
+    minimum: 3                         # test-strategy §3 (T3)
+    rule: every-repetition             # a relative gate must hold in every repetition
+  cacheStateStated: true               # bundles record cold vs warm (run.cacheState)
+  calibration:
+    idleBaselineP95MaxCoefficientOfVariation: 0.05   # over 3 idle runs on the spike machine, else investigate noise first
+    runs: 3
+  offeredBulkRate: calibrated-max-of-weakest-candidate   # Q-04; >= 10K docs/s is measured separately as a ceiling
+  validity:                            # a scenario outside these limits is invalid, not failed
+    maxDroppedIterationsRatio: 0.005
+    maxLoadGeneratorCpuPercent: 70     # exclusive: >= 70% is invalid
+  absoluteGatesByProfile:              # Q-44
+    developer-regression: comparative
+    enterprise-reference: hard
+  materialAdvantage:                   # Q-04
+    p95ImprovementMin: 0.20            # on every gated query class
+    bulkThroughputRatioMin: 1.5
+    consistency: all-repetitions
+  materialFailureAt10M:                # Q-04
+    anyMissedGate: true
+    p95GrowthFrom1MMax: 0.50
+    superLinearDiskOrMergeTrend: true
+  preference: least-operationally-complex-unless-material-advantage   # §26
+
+gates:
+  # --- Correctness and security: absolute on every profile, evaluated first -------------------------------------
+  - id: stale-version-overwrites
+    title: "Correctness: 0 stale-version overwrites"
+    category: correctness
+    kind: max
+    enforcement: hard
+    sources:
+      - oracles.shadowLedger.staleOverwrites
+      - oracles.shadowLedger.versionRegressions
+      - oracles.shadowLedger.missingDocs
+      - oracles.shadowLedger.valueMismatches
+    threshold: { max: 0 }
+    requires: { oracle: oracles.shadowLedger.status }   # not-run = unproven, never passed
+
+  - id: unauthorized-retrievals
+    title: "Security authorization: 0 unauthorized protected-resource retrievals"
+    category: security
+    kind: max
+    enforcement: hard
+    sources:
+      - oracles.security.unauthorizedRetrievals
+    threshold: { max: 0 }
+    requires: { oracle: oracles.security.status }
+
+  - id: worker-retry-idempotency
+    title: "Worker retry correctness: 100% idempotent in the fault-injection suite"
+    category: correctness
+    kind: min
+    enforcement: hard
+    sources:
+      - oracles.idempotency.idempotentRatio
+    threshold: { min: 1.0 }
+    requires: { oracle: oracles.idempotency.status }
+
+  # --- Relative performance gates: hard on every profile (Q-03) -------------------------------------------------
+  - id: simple-search-p95-degradation
+    title: "Simple-search p95 degradation during bulk load <= 25% vs idle baseline"
+    category: performance
+    kind: relative-degradation
+    enforcement: hard
+    statistic: p95
+    baseline: scenarios[role=idle-baseline].queryClasses[name=simple].latency.p95
+    sources:
+      - scenarios[role=bulk-load].queryClasses[name=simple].latency.p95
+    histogram: scenarios[role=bulk-load].queryClasses[name=simple].latency.hdr
+    threshold: { max: 0.25 }           # p95(load) / p95(idle) - 1
+
+  - id: complex-search-p95-degradation
+    title: "Complex-search p95 degradation during bulk load <= 35% vs idle baseline"
+    category: performance
+    kind: relative-degradation
+    enforcement: hard
+    statistic: p95
+    baseline: scenarios[role=idle-baseline].queryClasses[name=complex].latency.p95
+    sources:
+      - scenarios[role=bulk-load].queryClasses[name=complex].latency.p95
+    histogram: scenarios[role=bulk-load].queryClasses[name=complex].latency.hdr
+    threshold: { max: 0.35 }
+
+  # --- Absolute latency gates: comparative on developer hardware (Q-44), hard on the reference --------------------
+  - id: index-lag-max
+    title: "Search-index lag at sustained target bulk load <= 2 minutes"
+    category: performance
+    kind: max
+    enforcement: by-profile            # see policy.absoluteGatesByProfile
+    unit: s
+    sources:
+      - scenarios[role=bulk-load].indexLag.maxSeconds
+    threshold: { max: 120 }
+
+  - id: coding-to-searchable-p95
+    title: "Interactive coding -> searchable p95 <= 1 second when bulk load is active"
+    category: performance
+    kind: max
+    enforcement: by-profile
+    unit: us
+    statistic: p95
+    sources:
+      - scenarios[role=bulk-load].codingToSearchable.latency.p95
+    histogram: scenarios[role=bulk-load].codingToSearchable.latency.hdr
+    threshold: { max: 1000000 }
+
+  # --- Measured, not pass/fail ------------------------------------------------------------------------------------
+  - id: bulk-throughput-ceiling
+    title: "Bulk coding/indexing: measure against the provisional >= 10K docs/sec goal"
+    category: throughput
+    kind: report
+    enforcement: informational         # feeds materialAdvantage.bulkThroughputRatioMin
+    unit: docs/s
+    sources:
+      - scenarios[role=bulk-ceiling].throughput.bulkDocsPerSecond
+    target: 10000

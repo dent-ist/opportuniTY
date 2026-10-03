@@ -103,9 +103,11 @@ public sealed class ApiConventionsTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
-    public void Invalid_configuration_fails_at_start_up()
+    public async Task Invalid_configuration_fails_at_start_up()
     {
-        using var misconfigured = factory.WithWebHostBuilder(b => b.UseSetting("Idempotency:Retention", "01:00:00"));
+        // Own factory: a host that fails to start must not be registered with (and later re-disposed by) the shared fixture.
+        await using var isolated = new ApiFactory();
+        await using var misconfigured = isolated.WithWebHostBuilder(b => b.UseSetting("Idempotency:Retention", "01:00:00"));
 
         var start = () => misconfigured.CreateClient();
 

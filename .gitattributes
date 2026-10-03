@@ -1,0 +1,15 @@
+# Normalize text files; keep Unix line endings where Linux tools and containers read the files,
+# so Windows checkouts (core.autocrlf=true) still run in WSL and Docker.
+* text=auto
+*.sh text eol=lf
+Makefile text eol=lf
+*Dockerfile text eol=lf
+*.dockerfile text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.env text eol=lf
+*.env.example text eol=lf
+versions.env text eol=lf
+*.sql text eol=lf
+*.conf text eol=lf
+deploy/** text=auto eol=lf

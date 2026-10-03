@@ -1,0 +1,14 @@
+# compose.no-ulimits.yaml for the three reference nodes (dry runs on constrained hosts only; see that file).
+services:
+  os1:
+    ulimits: !reset {}
+    environment:
+      bootstrap.memory_lock: "false"
+  os2:
+    ulimits: !reset {}
+    environment:
+      bootstrap.memory_lock: "false"
+  os3:
+    ulimits: !reset {}
+    environment:
+      bootstrap.memory_lock: "false"

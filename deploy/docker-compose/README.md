@@ -17,6 +17,7 @@ One machine, one of everything (architecture baseline §16/§29 developer regres
 | `worker` | `…` (`worker`), `Workers__Enabled=all` | Combined worker: every worker type in one process | — |
 | `web` | `deploy/docker/web.Dockerfile` | Angular UI served by nginx | 8080 |
 | `seaweedfs` | `chrislusf/seaweedfs:$SEAWEEDFS@…` | **Optional** (`--profile s3`): S3-compatible store | 8333 |
+| `otel-collector`, `prometheus`, `jaeger`, `loki`, `grafana`, `postgres-exporter`, `opensearch-exporter` | see [Observability profile](#observability-profile) | **Optional** (`--profile observability`): telemetry backends | 3000 (Grafana), 9090, 16686, 4317/4318 |
 
 - **Versions** come from [`versions.env`](../../versions.env), the single source of truth: third-party images are
   referenced as `tag@digest`, never `latest`. Compose reads it through `--env-file ../../versions.env`; the helper
@@ -51,7 +52,7 @@ Run from this directory (`deploy/docker-compose`). `make <target>` does the same
 
 | Command | What it does |
 |---|---|
-| `./opportunity.sh init` | Creates `.env` from [`.env.example`](.env.example) with random passwords (mode 600, git-ignored). Keeps an existing `.env` |
+| `./opportunity.sh init` | Creates `.env` from [`.env.example`](.env.example) with random passwords (mode 600, git-ignored). Keeps an existing `.env`, adding only secrets that are new in `.env.example` |
 | `./opportunity.sh preflight` | Fails on Docker Engine < 25, Compose < 2.24, < 6 GB memory for Docker or free on a Linux host, or `vm.max_map_count` < 262144; warns below 16 GB |
 | `./opportunity.sh up` | `init` + `preflight` + build the four images + start + wait until every service is healthy (default timeout 10 min, `OPPORTUNITY_WAIT_TIMEOUT`) |
 | `./opportunity.sh seed` | Creates the demo workspace `00000000-0000-4000-8000-00000000d3e0` (idempotent) |
@@ -90,7 +91,8 @@ The tag must be immutable (`sha-<commit>` or a release `X.Y.Z`); `latest`/`edge`
 ### Ports and settings
 
 Every host port is published on `127.0.0.1` only and can be changed in `.env` (`WEB_PORT`, `API_PORT`,
-`POSTGRES_PORT`, `OPENSEARCH_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT`, `S3_PORT`). Do not set
+`POSTGRES_PORT`, `OPENSEARCH_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT`, `S3_PORT`, and for the observability
+profile `GRAFANA_PORT`, `PROMETHEUS_PORT`, `JAEGER_UI_PORT`, `OTLP_GRPC_PORT`, `OTLP_HTTP_PORT`). Do not set
 `OPPORTUNITY_BIND=0.0.0.0` on a shared network: OpenSearch has no authentication in this profile.
 
 - Web UI: <http://127.0.0.1:8080/>
@@ -103,6 +105,59 @@ The web container serves the UI only; there is no edge proxy routing `/api` in t
 
 Local tweaks that should not be committed (extra ports, a build proxy) go in `compose.override.yaml` next to
 `compose.yaml`. It is git-ignored and the helper script includes it automatically.
+
+## Observability profile
+
+OpenTelemetry is built into every host ([ADR-017](../../docs/adr/0017-observability-and-slos.md)) and is **off unless
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set**. Without it the api and worker still write JSON logs with trace IDs and the
+correlation scope to stdout (`./opportunity.sh logs api`), but they export nothing. The optional `observability`
+profile (decision Q-42) runs a local backend stack:
+
+| Service | Image (`versions.env`) | License | Role | Host port |
+|---|---|---|---|---|
+| `otel-collector` | `otel/opentelemetry-collector-contrib:$OTEL_COLLECTOR@…` | Apache-2.0 | Receives OTLP from api/worker, drops sensitive attributes again, fans out | 4317 (gRPC), 4318 (HTTP) |
+| `prometheus` | `prom/prometheus:$PROMETHEUS@…` | Apache-2.0 | Metrics: OTLP receiver, plus scrapes RabbitMQ (`rabbitmq_prometheus`) and the exporters | 9090 |
+| `jaeger` | `jaegertracing/jaeger:$JAEGER@…` | Apache-2.0 | Traces, in memory (lost on restart) | 16686 (UI) |
+| `loki` | `grafana/loki:$LOKI@…` | **AGPL-3.0** | Logs, 72 h retention | — |
+| `grafana` | `grafana/grafana:$GRAFANA@…` | **AGPL-3.0** | Provisioned Prometheus/Jaeger/Loki datasources and the *opportuniTY overview* dashboard | 3000 |
+| `postgres-exporter` | `prometheuscommunity/postgres-exporter:$POSTGRES_EXPORTER@…` | Apache-2.0 | PostgreSQL statistics | — |
+| `opensearch-exporter` | `prometheuscommunity/elasticsearch-exporter:$OPENSEARCH_EXPORTER@…` | Apache-2.0 | OpenSearch cluster/JVM metrics | — |
+
+**Licenses (Q-38).** Grafana and Loki are AGPL-3.0. They run only as optional, unmodified, external services in this
+profile; no opportuniTY code links them, and the default stack does not need them. Every other component is
+Apache-2.0. Logs never go to the product OpenSearch cluster (Q-42).
+
+Turn it on in `.env` (to combine with S3: `COMPOSE_PROFILES=s3,observability`):
+
+```bash
+COMPOSE_PROFILES=observability
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+```
+
+Then run `./opportunity.sh up` (the first run of `init` after this change also adds `GRAFANA_ADMIN_PASSWORD` to an
+existing `.env`) and open:
+
+- Grafana: <http://127.0.0.1:3000/>. The home dashboard *opportuniTY overview* shows API request rate, p95 latency
+  and 5xx ratio by route, worker heartbeats and message processing, RabbitMQ/PostgreSQL/OpenSearch health, .NET runtime
+  metrics, recent API traces and logs. Anonymous users get read-only access; sign in as `admin` with
+  `GRAFANA_ADMIN_PASSWORD` to explore. Under *Explore*, each Loki log line links to its Jaeger trace.
+- Prometheus: <http://127.0.0.1:9090/>. Application metrics have Prometheus names: `opportunity.worker.heartbeat.age`
+  becomes `opportunity_worker_heartbeat_age_seconds`, `http.server.request.duration` becomes
+  `http_server_request_duration_seconds_bucket`, and `job` is `opportunity/<service.name>`.
+- Jaeger: <http://127.0.0.1:16686/> (services `opportunity-api`, `opportunity-worker-all`).
+
+To send telemetry from an API or worker started from the IDE (`dotnet run`), set
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317` in its environment while the profile runs.
+
+- **Memory:** limits cap the profile at 1.5 GiB (collector, Prometheus, Jaeger and Loki 256 MiB each, Grafana
+  384 MiB, exporters 64 MiB each). About 0.4 GiB is in use when idle.
+- **What is (not) recorded:** IDs, counts and durations only. Query strings, headers, cookies, client IPs, SQL text
+  and exception messages are removed before export (ADR-017 §4). `Telemetry__RecordSqlStatements=true` adds
+  parameterized SQL text for local debugging; never use it with real data.
+- **Tuning:** `OTEL_METRIC_EXPORT_INTERVAL` (ms, default 15000 here) and the standard `OTEL_*` variables
+  (`OTEL_TRACES_SAMPLER`, …) are passed through. Configuration lives in [`observability/`](observability/). The dashboard
+  JSON is generated by `observability/grafana/generate-dashboard.py`; edit the script, not the JSON.
+- `./opportunity.sh reset` also deletes the `prometheus-data`, `loki-data` and `grafana-data` volumes.
 
 ## Troubleshooting
 

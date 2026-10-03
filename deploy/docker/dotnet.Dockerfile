@@ -22,7 +22,9 @@ COPY <<'EOF' /usr/local/bin/publish
 set -eu
 # Optional build secret for builders behind a TLS-intercepting proxy; never stored in a layer.
 [ -s /run/secrets/build-ca ] && export SSL_CERT_FILE=/run/secrets/build-ca
-exec dotnet publish "src/$1/$1.csproj" -c Release -a "$TARGETARCH" --no-self-contained \
+# MSBuild imports environment variables as (case-insensitive) properties: an inherited VERSION would become $(Version)
+# and a non-SemVer value such as "pr-171" breaks restore. Pass them explicitly instead and hide them from MSBuild.
+exec env -u VERSION -u REVISION dotnet publish "src/$1/$1.csproj" -c Release -a "$TARGETARCH" --no-self-contained \
   -p:OpenApiGenerateDocuments=false -p:ContinuousIntegrationBuild=true \
   -p:InformationalVersion="$VERSION+$REVISION" -o "$2"
 EOF

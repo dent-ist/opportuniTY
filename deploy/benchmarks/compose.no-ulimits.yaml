@@ -1,0 +1,8 @@
+# For hosts that cannot raise rlimits (rootless Docker, sandboxed CI runners): drops memlock/nofile and heap locking
+# from the OpenSearch nodes. Added by ./bench.sh up --no-ulimits. Recorded in the manifest (bootstrap.memory_lock=false);
+# fine for regression trends, not for the reference numbers.
+services:
+  opensearch:
+    ulimits: !reset {}
+    environment:
+      bootstrap.memory_lock: "false"

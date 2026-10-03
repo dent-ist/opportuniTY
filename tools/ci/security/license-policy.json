@@ -31,5 +31,36 @@
     "CC-BY-ND-*",
     "CC-BY-SA-*"
   ],
-  "exceptions": []
+  "exceptions": [
+    {
+      "component": "pkg:nuget/Apache.Arrow@22.1.0",
+      "license": "Apache-2.0",
+      "reason": "Package metadata declares no license; the Apache Arrow project is Apache-2.0 (https://github.com/apache/arrow/blob/main/LICENSE.txt). Pinned to this version so upgrades are re-checked.",
+      "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    },
+    {
+      "component": "pkg:nuget/System.Security.Cryptography.ProtectedData@4.5.0",
+      "license": "MIT",
+      "reason": "Legacy Microsoft package metadata only has a licenseUrl; it is MIT (https://github.com/dotnet/corefx/blob/master/LICENSE.TXT). Pinned to this version so upgrades are re-checked.",
+      "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    },
+    {
+      "component": "pkg:nuget/HdrHistogram@2.5.0",
+      "license": "CC0-1.0 OR BSD-2-Clause",
+      "reason": "Package metadata only has a licenseUrl; HdrHistogram.NET is dual-licensed public domain (CC0) or BSD-2-Clause (https://github.com/HdrHistogram/HdrHistogram.NET/blob/master/LICENSE.txt). Used only by the benchmark tool. Pinned so upgrades are re-checked.",
+      "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    },
+    {
+      "component": "pkg:nuget/Microsoft.NETCore.Platforms@1.1.0",
+      "license": "MIT",
+      "reason": "Legacy Microsoft package metadata only has a licenseUrl; it is MIT (https://github.com/dotnet/corefx/blob/master/LICENSE.TXT). Transitive. Pinned so upgrades are re-checked.",
+      "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    },
+    {
+      "component": "pkg:nuget/NETStandard.Library@1.6.1",
+      "license": "MIT",
+      "reason": "Legacy Microsoft package metadata only has a licenseUrl; it is MIT (https://github.com/dotnet/standard/blob/master/LICENSE.TXT). Transitive. Pinned so upgrades are re-checked.",
+      "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    }
+  ]
 }
