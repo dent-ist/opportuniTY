@@ -23,3 +23,11 @@ export type { DeleteImportProfile$Params as DeleteImportProfile$Params } from '.
 export { deleteImportProfile as deleteImportProfile } from './fn/import/delete-import-profile';
 export type { PreviewImportMapping$Params as PreviewImportMapping$Params } from './fn/import/preview-import-mapping';
 export { previewImportMapping as previewImportMapping } from './fn/import/preview-import-mapping';
+export type { ListImports$Params as ListImports$Params } from './fn/import/list-imports';
+export { listImports as listImports } from './fn/import/list-imports';
+export type { StartImport$Params as StartImport$Params } from './fn/import/start-import';
+export { startImport as startImport } from './fn/import/start-import';
+export type { GetImport$Params as GetImport$Params } from './fn/import/get-import';
+export { getImport as getImport } from './fn/import/get-import';
+export type { DownloadImportErrors$Params as DownloadImportErrors$Params } from './fn/import/download-import-errors';
+export { downloadImportErrors as downloadImportErrors } from './fn/import/download-import-errors';

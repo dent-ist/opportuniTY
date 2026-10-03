@@ -33,6 +33,7 @@ builder.Services.AddWorkspaceEndpoints();
 builder.Services.AddPostgresIdentityStores();
 builder.Services.AddPostgresSecurityState();
 builder.Services.AddImportMappingEndpoints();
+builder.Services.AddImportEndpoints(builder.Configuration);
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();

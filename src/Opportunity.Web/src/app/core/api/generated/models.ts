@@ -8,6 +8,7 @@ export type { ColumnParsing } from './models/column-parsing';
 export type { ColumnPreview } from './models/column-preview';
 export type { ColumnStatus } from './models/column-status';
 export type { CursorPageOfImportProfileSummary } from './models/cursor-page-of-import-profile-summary';
+export type { CursorPageOfImportResource } from './models/cursor-page-of-import-resource';
 export type { CursorPageOfImportTargetResource } from './models/cursor-page-of-import-target-resource';
 export type { DelimiterInfo } from './models/delimiter-info';
 export type { HttpValidationProblemDetails } from './models/http-validation-problem-details';
@@ -18,6 +19,9 @@ export type { ImportProfileDefinition } from './models/import-profile-definition
 export type { ImportProfileResource } from './models/import-profile-resource';
 export type { ImportProfileSummary } from './models/import-profile-summary';
 export type { ImportProfileWrite } from './models/import-profile-write';
+export type { ImportReport } from './models/import-report';
+export type { ImportResource } from './models/import-resource';
+export type { ImportStartForm } from './models/import-start-form';
 export type { ImportTargetResource } from './models/import-target-resource';
 export type { JobCommittedProgress } from './models/job-committed-progress';
 export type { JobIndexedProgress } from './models/job-indexed-progress';

@@ -8,6 +8,7 @@ using NpgsqlTypes;
 
 using Opportunity.Application.Audit;
 using Opportunity.Application.Coding;
+using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.SearchWork;
 using Opportunity.Core.Coding;
@@ -119,6 +120,61 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         }
 
         return new CodingChunkResult(result, commit, null);
+    }
+
+    /// <summary>
+    /// Q-31 coding-field values of an import chunk, inside the chunk's transaction: one state-based write per distinct set
+    /// of values (actor <see cref="CodingActorType.SystemRule"/> on behalf of the job), so every change gets its
+    /// CodingEvent and DocumentVersion bump. Values must be canonical; an invalid one throws (the chunk fails).
+    /// </summary>
+    internal static async Task<ImportCodingOutcome> ApplyImportValuesAsync(
+        WorkspaceTransaction tx, Guid jobId, Guid actorId, string idempotencyKeyPrefix,
+        IReadOnlyList<(Guid DocumentId, IReadOnlyList<ImportCodingValue> Values)> documents, CancellationToken cancellationToken)
+    {
+        var changed = new HashSet<Guid>();
+        var fields = new SortedSet<int>();
+        var events = 0;
+        var security = false;
+        var groups = documents
+            .Where(d => d.Values.Count > 0)
+            .GroupBy(d => string.Join('|', d.Values.OrderBy(v => v.FieldId).Select(v => $"{v.FieldId}={v.Value.ToJsonString()}")), StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .ToList();
+        for (var i = 0; i < groups.Count; i++)
+        {
+            var group = groups[i].ToList();
+            var values = group[0].Values;
+            foreach (var batch in group.Chunk(CodingWriteRequest.MaxDocuments).Select((b, n) => (Documents: b, Index: n)))
+            {
+                var request = new CodingWriteRequest
+                {
+                    WorkspaceId = tx.WorkspaceId,
+                    IdempotencyKey = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{idempotencyKeyPrefix}:{i}:{batch.Index}"),
+                    Actor = new CodingActor(actorId, CodingActorType.SystemRule),
+                    JobId = jobId,
+                    Documents = [.. batch.Documents.Select(d => new CodingTarget(d.DocumentId))],
+                    Operations = [.. values.Select(v => CodingFieldOperation.Set(v.FieldId, v.Value.DeepClone()))],
+                };
+                var errors = ValidateShape(request);
+                if (errors.Count > 0)
+                {
+                    throw new ArgumentException("Invalid import coding write: " + string.Join("; ", errors.Select(e => e.Message)));
+                }
+
+                var (result, plan) = await ApplyInTransactionAsync(tx, request, cancellationToken).ConfigureAwait(false);
+                if (result.Outcome != CodingWriteOutcome.Applied)
+                {
+                    throw new ArgumentException($"Import coding write {result.Outcome}: " + string.Join("; ", result.Errors.Select(e => e.Message)));
+                }
+
+                changed.UnionWith(plan.BumpedDocuments);
+                fields.UnionWith(values.Select(v => v.FieldId));
+                events += result.EventsWritten;
+                security |= plan.TouchesSecurity;
+            }
+        }
+
+        return new ImportCodingOutcome(changed, fields, events, security);
     }
 
     public async Task<IReadOnlyList<DocumentCoding>> GetCurrentAsync(
@@ -888,6 +944,10 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
             _ => throw new InvalidOperationException("Unknown operation."),
         };
     }
+
+    /// <param name="ChangedDocuments">Documents whose coding (and DocumentVersion) changed.</param>
+    internal sealed record ImportCodingOutcome(
+        IReadOnlySet<Guid> ChangedDocuments, IReadOnlyCollection<int> FieldIds, int EventsWritten, bool TouchesSecurityAffectingField);
 
     private sealed record PlannedEvent(Guid DocumentId, int FieldId, CodingEventKind Kind, JsonNode? Prior, JsonNode? New, long Version);
 

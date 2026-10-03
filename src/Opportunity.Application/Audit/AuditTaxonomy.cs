@@ -29,6 +29,16 @@ public static class AuditTaxonomy
         public const string Category = "Coding";
         public const string Changed = "Changed";
         public const string BulkChunkApplied = "BulkChunkApplied";
+
+        /// <summary>An administrator enabled coding/privilege fields for overlay by one import (Q-31).</summary>
+        public const string OverlayEnabled = "OverlayEnabled";
+    }
+
+    public static class Import
+    {
+        public const string Category = "Import";
+        public const string Started = "Started";
+        public const string Completed = "Completed";
     }
 
     public static class Job
