@@ -35,5 +35,10 @@ public static class ProblemCodes
     /// <summary>The query text does not parse or bind; the <c>queryErrors</c> extension lists positioned errors.</summary>
     public const string InvalidQuery = "invalid-query";
 
+    /// <summary>The document is visible, but the requested rendition or page does not exist or may not be served.</summary>
+    public const string ContentUnavailable = "content-unavailable";
+
+    public const string RangeNotSatisfiable = "range-not-satisfiable";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }
