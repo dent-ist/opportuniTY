@@ -41,9 +41,16 @@ export const ALL_PERMISSIONS = [
   'Workspace.RequestDeletion',
 ] as const;
 
+const WORKSPACE_DEFAULTS = {
+  displayTimeZone: 'UTC',
+  status: 'active',
+  createdAt: '2026-10-03T00:00:00.000Z',
+} as const;
+
+/** `WorkspaceSummary` items of `GET /api/v1/workspaces`. */
 export const WORKSPACES = [
-  { workspaceId: 'ws-1', name: 'Acme v. Widget', matterNumber: 'M-1001' },
-  { workspaceId: 'ws-2', name: 'Beta Holdings', matterNumber: 'M-1002' },
+  { workspaceId: 'ws-1', name: 'Acme v. Widget', matterNumber: 'M-1001', ...WORKSPACE_DEFAULTS },
+  { workspaceId: 'ws-2', name: 'Beta Holdings', matterNumber: 'M-1002', ...WORKSPACE_DEFAULTS },
 ] as const;
 
 const principal = {
@@ -76,9 +83,21 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       return signedIn ? json(route, principal) : route.fulfill(problem(401, 'Unauthorized'));
     }
     if (signedIn && path === '/api/v1/workspaces')
-      return json(route, { items: WORKSPACES, nextCursor: null });
+      return json(route, {
+        items: WORKSPACES,
+        nextCursor: null,
+        total: { value: WORKSPACES.length, relation: 'eq' },
+      });
     const ws = WORKSPACES.find((w) => path === `/api/v1/workspaces/${w.workspaceId}`);
-    if (signedIn && ws) return json(route, { ...ws, permissions });
+    if (signedIn && ws)
+      return json(route, {
+        ...ws,
+        permissions,
+        breakGlassActive: false,
+        storageProfile: 'default',
+        version: 1,
+        searchPlacement: null,
+      });
     unhandled.push(`${route.request().method()} ${path}`);
     return route.fulfill(problem(404, 'Not found'));
   });

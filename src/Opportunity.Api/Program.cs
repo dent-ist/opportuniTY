@@ -29,7 +29,7 @@ builder.AddOpportunityHostDefaults();
 builder.Services.AddApiConventions();
 builder.Services.AddQueryValidation();
 builder.Services.AddJobEndpoints();
-builder.Services.AddWorkspaceEndpoints();
+builder.Services.AddWorkspaceEndpoints(builder.Configuration);
 builder.Services.AddPostgresIdentityStores();
 builder.Services.AddPostgresSecurityState();
 builder.Services.AddImportMappingEndpoints();

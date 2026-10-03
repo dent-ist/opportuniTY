@@ -87,12 +87,25 @@ describe('Application shell', () => {
       api.on('GET', `/api/v1/workspaces/${ws.workspaceId}`, { body: ws });
     api.on('GET', '/api/v1/workspaces', {
       body: {
-        items: [acme, beta].map(({ workspaceId, name, matterNumber }): WorkspaceSummary => ({
-          workspaceId,
-          name,
-          matterNumber,
-        })),
+        items: [acme, beta].map(
+          ({
+            workspaceId,
+            name,
+            matterNumber,
+            displayTimeZone,
+            status,
+            createdAt,
+          }): WorkspaceSummary => ({
+            workspaceId,
+            name,
+            matterNumber,
+            displayTimeZone,
+            status,
+            createdAt,
+          }),
+        ),
         nextCursor: null,
+        total: { value: 2, relation: 'eq' },
       },
     });
     api.on('GET', '/api/v1/workspaces/ws-1/documents', { body: { items: [] } });

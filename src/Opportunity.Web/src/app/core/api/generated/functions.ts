@@ -3,12 +3,20 @@
 
 export type { GetCurrentUser$Params as GetCurrentUser$Params } from './fn/authentication/get-current-user';
 export { getCurrentUser as getCurrentUser } from './fn/authentication/get-current-user';
+export type { ListWorkspaces$Params as ListWorkspaces$Params } from './fn/workspaces/list-workspaces';
+export { listWorkspaces as listWorkspaces } from './fn/workspaces/list-workspaces';
+export type { CreateWorkspace$Params as CreateWorkspace$Params } from './fn/workspaces/create-workspace';
+export { createWorkspace as createWorkspace } from './fn/workspaces/create-workspace';
+export type { GetWorkspace$Params as GetWorkspace$Params } from './fn/workspaces/get-workspace';
+export { getWorkspace as getWorkspace } from './fn/workspaces/get-workspace';
+export type { UpdateWorkspace$Params as UpdateWorkspace$Params } from './fn/workspaces/update-workspace';
+export { updateWorkspace as updateWorkspace } from './fn/workspaces/update-workspace';
+export type { ListWorkspaceMembers$Params as ListWorkspaceMembers$Params } from './fn/workspaces/list-workspace-members';
+export { listWorkspaceMembers as listWorkspaceMembers } from './fn/workspaces/list-workspace-members';
 export type { ValidateQuery$Params as ValidateQuery$Params } from './fn/opportunity-api/validate-query';
 export { validateQuery as validateQuery } from './fn/opportunity-api/validate-query';
 export type { GetJob$Params as GetJob$Params } from './fn/jobs/get-job';
 export { getJob as getJob } from './fn/jobs/get-job';
-export type { GetWorkspace$Params as GetWorkspace$Params } from './fn/workspaces/get-workspace';
-export { getWorkspace as getWorkspace } from './fn/workspaces/get-workspace';
 export type { ListImportTargets$Params as ListImportTargets$Params } from './fn/import/list-import-targets';
 export { listImportTargets as listImportTargets } from './fn/import/list-import-targets';
 export type { ListImportProfiles$Params as ListImportProfiles$Params } from './fn/import/list-import-profiles';
