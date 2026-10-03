@@ -53,7 +53,8 @@ public sealed class MigratorTests(MigrationPostgresFixture postgres)
         await NewMigrator(connectionString).MigrateAsync(Ct);
         var next = MigrationScript.Create(
             $"V{MigrationCatalog.LatestVersion + 1:D4}__add_sample.sql",
-            "CREATE TABLE opportunity.sample (workspace_id uuid NOT NULL, id bigint NOT NULL, PRIMARY KEY (workspace_id, id));");
+            "CREATE TABLE opportunity.sample (workspace_id uuid NOT NULL, id bigint NOT NULL, PRIMARY KEY (workspace_id, id));" +
+            "SELECT opportunity.enable_workspace_rls('opportunity.sample');");
 
         var result = await NewMigrator(connectionString, [.. MigrationCatalog.Scripts, next]).MigrateAsync(Ct);
 
@@ -93,7 +94,8 @@ public sealed class MigratorTests(MigrationPostgresFixture postgres)
         // A slow script keeps the lock held long enough for the other runners to queue behind it.
         var slow = MigrationScript.Create(
             $"V{MigrationCatalog.LatestVersion + 1:D4}__slow.sql",
-            "SELECT pg_sleep(1); CREATE TABLE opportunity.counter (workspace_id uuid PRIMARY KEY);");
+            "SELECT pg_sleep(1); CREATE TABLE opportunity.counter (workspace_id uuid PRIMARY KEY);" +
+            "SELECT opportunity.enable_workspace_rls('opportunity.counter');");
         IReadOnlyList<MigrationScript> scripts = [.. MigrationCatalog.Scripts, slow];
         var options = new MigratorOptions { LockPollInterval = TimeSpan.FromMilliseconds(50) };
 
@@ -127,7 +129,8 @@ public sealed class MigratorTests(MigrationPostgresFixture postgres)
         var connectionString = await postgres.CreateDatabaseAsync();
         var table = MigrationScript.Create(
             $"V{MigrationCatalog.LatestVersion + 1:D4}__table.sql",
-            "CREATE TABLE opportunity.doc (workspace_id uuid NOT NULL, id bigint NOT NULL, title text, PRIMARY KEY (workspace_id, id));");
+            "CREATE TABLE opportunity.doc (workspace_id uuid NOT NULL, id bigint NOT NULL, title text, PRIMARY KEY (workspace_id, id));" +
+            "SELECT opportunity.enable_workspace_rls('opportunity.doc');");
         var index = MigrationScript.Create(
             $"V{MigrationCatalog.LatestVersion + 2:D4}__index.sql",
             $"""
@@ -160,6 +163,58 @@ public sealed class MigratorTests(MigrationPostgresFixture postgres)
         (await ScalarAsync<bool>(connectionString, "SELECT to_regclass('opportunity.bad') IS NULL")).Should().BeTrue();
     }
 
+    private const string BadTable = "CREATE TABLE opportunity.bad (workspace_id uuid NOT NULL, id bigint NOT NULL, PRIMARY KEY (workspace_id, id));";
+
+    [Theory]
+    [InlineData(BadTable, "*opportunity.bad has a workspace_id column but row-level security is not enabled*")]
+    [InlineData(BadTable + "ALTER TABLE opportunity.bad ENABLE ROW LEVEL SECURITY; CREATE POLICY p ON opportunity.bad USING (workspace_id = current_setting('app.workspace_id')::uuid);",
+        "*opportunity.bad has row-level security enabled but not forced*")]
+    [InlineData(BadTable + "ALTER TABLE opportunity.bad ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY; CREATE POLICY p ON opportunity.bad USING (true);",
+        "*opportunity.bad has no row-level security policy keyed on app.workspace_id*")]
+    [InlineData(
+        "CREATE TABLE opportunity.bad (workspace_id uuid NOT NULL, id bigint NOT NULL, PRIMARY KEY (workspace_id, id)) PARTITION BY HASH (workspace_id);" +
+        "CREATE TABLE opportunity.bad_0 PARTITION OF opportunity.bad FOR VALUES WITH (MODULUS 1, REMAINDER 0);" +
+        "SELECT opportunity.enable_workspace_rls(t) FROM unnest('{opportunity.bad,opportunity.bad_0}'::regclass[]) t;",
+        "*opportunity.bad_0 is a partition that runtime role opportunity_app can access directly*")]
+    [InlineData(BadTable + "SELECT opportunity.enable_workspace_rls('opportunity.bad'); CREATE VIEW opportunity.bad_view AS SELECT * FROM opportunity.bad;",
+        "*opportunity.bad_view is a view without security_invoker*")]
+    [InlineData(BadTable + "SELECT opportunity.enable_workspace_rls('opportunity.bad'); CREATE MATERIALIZED VIEW opportunity.bad_mv AS SELECT * FROM opportunity.bad;",
+        "*opportunity.bad_mv is a materialized view over tenant rows*")]
+    [InlineData(BadTable + "SELECT opportunity.enable_workspace_rls('opportunity.bad'); CREATE FUNCTION opportunity.bad_count() RETURNS bigint LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog RETURN (SELECT count(*) FROM opportunity.bad);",
+        "*opportunity.bad_count() is SECURITY DEFINER without a '@security-definer <reason>' comment*")]
+    [InlineData(BadTable + "SELECT opportunity.enable_workspace_rls('opportunity.bad'); CREATE FUNCTION opportunity.bad_count() RETURNS bigint LANGUAGE sql SECURITY DEFINER RETURN (SELECT count(*) FROM opportunity.bad); COMMENT ON FUNCTION opportunity.bad_count() IS '@security-definer test';",
+        "*opportunity.bad_count() is SECURITY DEFINER without a pinned search_path*")]
+    public async Task Row_level_security_lint_rejects_tenant_tables_and_bypasses_without_forced_rls(string sql, string expected)
+    {
+        var connectionString = await postgres.CreateDatabaseAsync();
+        var script = MigrationScript.Create($"V{MigrationCatalog.LatestVersion + 1:D4}__bad.sql", sql);
+
+        var act = () => NewMigrator(connectionString, [.. MigrationCatalog.Scripts, script]).MigrateAsync(Ct);
+
+        await act.Should().ThrowAsync<MigrationException>().WithMessage(expected);
+        (await ScalarAsync<bool>(connectionString, "SELECT to_regclass('opportunity.bad') IS NULL")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Row_level_security_lint_accepts_invoker_views_and_listed_definer_functions()
+    {
+        var connectionString = await postgres.CreateDatabaseAsync();
+        var script = MigrationScript.Create(
+            $"V{MigrationCatalog.LatestVersion + 1:D4}__good.sql",
+            BadTable + """
+            SELECT opportunity.enable_workspace_rls('opportunity.bad');
+            CREATE VIEW opportunity.bad_view WITH (security_invoker = true) AS SELECT * FROM opportunity.bad;
+            CREATE FUNCTION opportunity.bad_noop() RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp RETURN 1;
+            COMMENT ON FUNCTION opportunity.bad_noop() IS '@security-definer test fixture';
+            CREATE TABLE opportunity.membership (user_id uuid PRIMARY KEY, workspace_id uuid NOT NULL);
+            COMMENT ON TABLE opportunity.membership IS '@global installation-level registry';
+            """);
+
+        var result = await NewMigrator(connectionString, [.. MigrationCatalog.Scripts, script]).MigrateAsync(Ct);
+
+        result.EndVersion.Should().Be(script.Version);
+    }
+
     [Fact]
     public async Task Tenant_key_lint_accepts_tenant_partitioned_and_global_tables()
     {
@@ -172,6 +227,9 @@ public sealed class MigratorTests(MigrationPostgresFixture postgres)
                 PARTITION BY HASH (workspace_id);
             CREATE TABLE opportunity.part_0 PARTITION OF opportunity.part FOR VALUES WITH (MODULUS 2, REMAINDER 0);
             CREATE TABLE opportunity.part_1 PARTITION OF opportunity.part FOR VALUES WITH (MODULUS 2, REMAINDER 1);
+            REVOKE ALL ON opportunity.part_0, opportunity.part_1 FROM opportunity_app, opportunity_readonly;
+            SELECT opportunity.enable_workspace_rls(t)
+            FROM unnest('{opportunity.tenant,opportunity.part,opportunity.part_0,opportunity.part_1}'::regclass[]) t;
             CREATE TABLE opportunity.installation_setting (key text PRIMARY KEY, value text);
             COMMENT ON TABLE opportunity.installation_setting IS '@global installation-wide settings';
             """);

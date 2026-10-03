@@ -19,4 +19,13 @@ public sealed class MigratorOptions
     public IList<string> TenantSchemas { get; } = [SchemaHistory.ApplicationSchema];
 
     public string TenantKeyColumn { get; set; } = "workspace_id";
+
+    /// <summary>
+    /// Reject any script (from <see cref="RowLevelSecurityLint.EffectiveFromVersion"/> on) that leaves a tenant table
+    /// without forced RLS, a directly accessible partition, a definer view or an unlisted SECURITY DEFINER function.
+    /// </summary>
+    public bool EnforceRowLevelSecurityLint { get; set; } = true;
+
+    /// <summary>Roles subject to RLS that must never hold privileges on a child partition (V0001).</summary>
+    public IList<string> RuntimeRoles { get; } = ["opportunity_app", "opportunity_readonly"];
 }

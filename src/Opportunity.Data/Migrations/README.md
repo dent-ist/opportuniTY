@@ -39,8 +39,18 @@ ConnectionStrings__Migrator="Host=...;Database=opportunity;Username=opportunity_
   with `COMMENT ON TABLE ... IS '@global <reason>'`.
 - **Partition-agnostic DDL:** the partitioning scheme is still open (`E18-T08`), so keys and queries must work whether
   a table is plain or hash-partitioned by `workspace_id`; partition children are checked through their parent.
-- **RLS** policies (`ENABLE` + `FORCE ROW LEVEL SECURITY`) live in the migration that creates the table. The
-  core tables of V0002 (`E04-T02`) predate the RLS ticket and get their policies in `E05-T03`'s migration.
+- **RLS** (ADR-015 D7, V0005): every table with a `workspace_id` column gets `ENABLE` + `FORCE ROW LEVEL SECURITY`
+  and the single isolation policy in the migration that creates it: call
+  `SELECT opportunity.enable_workspace_rls('opportunity.<table>');` right after `CREATE TABLE`. From V0005 on the
+  migrator also lints (`RowLevelSecurityLint`): a tenant table without forced RLS and a policy on `app.workspace_id`,
+  a child partition that `opportunity_app`/`opportunity_readonly` can access directly (`REVOKE ALL` on every partition;
+  grants live on the parent only), a view without `security_invoker = true`, a materialized view with `workspace_id`,
+  or a `SECURITY DEFINER` function without a pinned `search_path` and a `@security-definer <reason>` comment. Tables
+  marked `@global` are exempt; the workspace registry is the one table with deviating (read-open) policies.
+- **Workspace context:** only `Opportunity.Data`'s `WorkspaceTransaction` sets `app.workspace_id`
+  (`set_config(..., true)` as the first statement of an explicit transaction) for raw SQL, Dapper, EF Core
+  (`CreateDbContext`) and bulk loads. `COPY FROM` into an RLS table is rejected: stage in a temp table, then
+  `INSERT ... SELECT`. `FORCE` binds the owning migrator login too, so a data migration must set the context itself.
 - **Privileges:** default privileges from V0001 give `opportunity_app` SELECT/INSERT/UPDATE/DELETE and
   `opportunity_readonly` SELECT on new tables. Append-only tables must `REVOKE UPDATE, DELETE ... FROM opportunity_app`.
   Run the migrator as one stable owner login: default privileges only apply to objects that login creates.
@@ -71,8 +81,8 @@ Never rename or re-type a column in place; add, backfill, switch, drop.
 | Role | Purpose | Privileges |
 |---|---|---|
 | migrator login (deployment-provided) | owns schema `opportunity` and all objects | DDL; needs `CREATEROLE` for V0001 only |
-| `opportunity_app` (NOLOGIN) | API and workers; deployment grants it to their login | CONNECT/TEMP, DML, read `schema_history`; no DDL, no TRUNCATE, no BYPASSRLS |
-| `opportunity_readonly` (NOLOGIN) | support and reporting | CONNECT, SELECT |
+| `opportunity_app` (NOLOGIN) | API and workers; deployment grants it to their login | CONNECT/TEMP, DML on parents (not partitions), read `schema_history`; no DDL, no TRUNCATE, no BYPASSRLS; subject to RLS |
+| `opportunity_readonly` (NOLOGIN) | support and reporting | CONNECT, SELECT; subject to RLS (sets a context to see rows) |
 
 V0001 revokes `CONNECT` on the database from `PUBLIC`, so every login must be a member of one of these roles or own
 the database.

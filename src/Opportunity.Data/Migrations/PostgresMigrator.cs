@@ -135,17 +135,24 @@ public sealed partial class PostgresMigrator
     private async Task LintAsync(
         NpgsqlConnection connection, NpgsqlTransaction? transaction, MigrationScript script, CancellationToken cancellationToken)
     {
-        if (!_options.EnforceTenantKeyLint)
+        var violations = new List<string>();
+        if (_options.EnforceTenantKeyLint)
         {
-            return;
+            violations.AddRange(await TenantKeyLint.FindViolationsAsync(
+                connection, transaction, _options.TenantSchemas, _options.TenantKeyColumn, cancellationToken).ConfigureAwait(false));
         }
 
-        var violations = await TenantKeyLint.FindViolationsAsync(
-            connection, transaction, _options.TenantSchemas, _options.TenantKeyColumn, cancellationToken).ConfigureAwait(false);
+        if (_options.EnforceRowLevelSecurityLint && script.Version >= RowLevelSecurityLint.EffectiveFromVersion)
+        {
+            violations.AddRange(await RowLevelSecurityLint.FindViolationsAsync(
+                connection, transaction, _options.TenantSchemas, _options.TenantKeyColumn, _options.RuntimeRoles,
+                cancellationToken).ConfigureAwait(false));
+        }
+
         if (violations.Count > 0)
         {
             throw new MigrationException(
-                $"Migration {script.Version} ('{script.Name}') violates the tenant key rule:{Environment.NewLine}" +
+                $"Migration {script.Version} ('{script.Name}') violates the tenant isolation rules:{Environment.NewLine}" +
                 string.Join(Environment.NewLine, violations));
         }
     }
