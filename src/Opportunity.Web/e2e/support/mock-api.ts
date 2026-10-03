@@ -12,15 +12,33 @@ export interface MockApiOptions {
 }
 
 export const ALL_PERMISSIONS = [
+  // The #47 permission catalogue (docs/security/permission-matrix.md).
   'Document.View',
-  'SearchTermsReport.View',
-  'Production.View',
-  'Import.View',
-  'Export.View',
-  'Job.View',
-  'Workspace.Admin',
-  'Workspace.ManageUsers',
+  'Document.DownloadNative',
+  'Document.Print',
+  'Document.ViewQuarantined',
+  'Search.Execute',
+  'SavedSearch.Share',
+  'Coding.Write',
+  'Coding.WritePrivilege',
+  'Coding.Bulk',
+  'Redaction.Apply',
+  'Redaction.Remove',
+  'Import.Run',
+  'Import.Overlay',
+  'Export.Create',
+  'Export.Download',
+  'Production.Create',
+  'Production.Finalize',
+  'PrivilegeLog.Generate',
+  'Job.ViewAll',
+  'Job.Manage',
   'Audit.Read',
+  'Audit.ReadSearchText',
+  'Workspace.ManageUsers',
+  'Workspace.ManageSecurity',
+  'Workspace.ManageFields',
+  'Workspace.RequestDeletion',
 ] as const;
 
 export const WORKSPACES = [
