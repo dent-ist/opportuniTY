@@ -1,0 +1,68 @@
+import type { Page, Route } from '@playwright/test';
+
+/**
+ * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
+ * shell needs (`/api/v1/me`, the workspace directory) and 404 problem details for anything else, so a page that
+ * starts calling a new endpoint fails visibly instead of hanging.
+ */
+export interface MockApiOptions {
+  signedIn?: boolean;
+  /** Effective permissions in every workspace; defaults to all (so admin routes are reachable). */
+  permissions?: readonly string[];
+}
+
+export const ALL_PERMISSIONS = [
+  'Document.View',
+  'SearchTermsReport.View',
+  'Production.View',
+  'Import.View',
+  'Export.View',
+  'Job.View',
+  'Workspace.Admin',
+  'Workspace.ManageUsers',
+  'Audit.Read',
+] as const;
+
+export const WORKSPACES = [
+  { workspaceId: 'ws-1', name: 'Acme v. Widget', matterNumber: 'M-1001' },
+  { workspaceId: 'ws-2', name: 'Beta Holdings', matterNumber: 'M-1002' },
+] as const;
+
+const principal = {
+  userId: 'user-1',
+  displayName: 'Alex Reviewer',
+  email: 'alex@example.test',
+  groups: [],
+  mfa: true,
+  sessionExpiresAt: null,
+};
+
+function problem(status: number, title: string) {
+  return {
+    status,
+    contentType: 'application/problem+json',
+    body: JSON.stringify({ type: 'about:blank', title, status }),
+  };
+}
+
+/** Installs the mock; returns the list it fills with requests it had no answer for. */
+export async function mockApi(page: Page, options: MockApiOptions = {}): Promise<string[]> {
+  const { signedIn = true, permissions = ALL_PERMISSIONS } = options;
+  const json = (route: Route, body: unknown) => route.fulfill({ json: body });
+  const unhandled: string[] = [];
+
+  await page.route(/\/(api|bff)\//, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    if (path === '/api/v1/me') {
+      return signedIn ? json(route, principal) : route.fulfill(problem(401, 'Unauthorized'));
+    }
+    if (signedIn && path === '/api/v1/workspaces')
+      return json(route, { items: WORKSPACES, nextCursor: null });
+    const ws = WORKSPACES.find((w) => path === `/api/v1/workspaces/${w.workspaceId}`);
+    if (signedIn && ws) return json(route, { ...ws, permissions });
+    unhandled.push(`${route.request().method()} ${path}`);
+    return route.fulfill(problem(404, 'Not found'));
+  });
+  return unhandled;
+}

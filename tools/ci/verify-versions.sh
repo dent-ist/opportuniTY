@@ -3,6 +3,7 @@
 #   global.json            sdk.version          == DOTNET_SDK
 #   src/Opportunity.Web/.nvmrc                  == NODE (major)
 #   src/Opportunity.Web/package.json engines.node major == NODE
+#   src/Opportunity.Web/package.json devDependencies["@playwright/test"] == PLAYWRIGHT (exact)
 # Usage: tools/ci/verify-versions.sh   (run from anywhere; resolves the repo root itself)
 set -euo pipefail
 
@@ -27,6 +28,8 @@ global_json_sdk="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]
 nvmrc="$(tr -d '[:space:]v' < "$root/src/Opportunity.Web/.nvmrc")"
 nvmrc_major="${nvmrc%%.*}"
 engines_major="$(python3 -c 'import json,re,sys; m=re.search(r"\d+", json.load(open(sys.argv[1]))["engines"]["node"]); print(m.group(0) if m else "")' "$root/src/Opportunity.Web/package.json")"
+playwright="$(read_var PLAYWRIGHT)"
+package_playwright="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["devDependencies"].get("@playwright/test", ""))' "$root/src/Opportunity.Web/package.json")"
 
 status=0
 check() {
@@ -42,5 +45,6 @@ check() {
 check ".NET SDK" "global.json" "$dotnet_sdk" "$global_json_sdk"
 check "Node major" "src/Opportunity.Web/.nvmrc" "$node_major" "$nvmrc_major"
 check "Node major (engines)" "src/Opportunity.Web/package.json" "$node_major" "$engines_major"
+check "Playwright" "src/Opportunity.Web/package.json" "$playwright" "$package_playwright"
 
 exit "$status"
