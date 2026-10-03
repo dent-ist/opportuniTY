@@ -1,0 +1,7 @@
+description: "R6: nested proximity is deferred"
+query: "(a W/2 b) W/3 c"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [0, 9]
+  expected: []
+  message: "Nested proximity is not supported yet."

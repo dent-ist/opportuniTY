@@ -1,0 +1,16 @@
+description: "R7: literal * inside a wildcard pattern"
+query: "a\\*b*"
+printed: "a\\*b*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "wildcard",
+      "span": {
+        "start": 0,
+        "end": 5
+      },
+      "pattern": "a\\*b*"
+    }
+  }

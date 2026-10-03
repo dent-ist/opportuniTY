@@ -1,0 +1,7 @@
+description: "R7: wildcards inside phrases are deferred"
+query: "\"meet* now\""
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [5, 6]
+  expected: []
+  message: "Wildcards inside phrases are not supported yet. Escape it as \\* to search for it literally."

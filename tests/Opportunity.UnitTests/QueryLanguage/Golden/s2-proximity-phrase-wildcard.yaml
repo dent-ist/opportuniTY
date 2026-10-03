@@ -1,0 +1,33 @@
+description: "§2/R6: phrase and wildcard operands"
+query: "\"trade secret\" W/3 misappropriat*"
+printed: "\"trade secret\" W/3 misappropriat*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "proximity",
+      "span": {
+        "start": 0,
+        "end": 33
+      },
+      "distance": 3,
+      "ordered": false,
+      "left": {
+        "kind": "phrase",
+        "span": {
+          "start": 0,
+          "end": 14
+        },
+        "text": "trade secret"
+      },
+      "right": {
+        "kind": "wildcard",
+        "span": {
+          "start": 19,
+          "end": 33
+        },
+        "pattern": "misappropriat*"
+      }
+    }
+  }

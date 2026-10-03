@@ -1,0 +1,16 @@
+description: "R4: - inside a term is literal"
+query: "e-mail"
+printed: "e-mail"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "term",
+      "span": {
+        "start": 0,
+        "end": 6
+      },
+      "text": "e-mail"
+    }
+  }

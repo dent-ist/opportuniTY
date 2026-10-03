@@ -1,0 +1,41 @@
+description: "R4: backslash escapes any character in a term"
+query: "\\(draft\\) AT\\&T a\\ b"
+printed: "\\(draft\\) AND AT&T AND a\\ b"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 20
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 9
+          },
+          "text": "(draft)"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 10,
+            "end": 15
+          },
+          "text": "AT&T"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 16,
+            "end": 20
+          },
+          "text": "a b"
+        }
+      ]
+    }
+  }

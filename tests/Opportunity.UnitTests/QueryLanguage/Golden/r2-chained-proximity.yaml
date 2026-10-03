@@ -1,0 +1,7 @@
+description: "R2: W/n is non-associative in M1"
+query: "a W/3 b W/5 c"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [8, 11]
+  expected: []
+  message: "Chained proximity ('W/3 … W/5') is not supported yet; group with AND instead."

@@ -1,0 +1,28 @@
+description: "R8: ISO 8601 with an offset must be quoted (':' is reserved)"
+query: "sent:[\"2025-03-01T09:00:00+01:00\" TO *]"
+printed: "sent:[\"2025-03-01T09:00:00+01:00\" TO *]"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 39
+      },
+      "name": "sent",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 5,
+          "end": 39
+        },
+        "lower": {
+          "value": "2025-03-01T09:00:00+01:00",
+          "inclusive": true
+        },
+        "upper": null
+      }
+    }
+  }

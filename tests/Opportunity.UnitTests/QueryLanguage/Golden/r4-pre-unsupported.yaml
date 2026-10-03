@@ -1,0 +1,7 @@
+description: "R4: PRE/n is deferred (E07-T12)"
+query: "apple PRE/5 iphone"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [6, 11]
+  expected: []
+  message: "'PRE/5' is not supported yet; use W/n (within n words, either order). Escape the '/' to search for it literally."

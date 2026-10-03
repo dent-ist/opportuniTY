@@ -1,0 +1,7 @@
+description: "R4: root expansion ! is deferred"
+query: "appl!"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [4, 5]
+  expected: []
+  message: "Root expansion '!' is not supported yet. Escape it as \\! to search for it."

@@ -1,0 +1,7 @@
+description: "R4: leading - is reserved (use NOT)"
+query: "-draft"
+error:
+  code: RESERVED_PREFIX
+  span: [0, 1]
+  expected: []
+  message: "A leading '-' is reserved. Use NOT to exclude a term, or escape it as \\-."

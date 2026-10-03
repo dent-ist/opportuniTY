@@ -1,0 +1,7 @@
+description: "Empty parentheses"
+query: "()"
+error:
+  code: SYNTAX_ERROR
+  span: [1, 2]
+  expected: ["term", "phrase", "field:", "(", "NOT"]
+  message: "A term is missing after '('."

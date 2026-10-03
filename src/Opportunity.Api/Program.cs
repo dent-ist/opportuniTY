@@ -1,10 +1,12 @@
 using Opportunity.Api.Conventions;
+using Opportunity.Api.Search;
 using Opportunity.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddOpportunityHostDefaults();
 builder.Services.AddApiConventions();
+builder.Services.AddQueryValidation();
 
 var app = builder.Build();
 

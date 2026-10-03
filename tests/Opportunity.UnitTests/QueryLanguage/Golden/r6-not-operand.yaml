@@ -1,0 +1,7 @@
+description: "R6: NOT inside a proximity operand is deferred (NOT W/n)"
+query: "NOT a W/3 b"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [0, 5]
+  expected: []
+  message: "NOT inside a W/n operand is not supported yet."

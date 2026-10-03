@@ -1,0 +1,7 @@
+description: "R4: leading + is reserved"
+query: "+draft"
+error:
+  code: RESERVED_PREFIX
+  span: [0, 1]
+  expected: []
+  message: "A leading '+' is reserved. Terms are required by default (AND); escape it as \\+ to search for it."

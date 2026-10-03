@@ -1,0 +1,7 @@
+description: "§5: W/0 is out of range"
+query: "a W/0 b"
+error:
+  code: PROXIMITY_DISTANCE_OUT_OF_RANGE
+  span: [2, 5]
+  expected: []
+  message: "The distance of W/0 must be between 1 and 1000."

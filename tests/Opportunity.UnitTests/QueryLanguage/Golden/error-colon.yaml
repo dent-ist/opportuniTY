@@ -1,0 +1,7 @@
+description: "Unescaped colon after a non-field"
+query: "10:00"
+error:
+  code: SYNTAX_ERROR
+  span: [2, 3]
+  expected: []
+  message: "Unexpected ':'. Write field:value with a field name (a letter, then letters, digits, '_', '.' or '-'), or escape it as \\:."

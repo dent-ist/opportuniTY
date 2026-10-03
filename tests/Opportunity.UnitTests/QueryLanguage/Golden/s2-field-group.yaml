@@ -1,0 +1,41 @@
+description: "§2: field applied to every leaf of a group"
+query: "custodian:(smith OR jones)"
+printed: "custodian:(smith OR jones)"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 26
+      },
+      "name": "custodian",
+      "child": {
+        "kind": "or",
+        "span": {
+          "start": 10,
+          "end": 26
+        },
+        "children": [
+          {
+            "kind": "term",
+            "span": {
+              "start": 11,
+              "end": 16
+            },
+            "text": "smith"
+          },
+          {
+            "kind": "term",
+            "span": {
+              "start": 20,
+              "end": 25
+            },
+            "text": "jones"
+          }
+        ]
+      }
+    }
+  }
