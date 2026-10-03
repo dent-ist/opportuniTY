@@ -52,7 +52,7 @@ npx ng test --watch=false
 
 ## Security and supply-chain gates
 
-These gates implement #24 (`E01-T04`) and threat-model entries T-57 and T-59 ([threat model](security/threat-model.md#tb12--supply-chain--installation)). Image scanning, signing and provenance belong to #25 (`E01-T05`).
+These gates implement #24 (`E01-T04`) and threat-model entries T-57 and T-59 ([threat model](security/threat-model.md#tb12--supply-chain--installation)). Image scanning, signing and provenance (#25, `E01-T05`, T-58) are described under [Container images](#container-images).
 
 | Gate | Where | Runs on | Blocks merge |
 |---|---|---|---|
@@ -62,10 +62,11 @@ These gates implement #24 (`E01-T04`) and threat-model entries T-57 and T-59 ([t
 | CodeQL SAST: C#, JavaScript/TypeScript, GitHub Actions (`security-extended`) | `codeql.yml` | every PR, `main`, merge queue, weekly | yes, once the code-scanning rule below is set |
 | OpenSSF Scorecard | `scorecard.yml` | `main`, weekly, branch-protection changes | no (tracked score) |
 | GitHub secret scanning + push protection | repository setting | every push | push protection blocks the push |
+| Image vulnerabilities (Trivy, OS + .NET/npm packages in each image) | `images.yml` › `Build and scan` | every PR, `main`, `v*` tags | blocks publishing; on PRs once the check is required |
 
 ### Vulnerability policy and exceptions
 
-Both advisory feeds come from the GitHub Advisory Database. `tools/ci/security/check-vulnerabilities.py` fails the job on any **High** or **Critical** advisory. Lower severities appear in the report and do not block. An advisory can be accepted temporarily by adding an entry to [`tools/ci/security/vulnerability-exceptions.json`](../tools/ci/security/vulnerability-exceptions.json):
+Both advisory feeds come from the GitHub Advisory Database. `tools/ci/security/check-vulnerabilities.py` fails the job on any **High** or **Critical** advisory. The same script and exception file gate the Trivy image scans (`--trivy`); image findings use the CVE (or GHSA) id Trivy reports and the package name as reported, e.g. an OS package such as `libc6`. Lower severities appear in the report and do not block. An advisory can be accepted temporarily by adding an entry to [`tools/ci/security/vulnerability-exceptions.json`](../tools/ci/security/vulnerability-exceptions.json):
 
 ```json
 { "advisory": "GHSA-xxxx-xxxx-xxxx", "package": "Some.Package", "reason": "Not reachable: we never call X; upgrade blocked by #123",
@@ -86,7 +87,7 @@ The project is MIT-licensed. [`tools/ci/security/license-policy.json`](../tools/
 
 ### SBOM
 
-`opportunity-dotnet.cdx.json` comes from the CycloneDX .NET tool, pinned in [`.config/dotnet-tools.json`](../.config/dotnet-tools.json). `opportunity-web.cdx.json` comes from `@cyclonedx/cyclonedx-npm`, pinned by `CYCLONEDX_NPM` in `versions.env` and run on `package-lock.json` only. Both use CycloneDX 1.6+ JSON and are kept for 90 days. Per-image SBOMs attached to signed releases come with #25.
+`opportunity-dotnet.cdx.json` comes from the CycloneDX .NET tool, pinned in [`.config/dotnet-tools.json`](../.config/dotnet-tools.json). `opportunity-web.cdx.json` comes from `@cyclonedx/cyclonedx-npm`, pinned by `CYCLONEDX_NPM` in `versions.env` and run on `package-lock.json` only. Both use CycloneDX 1.6+ JSON and are kept for 90 days. Per-image SBOMs are described under [Container images](#container-images).
 
 ### Secret scanning
 
@@ -111,8 +112,83 @@ gitleaks git --redact .      # https://github.com/gitleaks/gitleaks/releases
 
 ### Not covered here
 
-- **Trivy image scanning** comes with the image build in #25 (`E01-T05`). No images are built yet.
 - **`actions/dependency-review-action` and OSV-Scanner.** Not added, because the two audits above already query the same advisory database on every PR and use one exception file. Dependency review also needs the dependency graph, plus GitHub Advanced Security on private repositories. Add one of them if the project wants findings to appear as PR annotations.
+
+## Container images
+
+Implements #25 (`E01-T05`), ADR-015 D17.2 and threat-model entries T-57/T-58. Four images, all multi-arch (`linux/amd64`, `linux/arm64`), published to GHCR:
+
+| Image | Dockerfile (`--target`) | Base (pinned by index digest) | Runs as | Health |
+|---|---|---|---|---|
+| `ghcr.io/plogramer/opportunity-api` | `deploy/docker/dotnet.Dockerfile` (`api`) | `mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled` | `app` (1654) | `HEALTHCHECK` on `/health/live`, port 8080 |
+| `ghcr.io/plogramer/opportunity-worker` | `deploy/docker/dotnet.Dockerfile` (`worker`) | same | `app` (1654) | same |
+| `ghcr.io/plogramer/opportunity-migrator` | `deploy/docker/dotnet.Dockerfile` (`migrator`) | `mcr.microsoft.com/dotnet/runtime:10.0-noble-chiseled` | `app` (1654) | none (one-shot) |
+| `ghcr.io/plogramer/opportunity-web` | `deploy/docker/web.Dockerfile` (`web`) | `nginxinc/nginx-unprivileged:1.30-alpine-slim` | `nginx` (101) | `HEALTHCHECK` on `/healthz`, port 8080 |
+
+- **Worker.** One image runs every worker type: `Workers__Enabled=all` (the default, Lite) or one type or a comma-separated subset per container (Full), e.g. `Workers__Enabled=import`. Unknown names fail at startup.
+- **Migrator.** Applies PostgreSQL migrations and bootstrap steps, then exits: `0` success, `1` migration failed, `2` configuration error (no `ConnectionStrings__Migrator`), `3` bootstrap step failed. Verified against PostgreSQL 17: the first run applies the migrations, a second run is a no-op that exits `0`.
+- **Kerberos.** The chiseled images do not include `libgssapi_krb5`, so PostgreSQL GSSAPI/Kerberos authentication is not supported. Npgsql probes for it and prints `libgssapi_krb5.so.2: cannot open shared object file` once; add `GSS Encryption Mode=Disable` to PostgreSQL connection strings to skip the probe.
+- **Web.** The Angular production build, served by nginx with SPA fallback, `no-cache` on `index.html`, immutable caching for content-hashed bundles and the ADR-015 D4 response headers. The CSP allows `'unsafe-inline'` for styles only, the documented interim exception until `ngCspNonce` (`E15-T01`). TLS and `/api` routing are the edge proxy's job.
+- **Hardening.** Multi-stage builds; the .NET images are chiseled (no shell, no package manager). The SDK and Node stages run on the build host and cross-compile, so only the web image's `apk upgrade` step needs emulation for arm64. Run every container with `read_only: true`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]` and a tmpfs at `/tmp` (required by nginx for its pid and temp files; used by the .NET diagnostics socket). The chiseled images have no curl or wget, so their `HEALTHCHECK` runs `src/Opportunity.HealthProbe`, a 40 KB .NET probe shipped in the image.
+- **Labels.** `org.opencontainers.image.{title,description,source,licenses,version,revision,created,…}`. CI passes `VERSION`, `REVISION` and `CREATED` as build args.
+- **Build context.** The repository root, with an allowlist [`.dockerignore`](../.dockerignore): only `src/`, the root build props, `.editorconfig`, `global.json` and `deploy/docker/` reach the builder, so `.env` files and git history never do.
+
+### Workflows
+
+[`container-images.yml`](../.github/workflows/container-images.yml) is a reusable workflow with three jobs. [`images.yml`](../.github/workflows/images.yml) calls it for pull requests (`publish: false`) and `main` (`publish: true`); [`release.yml`](../.github/workflows/release.yml) calls it for `v*` tags.
+
+| Job | Runs on | What it does | Permissions |
+|---|---|---|---|
+| `Build and scan (<image>)` | PRs, `main`, tags | Builds `linux/amd64` into the runner's Docker (GitHub Actions layer cache). Trivy (checksum-pinned release binary, `TRIVY`/`TRIVY_SHA256` in `versions.env`) writes a JSON vulnerability report and a CycloneDX SBOM. `check-vulnerabilities.py --trivy` fails on High/Critical without an exception. Then a smoke test: non-root user, `--read-only --cap-drop ALL`, `/health/live` (`/healthz` for web) answers, the migrator exits `2` without configuration | `contents: read` |
+| `Publish, sign and attest (<image>)` | `main`, tags | Rebuilds both architectures from the same cache and pushes. BuildKit adds an SPDX SBOM and SLSA provenance (`mode=max`) to the image index. `cosign sign` (keyless, GitHub OIDC) signs the digest. `actions/attest-build-provenance` and `actions/attest-sbom` (the CycloneDX SBOM from the scan job) add GitHub attestations, also pushed to the registry | inherited from the caller: `packages: write`, `id-token: write`, `attestations: write` |
+| `Verify and smoke-test (<arch>)` | `main`, tags | On `ubuntu-24.04` and `ubuntu-24.04-arm`: `cosign verify` and `gh attestation verify` (provenance and SBOM) for every image, then the hardened run as above against the published `sha-<short>` images | `contents/packages/attestations: read` |
+
+Pull-request builds never push. The callers set `permissions: {}` at workflow level and grant write scopes only to the publishing call. Images are published only after their scan passed. The publish job reuses the scanned amd64 layers from the cache. A cache miss rebuilds them (for web, that can pick up newer Alpine packages), which is why the verify job runs after publishing.
+
+**Tags.** Every publish gets the immutable `sha-<7-char commit>`. `main` moves `edge`; a `vX.Y.Z` tag publishes `X.Y.Z` and `X.Y`. `latest` is never published. Compose and Kubernetes manifests reference images **by digest** (`E01-T06` produces the release bundle).
+
+**Image vulnerability waivers.** Same file and rules as above ([Vulnerability policy and exceptions](#vulnerability-policy-and-exceptions)), with the CVE id and the package name from the Trivy report, for example `{ "advisory": "CVE-2026-12345", "package": "libc6", ... }`. Prefer a base-image bump (Dependabot `docker` ecosystem on `deploy/docker`). The web image runs `apk upgrade` at build time, because Alpine usually ships a fix before the nginx image is rebuilt.
+
+**Base images.** Pinned as `tag@sha256:<index digest>` directly in the `FROM` lines, where Dependabot updates them. To bump by hand: `docker buildx imagetools inspect <image:tag>` and copy the top-level `Digest`.
+
+### Verify a published image (operators)
+
+```bash
+IMAGE=ghcr.io/plogramer/opportunity-api@sha256:<digest>
+cosign verify "$IMAGE" \
+  --certificate-identity-regexp '^https://github.com/plogramer/opportuniTY/.github/workflows/container-images.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify "oci://$IMAGE" --repo plogramer/opportuniTY                                   # SLSA provenance
+gh attestation verify "oci://$IMAGE" --repo plogramer/opportuniTY --predicate-type https://cyclonedx.org/bom   # SBOM
+docker buildx imagetools inspect "$IMAGE" --format '{{ json .SBOM }}'                                  # BuildKit SPDX SBOM
+```
+
+### Build and run locally
+
+```bash
+docker buildx build -f deploy/docker/dotnet.Dockerfile --target api      -t opportunity-api:dev --load .
+docker buildx build -f deploy/docker/dotnet.Dockerfile --target worker   -t opportunity-worker:dev --load .
+docker buildx build -f deploy/docker/dotnet.Dockerfile --target migrator -t opportunity-migrator:dev --load .
+docker buildx build -f deploy/docker/web.Dockerfile                      -t opportunity-web:dev --load .
+
+docker run --rm --read-only --tmpfs /tmp --cap-drop ALL -p 8080:8080 opportunity-api:dev    # curl localhost:8080/health/live
+docker run --rm --read-only --tmpfs /tmp --cap-drop ALL -e Workers__Enabled=import -p 8081:8080 opportunity-worker:dev
+docker run --rm --read-only opportunity-migrator:dev    # exits 2: ConnectionStrings__Migrator is not configured
+
+# Scan like CI (Trivy from versions.env):
+trivy image --scanners vuln --format json -o trivy-api.json opportunity-api:dev
+python3 tools/ci/security/check-vulnerabilities.py --trivy trivy-api.json
+```
+
+Behind a TLS-intercepting proxy, pass its CA bundle as a build secret (never stored in a layer): `--secret id=build-ca,src=/path/to/ca-bundle.crt`. Without access to the Alpine mirrors, build web with `--build-arg APK_UPGRADE=0`.
+
+Approximate sizes (linux/amd64, compressed as pulled / unpacked): api 61 / 141 MB, worker 61 / 141 MB, migrator 46 / 107 MB, web 6 / 15 MB. The chiseled ASP.NET base accounts for about 55 MB compressed.
+
+### Not covered yet
+
+- **Compose developer-profile smoke test on both architectures.** The verify job runs each published image on amd64 and arm64 runners with the Compose hardening flags. The full developer-profile smoke test (API, workers, PostgreSQL, OpenSearch, RabbitMQ) runs once `deploy/docker-compose` exists (`E01-T06` / `E19`).
+- **Release notes, Compose bundle with digests, changelog.** These come with #26 (`E01-T06`), which builds on `release.yml`.
+- **arm64 runners.** `ubuntu-24.04-arm` is free for public repositories. A private repository needs a larger-runner plan or a self-hosted arm64 runner.
 
 ## Branch protection and repository settings (manual, repository admin)
 
@@ -128,7 +204,7 @@ The security gates also need these settings:
 
 ## Extension points
 
-- **Container image build/sign/publish (#25, `E01-T05`).** Use a separate workflow triggered on `main`/tags, with `packages: write` / `id-token: write` scoped to that workflow. Do not widen this workflow's permissions.
+- **Container images (#25, `E01-T05`).** Implemented in `images.yml` / `release.yml` / `container-images.yml` ([Container images](#container-images)). Write scopes stay out of `ci.yml`. To require the image scan on PRs, add `Images / Build and scan (…)` checks to branch protection, or add an image job to `ci-gate.needs`.
 - **OpenAPI diff and message-contract tests (L5).** Add steps in the `.NET` job, after the architecture tests, once the suites exist.
 - **Cross-workspace security suite (`E05-T05`).** It lives under `tests/Opportunity.IntegrationTests/Security`, so it already runs in the integration job. **Fault/idempotency smoke (`E18-T01`).** Give it its own job if it would push the integration job past the budget, and add that job to `ci-gate.needs`.
 - **Coverage.** Not collected yet. Add `Microsoft.Testing.Extensions.CodeCoverage` (.NET) and `@vitest/coverage-v8` (Angular), then upload Cobertura reports next to the test results.

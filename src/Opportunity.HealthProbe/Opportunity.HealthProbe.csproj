@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Container HEALTHCHECK probe for the chiseled API and worker images, which have no shell, curl or wget. Exits 0 when a local HTTP endpoint answers 2xx.</Description>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+</Project>

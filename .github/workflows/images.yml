@@ -1,0 +1,39 @@
+# Container images for pull requests (build + scan only, nothing is pushed) and main (publish `edge` and
+# `sha-<short>` to GHCR, signed and attested). Releases (v* tags) are release.yml. See docs/ci.md#container-images.
+name: Images
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions: {}
+
+jobs:
+  pr:
+    name: Images
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+    uses: ./.github/workflows/container-images.yml
+    with:
+      publish: false
+
+  main:
+    name: Images
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+      id-token: write # cosign keyless signing and attestations (Sigstore)
+      attestations: write # actions/attest-build-provenance, actions/attest-sbom
+    uses: ./.github/workflows/container-images.yml
+    with:
+      publish: true

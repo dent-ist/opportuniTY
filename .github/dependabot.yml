@@ -20,3 +20,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+  # Image base images (E01-T05): FROM lines in deploy/docker/*.Dockerfile, pinned tag@digest.
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule: { interval: weekly }

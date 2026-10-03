@@ -1,0 +1,20 @@
+# Build context for deploy/docker/*.Dockerfile (context = repository root). Allowlist: only what the image
+# builds need, so secrets, local .env files, git history and build output never reach the builder.
+*
+!.editorconfig
+!global.json
+!Directory.Build.props
+!Directory.Packages.props
+!src/
+!deploy/docker/
+
+# Local build output and dependencies inside src/
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.angular/
+**/TestResults/
+**/*.user
+**/.env
+**/*.local.env
