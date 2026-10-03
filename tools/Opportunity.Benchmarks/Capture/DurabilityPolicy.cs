@@ -1,8 +1,8 @@
 namespace Opportunity.Benchmarks.Capture;
 
 /// <summary>
-/// Decision Q-05: reference runs use production-like durability; relaxed settings are allowed only on the developer
-/// profile and must be recorded. This computes the deviations from the captured settings, so a manifest cannot claim
+/// Decision Q-05: reference runs use production-like durability; relaxed settings are allowed only on the nightly
+/// developer tier (T2, checked by the bundle validator) and must be recorded. This computes the deviations from the captured settings, so a manifest cannot claim
 /// "production" while its own settings say otherwise.
 /// </summary>
 public static class DurabilityPolicy

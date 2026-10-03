@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Kestrel for the fake API (`stub-api`) the k6 workloads are validated against until the M1 API exists. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="System.CommandLine" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="JsonSchema.Net" />
@@ -17,6 +22,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+    <!-- Query sets are generated from (and counted against) the regenerated corpus (E17-T04). -->
+    <ProjectReference Include="..\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
   </ItemGroup>
 
   <ItemGroup>
