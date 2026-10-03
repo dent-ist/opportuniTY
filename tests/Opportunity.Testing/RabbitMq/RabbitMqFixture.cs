@@ -81,6 +81,54 @@ public class RabbitMqFixture : DependencyFixture
         return new RabbitMqVirtualHost(this, name);
     }
 
+    /// <summary>
+    /// Stops the broker application (connections drop, the node keeps its data) for broker-restart tests. Every test of
+    /// the collection shares the broker, so call <see cref="StartBrokerAsync"/> in a <c>finally</c>.
+    /// </summary>
+    public async Task StopBrokerAsync(CancellationToken cancellationToken = default) =>
+        await RabbitMqCtlAsync(["stop_app"], cancellationToken).ConfigureAwait(false);
+
+    /// <summary>Starts the broker application again and waits until it accepts connections.</summary>
+    public async Task StartBrokerAsync(CancellationToken cancellationToken = default)
+    {
+        await RabbitMqCtlAsync(["start_app"], cancellationToken).ConfigureAwait(false);
+        await RabbitMqCtlAsync(["await_startup"], cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<string> CreateUserAsync(
+        string virtualHost, string configure, string write, string read, CancellationToken cancellationToken)
+    {
+        var name = TestIsolation.NewName("u");
+        using (var created = await Management.PutAsJsonAsync(
+            $"api/users/{name}", new { password = Password, tags = string.Empty }, cancellationToken).ConfigureAwait(false))
+        {
+            created.EnsureSuccessStatusCode();
+        }
+
+        using (var granted = await Management.PutAsJsonAsync(
+            $"api/permissions/{Uri.EscapeDataString(virtualHost)}/{name}",
+            new { configure, write, read },
+            cancellationToken).ConfigureAwait(false))
+        {
+            granted.EnsureSuccessStatusCode();
+        }
+
+        return name;
+    }
+
+    internal async Task DeleteUserAsync(string name)
+    {
+        using var response = await Management.DeleteAsync(new Uri($"api/users/{name}", UriKind.Relative)).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    internal Uri AmqpUri(string virtualHost, string username, FaultProxy? via)
+    {
+        var host = via?.Host ?? Hostname;
+        var port = via?.Port ?? AmqpPort;
+        return new Uri($"amqp://{username}:{Password}@{host}:{port}/{Uri.EscapeDataString(virtualHost)}");
+    }
+
     internal async Task DeleteVirtualHostAsync(string name)
     {
         using var response = await Management.DeleteAsync(
@@ -108,12 +156,22 @@ public class RabbitMqFixture : DependencyFixture
     }
 
     private HttpClient Management => _management ?? throw new InvalidOperationException("RabbitMQ has not been started.");
+
+    private async Task RabbitMqCtlAsync(string[] arguments, CancellationToken cancellationToken)
+    {
+        var result = await _container.ExecAsync(["rabbitmqctl", .. arguments], cancellationToken).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"rabbitmqctl {string.Join(' ', arguments)} failed: {result.Stderr}");
+        }
+    }
 }
 
 /// <summary>A per-test virtual host. Disposing deletes it.</summary>
 public sealed class RabbitMqVirtualHost : IAsyncDisposable
 {
     private readonly RabbitMqFixture _fixture;
+    private readonly List<string> _users = [];
 
     internal RabbitMqVirtualHost(RabbitMqFixture fixture, string name)
     {
@@ -127,5 +185,25 @@ public sealed class RabbitMqVirtualHost : IAsyncDisposable
 
     public Uri AmqpUriVia(FaultProxy proxy) => _fixture.AmqpUri(Name, proxy);
 
-    public async ValueTask DisposeAsync() => await _fixture.DeleteVirtualHostAsync(Name).ConfigureAwait(false);
+    /// <summary>
+    /// Creates a broker user limited to this virtual host with the given permission regexes (configure, write, read)
+    /// and returns its AMQP URI, optionally through <paramref name="via"/>. Deleted with the virtual host.
+    /// </summary>
+    public async Task<Uri> CreateUserAsync(
+        string configure, string write, string read, FaultProxy? via = null, CancellationToken cancellationToken = default)
+    {
+        var user = await _fixture.CreateUserAsync(Name, configure, write, read, cancellationToken).ConfigureAwait(false);
+        _users.Add(user);
+        return _fixture.AmqpUri(Name, user, via);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var user in _users)
+        {
+            await _fixture.DeleteUserAsync(user).ConfigureAwait(false);
+        }
+
+        await _fixture.DeleteVirtualHostAsync(Name).ConfigureAwait(false);
+    }
 }

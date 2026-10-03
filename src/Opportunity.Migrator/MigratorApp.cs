@@ -7,6 +7,7 @@ using Npgsql;
 
 using Opportunity.Application.Bootstrap;
 using Opportunity.Data.Migrations;
+using Opportunity.Messaging;
 
 namespace Opportunity.Migrator;
 
@@ -44,6 +45,21 @@ public static partial class MigratorApp
             sp.GetRequiredService<NpgsqlDataSource>(),
             options: options,
             logger: sp.GetRequiredService<ILogger<PostgresMigrator>>()));
+
+        // Infrastructure bootstrap steps owned by their modules; each runs only when its dependency is configured.
+        string? configurationError = null;
+        if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)))
+        {
+            try
+            {
+                builder.Services.AddRabbitMqTopologyBootstrap(RabbitMqOptions.Bind(builder.Configuration));
+            }
+            catch (InvalidOperationException ex)
+            {
+                configurationError = ex.Message;
+            }
+        }
+
         configureServices?.Invoke(builder.Services);
 
         using var host = builder.Build();
@@ -52,6 +68,12 @@ public static partial class MigratorApp
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             LogMissingConnectionString(logger, ConnectionStringName);
+            return ExitConfigurationError;
+        }
+
+        if (configurationError is not null)
+        {
+            LogInvalidConfiguration(logger, configurationError);
             return ExitConfigurationError;
         }
 
@@ -86,6 +108,9 @@ public static partial class MigratorApp
 
     [LoggerMessage(Level = LogLevel.Critical, Message = "Connection string '{Name}' is not configured (ConnectionStrings__{Name})")]
     private static partial void LogMissingConnectionString(ILogger logger, string name);
+
+    [LoggerMessage(Level = LogLevel.Critical, Message = "Invalid configuration: {Error}")]
+    private static partial void LogInvalidConfiguration(ILogger logger, string error);
 
     [LoggerMessage(Level = LogLevel.Critical, Message = "Database migration failed")]
     private static partial void LogMigrationFailed(ILogger logger, Exception exception);
