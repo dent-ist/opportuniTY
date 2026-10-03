@@ -37,6 +37,14 @@ export type { DeleteImportProfile$Params as DeleteImportProfile$Params } from '.
 export { deleteImportProfile as deleteImportProfile } from './fn/import/delete-import-profile';
 export type { PreviewImportMapping$Params as PreviewImportMapping$Params } from './fn/import/preview-import-mapping';
 export { previewImportMapping as previewImportMapping } from './fn/import/preview-import-mapping';
+export type { ListImports$Params as ListImports$Params } from './fn/import/list-imports';
+export { listImports as listImports } from './fn/import/list-imports';
+export type { StartImport$Params as StartImport$Params } from './fn/import/start-import';
+export { startImport as startImport } from './fn/import/start-import';
+export type { GetImport$Params as GetImport$Params } from './fn/import/get-import';
+export { getImport as getImport } from './fn/import/get-import';
+export type { ListImportErrors$Params as ListImportErrors$Params } from './fn/import/list-import-errors';
+export { listImportErrors as listImportErrors } from './fn/import/list-import-errors';
 export type { DownloadDocumentNative$Params as DownloadDocumentNative$Params } from './fn/document-content/download-document-native';
 export { downloadDocumentNative as downloadDocumentNative } from './fn/document-content/download-document-native';
 export type { GetDocumentText$Params as GetDocumentText$Params } from './fn/document-content/get-document-text';

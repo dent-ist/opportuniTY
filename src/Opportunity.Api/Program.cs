@@ -37,6 +37,7 @@ builder.Services.AddWorkspaceEndpoints(builder.Configuration);
 builder.Services.AddPostgresIdentityStores();
 builder.Services.AddPostgresSecurityState();
 builder.Services.AddImportMappingEndpoints();
+builder.Services.AddImportEndpoints(builder.Configuration);
 builder.Services.AddProtectedContentGateway(builder.Configuration);
 builder.Services.AddFieldEndpoints();
 builder.Services.AddUserPreferenceEndpoints();

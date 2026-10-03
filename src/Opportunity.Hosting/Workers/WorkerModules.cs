@@ -26,6 +26,11 @@ public static class WorkerModuleCatalog
     {
         AddPlaceholder(services, type);
 
+        if (type == WorkerTypes.Import)
+        {
+            services.AddImportWorker(configuration);
+        }
+
         if (type == WorkerTypes.Dispatcher)
         {
             AddDispatcher(services, configuration);
