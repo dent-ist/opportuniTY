@@ -44,6 +44,10 @@ ConnectionStrings__Migrator="Host=...;Database=opportunity;Username=opportunity_
 - **Privileges:** default privileges from V0001 give `opportunity_app` SELECT/INSERT/UPDATE/DELETE and
   `opportunity_readonly` SELECT on new tables. Append-only tables must `REVOKE UPDATE, DELETE ... FROM opportunity_app`.
   Run the migrator as one stable owner login: default privileges only apply to objects that login creates.
+- **Time-partitioned append-only tables** (ADR-005 R2, e.g. `coding_event` in V0004): `PARTITION BY RANGE` on the
+  timestamp, primary key `(workspace_id, <timestamp>, <id>)`, and a `SECURITY DEFINER` `<table>_ensure_partitions`
+  function that creates UTC-month partitions ahead and revokes UPDATE/DELETE on each. The migration pre-creates 24
+  months; a scheduled maintenance job (E19) must keep calling the function, or inserts past the horizon fail.
 - **Non-transactional steps** (`CREATE INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`): put `-- migrator:no-transaction` on its own line, keep the script to that step, and separate statements with
   `-- migrator:statement-break` lines. Make it re-runnable: a failed concurrent build leaves an INVALID index, so
   `DROP INDEX CONCURRENTLY IF EXISTS` first. The history row is written only after every statement succeeds.
