@@ -1,0 +1,41 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Opportunity.Api/Opportunity.Api.csproj" />
+    <Project Path="src/Opportunity.Application/Opportunity.Application.csproj" />
+    <Project Path="src/Opportunity.Contracts/Opportunity.Contracts.csproj" />
+    <Project Path="src/Opportunity.Core/Opportunity.Core.csproj" />
+    <Project Path="src/Opportunity.Data/Opportunity.Data.csproj" />
+    <Project Path="src/Opportunity.Import/Opportunity.Import.csproj" />
+    <Project Path="src/Opportunity.Jobs/Opportunity.Jobs.csproj" />
+    <Project Path="src/Opportunity.Messaging/Opportunity.Messaging.csproj" />
+    <Project Path="src/Opportunity.Migrator/Opportunity.Migrator.csproj" />
+    <Project Path="src/Opportunity.Production/Opportunity.Production.csproj" />
+    <Project Path="src/Opportunity.Rendering/Opportunity.Rendering.csproj" />
+    <Project Path="src/Opportunity.Search/Opportunity.Search.csproj" />
+    <Project Path="src/Opportunity.Security/Opportunity.Security.csproj" />
+    <Project Path="src/Opportunity.Storage/Opportunity.Storage.csproj" />
+    <Project Path="src/Opportunity.Worker.BulkCoding/Opportunity.Worker.BulkCoding.csproj" />
+    <Project Path="src/Opportunity.Worker.Dispatcher/Opportunity.Worker.Dispatcher.csproj" />
+    <Project Path="src/Opportunity.Worker.Export/Opportunity.Worker.Export.csproj" />
+    <Project Path="src/Opportunity.Worker.Import/Opportunity.Worker.Import.csproj" />
+    <Project Path="src/Opportunity.Worker.Indexing/Opportunity.Worker.Indexing.csproj" />
+    <Project Path="src/Opportunity.Worker.Production/Opportunity.Worker.Production.csproj" />
+    <Project Path="src/Opportunity.Worker.Rendering/Opportunity.Worker.Rendering.csproj" />
+    <Project Path="src/Opportunity.Hosting/Opportunity.Hosting.csproj" />
+    <Project Path="src/Opportunity.Worker.All/Opportunity.Worker.All.csproj" />
+    <Project Path="src/Opportunity.HealthProbe/Opportunity.HealthProbe.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Opportunity.ArchitectureTests/Opportunity.ArchitectureTests.csproj" />
+    <Project Path="tests/Opportunity.IntegrationTests/Opportunity.IntegrationTests.csproj" />
+    <Project Path="tests/Opportunity.ScaleTests/Opportunity.ScaleTests.csproj" />
+    <Project Path="tests/Opportunity.Testing/Opportunity.Testing.csproj" />
+    <Project Path="tests/Opportunity.UnitTests/Opportunity.UnitTests.csproj" />
+    <Project Path="tests/Opportunity.DataGenerator.Tests/Opportunity.DataGenerator.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Opportunity.Benchmarks/Opportunity.Benchmarks.csproj" />
+    <Project Path="tools/Opportunity.DataGenerator/Opportunity.DataGenerator.csproj" />
+    <Project Path="tools/Opportunity.DataGenerator.Corpus/Opportunity.DataGenerator.Corpus.csproj" />
+  </Folder>
+</Solution>

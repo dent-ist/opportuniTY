@@ -1,0 +1,355 @@
+# PR pipeline (test-strategy.md tier T1, budget <= 15 min). See docs/ci.md.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+# Cancel superseded runs of the same PR/branch; never cancel runs on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  CONFIGURATION: Release
+
+jobs:
+  versions:
+    name: Versions consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify versions.env matches global.json and .nvmrc
+        run: tools/ci/verify-versions.sh
+
+  dotnet:
+    name: .NET build, unit and architecture tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Restore
+        run: dotnet restore Opportunity.slnx
+      - name: Check formatting
+        run: dotnet format Opportunity.slnx --verify-no-changes --no-restore
+      - name: Build (warnings as errors)
+        id: build
+        run: dotnet build Opportunity.slnx -c "$CONFIGURATION" --no-restore -warnaserror
+      - name: OpenAPI drift and breaking-change check
+        env:
+          BASE_BRANCH: ${{ github.base_ref || 'main' }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_BRANCH" || true
+          bash tools/ci/openapi-check.sh "origin/$BASE_BRANCH"
+      - name: Unit tests
+        run: >-
+          dotnet test --project tests/Opportunity.UnitTests -c "$CONFIGURATION" --no-build
+          --results-directory TestResults/unit
+          --report-xunit-trx --report-xunit-trx-filename unit.trx
+          --report-xunit-markdown --report-xunit-markdown-filename unit.md
+      - name: Architecture tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: >-
+          dotnet test --project tests/Opportunity.ArchitectureTests -c "$CONFIGURATION" --no-build
+          --results-directory TestResults/architecture
+          --report-xunit-trx --report-xunit-trx-filename architecture.trx
+          --report-xunit-markdown --report-xunit-markdown-filename architecture.md
+      # Hook: OpenAPI diff and message-contract (L5) tests go here once their suites exist.
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        run: |
+          for suite in unit architecture; do
+            f="TestResults/$suite/$suite.md"
+            [ -f "$f" ] && { echo "## .NET $suite tests"; tail -n +2 "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          done
+          true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-dotnet
+          path: TestResults/
+          if-no-files-found: warn
+          retention-days: 14
+
+  integration:
+    name: Integration tests (Testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      # OpenSearch refuses to start below this mmap limit (bootstrap check).
+      - name: Raise vm.max_map_count for OpenSearch
+        run: sudo sysctl -w vm.max_map_count=262144
+      - name: Docker info
+        run: docker version && docker info --format '{{.ServerVersion}} {{.MemTotal}}'
+      - name: Build integration tests (warnings as errors)
+        run: dotnet build tests/Opportunity.IntegrationTests -c "$CONFIGURATION" -warnaserror
+      # Covers L4 and the L7 cross-workspace suite (E05-T05) under IntegrationTests/Security.
+      # Split into a separate required job (or shard) if this exceeds the T1 budget.
+      - name: Integration tests
+        run: >-
+          dotnet test --project tests/Opportunity.IntegrationTests -c "$CONFIGURATION" --no-build
+          --results-directory TestResults/integration
+          --report-xunit-trx --report-xunit-trx-filename integration.trx
+          --report-xunit-markdown --report-xunit-markdown-filename integration.md
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        run: |
+          f=TestResults/integration/integration.md
+          [ -f "$f" ] && { echo "## .NET integration tests"; tail -n +2 "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-integration
+          path: TestResults/
+          if-no-files-found: warn
+          retention-days: 14
+
+  web:
+    name: Angular build and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/Opportunity.Web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        working-directory: .
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE }}
+          cache: npm
+          cache-dependency-path: src/Opportunity.Web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Format check (Prettier)
+        run: npx prettier --check .
+      - name: Build
+        run: npm run build
+      - name: Unit tests
+        run: npx ng test --watch=false --reporters=junit --reporters=default --output-file=TestResults/junit.xml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-web
+          path: src/Opportunity.Web/TestResults/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Security and supply-chain gates (#24, E01-T04). CodeQL and Scorecard live in their own
+  # workflows (codeql.yml, scorecard.yml) because they need security-events: write.
+  dependency-audit:
+    name: Dependency vulnerabilities (NuGet, npm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Restore
+        run: dotnet restore Opportunity.slnx
+      - name: NuGet vulnerabilities (incl. transitive)
+        run: |
+          mkdir -p audit
+          dotnet list Opportunity.slnx package --vulnerable --include-transitive --format json > audit/nuget-vulnerable.json
+      # Reads package-lock.json only; nothing is installed. npm exits non-zero when it finds
+      # anything (any severity), so the policy script below decides pass/fail.
+      - name: npm vulnerabilities (incl. dev toolchain)
+        working-directory: src/Opportunity.Web
+        run: npm audit --json > ../../audit/npm-audit.json || true
+      - name: Apply policy (fail on High/Critical without an unexpired exception)
+        run: >-
+          python3 tools/ci/security/check-vulnerabilities.py
+          --dotnet audit/nuget-vulnerable.json --npm audit/npm-audit.json
+          --report audit/vulnerabilities.md
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: dependency-audit
+          path: audit/
+          if-no-files-found: warn
+          retention-days: 14
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      # The gitleaks binary (MIT) instead of gitleaks-action, which needs a license key for org repos.
+      - name: Install gitleaks (checksum verified)
+        run: |
+          archive="gitleaks_${GITLEAKS}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan full git history
+        run: >-
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --exit-code 1
+          --report-format sarif --report-path gitleaks.sarif .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ failure() }}
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          if-no-files-found: ignore
+          retention-days: 7
+
+  licenses-sbom:
+    name: Licenses and SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Restore .NET tools
+        run: dotnet tool restore
+      # Shipped code only: test projects are excluded (-t); tools/ projects are included.
+      - name: .NET SBOM
+        run: >-
+          dotnet CycloneDX Opportunity.slnx --exclude-test-projects --output-format Json
+          --output sbom --filename opportunity-dotnet.cdx.json --set-name opportuniTY
+      # Production dependencies only (what the Angular bundle ships), from package-lock.json.
+      - name: npm SBOM
+        working-directory: src/Opportunity.Web
+        run: >-
+          npx --yes "@cyclonedx/cyclonedx-npm@${CYCLONEDX_NPM}" --package-lock-only --omit dev
+          --flatten-components --output-format JSON --output-file ../../sbom/opportunity-web.cdx.json
+      - name: License policy
+        run: >-
+          python3 tools/ci/security/check-licenses.py --report sbom/license-report.md
+          sbom/opportunity-dotnet.cdx.json sbom/opportunity-web.cdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: sbom
+          path: sbom/
+          if-no-files-found: error
+          retention-days: 90
+
+  # E19-T03: boots the developer Compose profile from a clean checkout (images built from deploy/docker) and checks
+  # that every service is healthy. Runs in parallel with the other jobs; a cold build plus boot takes ~6-8 min.
+  compose:
+    name: Compose developer profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: deploy/docker-compose
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Raise vm.max_map_count for OpenSearch
+        run: sudo sysctl -w vm.max_map_count=262144
+      - name: Generate .env (random secrets)
+        run: ./opportunity.sh init
+      - name: No Redis/Valkey service
+        run: |
+          ! ./opportunity.sh compose --profile '*' config --services | grep -Ei 'redis|valkey'
+      - name: Preflight, build and start; waits until every service is healthy
+        run: ./opportunity.sh up
+      - name: Smoke checks
+        run: |
+          ./opportunity.sh compose ps --all
+          test "$(docker inspect -f '{{.State.ExitCode}}' "$(./opportunity.sh compose ps --all -q migrator)")" = 0
+          curl -fsS http://127.0.0.1:8081/health/ready
+          curl -fsS http://127.0.0.1:8080/ | grep -q '<app-root'
+          ./opportunity.sh seed
+      - name: Logs on failure
+        if: ${{ failure() }}
+        run: ./opportunity.sh compose --profile '*' logs --no-color --tail 300
+      - name: Tear down
+        if: ${{ always() }}
+        run: ./opportunity.sh compose --profile '*' down --volumes --remove-orphans || true
+
+  # Single stable check for branch protection. Add future required jobs to `needs`
+  # (e.g. fault/idempotency smoke from E18-T01).
+  ci-gate:
+    name: CI gate
+    if: ${{ always() }}
+    needs: [versions, dotnet, integration, web, dependency-audit, secret-scan, licenses-sbom, compose]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all jobs to succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = "success" ] || { echo "::error::A required CI job did not succeed ($r)"; exit 1; }
+          done

@@ -1,0 +1,10 @@
+# Default owner. Refine per area as maintainers join (see docs/adr/README.md for owner roles).
+*                       @plogramer
+/docs/adr/              @plogramer
+/docs/architecture/     @plogramer
+/src/Opportunity.Security/ @plogramer
+# Security and supply-chain gates (#24): changes need a Security & Compliance review.
+/.github/workflows/      @plogramer
+/tools/ci/security/     @plogramer
+/SECURITY.md            @plogramer
+/.config/dotnet-tools.json @plogramer

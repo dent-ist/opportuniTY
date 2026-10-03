@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      microsoft:
+        patterns: ["Microsoft.*", "System.*"]
+      testing:
+        patterns: ["xunit*", "Microsoft.NET.Test.Sdk", "AwesomeAssertions", "NetArchTest*"]
+  - package-ecosystem: npm
+    directory: /src/Opportunity.Web
+    schedule: { interval: weekly }
+    groups:
+      angular:
+        patterns: ["@angular/*", "@angular-devkit/*"]
+  - package-ecosystem: docker
+    directory: /deploy/docker-compose
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  # Image base images (E01-T05): FROM lines in deploy/docker/*.Dockerfile, pinned tag@digest.
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule: { interval: weekly }

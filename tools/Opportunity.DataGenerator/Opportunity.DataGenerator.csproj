@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>opportunity-datagen</AssemblyName>
+    <RootNamespace>Opportunity.DataGenerator</RootNamespace>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+    <ProjectReference Include="..\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="profiles\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

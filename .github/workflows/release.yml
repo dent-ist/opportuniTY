@@ -1,0 +1,26 @@
+# Release images (#25, E01-T05): a v* tag publishes vX.Y.Z / X.Y / sha-<short> images to GHCR, signed and attested.
+# Release notes, the Compose bundle and release-please automation come with #26 (E01-T06). See docs/ci.md#container-images.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Never cancel a release in flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  images:
+    name: Images
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+      id-token: write # cosign keyless signing and attestations (Sigstore)
+      attestations: write # actions/attest-build-provenance, actions/attest-sbom
+    uses: ./.github/workflows/container-images.yml
+    with:
+      publish: true

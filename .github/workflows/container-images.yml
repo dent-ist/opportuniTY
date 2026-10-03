@@ -1,0 +1,291 @@
+# Container images (#25, E01-T05): build, scan, and (when publishing) push to GHCR, sign and attest.
+# Reusable: called by images.yml (pull requests: build + scan only; main: publish `edge`) and release.yml (v* tags).
+# See docs/ci.md#container-images.
+#
+# Permissions: `build` and `smoke` declare read-only scopes. `publish` declares none, so it inherits exactly what the
+# calling job grants (packages/id-token/attestations: write for main and releases, read-only for pull requests).
+name: Container images (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        description: Push to GHCR, sign, attest and smoke-test the published images
+        type: boolean
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/plogramer/opportunity-
+
+jobs:
+  build:
+    name: Build and scan (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: api, dockerfile: deploy/docker/dotnet.Dockerfile }
+          - { image: worker, dockerfile: deploy/docker/dotnet.Dockerfile }
+          - { image: migrator, dockerfile: deploy/docker/dotnet.Dockerfile }
+          - { image: web, dockerfile: deploy/docker/web.Dockerfile }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE_PREFIX }}${{ matrix.image }}
+          flavor: latest=false
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=pr
+      # linux/amd64 only, loaded into the runner's Docker for scanning. The publish job rebuilds both architectures
+      # from this job's layer cache, so the scanned amd64 layers are the ones that get pushed.
+      - name: Build (linux/amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.image }}
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: opportunity-${{ matrix.image }}:scan
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          cache-from: type=gha,scope=image-${{ matrix.image }}
+          cache-to: type=gha,scope=image-${{ matrix.image }},mode=max
+      # The Trivy release binary (checksum pinned in versions.env) rather than a third-party action.
+      - name: Install Trivy (checksum verified)
+        run: |
+          archive="trivy_${TRIVY}_Linux-64bit.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY}/${archive}"
+          echo "${TRIVY_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" trivy
+      - name: Scan image and generate SBOM (Trivy)
+        env:
+          IMAGE: opportunity-${{ matrix.image }}:scan
+          NAME: ${{ matrix.image }}
+        run: |
+          mkdir -p image-reports
+          "$RUNNER_TEMP/trivy" image --quiet --scanners vuln --format json \
+            --output "image-reports/trivy-$NAME.json" "$IMAGE"
+          "$RUNNER_TEMP/trivy" image --quiet --format cyclonedx \
+            --output "image-reports/opportunity-$NAME.cdx.json" "$IMAGE"
+      # Same policy and exception file as the NuGet/npm audit (docs/ci.md#vulnerability-policy-and-exceptions):
+      # High/Critical fail unless tools/ci/security/vulnerability-exceptions.json has an unexpired entry.
+      - name: Apply vulnerability policy (fail on High/Critical without an unexpired exception)
+        env:
+          NAME: ${{ matrix.image }}
+        run: >-
+          python3 tools/ci/security/check-vulnerabilities.py
+          --title "Image vulnerabilities: opportunity-$NAME"
+          --trivy "image-reports/trivy-$NAME.json"
+          --report "image-reports/vulnerabilities-$NAME.md"
+      - name: Smoke test (non-root, read-only root filesystem)
+        env:
+          IMAGE: opportunity-${{ matrix.image }}:scan
+          NAME: ${{ matrix.image }}
+        run: |
+          hardening=(--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges)
+          user="$(docker image inspect -f '{{.Config.User}}' "$IMAGE")"
+          [ -n "$user" ] && [ "$user" != "root" ] && [ "$user" != "0" ] || { echo "::error::$IMAGE runs as root"; exit 1; }
+          case "$NAME" in
+            migrator)
+              # Without a connection string the migrator must exit 2 (configuration error), not crash.
+              rc=0; docker run --rm "${hardening[@]}" "$IMAGE" || rc=$?
+              [ "$rc" -eq 2 ] || { echo "::error::migrator exited $rc, expected 2"; exit 1; } ;;
+            *)
+              path=/health/live; [ "$NAME" = web ] && path=/healthz
+              docker run -d --name smoke "${hardening[@]}" -p 8080:8080 "$IMAGE"
+              timeout 60 bash -c "until curl -fsS http://127.0.0.1:8080$path; do sleep 2; done" || { docker logs smoke; exit 1; }
+              docker rm -f smoke ;;
+          esac
+      - name: Image size
+        env:
+          IMAGE: opportunity-${{ matrix.image }}:scan
+        run: >-
+          docker image inspect "$IMAGE" --format '{{index .RepoTags 0}}: {{.Size}} bytes (linux/amd64)'
+          | tee image-reports/size.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: image-${{ matrix.image }}
+          path: image-reports/
+          if-no-files-found: warn
+          retention-days: 90
+
+  publish:
+    name: Publish, sign and attest (${{ matrix.image }})
+    needs: build
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: api, dockerfile: deploy/docker/dotnet.Dockerfile }
+          - { image: worker, dockerfile: deploy/docker/dotnet.Dockerfile }
+          - { image: migrator, dockerfile: deploy/docker/dotnet.Dockerfile }
+          - { image: web, dockerfile: deploy/docker/web.Dockerfile }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Only the web image has a RUN step in its per-architecture stage (apk upgrade); .NET images cross-compile.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        if: ${{ matrix.image == 'web' }}
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Tags: immutable sha-<short> on every publish; edge on main; X.Y.Z and X.Y on v* tags. Never `latest`.
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE_PREFIX }}${{ matrix.image }}
+          flavor: latest=false
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=edge,branch=main
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - name: Build and push (linux/amd64, linux/arm64)
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.image }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          # BuildKit SBOM (SPDX, per platform) and SLSA provenance stored in the image index.
+          sbom: true
+          provenance: mode=max
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          cache-from: type=gha,scope=image-${{ matrix.image }}
+          cache-to: type=gha,scope=image-${{ matrix.image }},mode=max
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # Keyless: the certificate binds the signature to this workflow run's GitHub OIDC identity.
+      - name: Sign image (cosign keyless)
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}${{ matrix.image }}@${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$IMAGE"
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}${{ matrix.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Download scan reports and SBOM
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image-${{ matrix.image }}
+          path: image-reports
+      - name: Attest SBOM (CycloneDX)
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}${{ matrix.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: image-reports/opportunity-${{ matrix.image }}.cdx.json
+          push-to-registry: true
+      - name: Summary
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}${{ matrix.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### $IMAGE"
+            echo "Digest: \`$DIGEST\`"
+            echo
+            echo "Tags:"
+            while IFS= read -r tag; do echo "- \`$tag\`"; done <<< "$TAGS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Verifies what was just published, on both architectures: signature, provenance, non-root, read-only rootfs.
+  smoke:
+    name: Verify and smoke-test (${{ matrix.arch }})
+    needs: publish
+    if: ${{ inputs.publish }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify signatures and attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: sha-${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          short="${TAG:0:11}"
+          for name in api worker migrator web; do
+            ref="${IMAGE_PREFIX}${name}:${short}"
+            digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+            echo "::group::$ref ($digest)"
+            cosign verify "${IMAGE_PREFIX}${name}@${digest}" \
+              --certificate-identity-regexp "^https://github.com/${REPO}/.github/workflows/container-images.yml@" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+            gh attestation verify "oci://${IMAGE_PREFIX}${name}@${digest}" --repo "$REPO"
+            gh attestation verify "oci://${IMAGE_PREFIX}${name}@${digest}" --repo "$REPO" \
+              --predicate-type https://cyclonedx.org/bom
+            echo "::endgroup::"
+          done
+      - name: Run images as non-root with a read-only root filesystem
+        env:
+          TAG: sha-${{ github.sha }}
+        run: |
+          short="${TAG:0:11}"
+          hardening=(--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges)
+          docker run -d --name api "${hardening[@]}" -p 8080:8080 "${IMAGE_PREFIX}api:${short}"
+          docker run -d --name worker "${hardening[@]}" -p 8081:8080 "${IMAGE_PREFIX}worker:${short}"
+          docker run -d --name web "${hardening[@]}" -p 8082:8080 "${IMAGE_PREFIX}web:${short}"
+          for url in http://127.0.0.1:8080/health/live http://127.0.0.1:8081/health/live http://127.0.0.1:8082/healthz; do
+            timeout 60 bash -c "until curl -fsS '$url'; do sleep 2; done" || { docker logs api; docker logs worker; docker logs web; exit 1; }
+            echo " <- $url"
+          done
+          for c in api worker web; do
+            user="$(docker inspect -f '{{.Config.User}}' "$c")"
+            [ -n "$user" ] && [ "$user" != "root" ] && [ "$user" != "0" ] || { echo "::error::$c runs as root"; exit 1; }
+          done
+          # Without a connection string the migrator must exit 2 (configuration error), not crash.
+          rc=0; docker run --rm "${hardening[@]}" "${IMAGE_PREFIX}migrator:${short}" || rc=$?
+          [ "$rc" -eq 2 ] || { echo "::error::migrator exited $rc, expected 2"; exit 1; }

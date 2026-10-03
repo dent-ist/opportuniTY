@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Hosting\Opportunity.Hosting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Data\Opportunity.Data.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Search\Opportunity.Search.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Storage\Opportunity.Storage.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Messaging\Opportunity.Messaging.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Security\Opportunity.Security.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Jobs\Opportunity.Jobs.csproj" />
+  </ItemGroup>
+
+</Project>

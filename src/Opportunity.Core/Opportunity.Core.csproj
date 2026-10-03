@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Domain model and invariants. No infrastructure dependencies.</Description>
+  </PropertyGroup>
+
+
+</Project>

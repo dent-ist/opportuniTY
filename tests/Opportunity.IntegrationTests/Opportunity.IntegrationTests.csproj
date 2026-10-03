@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="RabbitMQ.Client" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Application\Opportunity.Application.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Data\Opportunity.Data.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Search\Opportunity.Search.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Storage\Opportunity.Storage.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Messaging\Opportunity.Messaging.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Security\Opportunity.Security.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Jobs\Opportunity.Jobs.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Hosting\Opportunity.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Api\Opportunity.Api.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Migrator\Opportunity.Migrator.csproj" />
+    <ProjectReference Include="..\Opportunity.Testing\Opportunity.Testing.csproj" />
+  </ItemGroup>
+
+</Project>

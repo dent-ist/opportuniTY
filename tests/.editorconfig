@@ -1,0 +1,3 @@
+# Test projects: descriptive snake_case test names are allowed.
+[*.cs]
+dotnet_diagnostic.CA1707.severity = none

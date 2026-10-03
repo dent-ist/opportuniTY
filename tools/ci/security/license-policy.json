@@ -1,0 +1,35 @@
+{
+  "$comment": "Third-party license policy for components shipped with opportuniTY (MIT). Checked against the CycloneDX SBOMs of shipped code (non-test .NET projects, npm production dependencies). Default deny: a license must be on 'allowed'. 'denied' patterns (strong/network copyleft) can never be excepted for a linked dependency (Q-38: AGPL only as an optional, unmodified external service). The product owner owns this policy; changes need Security & Compliance review. See docs/ci.md#security-and-supply-chain-gates.",
+  "allowed": [
+    "0BSD",
+    "Apache-2.0",
+    "BlueOak-1.0.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "PostgreSQL",
+    "Python-2.0",
+    "Unlicense",
+    "Zlib"
+  ],
+  "denied": [
+    "AGPL-*",
+    "GPL-*",
+    "SSPL-*",
+    "EUPL-*",
+    "OSL-*",
+    "CPAL-*",
+    "RPL-*",
+    "Sleepycat",
+    "BUSL-*",
+    "Elastic-*",
+    "CC-BY-NC-*",
+    "CC-BY-ND-*",
+    "CC-BY-SA-*"
+  ],
+  "exceptions": []
+}
