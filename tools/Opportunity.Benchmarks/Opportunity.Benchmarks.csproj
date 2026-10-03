@@ -2,11 +2,27 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>opportunity-bench</AssemblyName>
+    <RootNamespace>Opportunity.Benchmarks</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="HdrHistogram" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Schemas are embedded so the validator never depends on the working directory. -->
+    <EmbeddedResource Include="schema\*.schema.json" LogicalName="schema/%(Filename)%(Extension)" />
+    <None Include="gates.yaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,527 @@
+{
+  "schemaVersion": "1.0",
+  "runId": "20261003t120000z-adr004-degradation-candidate-a-r1",
+  "run": {
+    "gitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "gitDirty": false,
+    "gitRef": "main",
+    "startedUtc": "2026-10-03T12:00:00.000Z",
+    "endedUtc": "2026-10-03T12:30:00.000Z",
+    "operator": "ci:test",
+    "tier": "T2",
+    "suite": "adr004/degradation",
+    "candidate": "candidate-a",
+    "repetition": {
+      "index": 1,
+      "of": 3
+    },
+    "cacheState": "warm",
+    "tool": {
+      "name": "opportunity-bench",
+      "version": "1.0.0"
+    }
+  },
+  "environment": {
+    "schemaVersion": "1.0",
+    "capturedUtc": "2026-10-03T11:59:00.000Z",
+    "capturedBy": {
+      "name": "opportunity-bench",
+      "version": "1.0.0"
+    },
+    "profile": "developer-regression",
+    "hosts": [
+      {
+        "role": "all-in-one",
+        "cpu": {
+          "model": "Example CPU",
+          "architecture": "x86_64",
+          "logicalCores": 16,
+          "physicalCores": 8,
+          "sockets": 1
+        },
+        "memory": {
+          "totalBytes": 68719476736
+        },
+        "disks": [
+          {
+            "name": "nvme0n1",
+            "type": "nvme",
+            "rotational": false,
+            "sizeBytes": 1099511627776,
+            "backs": [
+              "/var/lib/docker"
+            ]
+          }
+        ],
+        "os": {
+          "kernel": "6.8.0"
+        },
+        "containerRuntime": {
+          "name": "docker",
+          "version": "29.0.0"
+        },
+        "platform": {
+          "kind": "bare-metal"
+        }
+      }
+    ],
+    "software": {
+      "versionsEnv": {
+        "path": "versions.env",
+        "sha256": "b2d6f8e28e4f6b1bfb7ec5f3dbfb7d6b5247f7f295b079ca78817574d52e7a69",
+        "values": {
+          "AZURITE": "3.37.0",
+          "CYCLONEDX_NPM": "6.0.1",
+          "DOTNET_SDK": "10.0.100",
+          "GITLEAKS": "8.30.1",
+          "GITLEAKS_SHA256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+          "NODE": "24",
+          "OPENSEARCH": "3.2.0",
+          "OPENSEARCH_DIGEST": "sha256:23297b8d8545e129dd58c254ed08d786dc552410ba772983ad2af31048d2f04b",
+          "POSTGRES": "17",
+          "POSTGRES_DIGEST": "sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f",
+          "RABBITMQ": "4.1",
+          "RABBITMQ_DIGEST": "sha256:b799868f08431981001c959b04d169bff614b39c816af9c5c7acc3e031fbfc55",
+          "SEAWEEDFS": "4.48",
+          "SEAWEEDFS_DIGEST": "sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d",
+          "TOXIPROXY": "2.12.0",
+          "TOXIPROXY_DIGEST": "sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e",
+          "TRIVY": "0.75.0",
+          "TRIVY_SHA256": "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
+        }
+      },
+      "images": [
+        {
+          "key": "POSTGRES",
+          "repository": "postgres",
+          "tag": "17",
+          "digest": "sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f"
+        },
+        {
+          "key": "OPENSEARCH",
+          "repository": "opensearchproject/opensearch",
+          "tag": "3.2.0",
+          "digest": "sha256:23297b8d8545e129dd58c254ed08d786dc552410ba772983ad2af31048d2f04b"
+        },
+        {
+          "key": "RABBITMQ",
+          "repository": "rabbitmq",
+          "tag": "4.1",
+          "digest": "sha256:b799868f08431981001c959b04d169bff614b39c816af9c5c7acc3e031fbfc55"
+        },
+        {
+          "key": "SEAWEEDFS",
+          "repository": "chrislusf/seaweedfs",
+          "tag": "4.48",
+          "digest": "sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
+        },
+        {
+          "key": "TOXIPROXY",
+          "repository": "ghcr.io/shopify/toxiproxy",
+          "tag": "2.12.0",
+          "digest": "sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e"
+        }
+      ]
+    },
+    "containers": [
+      {
+        "name": "opportunity-dev-postgres-1",
+        "service": "postgres",
+        "composeProject": "opportunity-dev",
+        "image": {
+          "reference": "postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f",
+          "id": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "pin": {
+          "key": "POSTGRES",
+          "expectedDigest": "sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f",
+          "matches": true
+        }
+      },
+      {
+        "name": "opportunity-dev-opensearch-1",
+        "service": "opensearch",
+        "composeProject": "opportunity-dev",
+        "image": {
+          "reference": "opensearchproject/opensearch:3.2.0@sha256:23297b8d8545e129dd58c254ed08d786dc552410ba772983ad2af31048d2f04b",
+          "id": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "pin": {
+          "key": "OPENSEARCH",
+          "expectedDigest": "sha256:23297b8d8545e129dd58c254ed08d786dc552410ba772983ad2af31048d2f04b",
+          "matches": true
+        },
+        "environment": {
+          "OPENSEARCH_JAVA_OPTS": "-Xms1g -Xmx1g"
+        }
+      }
+    ],
+    "postgres": [
+      {
+        "name": "primary",
+        "serverVersion": "17.6",
+        "role": "primary",
+        "settings": {
+          "fsync": {
+            "value": "on"
+          },
+          "shared_buffers": {
+            "value": "16384",
+            "unit": "8kB"
+          }
+        },
+        "durability": {
+          "fsync": "on",
+          "synchronousCommit": "on",
+          "fullPageWrites": "on",
+          "walLevel": "replica",
+          "walSyncMethod": "fdatasync",
+          "synchronousStandbyNames": ""
+        }
+      }
+    ],
+    "opensearch": {
+      "clusterName": "opportunity-dev",
+      "version": "3.2.0",
+      "nodes": [
+        {
+          "name": "node-1",
+          "roles": [
+            "data",
+            "ingest",
+            "cluster_manager"
+          ],
+          "jvm": {
+            "version": "24",
+            "heapMaxBytes": 1073741824,
+            "inputArguments": [
+              "-Xms1g",
+              "-Xmx1g"
+            ]
+          }
+        }
+      ],
+      "clusterSettings": {
+        "persistent": {},
+        "transient": {}
+      },
+      "indices": [
+        {
+          "name": "docs-shared-000001",
+          "primaryShards": 1,
+          "replicas": 0,
+          "refreshInterval": "1s",
+          "translogDurability": "request"
+        }
+      ]
+    },
+    "rabbitmq": {
+      "version": "4.1.4",
+      "queues": [
+        {
+          "name": "index.chunks",
+          "vhost": "/",
+          "type": "quorum",
+          "durable": true
+        }
+      ]
+    },
+    "objectStore": {
+      "provider": "FileSystem",
+      "implementation": "filesystem (named volume)"
+    },
+    "workers": [
+      {
+        "type": "all",
+        "instances": 1
+      }
+    ],
+    "durability": {
+      "mode": "production",
+      "deviations": []
+    }
+  },
+  "corpus": {
+    "manifestFile": "corpus-manifest.json",
+    "manifestSha256": "2fe12019070e4b1b885498206c21804c7af714f5647c5e45dce5283b4fcf0ad9",
+    "generator": {
+      "name": "Opportunity.DataGenerator",
+      "version": "1.0.0"
+    },
+    "seed": 20261003,
+    "profileName": "enterprise-reference",
+    "profileHash": "sha256:cf85df3011187d547f692695b04fd7f47426f85b509f322377bd56397d1af95b",
+    "documentCount": 300,
+    "loadPath": "fast-path"
+  },
+  "workload": {
+    "name": "search-mix",
+    "version": "0.1.0",
+    "taxonomyVersion": "1",
+    "querySeed": 42,
+    "model": "open",
+    "scripts": [
+      {
+        "path": "workload/search-mix.js",
+        "sha256": "e5584a5ae5e827c96fd9431362b913e17ebd75e1174b44102cc45e1a0551b29a"
+      }
+    ],
+    "workloadSha256": "2540c0cdc688c8c7472c00c268fdcec0bc8002447acbf7369ebae6c7c7fa1377",
+    "mix": {
+      "simple": 0.6,
+      "boolean": 0.3,
+      "proximity-wildcard": 0.1
+    },
+    "offeredRate": {
+      "queriesPerSecond": 50,
+      "bulkDocsPerSecond": 2000
+    }
+  },
+  "gates": {
+    "path": "gates.yaml",
+    "sha256": "fcd4b16b8f62538b1164cfeb192b30caecea60a9ab2a55f07e116e92a0446637",
+    "gatesVersion": "0.1.0",
+    "status": "draft"
+  },
+  "scenarios": [
+    {
+      "id": "idle",
+      "role": "idle-baseline",
+      "startedUtc": "2026-10-03T12:00:00.000Z",
+      "endedUtc": "2026-10-03T12:09:00.000Z",
+      "warmupSeconds": 60,
+      "drainSeconds": 30,
+      "validity": {
+        "valid": true,
+        "droppedIterationsRatio": 0.001,
+        "loadGeneratorCpuMaxPercent": 41,
+        "reasons": []
+      },
+      "queryClasses": [
+        {
+          "name": "simple",
+          "gated": true,
+          "requests": 2000,
+          "errors": 0,
+          "latency": {
+            "unit": "us",
+            "count": 2000,
+            "min": 21952,
+            "p50": 40159,
+            "p90": 63967,
+            "p95": 68351,
+            "p99": 71999,
+            "p999": 72767,
+            "max": 72895,
+            "mean": 42471.908,
+            "hdr": {
+              "encoding": "hdrhistogram-v2-compressed-base64",
+              "lowestTrackableValue": 1,
+              "highestTrackableValue": 3600000000,
+              "significantDigits": 3,
+              "payload": "HISTFAAAA75Yhe3U25HsNBAAUCHLGu2yxQ+/NxeKIMiIDG4K5EAmxEEI9MMDRQ7n1OyOR5b16G7r2+/ffx5j/zra9Xz/kP/++v7H+OXvbvjzt7nmNc+ca805ZlxfX3Ov+8R1Ncw18s7e0WGvMUf8zR0t61X91xwne0TDFQ2jvnuwEWOv7JSNa9TD8bl334xh8om8M9eJr72zeddY0XTPXU9U1+i8n6t17lxnXMe9O/vHyDFprfSqqXKE071jQ3v2cr7mR8z/U4x9r3VVt1xCriB6xGSvnHBX+9q5hnwwf9ZfPPKKrx/neMJwrl0T1LQ7h7qi9e61XrmcCkyOnGt57zZu9eJzsgrRVTs+NViFNAbpZypOGdDunKuNmVbtsQKcEzwDRODz19XTxWLOfBKy8tnucq9Xb7fmWLnNUVeVy+62q7HWsPr3XQNWnGdPc+WuVveIeNbd3Ou9KmW7K6KfWLHw9cRiVGGts+dnFdLIWK15MuHXZ0wcPVelL+50rWVGot+dt3IxV2967Ttjl1uIUXPKvT9ruVXNucpK0z6R+OqUrbGMs7ss4/LzrPc0GZUM7zW7fnIda1aGVxd6bicWmrU6TpVA9HnVSOepvKzetet9qZrbGawxnzRVWcZAub5rdbaqNZO2zlU12Pl+ElfvwexqzkHGu9Zjefv1tETvkzPF3HcEK4KR2zyrUnFFblYVTAS6CqWqYnXCq9hOVV9MU0l4v6ldU3s9J8Cr8lv94nM+Y+CKQWRvPJtbdS6siHc8Fn9VGjVbRrFCUbHYufvK0hPu2uJHXT8pyxTHMx+Z411Lud8nyelXsY6EqIkKcBVcFfqdw3clXs+n9pKrzpRmJe7aeZ04Pd9cfRxVEK7ZS+ya7gNoP2Nc/43e4Zm7T7bsXRuJYV6rZ8uH7/hVy8/Q5KZHnkp3Vly/dnnvo/fyJLdmGv1EV1XF8Tk853gfJ6OKJod5ZUFc/+44x40wXOers1lpG/Ozj/FZJ06fcJndUTtY8eZ0vfQbHlGK+smXvEq7Kv3jnDoe6lWLV+VUOQ8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACA//sH"
+            }
+          }
+        },
+        {
+          "name": "complex",
+          "gated": true,
+          "requests": 2000,
+          "errors": 0,
+          "latency": {
+            "unit": "us",
+            "count": 2000,
+            "min": 65856,
+            "p50": 120959,
+            "p90": 193663,
+            "p95": 207231,
+            "p99": 216447,
+            "p999": 218495,
+            "max": 218623,
+            "mean": 128161.424,
+            "hdr": {
+              "encoding": "hdrhistogram-v2-compressed-base64",
+              "lowestTrackableValue": 1,
+              "highestTrackableValue": 3600000000,
+              "significantDigits": 3,
+              "payload": "HISTFAAAA6BYhe3UzdHcNgwAUIakKHpnZ3LINb24JReRS85uwTW5DaeEAKA2HeT2XmJpP4kEfwDqz7++/9Ha9asd47n/lpef33+0r/+cB39/W623NXtc+px99nvNFrcW17itHteWz+fM5+298l4PdzbIbvHnXvlXhJpj9nertntF9zWq/Ro931SolUF7hYyG9XPMaFAD9ooe06nYu7fdXmc+O6cZ09rRutWgs+9o3CrMrEVUsFjRqsAtuufrmMbIICEexAJ6xPhMYY0zYpu1nGdCLRu29crH1WvWmuK+qllfu0bINey4jHWCx4tcR/wfT1Z7XflwxOJqdmteNerIvjntfvUKG1FHhYs3EWn0mN6ube6Vljt2Il48g+TbGjZ+75xhbcGad+zMbvWw5jlqY16tIp/rrBW0ilKDr2p61UAjOo598lo9YjWrFrs+OxQtW/0X7du+noS1mlQsbo4aLf+ofNYUs02mv9d6e97XCZMv75OIU3Dxsm7Pv3mdieYERv+99ioe3LGfcfvydJ8ndVFuFXJmtZ1KiQI6S82sf0Z8YrdPmisnVSVrfZpEPuNhDPjqlbl8nYGrajIPGThnMWqXM1RMZNWu9zs3okaJ67PaZ8SzK62KaWfQ6Db6fbKY6c8teOVU31WIeWbydko7CyNKN0q9Gp5TWfN7j6eeetXf2tUx858H9GS/aq5l+3NUrrOWqw5hns1IaK0kD+48CT/H/xW78d515GtfepberNo/e1/Hfe7a+rPFKw/8f6fq+WacusuzkAOMVSUab6MY9ueMzZ3HNH+tyn+rr1KcgFNI/Wl4UnJ2JGI8+1d9Msha5xzGdkdO8zzUZOP1tVftYvUf+Z2oT1t97epnnuBVzfs1K9dtPuUS2zOie9X+c0JqGRHvVYmu9K7zpZjnKxDTfVUh3Dnxu3/q6ep56urNteY45RWTj49O1cU4mazqfc5hntDzEc6vdVXsOWw57ajVXenOhLdzUnJ54+xgrKVFWhsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADA/+1f"
+            }
+          }
+        }
+      ],
+      "throughput": {
+        "queriesPerSecond": 50
+      }
+    },
+    {
+      "id": "bulk",
+      "role": "bulk-load",
+      "startedUtc": "2026-10-03T12:10:00.000Z",
+      "endedUtc": "2026-10-03T12:19:00.000Z",
+      "warmupSeconds": 60,
+      "drainSeconds": 30,
+      "validity": {
+        "valid": true,
+        "droppedIterationsRatio": 0.001,
+        "loadGeneratorCpuMaxPercent": 41,
+        "reasons": []
+      },
+      "queryClasses": [
+        {
+          "name": "simple",
+          "gated": true,
+          "requests": 2000,
+          "errors": 0,
+          "latency": {
+            "unit": "us",
+            "count": 2000,
+            "min": 25248,
+            "p50": 45375,
+            "p90": 75263,
+            "p95": 78911,
+            "p99": 83135,
+            "p999": 83775,
+            "max": 83839,
+            "mean": 49019.9,
+            "hdr": {
+              "encoding": "hdrhistogram-v2-compressed-base64",
+              "lowestTrackableValue": 1,
+              "highestTrackableValue": 3600000000,
+              "significantDigits": 3,
+              "payload": "HISTFAAAA7ZYhe3UzZH0NBAAUCHLGs0AJ64UqZAGAZHBlwIZUUUchED/eCmu3N+rrZ3xWJZarW7//Pu3n8bYv4x2PZ/f5b+/vv0xfv27f/jzt33NL6v//7jW3GONteNjzjFX/N0zruZYMWjkwPyY17zj3j3nK56YeTcfvOK3uL/WjzFg7rh1z7FzmpWzzVm/x9eTFzF85Z2dP71i0I67sfqsSeLBVTHE36g18+6ZZ679fV3GdTy+5jOsr+e+9q7HO9a7Zp41757P8hnbqj3vjHLsa813bbH+Rq863z1zhZOR5X5zyYpy7Xr8zmni1qtS94ReIdeeI5QcEcu+Z+Wy4ho9NEetzl9s6pyV6b4iopOhnUzNGicu8vr8kCewIyvXvynZOXnOkenf9USGVc/V2a3dWdgVbaf75C85OONeO3c8doe9K02nzix++cTi+WRMffU0MTZOdJ4TYXwdVi5ea+Xza+fZxsGeTGulqzJeWf2sOuTMUYxbnazdz9a68UhV3rqyCnPVPLWo07FjvtOlN7tkqtxy4qtPMgaeZ7GavlNYe4rqOnUimaVM36xlOuI8/AzkriKuU4mDXnVoHfbsbcSXs7sWztVnUdWwqjVyjju/3vtecRD3vPa56um7qvF6Tr7KtKtq170uqqrMKoDupllHcrLHIud5Izpt/WeS2Hj1Zo2Ynezxle/um+y+WWnKzomjzp1WO8YW5tNVOWHMc9fSvfi1n45dHW4W4Dhf7ZgFut790uhtzZWJeeVCr97H6ITtbMX1RNgpjI1dvcE88X41PG3TLfHOnGcB5PfZCenFXvPpmVwiSnTt13wi6g6tUo4ocoXZZ5p5euK8smfHfN4VOf/pCt33c0R1Z2ftRXXfn72r1XNolU+kZWbhR22vk1moPopF39lZs99x9Xg1S/54dr8IuhWfF+muhGWH5NaylrK+s6NyktGtGY0/7ziz2M38zO7DeX0+K6LKI8iRJ5dd+9Ovg87OVZVQO+12z/Wf11Fs6/O04+n3aw3od9GuV2J1bdwdAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/bPw=="
+            }
+          }
+        },
+        {
+          "name": "complex",
+          "gated": true,
+          "requests": 2000,
+          "errors": 0,
+          "latency": {
+            "unit": "us",
+            "count": 2000,
+            "min": 82368,
+            "p50": 148863,
+            "p90": 242303,
+            "p95": 257919,
+            "p99": 269567,
+            "p999": 273151,
+            "max": 273407,
+            "mean": 158554.032,
+            "hdr": {
+              "encoding": "hdrhistogram-v2-compressed-base64",
+              "lowestTrackableValue": 1,
+              "highestTrackableValue": 3600000000,
+              "significantDigits": 3,
+              "payload": "HISTFAAAA8BYhe3Vy7XkNBAAUCHJak+fObBgO7kQA7kQAltWkwIxEQchUB83BMG97+f2R6oqlfy+/f795zHOr6Ot5+8P+euv73+OX/7uE3/8tu8z5hzz2vHn5PHcK372PPEzz8jzY+97xPHcZ4+dt4y6JY/jhjqKS/PHmc/Pec+15x0Xzow7rr1zyPle586p8iuHiYtXPJRf4457r3p6xDTvmPiK06+Tp3LCuDmnGDldDDyvuF737hwtYs3p8u79U96b0e21M8zZ2URuEUhe6kcinRVRrUxlZWoV+c5kVoz0mm1nbpnNE/VZNW3+mj18HtSHz6lVc1adIoKZc8bzGersxzPamDnmjwDurN+KR+/MNEvZ2VZIOUQUMwOIj5Fx5V6z1pkMd+yqxBNGHtx9y+4VyxzzRP6NIVYubF5Yter50O41zngqt5p4dB/kE3Hyawa2Thfu1SufScxXfZ4986vLkVf21ae6S04PXAtSuc+rZunU/y1UhRglGu93pBcX3pl8XL6jVXYu4MkHcq3zO9emR9xf43IU7cTvOHXvKuGdQY5qvlNrmZ2ZLblr5nc18xl3dflntWuddh5W792nFid7OEaJgM6J4bOAFVCUOE5ULp+li0ffsU/GOyc/47NZ8jueOLW2vVK7ilMNWK2dW2VmSc+az96KCGtP5mR3LVOf64brulfRI9qV69oj5Zg7b4zNkgNdfU/NmDu59uip6Crb2vGjOmOdp9efYetTrcanL86nY3pXZ3GqycdTqt2NW4nl110PnHG6vpXzlRXa/S6pJe067ffVp3vZZ2ec7RQzfanUq5Id3Tp9w+4oxq5Or13Vm/k1nwJFa57PpthPjOt5Lt87M1tm5fuhU+yKPe+WiiTfCfkS6bkrgVqPjLYGXue/Xdcvn3p/jXM961EDdqvUTa9evsx+3dfpxel9mWXtt3Lt7T7MFV+7u+VU8ms+o2XGXyKk1442/VLvw7E/4de0z24tV1T31Fs3DnsfVn1z9H7NxobOd/b4lO9TqYo7WuJrdfB791u2++SM+ocxAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgP+7fwA="
+            }
+          }
+        }
+      ],
+      "throughput": {
+        "queriesPerSecond": 50,
+        "bulkDocsPerSecond": 2000
+      },
+      "offeredBulkDocsPerSecond": 2000,
+      "indexLag": {
+        "resolutionSeconds": 1,
+        "samples": 540,
+        "maxSeconds": 4.2,
+        "p95Seconds": 1.9,
+        "seriesFile": "metrics/index-lag.jsonl"
+      },
+      "codingToSearchable": {
+        "samples": 500,
+        "pollIntervalMs": 50,
+        "probeTrafficRatio": 0.004,
+        "latency": {
+          "unit": "us",
+          "count": 500,
+          "min": 247936,
+          "p50": 438271,
+          "p90": 727551,
+          "p95": 760319,
+          "p99": 802303,
+          "p999": 819199,
+          "max": 819199,
+          "mean": 476454.4,
+          "hdr": {
+            "encoding": "hdrhistogram-v2-compressed-base64",
+            "lowestTrackableValue": 1,
+            "highestTrackableValue": 3600000000,
+            "significantDigits": 3,
+            "payload": "HISTFAAAAlxYhe3S3YncMBAAYJ0sr1mMMctyLEsSroZUkObynJerIJCaUkfSQWbGvhLy9n1g2fodaeTP39/vrfW/7TCd75csfr//at/+HA0/f7z0a1/6s09Rzv3e25h76/PY4nvqWzxzPNnR+3VkkV9pyo/s3vprlMf3yAH7iK6p2uZcMKa1MaKMltZHrtBqlT2CTaM/MkKrBbfeb/G6VaXFWtlVS41q3o5ay/ozm5eRc2O7LQ7QRk1Zek3OhXLoWHL82mvAa8/3sfpSZ56qZT23dKvaxwavGS0OUKdsEeqIWcmIrljm8qyouWzre7aOTGV1fxwpJ+5nbYmtLnWqvc43j+mM9ei3EV2PiJBXEqlZawdr5jMrb9F671/zMs78LnVJbazV3+LJ4TEwLyEjTJdrRblfIs15pZWtmn1MrWmVhGudIGPPtb3sOY6yRrHVRvMVPfkb9K3SmNHPYVMfow6yjk+19B4zj8vKS5rjeJmUnBwJjYzVxPX8kaovBx23XTc3Ip+jH7/NmC45dq6U1J96rW1nQ8+85V/2VtH284ndjcxI3H9Ey2BfegMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/pd/"
+          }
+        }
+      }
+    },
+    {
+      "id": "ceiling",
+      "role": "bulk-ceiling",
+      "startedUtc": "2026-10-03T12:20:00.000Z",
+      "endedUtc": "2026-10-03T12:29:00.000Z",
+      "warmupSeconds": 60,
+      "drainSeconds": 30,
+      "validity": {
+        "valid": true,
+        "droppedIterationsRatio": 0.001,
+        "loadGeneratorCpuMaxPercent": 41,
+        "reasons": []
+      },
+      "queryClasses": [],
+      "throughput": {
+        "bulkDocsPerSecond": 8500
+      }
+    }
+  ],
+  "oracles": {
+    "shadowLedger": {
+      "status": "passed",
+      "touchedDocs": 50000,
+      "staleOverwrites": 0,
+      "versionRegressions": 0,
+      "missingDocs": 0,
+      "valueMismatches": 0,
+      "versionConflictRejections": 12
+    },
+    "security": {
+      "status": "passed",
+      "checks": 4000,
+      "unauthorizedRetrievals": 0
+    },
+    "idempotency": {
+      "status": "passed",
+      "trials": 40,
+      "idempotentTrials": 40,
+      "idempotentRatio": 1
+    }
+  },
+  "files": [
+    {
+      "path": "corpus-manifest.json",
+      "sha256": "2fe12019070e4b1b885498206c21804c7af714f5647c5e45dce5283b4fcf0ad9",
+      "bytes": 10534,
+      "mediaType": "application/json",
+      "description": "corpus manifest (E17-T01)"
+    },
+    {
+      "path": "gates.yaml",
+      "sha256": "fcd4b16b8f62538b1164cfeb192b30caecea60a9ab2a55f07e116e92a0446637",
+      "bytes": 6376,
+      "mediaType": "application/yaml",
+      "description": "gates the run was evaluated against"
+    },
+    {
+      "path": "metrics/index-lag.jsonl",
+      "sha256": "470168ac4bb75337397b9b6f246bc1aebe03950eb895210ff62166402cdea1d3",
+      "bytes": 50,
+      "mediaType": "application/jsonl"
+    },
+    {
+      "path": "workload/search-mix.js",
+      "sha256": "e5584a5ae5e827c96fd9431362b913e17ebd75e1174b44102cc45e1a0551b29a",
+      "bytes": 67,
+      "mediaType": "text/javascript"
+    }
+  ]
+}

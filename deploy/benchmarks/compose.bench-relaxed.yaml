@@ -1,0 +1,38 @@
+# Relaxed durability for the NIGHTLY developer profile only (decision Q-05). Never for reference runs: the bundle
+# validator rejects relaxed durability on the enterprise-reference profile. Layered on compose.bench.yaml by
+# ./bench.sh up --profile dev --relaxed; capture-env then lists every deviation and needs --relaxed-durability "<why>".
+
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - wal_level=replica
+      - -c
+      - shared_buffers=${BENCH_PG_SHARED_BUFFERS:-2GB}
+      - -c
+      - effective_cache_size=${BENCH_PG_EFFECTIVE_CACHE_SIZE:-6GB}
+      - -c
+      - work_mem=${BENCH_PG_WORK_MEM:-32MB}
+      - -c
+      - maintenance_work_mem=${BENCH_PG_MAINTENANCE_WORK_MEM:-512MB}
+      - -c
+      - max_wal_size=${BENCH_PG_MAX_WAL_SIZE:-8GB}
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - max_connections=${BENCH_PG_MAX_CONNECTIONS:-200}
+      - -c
+      - track_io_timing=on
+    labels:
+      opportunity.bench.durability: relaxed

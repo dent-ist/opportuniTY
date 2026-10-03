@@ -39,5 +39,9 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.19.1" />
+    <!-- Benchmark harness (E17-T03). JsonSchema.Net is held at 8.0.5, the last MIT release (9.x is under the OSMF EULA). -->
+    <PackageVersion Include="JsonSchema.Net" Version="8.0.5" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <PackageVersion Include="HdrHistogram" Version="2.5.0" />
   </ItemGroup>
 </Project>
