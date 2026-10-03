@@ -1,5 +1,6 @@
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Search;
+using Opportunity.Api.Jobs;
 using Opportunity.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddOpportunityHostDefaults();
 builder.Services.AddApiConventions();
 builder.Services.AddQueryValidation();
+builder.Services.AddJobEndpoints();
 
 var app = builder.Build();
 
