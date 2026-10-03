@@ -15,7 +15,7 @@ namespace Opportunity.IntegrationTests.Workspaces;
 
 /// <summary>
 /// E04-T05 workspace store as the RLS-bound app role: the membership lookup behind <c>GET /api/v1/workspaces</c>
-/// (V0013) agrees with the PDP for every kind of principal, leaves no RLS context behind, and writes are audited in
+/// (V0014) agrees with the PDP for every kind of principal, leaves no RLS context behind, and writes are audited in
 /// their own transaction.
 /// </summary>
 [Collection(MigrationPostgresGroup.Name)]

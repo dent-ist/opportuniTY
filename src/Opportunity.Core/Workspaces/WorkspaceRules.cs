@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace Opportunity.Core.Workspaces;
 
-/// <summary>Workspace settings limits, mirrored by the V0002/V0013 check constraints.</summary>
+/// <summary>Workspace settings limits, mirrored by the V0002/V0014 check constraints.</summary>
 public static partial class WorkspaceRules
 {
     public const int MaxNameLength = 200;

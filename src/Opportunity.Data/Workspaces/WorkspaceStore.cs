@@ -17,7 +17,7 @@ namespace Opportunity.Data.Workspaces;
 /// <summary>
 /// PostgreSQL <see cref="IWorkspaceStore"/> (E04-T05). Writes run in the workspace's own RLS context and insert their
 /// audit events in the same transaction. The member list of a principal comes from
-/// <c>opportunity.member_workspace_ids</c> (V0013), which probes each workspace under its own context, so this class
+/// <c>opportunity.member_workspace_ids</c> (V0014), which probes each workspace under its own context, so this class
 /// never needs a cross-workspace read of role assignments.
 /// </summary>
 public sealed class WorkspaceStore(NpgsqlDataSource dataSource) : IWorkspaceStore

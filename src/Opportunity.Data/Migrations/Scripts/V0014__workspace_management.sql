@@ -1,4 +1,4 @@
--- V0013: workspace management (E04-T05): storage profile, optimistic version and the membership lookup that backs
+-- V0014: workspace management (E04-T05): storage profile, optimistic version and the membership lookup that backs
 -- GET /api/v1/workspaces.
 --
 -- Role assignments are workspace-scoped under FORCED RLS (V0012, Q-59), so "which workspaces may this principal see"
