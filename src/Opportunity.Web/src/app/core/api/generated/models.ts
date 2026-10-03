@@ -10,6 +10,7 @@ export type { ColumnStatus } from './models/column-status';
 export type { CursorPageOfImportProfileSummary } from './models/cursor-page-of-import-profile-summary';
 export type { CursorPageOfImportTargetResource } from './models/cursor-page-of-import-target-resource';
 export type { DelimiterInfo } from './models/delimiter-info';
+export type { DocumentViewRecord } from './models/document-view-record';
 export type { HttpValidationProblemDetails } from './models/http-validation-problem-details';
 export type { IFormFile } from './models/i-form-file';
 export type { ImportFieldType } from './models/import-field-type';
@@ -47,6 +48,7 @@ export type { QueryValidationDiagnostic } from './models/query-validation-diagno
 export type { QueryValidationRequest } from './models/query-validation-request';
 export type { QueryValidationResult } from './models/query-validation-result';
 export type { RowPreview } from './models/row-preview';
+export type { Stream } from './models/stream';
 export type { StructuralTarget } from './models/structural-target';
 export type { TargetPreview } from './models/target-preview';
 export type { TargetResolution } from './models/target-resolution';

@@ -32,5 +32,10 @@ public static class ProblemCodes
     public const string CsrfValidationFailed = "csrf-validation-failed";
     public const string StepUpRequired = "step-up-required";
 
+    /// <summary>The document is visible, but the requested rendition or page does not exist or may not be served.</summary>
+    public const string ContentUnavailable = "content-unavailable";
+
+    public const string RangeNotSatisfiable = "range-not-satisfiable";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }

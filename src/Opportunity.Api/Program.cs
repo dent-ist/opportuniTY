@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using Opportunity.Api.Content;
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Import;
 using Opportunity.Api.Jobs;
@@ -33,6 +34,7 @@ builder.Services.AddWorkspaceEndpoints();
 builder.Services.AddPostgresIdentityStores();
 builder.Services.AddPostgresSecurityState();
 builder.Services.AddImportMappingEndpoints();
+builder.Services.AddProtectedContentGateway(builder.Configuration);
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();
