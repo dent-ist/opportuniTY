@@ -61,6 +61,12 @@
       "license": "MIT",
       "reason": "Legacy Microsoft package metadata only has a licenseUrl; it is MIT (https://github.com/dotnet/standard/blob/master/LICENSE.TXT). Transitive. Pinned so upgrades are re-checked.",
       "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    },
+    {
+      "component": "pkg:nuget/RabbitMQ.Client@7.2.2",
+      "license": "Apache-2.0 OR MPL-2.0",
+      "reason": "Dual-licensed: the package lists Apache-2.0 and MPL-2.0 as separate entries, which the checker reads as AND; the project offers them as alternatives (https://github.com/rabbitmq/rabbitmq-dotnet-client/blob/main/LICENSE). Used under Apache-2.0. Pinned to this version so upgrades are re-checked.",
+      "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
     }
   ]
 }

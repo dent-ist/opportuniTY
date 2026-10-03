@@ -110,7 +110,12 @@ jobs:
               [ "$rc" -eq 2 ] || { echo "::error::migrator exited $rc, expected 2"; exit 1; } ;;
             *)
               path=/health/live; [ "$NAME" = web ] && path=/healthz
-              docker run -d --name smoke "${hardening[@]}" -p 8080:8080 "$IMAGE"
+              # The API validates its sign-in settings at start-up; placeholders suffice for liveness (the identity
+              # provider is contacted only on the first sign-in).
+              settings=()
+              [ "$NAME" = api ] && settings=(-e Authentication__PublicOrigin=http://localhost:8080
+                -e Authentication__Oidc__Authority=https://idp.invalid/realms/smoke -e Authentication__Oidc__ClientId=smoke)
+              docker run -d --name smoke "${hardening[@]}" "${settings[@]}" -p 8080:8080 "$IMAGE"
               timeout 60 bash -c "until curl -fsS http://127.0.0.1:8080$path; do sleep 2; done" || { docker logs smoke; exit 1; }
               docker rm -f smoke ;;
           esac

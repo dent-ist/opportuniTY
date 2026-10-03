@@ -8,6 +8,8 @@ using Npgsql;
 using Opportunity.Application.Bootstrap;
 using Opportunity.Data.Migrations;
 using Opportunity.Messaging;
+using Opportunity.Search;
+using Opportunity.Storage;
 
 namespace Opportunity.Migrator;
 
@@ -48,17 +50,40 @@ public static partial class MigratorApp
 
         // Infrastructure bootstrap steps owned by their modules; each runs only when its dependency is configured.
         string? configurationError = null;
-        if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)))
+        void Register(bool configured, Action register)
         {
+            if (!configured || configurationError is not null)
+            {
+                return;
+            }
+
             try
             {
-                builder.Services.AddRabbitMqTopologyBootstrap(RabbitMqOptions.Bind(builder.Configuration));
+                register();
             }
             catch (InvalidOperationException ex)
             {
                 configurationError = ex.Message;
             }
         }
+
+        var configuration = builder.Configuration;
+        Register(
+            !string.IsNullOrWhiteSpace(configuration.GetConnectionString(OpenSearchOptions.ConnectionStringName))
+                || configuration.GetSection(OpenSearchOptions.SectionName).GetValue<string>(nameof(OpenSearchOptions.Endpoint)) is { Length: > 0 },
+            () => builder.Services.AddOpenSearchIndexTemplateBootstrap(OpenSearchOptions.Bind(configuration)));
+        Register(
+            !string.IsNullOrWhiteSpace(configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)),
+            () => builder.Services.AddRabbitMqTopologyBootstrap(RabbitMqOptions.Bind(configuration)));
+        Register(
+            configuration.GetSection(ObjectStorageOptions.SectionName).Exists(),
+            () =>
+            {
+                var storage = new ObjectStorageOptions();
+                configuration.GetSection(ObjectStorageOptions.SectionName).Bind(storage);
+                storage.Validate();
+                builder.Services.AddObjectStorage(storage);
+            });
 
         configureServices?.Invoke(builder.Services);
 
@@ -87,7 +112,20 @@ public static partial class MigratorApp
             return ExitMigrationFailed;
         }
 
-        foreach (var step in host.Services.GetServices<IInfrastructureBootstrapStep>().OrderBy(s => s.Order))
+        IInfrastructureBootstrapStep[] steps;
+        try
+        {
+            steps = [.. host.Services.GetServices<IInfrastructureBootstrapStep>().OrderBy(s => s.Order)];
+        }
+#pragma warning disable CA1031 // A step that cannot even be constructed (bad provider settings) is a bootstrap failure.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            LogStepFailed(logger, "(construction)", ex);
+            return ExitBootstrapFailed;
+        }
+
+        foreach (var step in steps)
         {
             try
             {

@@ -141,6 +141,7 @@ file name into a third-party backend.
 | `opportunity.jobs.active` | up-down counter | {job} | `opportunity.job.type` | `E06-T05` |
 | `opportunity.job.chunks` | counter | {chunk} | `opportunity.job.type`, `opportunity.outcome`, `error.type` | `E06-T05` |
 | `opportunity.job.chunk.duration` | histogram | s | `opportunity.job.type`, `opportunity.outcome` | `E06-T05` |
+| `opportunity.audit.write.duration` | histogram | s | `opportunity.outcome` | `E14-T01` |
 
 Infrastructure metrics come from their own exporters, not the application: RabbitMQ (`rabbitmq_prometheus` plugin),
 PostgreSQL (`postgres_exporter`), OpenSearch (`elasticsearch_exporter`, which also reads OpenSearch). The PostgreSQL

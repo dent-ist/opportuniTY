@@ -4,6 +4,7 @@ using Npgsql;
 
 using NpgsqlTypes;
 
+using Opportunity.Application.Audit;
 using Opportunity.Application.Jobs;
 using Opportunity.Core.Jobs;
 
@@ -63,6 +64,11 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
         }
 
         var info = await JobSql.ReadJobAsync(tx, job.WorkspaceId, jobId, cancellationToken).ConfigureAwait(false);
+        if (created)
+        {
+            await JobSql.AuditAsync(tx, info!, AuditTaxonomy.Job.Created, info!.InitiatedBy, cancellationToken).ConfigureAwait(false);
+        }
+
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new JobCreation(info!, created);
     }
@@ -130,6 +136,8 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
             status = await JobSql.SettleAsync(tx, failed, new JobDelta { Cancelled = cancelled }, cancellationToken).ConfigureAwait(false);
         }
 
+        await JobSql.AuditAsync(tx, locked!.Job, AuditTaxonomy.Job.Failed, null, cancellationToken, AuditOutcome.Failure, "JobFailed")
+            .ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new JobTransitionResult(JobTransitionOutcome.Applied, status);
     }
@@ -164,12 +172,14 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
             status = await JobSql.SettleAsync(tx, cancelling, new JobDelta { Cancelled = cancelled }, cancellationToken).ConfigureAwait(false);
         }
 
+        await JobSql.AuditAsync(tx, locked!.Job, AuditTaxonomy.Job.Cancelled, requestedBy, cancellationToken,
+            details: new Dictionary<string, string?> { ["Status"] = status.ToString() }).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new JobTransitionResult(JobTransitionOutcome.Applied, status);
     }
 
     public async Task<ChunkReplayResult> ReplayFailedChunksAsync(
-        Guid workspaceId, Guid jobId, Guid? chunkId = null, CancellationToken cancellationToken = default)
+        Guid workspaceId, Guid jobId, Guid? chunkId = null, Guid? requestedBy = null, CancellationToken cancellationToken = default)
     {
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         var locked = await JobSql.LockJobAsync(tx, workspaceId, jobId, cancellationToken).ConfigureAwait(false);
@@ -210,6 +220,11 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
             }
 
             status = await JobSql.SettleAsync(tx, locked, new JobDelta { Replayed = replayed }, cancellationToken).ConfigureAwait(false);
+            await JobSql.AuditAsync(tx, locked.Job, AuditTaxonomy.Job.Replayed, requestedBy, cancellationToken, details: new Dictionary<string, string?>
+            {
+                ["ChunksReplayed"] = replayed.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["ChunkId"] = chunkId?.ToString(),
+            }).ConfigureAwait(false);
         }
 
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);

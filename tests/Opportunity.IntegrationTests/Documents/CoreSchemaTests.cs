@@ -58,7 +58,8 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             """);
         indexes.Should().BeEmpty();
 
-        // P3: every foreign key is composite on workspace_id at both ends.
+        // P3: every foreign key is composite on workspace_id at both ends. A reference to an installation-level (@global)
+        // table, such as the shared search index pool, has no workspace_id to include.
         var foreignKeys = await db.ColumnAsync(
             """
             SELECT c.conname::text
@@ -67,6 +68,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             JOIN pg_attribute ta ON ta.attrelid = c.confrelid AND ta.attnum = c.confkey[1]
             WHERE c.connamespace = 'opportunity'::regnamespace AND c.contype = 'f'
               AND coalesce(obj_description(c.conrelid, 'pg_class'), '') NOT LIKE '@global%'
+              AND coalesce(obj_description(c.confrelid, 'pg_class'), '') NOT LIKE '@global%'
               AND (fa.attname <> 'workspace_id' OR ta.attname <> 'workspace_id'
                    OR (cardinality(c.conkey) = 1 AND c.confrelid <> 'opportunity.workspace'::regclass))
             """);

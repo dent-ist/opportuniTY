@@ -4,6 +4,7 @@ using AwesomeAssertions;
 
 using Npgsql;
 
+using Opportunity.Application.Audit;
 using Opportunity.Application.Coding;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
@@ -13,6 +14,7 @@ using Opportunity.Core.Jobs;
 using Opportunity.Core.SearchWork;
 using Opportunity.Data;
 using Opportunity.Data.SearchWork;
+using Opportunity.IntegrationTests.Audit;
 using Opportunity.IntegrationTests.Migrations;
 
 namespace Opportunity.IntegrationTests.SearchWork;
@@ -124,6 +126,38 @@ public sealed class SearchWorkRecordTests(MigrationPostgresFixture postgres)
         job.Counters.ChunksCommitted.Should().Be(1);
         job.Counters.IndexTasksTotal.Should().Be(1);
         job.JobGeneration.Should().Be(1, "the generation of the job's last chunk task (ADR-001 §7.4)");
+    }
+
+    [Fact]
+    public async Task A_bulk_chunk_is_audited_in_the_same_transaction_as_its_coding_task_and_commit_and_not_at_all_when_refused()
+    {
+        await using var db = await SearchWorkDatabase.CreateAsync(postgres);
+        var w = await db.WorkspaceAsync(documents: 4);
+        var snapshot = Guid.CreateVersion7();
+        var chunk = await db.RunningJobChunkAsync(w.Id, JobType.BulkCoding, ChunkOperationKind.BulkCodingChunk,
+            [new ChunkPlan(ChunkMembership.SnapshotRange(snapshot, 1, 2), 2), new ChunkPlan(ChunkMembership.SnapshotRange(snapshot, 3, 4), 2)],
+            snapshotId: snapshot);
+
+        var result = await db.Core.Coding.ApplyChunkAsync(chunk,
+            BulkRequest(w, chunk, w.Documents.Take(2)) with { Audit = ChunkAudit(w.Id, chunk) }, Ct);
+
+        result.Committed.Should().BeTrue();
+        var audit = (await CodingAuditAsync(db, w.Id)).Should().ContainSingle("one event per chunk").Subject;
+        audit.Action.Should().Be(AuditTaxonomy.Coding.BulkChunkApplied);
+        audit.JobId.Should().Be(chunk.Lease.JobId);
+        audit.ChunkSequence.Should().Be(1);
+        audit.Details.Should().Contain("Changed", "2");
+        (await db.CountAsync("index_chunk_task", w.Id)).Should().Be(1);
+
+        // The job pauses before the second chunk commits: F3 refuses, and coding, task and audit all roll back together.
+        var second = (await db.Chunks.ClaimNextAsync(w.Id, chunk.Lease.JobId, "worker-1", TimeSpan.FromMinutes(1), Ct)).Chunk!;
+        (await db.Jobs.PauseAsync(w.Id, chunk.Lease.JobId, "test", Ct)).Applied.Should().BeTrue();
+        var refused = await db.Core.Coding.ApplyChunkAsync(second,
+            BulkRequest(w, second, w.Documents.Skip(2)) with { Audit = ChunkAudit(w.Id, second) }, Ct);
+
+        refused.Committed.Should().BeFalse();
+        (await CodingAuditAsync(db, w.Id)).Should().ContainSingle();
+        (await db.CountAsync("index_chunk_task", w.Id)).Should().Be(1);
     }
 
     [Fact]
@@ -322,6 +356,25 @@ public sealed class SearchWorkRecordTests(MigrationPostgresFixture postgres)
             Documents = [.. documents.Select(d => new CodingTarget(d, 1))],
             Operations = operations.Length > 0 ? operations : [CodingFieldOperation.Set(w.Responsive, JsonValue.Create(true))],
         };
+
+    private static async Task<List<AuditEvent>> CodingAuditAsync(SearchWorkDatabase db, Guid ws) =>
+        [.. (await AuditSamples.ReadAllAsync(db.Core, ws)).Select(e => e.Event).Where(e => e.Category == AuditTaxonomy.Coding.Category)];
+
+    private static AuditEvent ChunkAudit(Guid ws, ClaimedChunk chunk) => new()
+    {
+        WorkspaceId = ws,
+        OccurredAt = DateTimeOffset.UtcNow,
+        Category = AuditTaxonomy.Coding.Category,
+        Action = AuditTaxonomy.Coding.BulkChunkApplied,
+        ActorType = AuditActorType.Service,
+        ActorId = "worker:bulk-coding",
+        ActorDisplay = "Bulk coding worker",
+        OnBehalfOf = SearchWorkDatabase.Reviewer,
+        Outcome = AuditOutcome.Success,
+        CorrelationId = "corr-chunk",
+        JobId = chunk.Lease.JobId,
+        ChunkSequence = chunk.Sequence,
+    };
 
     private static async Task<SearchOutboxRow> OnlyOutboxRowAsync(SearchWorkDatabase db, Guid ws)
     {

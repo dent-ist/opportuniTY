@@ -61,9 +61,11 @@ pattern, component library, error display and layout, and the slice would ship s
    two-way state is `model()`.
 2. **Feature stores are plain injectable classes** that keep private `WritableSignal`s and expose read-only signals,
    `computed` selectors and intention-revealing methods (`codeDocument()`, `selectAll()`). No NgRx, no global store.
-3. **Scope = lifetime.** Workspace-scoped stores are provided on the `/w/:workspaceId` route (`providers` on the
-   route), so switching workspace destroys them and all workspace data with them (`E15-T02` acceptance). Only
-   identity, preferences and the toast/announcer services are root-scoped.
+3. **Scope = lifetime.** Workspace-scoped stores are provided on the workspace shell component of the
+   `/w/:workspaceId` route (beside `WorkspaceContext`) or on feature components, never in route `providers`: Angular
+   keeps route injectors alive when only a parameter changes. A route-reuse strategy re-creates the workspace shell
+   whenever `:workspaceId` changes, so switching workspace destroys those stores and all workspace data with them
+   (`E15-T02` acceptance). Only identity, preferences and the toast/announcer services are root-scoped.
 4. **Server state** is read with Angular `resource()` / `httpResource()` over the generated client (§4) and is never
    copied into a second cache. Mutations go through store methods that call the API and then reconcile.
 5. **The URL is state** for everything a reviewer may bookmark or share: workspace, saved search, document, viewer
@@ -134,7 +136,7 @@ pattern, component library, error display and layout, and the slice would ship s
    |---|---|
    | `GET /api/v1/me` | 200 with the principal (id, display name, permissions) or 401 problem details. API routes **never** redirect to the IdP. |
    | `GET /bff/login?returnUrl=<relative path>` | Top-level navigation that starts OIDC code + PKCE and returns to `returnUrl` (validated as same-origin relative on both sides) |
-   | `POST /bff/logout` | Anti-forgery protected; revokes the server session; 200 `{ "redirectUrl": "<IdP end-session>" }` or 204 |
+   | `POST /bff/logout` | Anti-forgery protected; revokes the server session; 200 `{ "endSessionUrl": "<IdP end-session>" \| null }` |
    | Anti-forgery | Readable cookie `__Host-opp-xsrf` set by the BFF; header `X-XSRF-TOKEN` on every unsafe method (Angular `withXsrfConfiguration`) |
 
    If #46 chooses different paths or names, it changes `DEFAULT_SESSION_CONFIG` only.

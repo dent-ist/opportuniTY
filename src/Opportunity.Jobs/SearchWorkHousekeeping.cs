@@ -91,13 +91,27 @@ public sealed partial class SearchWorkHousekeeper(
     private static partial void LogPartitionKept(ILogger logger, string partition, long rows);
 }
 
-/// <summary>Runs <see cref="SearchWorkHousekeeper"/> every <see cref="SearchWorkHousekeepingOptions.Interval"/>.</summary>
+/// <summary>
+/// Runs <see cref="SearchWorkHousekeeper"/> at start and every <see cref="SearchWorkHousekeepingOptions.Interval"/>. The
+/// housekeeper is resolved lazily, so a host without PostgreSQL logs that housekeeping is disabled instead of failing.
+/// </summary>
 public sealed partial class SearchWorkHousekeepingService(
-    SearchWorkHousekeeper housekeeper, SearchWorkHousekeepingOptions options, ILogger<SearchWorkHousekeepingService> logger)
+    IServiceProvider services, SearchWorkHousekeepingOptions options, ILogger<SearchWorkHousekeepingService> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        SearchWorkHousekeeper housekeeper;
+        try
+        {
+            housekeeper = services.GetRequiredService<SearchWorkHousekeeper>();
+        }
+        catch (InvalidOperationException ex)
+        {
+            LogDisabled(logger, ex.Message);
+            return;
+        }
+
         using var timer = new PeriodicTimer(options.Interval);
         do
         {
@@ -115,6 +129,9 @@ public sealed partial class SearchWorkHousekeepingService(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Search work housekeeping failed; retrying at the next interval")]
     private static partial void LogFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search work housekeeping disabled: {Reason}")]
+    private static partial void LogDisabled(ILogger logger, string reason);
 }
 
 public static class SearchWorkHousekeepingRegistration

@@ -11,7 +11,7 @@ using Opportunity.Core.Workspaces;
 namespace Opportunity.Data.SearchWork;
 
 /// <summary>
-/// PostgreSQL implementation of <see cref="IIndexChunkTaskRepository"/> over <c>opportunity.index_chunk_task</c> (V0008).
+/// PostgreSQL implementation of <see cref="IIndexChunkTaskRepository"/> over <c>opportunity.index_chunk_task</c> (V0011).
 /// A task id is a UUIDv7 whose timestamp is the row's <c>created_at</c>, so every lookup by id prunes to one partition.
 /// </summary>
 public sealed class IndexChunkTaskRepository(NpgsqlDataSource dataSource) : IIndexChunkTaskRepository

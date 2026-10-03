@@ -9,7 +9,11 @@ namespace Opportunity.Application.Jobs;
 /// </summary>
 public interface IJobRepository
 {
-    /// <summary>Creates the job in Created; a retry with the same initiator and client key returns the existing job.</summary>
+    /// <summary>
+    /// Creates the job in Created, with its <c>Job.Created</c> audit event in the same transaction; a retry with the
+    /// same initiator and client key returns the existing job. Job-level failure and completion with errors are audited
+    /// the same way (<c>Job.Failed</c>, <c>Job.CompletedWithErrors</c>, ADR-013 §2.4).
+    /// </summary>
     Task<JobCreation> CreateAsync(NewJob job, CancellationToken cancellationToken = default);
 
     /// <summary>Created → Preparing: a planner takes the job to materialize its target and plan chunks.</summary>
@@ -36,17 +40,19 @@ public interface IJobRepository
     /// <summary>
     /// Created → Cancelled, or Preparing/Running/Paused → Cancelling: open chunks are cancelled at once, running chunks
     /// at their next fence (bounded by the lease), and the job becomes Cancelled when none is left running. Committed
-    /// chunks stay (no undo, Q-34). Serializes with chunk commits on the job row (fence F3).
+    /// chunks stay (no undo, Q-34). Serializes with chunk commits on the job row (fence F3). Writes
+    /// <c>Job.Cancelled</c> by <paramref name="requestedBy"/> in the same transaction.
     /// </summary>
     Task<JobTransitionResult> CancelAsync(
         Guid workspaceId, Guid jobId, Guid requestedBy, string? reason = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Operator replay (ADR-010 §7.4; audited by the caller): Failed chunks of the job (or the one given) → Pending with
-    /// AttemptCount reset and ReplayCount + 1. A job in CompletedWithErrors returns to Running.
+    /// Operator replay (ADR-010 §7.4): Failed chunks of the job (or the one given) → Pending with AttemptCount reset and
+    /// ReplayCount + 1. A job in CompletedWithErrors returns to Running. A replay that moved chunks writes
+    /// <c>Job.Replayed</c> in the same transaction, attributed to <paramref name="requestedBy"/> (else the job engine).
     /// </summary>
     Task<ChunkReplayResult> ReplayFailedChunksAsync(
-        Guid workspaceId, Guid jobId, Guid? chunkId = null, CancellationToken cancellationToken = default);
+        Guid workspaceId, Guid jobId, Guid? chunkId = null, Guid? requestedBy = null, CancellationToken cancellationToken = default);
 
     /// <summary>Records index tasks of the job applied by the indexing worker (the "indexed" progress, ADR-010 §10).</summary>
     Task RecordIndexTasksAppliedAsync(Guid workspaceId, Guid jobId, int count, CancellationToken cancellationToken = default);

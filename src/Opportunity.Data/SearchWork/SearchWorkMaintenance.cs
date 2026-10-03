@@ -5,7 +5,7 @@ using Opportunity.Core.Workspaces;
 
 namespace Opportunity.Data.SearchWork;
 
-/// <summary>PostgreSQL implementation of <see cref="ISearchWorkMaintenance"/> (V0008).</summary>
+/// <summary>PostgreSQL implementation of <see cref="ISearchWorkMaintenance"/> (V0011).</summary>
 public sealed class SearchWorkMaintenance(NpgsqlDataSource dataSource) : ISearchWorkMaintenance
 {
     public async Task<SearchWorkRecovery> RecoverAsync(

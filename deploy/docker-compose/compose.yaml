@@ -27,7 +27,7 @@ x-app-environment: &app-environment
   # Runtime login (member of opportunity_app, created by postgres/init). The chiseled images lack libgssapi_krb5.
   ConnectionStrings__App: >-
     Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=${OPPORTUNITY_DB_APP_USER:-opportunity_runtime};Password=${OPPORTUNITY_DB_APP_PASSWORD:?set OPPORTUNITY_DB_APP_PASSWORD in .env (./opportunity.sh init)};GSS Encryption Mode=Disable
-  # Reserved name for the OpenSearch module (E07); nothing reads it yet.
+  # OpenSearch module (E07, Opportunity.Search); the migrator installs the index templates.
   ConnectionStrings__OpenSearch: http://opensearch:9200
   # RabbitMQ transport (E06-T01, Opportunity.Messaging). Lite uses one broker user for every component; Full uses one
   # user per component with the RabbitMqPermissions patterns (ADR-015 D9.5).
@@ -139,8 +139,10 @@ services:
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${RABBITMQ_PORT:-5672}:5672"
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    # The check runs as root with HOME=/var/lib/rabbitmq: before the server has written .erlang.cookie, the CLI would
+    # create it root-owned and the server then fails to boot (eacces). Wait for the server's own cookie first.
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD-SHELL", "test -s /var/lib/rabbitmq/.erlang.cookie && rabbitmq-diagnostics -q ping"]
       interval: 10s
       timeout: 10s
       start_period: 60s
@@ -185,14 +187,26 @@ services:
         Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=${OPPORTUNITY_DB_OWNER_USER:-opportunity_owner};Password=${OPPORTUNITY_DB_OWNER_PASSWORD:?set OPPORTUNITY_DB_OWNER_PASSWORD in .env};GSS Encryption Mode=Disable
       # Declares exchanges, quorum queues per lane/worker type, retry tiers, DLX/DLQs and parking queues.
       ConnectionStrings__RabbitMq: amqp://${RABBITMQ_USER:-opportunity}:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}@rabbitmq:5672/
+      # Installs the versioned projection index templates (E07-T01, ADR-007 R2).
+      ConnectionStrings__OpenSearch: http://opensearch:9200
+      # Object-storage bootstrap creates the bucket (S3) or container (Azure); FileSystem only prepares the root.
+      ObjectStorage__Provider: ${OPPORTUNITY_OBJECT_STORAGE:-FileSystem}
+      ObjectStorage__FileSystem__RootPath: /tmp/opportunity-objects
+      ObjectStorage__S3__ServiceUrl: http://seaweedfs:8333
+      ObjectStorage__S3__Bucket: opportunity
+      ObjectStorage__S3__AccessKey: ${S3_ACCESS_KEY:-opportunity}
+      ObjectStorage__S3__SecretKey: ${S3_SECRET_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
-      # Bootstrap steps for index templates and exchanges/queues (E06/E07) run here, so wait for them too.
+      # Bootstrap steps for index templates, exchanges/queues and the bucket (E06/E07/E19) run here, so wait for them too.
       opensearch:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+        required: false
 
   # Developer OIDC provider (E05-T01, ADR-015 D3): Keycloak (Apache-2.0), realm `opportunity` with demo users and
   # groups imported from keycloak/opportunity-realm.json on every start (no volume: changes made in the admin console

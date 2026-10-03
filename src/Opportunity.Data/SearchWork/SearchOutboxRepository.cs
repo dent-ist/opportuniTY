@@ -7,7 +7,7 @@ using Opportunity.Core.SearchWork;
 
 namespace Opportunity.Data.SearchWork;
 
-/// <summary>PostgreSQL implementation of <see cref="ISearchOutboxRepository"/> over <c>opportunity.search_outbox</c> (V0008).</summary>
+/// <summary>PostgreSQL implementation of <see cref="ISearchOutboxRepository"/> over <c>opportunity.search_outbox</c> (V0011).</summary>
 public sealed class SearchOutboxRepository(NpgsqlDataSource dataSource) : ISearchOutboxRepository
 {
     private const int MaxOwnerLength = 200;

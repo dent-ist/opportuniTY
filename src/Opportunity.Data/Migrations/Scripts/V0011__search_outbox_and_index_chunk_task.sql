@@ -1,4 +1,4 @@
--- V0008: SearchOutbox (interactive edits) and IndexChunkTask (bulk/import chunks), the two payload-free search work
+-- V0011: SearchOutbox (interactive edits) and IndexChunkTask (bulk/import chunks), the two payload-free search work
 -- records, plus the per-workspace SearchGeneration counter (E06-T03).
 -- Binding: ADR-001 §1 R1-R4 (one work record per transaction, payload-free, columns, time-partitioned retention), §5
 -- (lanes; no ordering guarantee), §6 (claim columns, attempts in PostgreSQL), §7.1 (late-lock generation counter stamps

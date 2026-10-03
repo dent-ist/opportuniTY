@@ -1,0 +1,79 @@
+<h1 class="workspaces__title">Workspaces</h1>
+
+@if (loading()) {
+  <opp-loading-state label="Loading workspaces…" />
+} @else if (error() && items().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else if (items().length === 0) {
+  <opp-empty-state
+    title="No workspaces yet"
+    message="You are not a member of any workspace. Ask your administrator to add you to one."
+  />
+} @else {
+  @if (recent().length) {
+    <section class="workspaces__section" aria-labelledby="workspaces-recent">
+      <h2 id="workspaces-recent">Recent</h2>
+      <ul class="workspaces__recent">
+        @for (ws of recent(); track ws.workspaceId) {
+          <li>
+            <a class="workspaces__card" [routerLink]="['/w', ws.workspaceId]">
+              <span class="workspaces__card-name">{{ ws.name }}</span>
+              @if (ws.matterNumber) {
+                <span class="workspaces__muted">Matter {{ ws.matterNumber }}</span>
+              }
+            </a>
+          </li>
+        }
+      </ul>
+    </section>
+  }
+
+  <section class="workspaces__section" aria-labelledby="workspaces-all">
+    <h2 id="workspaces-all">All workspaces</h2>
+    <div class="workspaces__toolbar">
+      <opp-text-field
+        class="workspaces__filter"
+        type="search"
+        label="Filter workspaces"
+        hint="Matches the workspace name or matter number."
+        [(value)]="query"
+      />
+      <p class="workspaces__muted" role="status">{{ summary() }}</p>
+    </div>
+    @if (filtered().length) {
+      <table class="workspaces__table">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Matter number</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (ws of filtered(); track ws.workspaceId) {
+            <tr>
+              <td>
+                <a [routerLink]="['/w', ws.workspaceId]">{{ ws.name }}</a>
+              </td>
+              <td>{{ ws.matterNumber ?? '' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <opp-empty-state
+        title="No matching workspaces"
+        message="Change the filter, or load more workspaces if more are available."
+      />
+    }
+    @if (error() && items().length) {
+      <opp-error-state [error]="error()!" (retry)="loadMore()" />
+    }
+    @if (nextCursor()) {
+      <div>
+        <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+          Load more workspaces
+        </button>
+      </div>
+    }
+  </section>
+}
