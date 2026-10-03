@@ -1,0 +1,20 @@
+# Overlay: run the published GHCR images instead of building them. Used by `./opportunity.sh --images ghcr ...`:
+#   docker compose --env-file ../../versions.env --env-file .env -f compose.yaml -f compose.images.yaml up -d --wait
+# OPPORTUNITY_IMAGE_TAG must be an immutable tag (sha-<commit> or X.Y.Z); `latest` is never published.
+x-published: &published
+  build: !reset null
+  pull_policy: missing
+
+services:
+  migrator:
+    <<: *published
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-ghcr.io/plogramer/}opportunity-migrator:${OPPORTUNITY_IMAGE_TAG:?set OPPORTUNITY_IMAGE_TAG (e.g. sha-1a2b3c4 or 0.1.0)}
+  api:
+    <<: *published
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-ghcr.io/plogramer/}opportunity-api:${OPPORTUNITY_IMAGE_TAG:?set OPPORTUNITY_IMAGE_TAG}
+  worker:
+    <<: *published
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-ghcr.io/plogramer/}opportunity-worker:${OPPORTUNITY_IMAGE_TAG:?set OPPORTUNITY_IMAGE_TAG}
+  web:
+    <<: *published
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-ghcr.io/plogramer/}opportunity-web:${OPPORTUNITY_IMAGE_TAG:?set OPPORTUNITY_IMAGE_TAG}

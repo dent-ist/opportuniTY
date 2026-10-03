@@ -31,3 +31,4 @@ artifacts/
 /sbom/
 /audit/
 gitleaks.sarif
+deploy/docker-compose/compose.override.yaml
