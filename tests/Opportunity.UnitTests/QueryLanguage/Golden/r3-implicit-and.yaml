@@ -1,0 +1,33 @@
+description: "R3: juxtaposition is AND"
+query: "contract termination"
+printed: "contract AND termination"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 20
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 8
+          },
+          "text": "contract"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 9,
+            "end": 20
+          },
+          "text": "termination"
+        }
+      ]
+    }
+  }

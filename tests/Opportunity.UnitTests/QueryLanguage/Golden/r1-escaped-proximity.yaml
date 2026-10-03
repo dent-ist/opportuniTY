@@ -1,0 +1,16 @@
+description: "R1: an escaped W/5 is a term"
+query: "W\\/5"
+printed: "\\W/5"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "term",
+      "span": {
+        "start": 0,
+        "end": 4
+      },
+      "text": "W/5"
+    }
+  }

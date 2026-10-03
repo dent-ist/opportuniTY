@@ -1,0 +1,40 @@
+description: "R2: NOT applies to the next operand only"
+query: "NOT a b"
+printed: "NOT a AND b"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 7
+      },
+      "children": [
+        {
+          "kind": "not",
+          "span": {
+            "start": 0,
+            "end": 5
+          },
+          "child": {
+            "kind": "term",
+            "span": {
+              "start": 4,
+              "end": 5
+            },
+            "text": "a"
+          }
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 6,
+            "end": 7
+          },
+          "text": "b"
+        }
+      ]
+    }
+  }

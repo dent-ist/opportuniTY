@@ -1,0 +1,43 @@
+description: "R1: lower-case and is a term, with a warning"
+query: "contract and termination"
+printed: "contract AND and AND termination"
+warnings:
+  - code: LOWERCASE_OPERATOR
+    span: [9, 12]
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 24
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 8
+          },
+          "text": "contract"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 9,
+            "end": 12
+          },
+          "text": "and"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 13,
+            "end": 24
+          },
+          "text": "termination"
+        }
+      ]
+    }
+  }

@@ -1,0 +1,7 @@
+description: "AND without a right operand"
+query: "contract AND"
+error:
+  code: SYNTAX_ERROR
+  span: [12, 12]
+  expected: ["term", "phrase", "field:", "(", "NOT"]
+  message: "The query ends after AND; a term is missing."

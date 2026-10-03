@@ -1,0 +1,7 @@
+description: "R4: ~ is unsupported"
+query: "apple~2"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [5, 6]
+  expected: []
+  message: "Fuzzy and slop operators '~' are not supported yet. Escape it as \\~ to search for it."

@@ -1,0 +1,7 @@
+description: "Unmatched closing parenthesis"
+query: "a OR b)"
+error:
+  code: UNBALANCED_PARENTHESIS
+  span: [6, 7]
+  expected: []
+  message: "This ')' has no matching '('."

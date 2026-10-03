@@ -1,0 +1,66 @@
+description: "R2: AND and OR are left-associative"
+query: "a AND b AND c OR d OR e"
+printed: "a AND b AND c OR d OR e"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "or",
+      "span": {
+        "start": 0,
+        "end": 23
+      },
+      "children": [
+        {
+          "kind": "and",
+          "span": {
+            "start": 0,
+            "end": 13
+          },
+          "children": [
+            {
+              "kind": "term",
+              "span": {
+                "start": 0,
+                "end": 1
+              },
+              "text": "a"
+            },
+            {
+              "kind": "term",
+              "span": {
+                "start": 6,
+                "end": 7
+              },
+              "text": "b"
+            },
+            {
+              "kind": "term",
+              "span": {
+                "start": 12,
+                "end": 13
+              },
+              "text": "c"
+            }
+          ]
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 17,
+            "end": 18
+          },
+          "text": "d"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 22,
+            "end": 23
+          },
+          "text": "e"
+        }
+      ]
+    }
+  }

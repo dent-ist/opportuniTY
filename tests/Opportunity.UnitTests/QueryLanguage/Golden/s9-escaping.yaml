@@ -1,0 +1,41 @@
+description: "§9: escaping"
+query: "AT\\&T \\(draft\\) 10\\:00"
+printed: "AT&T AND \\(draft\\) AND 10\\:00"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 22
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 5
+          },
+          "text": "AT&T"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 6,
+            "end": 15
+          },
+          "text": "(draft)"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 16,
+            "end": 22
+          },
+          "text": "10:00"
+        }
+      ]
+    }
+  }

@@ -1,0 +1,7 @@
+description: "R6: put the field around the whole proximity"
+query: "custodian:smith W/3 jones"
+error:
+  code: INVALID_PROXIMITY_OPERAND
+  span: [0, 15]
+  expected: []
+  message: "Both sides of W/n search the same field: write custodian:(a W/n b) instead."

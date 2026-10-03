@@ -1,0 +1,7 @@
+description: "Backslash at the end"
+query: "abc\\"
+error:
+  code: DANGLING_ESCAPE
+  span: [3, 4]
+  expected: []
+  message: "'\\' at the end of the query escapes nothing. Write \\\\ to search for a backslash."

@@ -1,0 +1,7 @@
+description: "Raw OpenSearch DSL is never accepted"
+query: "{\"query\":{\"match_all\":{}}}"
+error:
+  code: INVALID_RANGE
+  span: [0, 1]
+  expected: ["term", "phrase", "field:", "(", "NOT"]
+  message: "Unexpected '{': a range needs a field, e.g. date:[2025-01-01 TO 2025-12-31]. Escape it as \\{ to search for it."

@@ -1,0 +1,16 @@
+description: "§2/R7: trailing * on the default field"
+query: "contr*"
+printed: "contr*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "wildcard",
+      "span": {
+        "start": 0,
+        "end": 6
+      },
+      "pattern": "contr*"
+    }
+  }

@@ -1,0 +1,23 @@
+description: "§2: field has a value"
+query: "privilege:*"
+printed: "privilege:*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 11
+      },
+      "name": "privilege",
+      "child": {
+        "kind": "exists",
+        "span": {
+          "start": 10,
+          "end": 11
+        }
+      }
+    }
+  }

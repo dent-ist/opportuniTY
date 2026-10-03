@@ -1,0 +1,7 @@
+description: "R6: AND inside a proximity operand is deferred"
+query: "(a AND b) W/3 c"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [0, 9]
+  expected: []
+  message: "AND inside a W/n operand is not supported yet."

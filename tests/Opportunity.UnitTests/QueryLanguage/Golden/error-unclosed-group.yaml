@@ -1,0 +1,7 @@
+description: "Unclosed parenthesis"
+query: "(a OR b"
+error:
+  code: UNBALANCED_PARENTHESIS
+  span: [0, 1]
+  expected: [")"]
+  message: "This '(' is never closed."

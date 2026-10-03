@@ -1,0 +1,41 @@
+description: "§2/R6: both proximity operands on one field"
+query: "subject:(merger W/3 acquisition)"
+printed: "subject:(merger W/3 acquisition)"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 32
+      },
+      "name": "subject",
+      "child": {
+        "kind": "proximity",
+        "span": {
+          "start": 8,
+          "end": 32
+        },
+        "distance": 3,
+        "ordered": false,
+        "left": {
+          "kind": "term",
+          "span": {
+            "start": 9,
+            "end": 15
+          },
+          "text": "merger"
+        },
+        "right": {
+          "kind": "term",
+          "span": {
+            "start": 20,
+            "end": 31
+          },
+          "text": "acquisition"
+        }
+      }
+    }
+  }

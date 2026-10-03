@@ -1,0 +1,7 @@
+description: "A field cannot be the value of a field"
+query: "a:b:c"
+error:
+  code: NESTED_FIELD
+  span: [2, 4]
+  expected: []
+  message: "'b:' cannot be the value of 'a:'. Escape the ':' as \\: to search for it."

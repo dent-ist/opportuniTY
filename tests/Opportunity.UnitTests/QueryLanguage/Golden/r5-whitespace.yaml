@@ -1,0 +1,15 @@
+description: "R5: whitespace-only query matches all documents in scope"
+query: "   "
+printed: ""
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "matchAll",
+      "span": {
+        "start": 0,
+        "end": 3
+      }
+    }
+  }

@@ -1,0 +1,7 @@
+description: "§5: W/1001 is out of range"
+query: "a W/1001 b"
+error:
+  code: PROXIMITY_DISTANCE_OUT_OF_RANGE
+  span: [2, 8]
+  expected: []
+  message: "The distance of W/1001 must be between 1 and 1000."

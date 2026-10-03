@@ -1,0 +1,7 @@
+description: "§5: more than 32 wildcard terms"
+query: "abc0* OR abc1* OR abc2* OR abc3* OR abc4* OR abc5* OR abc6* OR abc7* OR abc8* OR abc9* OR abc10* OR abc11* OR abc12* OR abc13* OR abc14* OR abc15* OR abc16* OR abc17* OR abc18* OR abc19* OR abc20* OR abc21* OR abc22* OR abc23* OR abc24* OR abc25* OR abc26* OR abc27* OR abc28* OR abc29* OR abc30* OR abc31* OR abc32*"
+error:
+  code: TOO_MANY_WILDCARDS
+  span: [310, 316]
+  expected: []
+  message: "The query has more than 32 wildcard terms."

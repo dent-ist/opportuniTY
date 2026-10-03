@@ -1,0 +1,7 @@
+description: "TO must be upper case"
+query: "date:[2020 to 2021]"
+error:
+  code: INVALID_RANGE
+  span: [11, 13]
+  expected: ["TO"]
+  message: "Write TO in upper case: [a TO b]."

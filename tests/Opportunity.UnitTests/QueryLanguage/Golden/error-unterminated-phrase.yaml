@@ -1,0 +1,7 @@
+description: "Unterminated phrase"
+query: "\"trade secret"
+error:
+  code: UNTERMINATED_PHRASE
+  span: [0, 13]
+  expected: ["\""]
+  message: "The phrase has no closing quote."

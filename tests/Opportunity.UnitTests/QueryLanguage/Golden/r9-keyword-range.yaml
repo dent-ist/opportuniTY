@@ -1,0 +1,31 @@
+description: "R9: keyword range on a rangeable field"
+query: "begbates:[ABC0000100 TO ABC0000200]"
+printed: "begbates:[ABC0000100 TO ABC0000200]"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 35
+      },
+      "name": "begbates",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 9,
+          "end": 35
+        },
+        "lower": {
+          "value": "ABC0000100",
+          "inclusive": true
+        },
+        "upper": {
+          "value": "ABC0000200",
+          "inclusive": true
+        }
+      }
+    }
+  }

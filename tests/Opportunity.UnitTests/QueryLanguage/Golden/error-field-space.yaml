@@ -1,0 +1,7 @@
+description: "Space between field: and value"
+query: "custodian: smith"
+error:
+  code: SYNTAX_ERROR
+  span: [10, 11]
+  expected: ["term", "phrase", "(", "[", "{", "*"]
+  message: "Put the value directly after 'custodian:', without a space."

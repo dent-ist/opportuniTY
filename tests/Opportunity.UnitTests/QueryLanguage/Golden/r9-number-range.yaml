@@ -1,0 +1,31 @@
+description: "R9: invariant numbers"
+query: "amount:[1000.50 TO 2000]"
+printed: "amount:[1000.50 TO 2000]"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 24
+      },
+      "name": "amount",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 7,
+          "end": 24
+        },
+        "lower": {
+          "value": "1000.50",
+          "inclusive": true
+        },
+        "upper": {
+          "value": "2000",
+          "inclusive": true
+        }
+      }
+    }
+  }

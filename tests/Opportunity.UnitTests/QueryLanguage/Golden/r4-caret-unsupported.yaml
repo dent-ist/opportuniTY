@@ -1,0 +1,7 @@
+description: "R4: ^ is unsupported"
+query: "apple^2"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [5, 6]
+  expected: []
+  message: "Boosting '^' is not supported. Escape it as \\^ to search for it."

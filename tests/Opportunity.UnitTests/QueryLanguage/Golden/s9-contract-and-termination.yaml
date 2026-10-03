@@ -1,0 +1,33 @@
+description: "§9 example: explicit AND"
+query: "contract AND termination"
+printed: "contract AND termination"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 24
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 8
+          },
+          "text": "contract"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 13,
+            "end": 24
+          },
+          "text": "termination"
+        }
+      ]
+    }
+  }

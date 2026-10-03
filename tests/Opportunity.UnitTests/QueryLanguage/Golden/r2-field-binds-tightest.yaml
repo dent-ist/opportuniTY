@@ -1,0 +1,31 @@
+description: "R2: field: before NOT"
+query: "NOT custodian:smith"
+printed: "NOT custodian:smith"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "not",
+      "span": {
+        "start": 0,
+        "end": 19
+      },
+      "child": {
+        "kind": "field",
+        "span": {
+          "start": 4,
+          "end": 19
+        },
+        "name": "custodian",
+        "child": {
+          "kind": "term",
+          "span": {
+            "start": 14,
+            "end": 19
+          },
+          "text": "smith"
+        }
+      }
+    }
+  }
