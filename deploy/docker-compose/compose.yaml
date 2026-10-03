@@ -3,7 +3,8 @@
 #   docker compose --env-file ../../versions.env --env-file .env up -d --wait
 # or use ./opportunity.sh (or make) in this directory, which does exactly that.
 #
-# Services: postgres, opensearch (1 node), rabbitmq (management UI), migrator (one-shot), api, worker (combined), web.
+# Services: postgres, opensearch (1 node), rabbitmq (management UI), keycloak (developer OIDC provider), migrator
+# (one-shot), api, worker (combined), web.
 # Object store: the filesystem provider on a named volume (ADR-020 rule 1). `--profile s3` adds a single-process
 # SeaweedFS for S3 semantics; set OPPORTUNITY_OBJECT_STORAGE=S3 to point api/worker at it.
 # `--profile observability` (COMPOSE_PROFILES=observability) adds the OpenTelemetry Collector, Prometheus, Jaeger, Loki
@@ -193,6 +194,39 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  # Developer OIDC provider (E05-T01, ADR-015 D3): Keycloak (Apache-2.0), realm `opportunity` with demo users and
+  # groups imported from keycloak/opportunity-realm.json on every start (no volume: changes made in the admin console
+  # are lost on re-create). Full uses the customer's IdP. Browsers and the API must see the same issuer, so the
+  # front-end URL is pinned to http://localhost:KEYCLOAK_PORT and the API fetches discovery/JWKS/tokens over the
+  # compose network (hostname-backchannel-dynamic).
+  keycloak:
+    image: keycloak/keycloak:${KEYCLOAK:?run with --env-file ../../versions.env}@${KEYCLOAK_DIGEST:?run with --env-file ../../versions.env}
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env (./opportunity.sh init)}
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8180}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+      # Stateless: the realm file is the source of truth and is re-imported on every start.
+      KC_DB: dev-mem
+    volumes:
+      - ./keycloak/opportunity-realm.json:/opt/keycloak/data/import/opportunity-realm.json:ro
+    ports:
+      - "${OPPORTUNITY_BIND:-127.0.0.1}:${KEYCLOAK_PORT:-8180}:8080"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    # No curl in the image: probe the management port's readiness endpoint with bash.
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      start_interval: 2s
+      retries: 18
+    restart: unless-stopped
+
   api:
     <<: *app-hardening
     image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-api:${OPPORTUNITY_IMAGE_TAG:-dev}
@@ -202,6 +236,15 @@ services:
       target: api
     environment:
       <<: *app-environment
+      # OIDC with the BFF session (ADR-015 D3/D4). Sign in at http://localhost:API_PORT/bff/login: the session
+      # cookie is __Host- prefixed and Secure, which browsers accept over plain HTTP only for localhost.
+      Authentication__PublicOrigin: ${OPPORTUNITY_PUBLIC_ORIGIN:-http://localhost:8081}
+      Authentication__Oidc__Authority: http://localhost:${KEYCLOAK_PORT:-8180}/realms/opportunity
+      Authentication__Oidc__MetadataAddress: http://keycloak:8080/realms/opportunity/.well-known/openid-configuration
+      Authentication__Oidc__ClientId: opportunity-web
+      # The dev realm's client credential (keycloak/opportunity-realm.json); a real IdP's secret comes from a secret store.
+      Authentication__Oidc__ClientSecret: opportunity-dev-client
+      Authentication__Oidc__RequireHttpsMetadata: "false"
     volumes:
       - objects:/var/lib/opportunity/objects
     ports:

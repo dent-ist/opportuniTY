@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
@@ -59,8 +60,9 @@ public static class HealthEndpoints
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
-        endpoints.MapHealthChecks(LivePath, Probe(HealthTags.Live)).ExcludeFromDescription();
-        endpoints.MapHealthChecks(ReadyPath, Probe(HealthTags.Ready)).ExcludeFromDescription();
+        // Probes are anonymous: the API's fallback policy requires a signed-in user everywhere else (ADR-015 D5).
+        endpoints.MapHealthChecks(LivePath, Probe(HealthTags.Live)).ExcludeFromDescription().AllowAnonymous();
+        endpoints.MapHealthChecks(ReadyPath, Probe(HealthTags.Ready)).ExcludeFromDescription().AllowAnonymous();
         return endpoints;
     }
 

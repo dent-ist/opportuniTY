@@ -26,8 +26,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("Health:CheckTimeout", "00:00:01");
+        builder.UsePlaceholderAuthenticationSettings();
         builder.ConfigureTestServices(services =>
         {
+            services.AddTestUserAuthentication();
             services.AddSingleton(Dependency);
             services.AddSingleton(Jobs);
             services.AddSingleton<IApiEndpointModule, ConventionsTestEndpoints>();

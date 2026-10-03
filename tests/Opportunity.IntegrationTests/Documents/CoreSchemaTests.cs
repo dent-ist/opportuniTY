@@ -44,7 +44,8 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
         tables.Should().Contain(["workspace", "document", "document_projection_state", "retired_control_number",
             "stored_object", "page_set", "page", "page_image"]);
 
-        // P1, P2, P4: every primary key, unique constraint and secondary index leads with workspace_id.
+        // P1, P2, P4: every primary key, unique constraint and secondary index leads with workspace_id (installation-level
+        // tables, marked @global like the migrator's tenant-key lint, are exempt).
         var indexes = await db.ColumnAsync(
             """
             SELECT ic.relname::text
@@ -53,6 +54,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             JOIN pg_class t ON t.oid = i.indrelid
             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = i.indkey[0]
             WHERE t.relnamespace = 'opportunity'::regnamespace AND a.attname <> 'workspace_id'
+              AND coalesce(obj_description(t.oid, 'pg_class'), '') NOT LIKE '@global%'
             """);
         indexes.Should().BeEmpty();
 
@@ -64,6 +66,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             JOIN pg_attribute fa ON fa.attrelid = c.conrelid AND fa.attnum = c.conkey[1]
             JOIN pg_attribute ta ON ta.attrelid = c.confrelid AND ta.attnum = c.confkey[1]
             WHERE c.connamespace = 'opportunity'::regnamespace AND c.contype = 'f'
+              AND coalesce(obj_description(c.conrelid, 'pg_class'), '') NOT LIKE '@global%'
               AND (fa.attname <> 'workspace_id' OR ta.attname <> 'workspace_id'
                    OR (cardinality(c.conkey) = 1 AND c.confrelid <> 'opportunity.workspace'::regclass))
             """);

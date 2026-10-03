@@ -12,6 +12,7 @@ One machine, one of everything (architecture baseline §16/§29 developer regres
 | `postgres` | `postgres:$POSTGRES@$POSTGRES_DIGEST` | Authoritative store. First start creates the database and logins (`postgres/init`) | 5432 |
 | `opensearch` | `opensearchproject/opensearch:$OPENSEARCH@…` | Single node, `discovery.type=single-node`, fixed heap (`OPENSEARCH_HEAP`, default 1g) | 9200 |
 | `rabbitmq` | `rabbitmq:$RABBITMQ@…` | Broker with the management UI and Prometheus plugins | 5672, 15672 (UI) |
+| `keycloak` | `keycloak/keycloak:$KEYCLOAK@…` (Apache-2.0) | Developer OIDC provider: realm `opportunity` with demo users and groups, imported from [`keycloak/opportunity-realm.json`](keycloak/opportunity-realm.json) on every start (in-memory, nothing persists) | 8180 |
 | `migrator` | built from `deploy/docker/dotnet.Dockerfile` (`migrator`) | One-shot: applies migrations and bootstrap steps, then exits 0 | — |
 | `api` | `…` (`api`) | REST API; healthy = `/health/ready` (includes the schema version check) | 8081 |
 | `worker` | `…` (`worker`), `Workers__Enabled=all` | Combined worker: every worker type in one process | — |
@@ -32,6 +33,27 @@ One machine, one of everything (architecture baseline §16/§29 developer regres
 - **Database logins**: `opportunity_owner` runs the migrator and owns every object (no superuser, no CREATEROLE);
   `opportunity_runtime` (api and worker, `ConnectionStrings__App`) is a member of `opportunity_app`: DML only.
 - The application containers run as in production: non-root, `read_only`, `cap_drop: [ALL]`, `no-new-privileges`.
+
+## Signing in (developer IdP)
+
+The API is an OIDC backend-for-frontend ([docs/security/authentication.md](../../docs/security/authentication.md)):
+open <http://localhost:8081/bff/login?returnUrl=/api/v1/me>, sign in at Keycloak and you land on `/api/v1/me` with a
+session. Use `localhost`, not `127.0.0.1`: the session cookie is `Secure` and `__Host-` prefixed, which browsers
+accept over plain HTTP only for `localhost`.
+
+| User | Groups | Password |
+|---|---|---|
+| `admin.dev` | `workspace-admins` | `opportunity` |
+| `reviewer.dev` | `reviewers` | `opportunity` |
+| `privilege.dev` | `reviewers`, `privilege-reviewers` | `opportunity` |
+| `walled.dev` | `reviewers`, `wall-project-falcon` (ethical-wall demo, Q-13) | `opportunity` |
+| `auditor.dev` | `auditors` | `opportunity` |
+
+Keycloak's admin console is <http://localhost:8180/admin> (user `admin`, password `KEYCLOAK_ADMIN_PASSWORD` from
+`.env`); changes made there are lost when the container is re-created. The realm registers redirect URIs for the API
+on port 8081, `ng serve` on 4200 (set `OPPORTUNITY_PUBLIC_ORIGIN=http://localhost:4200` and proxy `/api` and `/bff`
+to the API) and `https://localhost`, and back-channel logout to `http://api:8080/bff/backchannel-logout`. These demo
+credentials are public: never expose this IdP beyond your machine.
 
 ## Hardware and platforms (Q-39)
 

@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.TestHost;
 
 using Opportunity.Hosting.Health;
 using Opportunity.Hosting.Workers;
+using Opportunity.IntegrationTests.Api;
 using Opportunity.Migrator;
 
 namespace Opportunity.IntegrationTests.Migrations;
@@ -24,8 +25,9 @@ public sealed class HostSchemaReadinessTests(MigrationPostgresFixture postgres)
     public async Task Api_is_not_ready_until_the_migrator_has_run()
     {
         var connectionString = await postgres.CreateDatabaseAsync();
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
-            b.UseSetting($"ConnectionStrings:{PostgresReadiness.ConnectionStringName}", connectionString));
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
+            .UsePlaceholderAuthenticationSettings()
+            .UseSetting($"ConnectionStrings:{PostgresReadiness.ConnectionStringName}", connectionString));
         using var client = factory.CreateClient();
 
         var before = await client.GetAsync("/health/ready", Ct);
@@ -68,7 +70,7 @@ public sealed class HostSchemaReadinessTests(MigrationPostgresFixture postgres)
     [Fact]
     public async Task Without_a_connection_string_no_schema_check_is_registered()
     {
-        await using var factory = new WebApplicationFactory<Program>();
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UsePlaceholderAuthenticationSettings());
         using var client = factory.CreateClient();
 
         var ready = await client.GetAsync("/health/ready", Ct);
