@@ -6,6 +6,8 @@
 # Services: postgres, opensearch (1 node), rabbitmq (management UI), migrator (one-shot), api, worker (combined), web.
 # Object store: the filesystem provider on a named volume (ADR-020 rule 1). `--profile s3` adds a single-process
 # SeaweedFS for S3 semantics; set OPPORTUNITY_OBJECT_STORAGE=S3 to point api/worker at it.
+# `--profile observability` (COMPOSE_PROFILES=observability) adds the OpenTelemetry Collector, Prometheus, Jaeger, Loki
+# and Grafana (ADR-017, Q-42); set OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 to make api/worker export.
 # No Redis/Valkey (architecture baseline §16, §34).
 
 name: ${COMPOSE_PROJECT_NAME:-opportunity-dev}
@@ -33,6 +35,12 @@ x-app-environment: &app-environment
   ObjectStorage__S3__Bucket: opportunity
   ObjectStorage__S3__AccessKey: ${S3_ACCESS_KEY:-opportunity}
   ObjectStorage__S3__SecretKey: ${S3_SECRET_KEY:-}
+  # OpenTelemetry (ADR-017): off unless an OTLP endpoint is set, e.g. http://otel-collector:4317 with the
+  # `observability` profile. Logs are JSON on stdout with trace/span IDs and the correlation scope.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL:-15000}
+  Logging__Console__FormatterName: json
+  Logging__Console__FormatterOptions__IncludeScopes: "true"
 
 # The chiseled .NET images have no curl/wget; HealthProbe ships in the image. Healthy = /health/ready (dependencies
 # and schema version), stricter than the image's own liveness HEALTHCHECK.
@@ -235,6 +243,147 @@ services:
       api:
         condition: service_healthy
 
+  # --- Observability profile (ADR-017, Q-42): `--profile observability` ------------------------------------------
+  # Optional and for development/evaluation. Licenses: OpenTelemetry Collector, Prometheus, Jaeger and the exporters
+  # are Apache-2.0; Grafana and Loki are AGPL-3.0 and are run only as unmodified, optional external services (Q-38).
+  # Memory limits keep the whole profile at <= 1.5 GiB. Ports are published on OPPORTUNITY_BIND (127.0.0.1).
+  otel-collector:
+    profiles: [observability]
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR:?run with --env-file ../../versions.env}@${OTEL_COLLECTOR_DIGEST:?run with --env-file ../../versions.env}
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      # OTLP for an API or worker run from the IDE on the host: OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317
+      - "${OPPORTUNITY_BIND:-127.0.0.1}:${OTLP_GRPC_PORT:-4317}:4317"
+      - "${OPPORTUNITY_BIND:-127.0.0.1}:${OTLP_HTTP_PORT:-4318}:4318"
+    mem_limit: 256m
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    restart: unless-stopped
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:${PROMETHEUS:?run with --env-file ../../versions.env}@${PROMETHEUS_DIGEST:?run with --env-file ../../versions.env}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=3d
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${OPPORTUNITY_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      start_interval: 1s
+      retries: 6
+    restart: unless-stopped
+
+  jaeger:
+    profiles: [observability]
+    image: jaegertracing/jaeger:${JAEGER:?run with --env-file ../../versions.env}@${JAEGER_DIGEST:?run with --env-file ../../versions.env}
+    command: ["--config=/etc/jaeger/config.yaml"]
+    volumes:
+      - ./observability/jaeger.yaml:/etc/jaeger/config.yaml:ro
+    ports:
+      - "${OPPORTUNITY_BIND:-127.0.0.1}:${JAEGER_UI_PORT:-16686}:16686"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:13133/status"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      start_interval: 1s
+      retries: 6
+    restart: unless-stopped
+
+  loki:
+    profiles: [observability]
+    image: grafana/loki:${LOKI:?run with --env-file ../../versions.env}@${LOKI_DIGEST:?run with --env-file ../../versions.env}
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    mem_limit: 256m
+    restart: unless-stopped
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:${GRAFANA:?run with --env-file ../../versions.env}@${GRAFANA_DIGEST:?run with --env-file ../../versions.env}
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env (./opportunity.sh init)}
+      # Read-only anonymous viewer for local dashboards; editing needs the admin login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/opportunity-overview.json
+      # No phone-home from a self-hosted install.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${OPPORTUNITY_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 2s
+      retries: 6
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    restart: unless-stopped
+
+  # Infrastructure exporters scraped by Prometheus (RabbitMQ exposes its own endpoint via rabbitmq_prometheus).
+  postgres-exporter:
+    profiles: [observability]
+    image: prometheuscommunity/postgres-exporter:${POSTGRES_EXPORTER:?run with --env-file ../../versions.env}@${POSTGRES_EXPORTER_DIGEST:?run with --env-file ../../versions.env}
+    command: ["--no-collector.wal"]
+    environment:
+      # Development: the DML-only runtime login reads the statistics views. Full uses a dedicated pg_monitor login.
+      DATA_SOURCE_URI: postgres:5432/${OPPORTUNITY_DB:-opportunity}?sslmode=disable
+      DATA_SOURCE_USER: ${OPPORTUNITY_DB_APP_USER:-opportunity_runtime}
+      DATA_SOURCE_PASS: ${OPPORTUNITY_DB_APP_PASSWORD:?set OPPORTUNITY_DB_APP_PASSWORD in .env}
+    mem_limit: 64m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  opensearch-exporter:
+    profiles: [observability]
+    image: prometheuscommunity/elasticsearch-exporter:${OPENSEARCH_EXPORTER:?run with --env-file ../../versions.env}@${OPENSEARCH_EXPORTER_DIGEST:?run with --env-file ../../versions.env}
+    command: ["--es.uri=http://opensearch:9200", "--es.timeout=10s"]
+    mem_limit: 64m
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
 configs:
   seaweedfs-s3:
     content: |
@@ -247,3 +396,6 @@ volumes:
   rabbitmq-data:
   seaweedfs-data:
   objects:
+  prometheus-data:
+  loki-data:
+  grafana-data:

@@ -1,0 +1,41 @@
+# Jaeger v2 (Apache-2.0) all-in-one for the `observability` profile: OTLP in, in-memory trace store (bounded), UI and
+# query API on 16686 (Grafana's Jaeger datasource reads it). Traces are lost on restart; that is fine for development.
+service:
+  extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]
+  telemetry:
+    logs:
+      level: warn
+
+extensions:
+  healthcheckv2:
+    use_v2: true
+    http:
+      endpoint: 0.0.0.0:13133
+  jaeger_query:
+    storage:
+      traces: memstore
+    http:
+      endpoint: 0.0.0.0:16686
+  jaeger_storage:
+    backends:
+      memstore:
+        memory:
+          max_traces: 20000
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch: {}
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: memstore

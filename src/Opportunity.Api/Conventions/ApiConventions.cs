@@ -79,6 +79,7 @@ public static class ApiConventions
         app.UseStatusCodePages();
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseRouting();
+        app.UseMiddleware<WorkspaceTelemetryMiddleware>();
         app.UseMiddleware<IdempotencyMiddleware>();
         return app;
     }

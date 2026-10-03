@@ -44,6 +44,7 @@ public static class OpportunityWorkerHost
             builder.Configuration[$"{WorkerHostOptions.SectionName}:{nameof(WorkerHostOptions.Enabled)}"], out _);
 
         builder.Services.AddSingleton(sp => ActivatorUtilities.CreateInstance<WorkerStatus>(sp, enabled));
+        builder.Services.AddSingleton<WorkerTelemetry>();
         builder.Services.AddHealthChecks().AddCheck<WorkerModulesReadyCheck>(ReadyCheckName, tags: [HealthTags.Ready]);
 
         foreach (var type in enabled)
