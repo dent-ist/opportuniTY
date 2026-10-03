@@ -206,7 +206,7 @@ public class JobStateMachinePropertyTests
 
         private void Dispatch(int index)
         {
-            if (Chunks[index].Status == JobChunkStatus.Pending && Status == JobStatus.Running)
+            if (Chunks[index].Status is (JobChunkStatus.Pending or JobChunkStatus.RetryWait) && Status == JobStatus.Running)
             {
                 Move(Chunks[index], JobChunkTrigger.Dispatch);
             }

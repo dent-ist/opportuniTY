@@ -31,6 +31,7 @@ public class JobStateMachineTests
     private static readonly HashSet<(JobChunkStatus, JobChunkTrigger, JobChunkStatus)> ExpectedChunkEdges =
     [
         (JobChunkStatus.Pending, JobChunkTrigger.Dispatch, JobChunkStatus.Dispatched),
+        (JobChunkStatus.RetryWait, JobChunkTrigger.Dispatch, JobChunkStatus.Dispatched),
         (JobChunkStatus.Pending, JobChunkTrigger.Claim, JobChunkStatus.Running),
         (JobChunkStatus.Dispatched, JobChunkTrigger.Claim, JobChunkStatus.Running),
         (JobChunkStatus.RetryWait, JobChunkTrigger.Claim, JobChunkStatus.Running),
