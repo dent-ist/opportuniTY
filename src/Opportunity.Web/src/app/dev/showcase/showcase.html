@@ -1,0 +1,299 @@
+<header class="bar">
+  <h1>Component showcase</h1>
+  <p class="bar__note">Development only · ADR-018</p>
+  <div class="bar__controls">
+    <opp-select
+      label="Theme"
+      [value]="prefs.theme()"
+      (valueChange)="setTheme($event)"
+      [options]="themeOptions"
+    />
+    <opp-select
+      label="Density"
+      [value]="prefs.density()"
+      (valueChange)="setDensity($event)"
+      [options]="densityOptions"
+    />
+    <opp-select
+      label="Formats"
+      [value]="prefs.locale()"
+      (valueChange)="setLocale($event)"
+      [options]="localeOptions"
+    />
+  </div>
+</header>
+
+<main class="content">
+  <section aria-labelledby="sc-layout">
+    <h2 id="sc-layout">Review workspace layout</h2>
+    <p>
+      Saved-search browser, document list, viewer and coding pane built from nested split panes.
+      Pane sizes persist per user.
+    </p>
+    <div class="layout">
+      <opp-split-pane
+        label="Resize browser"
+        [size]="18"
+        [min]="10"
+        [max]="35"
+        storageKey="showcase.browser"
+        collapsible
+      >
+        <nav oppSplitStart class="pane" aria-label="Saved searches">
+          <h3 class="pane__title">Saved Searches</h3>
+          <ul class="tree">
+            <li><a href="#sc-layout">My searches</a></li>
+            <li><a href="#sc-layout">Hot documents</a></li>
+            <li><a href="#sc-layout">Privilege review</a></li>
+          </ul>
+        </nav>
+        <opp-split-pane
+          oppSplitEnd
+          sizedPane="end"
+          label="Resize coding pane"
+          [size]="30"
+          [min]="20"
+          [max]="50"
+          storageKey="showcase.coding"
+          collapsible
+        >
+          <opp-split-pane
+            oppSplitStart
+            direction="column"
+            label="Resize document list"
+            [size]="50"
+            [min]="20"
+            [max]="80"
+            storageKey="showcase.list"
+          >
+            <div oppSplitStart class="pane" data-density="compact">
+              <table class="grid">
+                <caption class="opp-visually-hidden">
+                  Documents (sample)
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">
+                      <opp-checkbox
+                        ariaLabel="Select all documents"
+                        [(checked)]="selectAll"
+                        [indeterminate]="true"
+                      />
+                    </th>
+                    <th scope="col">Control Number</th>
+                    <th scope="col">Date Sent</th>
+                    <th scope="col">From</th>
+                    <th scope="col">Subject</th>
+                    <th scope="col">Designation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of rows; track row.control) {
+                    <tr>
+                      <td>
+                        <opp-checkbox
+                          [ariaLabel]="'Select ' + row.control"
+                          [checked]="selectAll()"
+                        />
+                      </td>
+                      <td>{{ row.control }}</td>
+                      <td>
+                        <time [attr.datetime]="row.date">{{ row.date.slice(0, 10) }}</time>
+                      </td>
+                      <td>{{ row.from }}</td>
+                      <td>{{ row.subject }}</td>
+                      <td>
+                        @if (row.designation) {
+                          <opp-protection-badge [kind]="row.designation" />
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <section oppSplitEnd class="pane" oppTabs aria-label="Document viewer">
+              <ul oppTabList [(selectedTab)]="viewerMode" aria-label="Viewer mode">
+                <li oppTab value="text">Extracted Text</li>
+                <li oppTab value="native">Native</li>
+                <li oppTab value="image">Image</li>
+                <li oppTab value="production">Production</li>
+              </ul>
+              <div oppTabPanel value="text" class="viewer">
+                <p>From: a.lee&#64;example.test — Subject: Quarterly forecast</p>
+                <p>Extracted text of DEMO-000001 with <mark>persistent highlights</mark>.</p>
+              </div>
+              <div oppTabPanel value="native" class="viewer">
+                <opp-empty-state
+                  title="No native preview"
+                  message="Natives are not rendered in the browser."
+                />
+              </div>
+              <div oppTabPanel value="image" class="viewer">
+                <opp-loading-state label="Rendering page images…" />
+              </div>
+              <div oppTabPanel value="production" class="viewer">
+                <opp-empty-state
+                  title="Not produced"
+                  message="This document is not in any production."
+                />
+              </div>
+            </section>
+          </opp-split-pane>
+          <aside oppSplitEnd class="pane coding" aria-label="Coding pane">
+            <h3 class="pane__title">Coding Layout: First-level review</h3>
+            <opp-select
+              label="Responsiveness"
+              [options]="responsiveOptions"
+              [(value)]="choice"
+              placeholder="Choose…"
+            />
+            <opp-checkbox [(checked)]="privileged">Privileged</opp-checkbox>
+            <div class="row">
+              <button type="button" oppButton>Save</button>
+              <button type="button" oppButton="primary">Save &amp; Next</button>
+            </div>
+          </aside>
+        </opp-split-pane>
+      </opp-split-pane>
+    </div>
+  </section>
+
+  <section aria-labelledby="sc-buttons">
+    <h2 id="sc-buttons">Buttons</h2>
+    <div class="row">
+      <button type="button" oppButton="primary">Primary</button>
+      <button type="button" oppButton>Secondary</button>
+      <button type="button" oppButton="ghost">Ghost</button>
+      <button type="button" oppButton="danger">Danger</button>
+      <button type="button" oppButton disabled>Disabled</button>
+      <button type="button" oppButton="primary" busy>Saving…</button>
+      <button type="button" oppIconButton label="Refresh results">
+        <opp-icon name="refresh" />
+      </button>
+      <button type="button" oppIconButton="secondary" label="Search">
+        <opp-icon name="search" />
+      </button>
+    </div>
+  </section>
+
+  <section aria-labelledby="sc-fields">
+    <h2 id="sc-fields">Fields</h2>
+    <div class="fields">
+      <opp-text-field label="Search name" [(value)]="name" hint="Visible to you only." />
+      <opp-text-field
+        label="Control number"
+        [required]="true"
+        error="Enter a control number, e.g. ABC-000123."
+      />
+      <opp-select
+        label="Responsiveness"
+        [options]="responsiveOptions"
+        [(value)]="choice"
+        placeholder="Choose…"
+      />
+      <opp-text-field label="Disabled" [disabled]="true" value="Read only value" />
+    </div>
+    <div class="row">
+      <opp-checkbox [(checked)]="privileged">Privileged</opp-checkbox>
+      <opp-checkbox [indeterminate]="true">Some selected</opp-checkbox>
+      <opp-checkbox [disabled]="true">Disabled</opp-checkbox>
+    </div>
+  </section>
+
+  <section aria-labelledby="sc-dialog">
+    <h2 id="sc-dialog">Dialogs</h2>
+    <div class="row">
+      <button type="button" oppButton (click)="openDialog()">Open form dialog</button>
+      <button type="button" oppButton (click)="confirm(false)">Confirm (danger)</button>
+      <button type="button" oppButton (click)="confirm(true)">Confirm (typed)</button>
+      <span>Last result: {{ lastConfirm() }}</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="sc-toast">
+    <h2 id="sc-toast">Toasts and announcements</h2>
+    <div class="row">
+      <button type="button" oppButton (click)="toast('info')">Info toast</button>
+      <button type="button" oppButton (click)="toast('success')">Success toast</button>
+      <button type="button" oppButton (click)="toast('error')">Error toast (persists)</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="sc-state">
+    <h2 id="sc-state">Data-state indicators</h2>
+    <div class="row">
+      <opp-protection-badge kind="privileged" />
+      <opp-protection-badge kind="aeo" />
+      <opp-protection-badge kind="confidential" />
+      <opp-protection-badge kind="restricted" />
+    </div>
+    <div class="row">
+      <opp-freshness state="current" asOf="2026-10-03T10:42:00Z" />
+      <opp-freshness state="updating" [pending]="1240" />
+      <opp-freshness state="delayed" asOf="2026-10-03T10:30:00Z" />
+    </div>
+    <div class="row">
+      <span>Hits: <opp-count [value]="12400" /></span>
+      <span>Hits: <opp-count [value]="10000" relation="gte" /></span>
+      <span>Hits: <opp-count [value]="12400" relation="approx" /></span>
+    </div>
+    <div class="row">
+      <opp-status-pill status="queued" />
+      <opp-status-pill status="running" />
+      <opp-status-pill status="succeeded" />
+      <opp-status-pill status="partial" />
+      <opp-status-pill status="failed" />
+      <opp-status-pill status="cancelled" />
+      <opp-badge tone="info" icon="info">Saved · indexing</opp-badge>
+    </div>
+    <div class="fields">
+      <opp-progress label="Committed" [value]="100" />
+      <opp-progress label="Searchable" [value]="63" />
+      <opp-progress label="Rendering" />
+    </div>
+  </section>
+
+  <section aria-labelledby="sc-async">
+    <h2 id="sc-async">Loading, empty and error states</h2>
+    <div class="states">
+      <opp-loading-state label="Loading documents…" />
+      <opp-empty-state
+        title="No documents match"
+        message="Change the search or include family members."
+      >
+        <button type="button" oppButton>Edit search</button>
+      </opp-empty-state>
+      <opp-error-state [error]="serverError" />
+    </div>
+  </section>
+
+  <section aria-labelledby="sc-keys">
+    <h2 id="sc-keys">Keyboard interaction</h2>
+    @for (doc of keyboardDocs; track doc.component) {
+      <table class="keys">
+        <caption>
+          {{
+            doc.component
+          }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Key</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (k of doc.keys; track k[0]) {
+            <tr>
+              <td>
+                <kbd>{{ k[0] }}</kbd>
+              </td>
+              <td>{{ k[1] }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </section>
+</main>

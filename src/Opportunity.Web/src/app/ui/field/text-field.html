@@ -1,0 +1,31 @@
+<label class="field__label" [for]="id">
+  {{ label() }}
+  @if (required()) {
+    <span class="field__required" aria-hidden="true">*</span>
+  }
+</label>
+<input
+  #input
+  class="field__control"
+  [id]="id"
+  [type]="type()"
+  [value]="value()"
+  [placeholder]="placeholder() ?? ''"
+  [attr.autocomplete]="autocomplete()"
+  [disabled]="disabled()"
+  [readOnly]="readonly()"
+  [required]="required()"
+  [attr.aria-invalid]="ariaInvalid() || null"
+  [attr.aria-describedby]="describedBy()"
+  (input)="onInput($event)"
+  (blur)="touch.emit()"
+/>
+@if (hint()) {
+  <p class="field__hint" [id]="hintId">{{ hint() }}</p>
+}
+@if (showError()) {
+  <p class="field__error" [id]="errorId">
+    <span class="opp-visually-hidden">Error:</span>
+    {{ error() }}
+  </p>
+}

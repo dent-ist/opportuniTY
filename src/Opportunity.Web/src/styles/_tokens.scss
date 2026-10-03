@@ -1,0 +1,252 @@
+// Design tokens (ADR-018 §6). The ONLY file allowed to contain literal colours: everything else consumes
+// `var(--opp-*)`. Colour tokens are 6-digit hex so the contrast test (src/app/ui/tokens/tokens.spec.ts) can
+// parse them; the pairs it checks are listed there. Themes: light (default), dark, high-contrast; `system`
+// follows prefers-color-scheme. Density: comfortable (default) and compact (review grids), scoped by
+// `data-density` on any element.
+
+@mixin theme-light {
+  color-scheme: light;
+  --opp-color-bg: #f5f6f8;
+  --opp-color-surface: #ffffff;
+  --opp-color-surface-raised: #ffffff;
+  --opp-color-surface-sunken: #eceef1;
+  --opp-color-hover: #e6e9ed;
+  --opp-color-selected: #d9ebeb;
+  --opp-color-text: #1a1e23;
+  --opp-color-text-muted: #525b66;
+  --opp-color-text-inverse: #ffffff;
+  --opp-color-border: #d3d8de;
+  --opp-color-border-strong: #747e8b;
+  --opp-color-accent: #0a6569;
+  --opp-color-accent-hover: #084f52;
+  --opp-color-on-accent: #ffffff;
+  --opp-color-accent-text: #0a6569;
+  --opp-color-focus: #1b4fd1;
+  --opp-color-backdrop: #0d1014;
+  --opp-color-shadow: #0d1014;
+  --opp-color-info-bg: #e7effa;
+  --opp-color-info-text: #1d4c8c;
+  --opp-color-info-border: #3b6fb6;
+  --opp-color-success-bg: #e3f2e8;
+  --opp-color-success-text: #175c2d;
+  --opp-color-success-border: #2f8a4c;
+  --opp-color-warning-bg: #fdf1d3;
+  --opp-color-warning-text: #6e4300;
+  --opp-color-warning-border: #a86d00;
+  --opp-color-danger-bg: #fbe9e7;
+  --opp-color-danger-text: #96200f;
+  --opp-color-danger-border: #c2412d;
+  --opp-color-danger: #b0261a;
+  --opp-color-danger-hover: #8f1d13;
+  --opp-color-on-danger: #ffffff;
+  --opp-color-privileged-bg: #f1e7f9;
+  --opp-color-privileged-text: #622683;
+  --opp-color-privileged-border: #8a47b0;
+  --opp-color-aeo-bg: #fbe6ee;
+  --opp-color-aeo-text: #851b42;
+  --opp-color-aeo-border: #b3305e;
+  --opp-color-restricted-bg: #2a2f36;
+  --opp-color-restricted-text: #ffffff;
+  --opp-color-restricted-border: #2a2f36;
+  --opp-focus-ring-width: 2px;
+}
+
+@mixin theme-dark {
+  color-scheme: dark;
+  --opp-color-bg: #121519;
+  --opp-color-surface: #1a1e23;
+  --opp-color-surface-raised: #22272e;
+  --opp-color-surface-sunken: #0e1013;
+  --opp-color-hover: #2a3038;
+  --opp-color-selected: #173a3c;
+  --opp-color-text: #e5e8ec;
+  --opp-color-text-muted: #a2abb6;
+  --opp-color-text-inverse: #121519;
+  --opp-color-border: #343b45;
+  --opp-color-border-strong: #7b8693;
+  --opp-color-accent: #5bbcbf;
+  --opp-color-accent-hover: #7ccdcf;
+  --opp-color-on-accent: #0a1415;
+  --opp-color-accent-text: #6cc6c9;
+  --opp-color-focus: #82aaff;
+  --opp-color-backdrop: #000000;
+  --opp-color-shadow: #000000;
+  --opp-color-info-bg: #172a45;
+  --opp-color-info-text: #a9c8f7;
+  --opp-color-info-border: #5b89cf;
+  --opp-color-success-bg: #15301f;
+  --opp-color-success-text: #93d6a8;
+  --opp-color-success-border: #4c9f67;
+  --opp-color-warning-bg: #36290b;
+  --opp-color-warning-text: #f2c866;
+  --opp-color-warning-border: #b8892a;
+  --opp-color-danger-bg: #3a1c1a;
+  --opp-color-danger-text: #ffb0a6;
+  --opp-color-danger-border: #d0675a;
+  --opp-color-danger: #f28b7d;
+  --opp-color-danger-hover: #f6a69b;
+  --opp-color-on-danger: #1a0705;
+  --opp-color-privileged-bg: #2e1c3a;
+  --opp-color-privileged-text: #dbb7f1;
+  --opp-color-privileged-border: #a06cc4;
+  --opp-color-aeo-bg: #3a1926;
+  --opp-color-aeo-text: #f4a9c5;
+  --opp-color-aeo-border: #c85c84;
+  --opp-color-restricted-bg: #d9dde2;
+  --opp-color-restricted-text: #121519;
+  --opp-color-restricted-border: #d9dde2;
+  --opp-focus-ring-width: 2px;
+}
+
+@mixin theme-high-contrast {
+  color-scheme: light;
+  --opp-color-bg: #ffffff;
+  --opp-color-surface: #ffffff;
+  --opp-color-surface-raised: #ffffff;
+  --opp-color-surface-sunken: #f2f2f2;
+  --opp-color-hover: #e6e6e6;
+  --opp-color-selected: #d6e4ff;
+  --opp-color-text: #000000;
+  --opp-color-text-muted: #262626;
+  --opp-color-text-inverse: #ffffff;
+  --opp-color-border: #000000;
+  --opp-color-border-strong: #000000;
+  --opp-color-accent: #003a8c;
+  --opp-color-accent-hover: #002766;
+  --opp-color-on-accent: #ffffff;
+  --opp-color-accent-text: #003a8c;
+  --opp-color-focus: #b3006b;
+  --opp-color-backdrop: #000000;
+  --opp-color-shadow: #000000;
+  --opp-color-info-bg: #ffffff;
+  --opp-color-info-text: #00307a;
+  --opp-color-info-border: #00307a;
+  --opp-color-success-bg: #ffffff;
+  --opp-color-success-text: #00561f;
+  --opp-color-success-border: #00561f;
+  --opp-color-warning-bg: #ffffff;
+  --opp-color-warning-text: #5c3300;
+  --opp-color-warning-border: #5c3300;
+  --opp-color-danger-bg: #ffffff;
+  --opp-color-danger-text: #8f0000;
+  --opp-color-danger-border: #8f0000;
+  --opp-color-danger: #8f0000;
+  --opp-color-danger-hover: #660000;
+  --opp-color-on-danger: #ffffff;
+  --opp-color-privileged-bg: #ffffff;
+  --opp-color-privileged-text: #4b0f73;
+  --opp-color-privileged-border: #4b0f73;
+  --opp-color-aeo-bg: #ffffff;
+  --opp-color-aeo-text: #6e0030;
+  --opp-color-aeo-border: #6e0030;
+  --opp-color-restricted-bg: #000000;
+  --opp-color-restricted-text: #ffffff;
+  --opp-color-restricted-border: #000000;
+  --opp-focus-ring-width: 3px;
+}
+
+@mixin density-comfortable {
+  --opp-control-height: 2rem;
+  --opp-row-height: 2rem;
+  --opp-control-padding-x: 0.75rem;
+  --opp-cell-padding-x: 0.75rem;
+  --opp-font-size-control: var(--opp-font-size-md);
+  --opp-gap: var(--opp-space-3);
+}
+
+@mixin density-compact {
+  // 1.5rem = 24 CSS px: the WCAG 2.5.8 minimum target size, never go below it.
+  --opp-control-height: 1.5rem;
+  --opp-row-height: 1.5rem;
+  --opp-control-padding-x: 0.5rem;
+  --opp-cell-padding-x: 0.375rem;
+  --opp-font-size-control: var(--opp-font-size-sm);
+  --opp-gap: var(--opp-space-2);
+}
+
+:root {
+  // Typography: system stacks only (no web fonts to license, host or allow in CSP).
+  --opp-font-family-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', 'Liberation Sans',
+    Arial, sans-serif;
+  --opp-font-family-mono:
+    ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Segoe UI Mono', 'Liberation Mono', Menlo,
+    Consolas, monospace;
+  --opp-font-size-xs: 0.75rem;
+  --opp-font-size-sm: 0.8125rem;
+  --opp-font-size-md: 0.875rem;
+  --opp-font-size-lg: 1rem;
+  --opp-font-size-xl: 1.25rem;
+  --opp-font-size-2xl: 1.5rem;
+  --opp-font-weight-regular: 400;
+  --opp-font-weight-medium: 500;
+  --opp-font-weight-semibold: 600;
+  --opp-line-height-tight: 1.25;
+  --opp-line-height-normal: 1.5;
+
+  // Spacing: 4 px grid.
+  --opp-space-0: 0;
+  --opp-space-1: 0.25rem;
+  --opp-space-2: 0.5rem;
+  --opp-space-3: 0.75rem;
+  --opp-space-4: 1rem;
+  --opp-space-5: 1.5rem;
+  --opp-space-6: 2rem;
+  --opp-space-7: 3rem;
+
+  --opp-radius-sm: 2px;
+  --opp-radius-md: 4px;
+  --opp-radius-lg: 8px;
+  --opp-radius-pill: 999px;
+
+  --opp-border-width: 1px;
+  --opp-focus-ring-offset: 2px;
+  --opp-target-min: 1.5rem;
+  --opp-splitter-size: 0.5rem;
+
+  --opp-elevation-1: 0 1px 2px color-mix(in srgb, var(--opp-color-shadow) 18%, transparent);
+  --opp-elevation-2: 0 4px 12px color-mix(in srgb, var(--opp-color-shadow) 22%, transparent);
+  --opp-elevation-3: 0 12px 32px color-mix(in srgb, var(--opp-color-shadow) 30%, transparent);
+
+  --opp-z-sticky: 10;
+  --opp-z-overlay: 1000;
+  --opp-z-toast: 1100;
+
+  --opp-motion-duration: 120ms;
+  --opp-motion-easing: cubic-bezier(0.2, 0, 0, 1);
+
+  @include theme-light;
+  @include density-comfortable;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    @include theme-dark;
+  }
+}
+
+[data-theme='light'] {
+  @include theme-light;
+}
+
+[data-theme='dark'] {
+  @include theme-dark;
+}
+
+[data-theme='high-contrast'] {
+  @include theme-high-contrast;
+}
+
+[data-density='comfortable'] {
+  @include density-comfortable;
+}
+
+[data-density='compact'] {
+  @include density-compact;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --opp-motion-duration: 0ms;
+  }
+}

@@ -1,23 +1,38 @@
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { App } from './app';
+import { routes } from './app.routes';
+import { provideOpportunityHttp } from './core/api/http';
+import { Home } from './home';
+import { expectNoAxeViolations } from './ui/testing/axe.testing';
 
 describe('App', () => {
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [App],
-    }).compileComponents();
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), ...provideOpportunityHttp(), provideHttpClientTesting()],
+    });
   });
 
-  it('should create the app', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    expect(app).toBeTruthy();
-  });
-
-  it('should render title', async () => {
+  it('creates the root component with the toast region', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, opportunity-web');
+    expect(fixture.nativeElement.querySelector('opp-toast-region')).not.toBeNull();
+  });
+
+  it('renders the start page accessibly', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/', Home);
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain('opportuniTY');
+    await expectNoAxeViolations(harness.routeNativeElement!);
+  });
+
+  it('serves the component showcase on the dev route', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/dev/components');
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain(
+      'Component showcase',
+    );
   });
 });

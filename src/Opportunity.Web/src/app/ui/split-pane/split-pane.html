@@ -1,0 +1,31 @@
+<div
+  class="split__pane split__pane--start"
+  [attr.id]="sizedPane() === 'start' ? sizedId : null"
+  [attr.inert]="sizedPane() === 'start' && collapsed() ? '' : null"
+>
+  <ng-content select="[oppSplitStart]" />
+</div>
+<div
+  class="split__handle"
+  role="separator"
+  tabindex="0"
+  [attr.aria-label]="label()"
+  [attr.aria-orientation]="ariaOrientation()"
+  [attr.aria-controls]="sizedId"
+  [attr.aria-valuenow]="effectiveSize()"
+  [attr.aria-valuemin]="collapsible() ? 0 : min()"
+  [attr.aria-valuemax]="max()"
+  (keydown)="onKeydown($event)"
+  (pointerdown)="onPointerDown($event)"
+  (pointermove)="onPointerMove($event)"
+  (pointerup)="onPointerUp($event)"
+  (pointercancel)="onPointerUp($event)"
+  (dblclick)="resetSize()"
+></div>
+<div
+  class="split__pane split__pane--end"
+  [attr.id]="sizedPane() === 'end' ? sizedId : null"
+  [attr.inert]="sizedPane() === 'end' && collapsed() ? '' : null"
+>
+  <ng-content select="[oppSplitEnd]" />
+</div>
