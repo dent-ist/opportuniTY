@@ -7,9 +7,15 @@ using Npgsql;
 using NpgsqlTypes;
 
 using Opportunity.Application.Coding;
+using Opportunity.Application.Jobs;
+using Opportunity.Application.SearchWork;
 using Opportunity.Core.Coding;
 using Opportunity.Core.Fields;
+using Opportunity.Core.Jobs;
+using Opportunity.Core.SearchWork;
 using Opportunity.Data.Fields;
+using Opportunity.Data.Jobs;
+using Opportunity.Data.SearchWork;
 
 namespace Opportunity.Data.Coding;
 
@@ -34,116 +40,83 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
             return CodingWriteResult.Failed(CodingWriteOutcome.Invalid, [.. shapeErrors]);
         }
 
-        var ws = request.WorkspaceId;
-        var targets = request.Documents.OrderBy(d => d.DocumentId).ToList();
-        var documentIds = targets.Select(d => d.DocumentId).ToArray();
-        var fieldIds = request.Operations.Select(o => o.FieldId).ToArray();
-        var hash = RequestHash(request);
-
-        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, ws, cancellationToken).ConfigureAwait(false);
-
-        // 1. Claim the idempotency key. A concurrent duplicate waits here on the unique index until the first commits.
-        var writeId = Guid.CreateVersion7();
-        if (!await ClaimAsync(tx, request, writeId, hash, cancellationToken).ConfigureAwait(false))
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, request.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var (result, plan) = await ApplyInTransactionAsync(tx, request, cancellationToken).ConfigureAwait(false);
+        if (result.Outcome is not (CodingWriteOutcome.Applied or CodingWriteOutcome.Replayed))
         {
-            var replay = await ReplayAsync(tx, request, hash, cancellationToken).ConfigureAwait(false);
-            await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return replay;
+            return result;
         }
 
-        // 2. Field definitions, share-locked so they cannot be retyped or deleted while this write runs.
-        var catalog = await FieldCatalogRepository.LoadCatalogAsync(tx, ws, false, fieldIds, true, cancellationToken).ConfigureAwait(false);
-        var (operations, fieldErrors) = Resolve(request.Operations, catalog);
-        if (fieldErrors.Count > 0)
+        // ADR-001 R1: an interactive write's search work commits with it, one SearchOutbox row per changed document, as
+        // the transaction's last statement. Job-originated writes get their IndexChunkTask from ApplyChunkAsync.
+        if (result.Outcome == CodingWriteOutcome.Applied && request.JobId is null && plan.BumpedDocuments.Count > 0)
         {
-            return CodingWriteResult.Failed(CodingWriteOutcome.Invalid, [.. fieldErrors]);
-        }
-
-        // 3. Lock the documents (projection state) in DocumentId order.
-        var versions = await LockDocumentsAsync(tx, ws, documentIds, cancellationToken).ConfigureAwait(false);
-        if (request.Actor.Type == CodingActorType.Human && targets.Count == 1)
-        {
-            if (!versions.TryGetValue(targets[0].DocumentId, out var current))
-            {
-                return CodingWriteResult.Failed(CodingWriteOutcome.NotFound);
-            }
-
-            if (request.ExpectedVersion is { } expected && expected != current)
-            {
-                return new CodingWriteResult(CodingWriteOutcome.VersionConflict,
-                    [new DocumentCodingResult(targets[0].DocumentId, DocumentCodingOutcome.Unchanged, current, [])], [], 0, false);
-            }
-        }
-
-        // 4. Current state of the touched fields.
-        var state = await LoadStateAsync(tx, ws, documentIds, fieldIds, catalog, cancellationToken).ConfigureAwait(false);
-
-        // 5. State-based changes and Q-07 skips.
-        var plan = new WritePlan();
-        var results = new List<DocumentCodingResult>(targets.Count);
-        foreach (var target in targets)
-        {
-            if (!versions.TryGetValue(target.DocumentId, out var version))
-            {
-                results.Add(new DocumentCodingResult(target.DocumentId, DocumentCodingOutcome.NotFound, null, []));
-                continue;
-            }
-
-            var newVersion = version + 1;
-            var changed = false;
-            var skipped = new List<int>();
-            foreach (var op in operations)
-            {
-                state.TryGetValue((target.DocumentId, op.Field.FieldId), out var fieldState);
-                var currentValue = fieldState?.Value;
-                var desired = op.Apply(currentValue);
-                if (target.BaselineVersion is { } baseline && fieldState is not null
-                    && fieldState.ChangedAtVersion > baseline && fieldState.ChangedByJobId != request.JobId)
-                {
-                    skipped.Add(op.Field.FieldId);
-                    plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.BulkSkippedConcurrentEdit,
-                        currentValue, desired, version));
-                    continue;
-                }
-
-                if (FieldValues.AreEqual(currentValue, desired))
-                {
-                    continue;
-                }
-
-                changed = true;
-                plan.Fields.Add((target.DocumentId, op.Field.FieldId, op.Field.IsChoice ? null : desired?.ToJsonString(), newVersion));
-                if (op.Field.IsChoice)
-                {
-                    var before = FieldValues.ChoiceIds(currentValue);
-                    var after = FieldValues.ChoiceIds(desired);
-                    plan.RemovedChoices.AddRange(before.Except(after).Select(c => (target.DocumentId, op.Field.FieldId, c)));
-                    plan.AddedChoices.AddRange(after.Except(before).Select(c => (target.DocumentId, op.Field.FieldId, c)));
-                }
-
-                plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.ValueChanged, currentValue, desired, newVersion));
-                plan.TouchesSecurity |= op.Field.IsSecurityAffecting;
-            }
-
-            if (changed)
-            {
-                plan.BumpedDocuments.Add(target.DocumentId);
-            }
-
-            var outcome = skipped.Count > 0 ? DocumentCodingOutcome.Skipped
-                : changed ? DocumentCodingOutcome.Changed
-                : DocumentCodingOutcome.Unchanged;
-            results.Add(new DocumentCodingResult(target.DocumentId, outcome, changed ? newVersion : version, skipped));
-        }
-
-        // 6. Current state + events + version bumps, one round trip, same transaction.
-        if (plan.Events.Count > 0)
-        {
-            await WriteAsync(tx, request, writeId, plan, cancellationToken).ConfigureAwait(false);
+            await SearchWorkSql.AddOutboxRowsAsync(tx, ChangedVersions(result, plan), ChangeMask(plan), cancellationToken).ConfigureAwait(false);
         }
 
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return new CodingWriteResult(CodingWriteOutcome.Applied, results, [], plan.Events.Count, plan.TouchesSecurity);
+        return result;
+    }
+
+    public async Task<CodingChunkResult> ApplyChunkAsync(
+        ClaimedChunk chunk, CodingWriteRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunk);
+        ArgumentNullException.ThrowIfNull(request);
+        var lease = chunk.Lease;
+        if (request.WorkspaceId != lease.WorkspaceId || request.JobId != lease.JobId || request.Actor.Type == CodingActorType.Human)
+        {
+            throw new ArgumentException("A chunk write is a job-originated write of the leased chunk's workspace and job.", nameof(request));
+        }
+
+        var shapeErrors = ValidateShape(request);
+        if (shapeErrors.Count > 0)
+        {
+            return new CodingChunkResult(CodingWriteResult.Failed(CodingWriteOutcome.Invalid, [.. shapeErrors]), null, null);
+        }
+
+        CodingWriteResult result;
+        ChunkCommitResult commit;
+        await using (var tx = await WorkspaceTransaction.BeginAsync(dataSource, request.WorkspaceId, cancellationToken).ConfigureAwait(false))
+        {
+            (result, var plan) = await ApplyInTransactionAsync(tx, request, cancellationToken).ConfigureAwait(false);
+            if (result.Outcome != CodingWriteOutcome.Applied)
+            {
+                return new CodingChunkResult(result, null, null);
+            }
+
+            // §21 / ADR-001 R2: exactly one IndexChunkTask for the chunk and no SearchOutbox rows; none when nothing changed.
+            var task = plan.BumpedDocuments.Count == 0 ? null : new NewIndexChunkTask
+            {
+                JobId = lease.JobId,
+                ChunkId = lease.ChunkId,
+                Kind = IndexTaskKind.BulkCoding,
+                Membership = chunk.Membership,
+                ChangeMask = ChangeMask(plan),
+                IdempotencyKey = ChunkIdempotencyKey.ForChunk(lease.WorkspaceId, lease.JobId, chunk.Sequence, ChunkOperationKind.IndexChunk, 0),
+            };
+            (commit, var taskId) = await SearchWorkSql.CommitChunkAsync(tx, lease, Completion(result), task, cancellationToken)
+                .ConfigureAwait(false);
+            if (commit.Committed)
+            {
+                await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return new CodingChunkResult(result, commit, taskId);
+            }
+        }
+
+        // Fence F3 refused: the coding writes rolled back with the transaction; record the fence outcome on the chunk.
+        if (commit.Outcome != ChunkCommitOutcome.LeaseLost)
+        {
+            var release = await new JobChunkRepository(dataSource).ReleaseAsync(lease, cancellationToken).ConfigureAwait(false);
+            commit = release switch
+            {
+                ChunkReleaseOutcome.Cancelled => commit with { Outcome = ChunkCommitOutcome.Cancelled },
+                ChunkReleaseOutcome.ReturnedToPending => commit with { Outcome = ChunkCommitOutcome.JobNotRunning },
+                _ => commit with { Outcome = ChunkCommitOutcome.LeaseLost },
+            };
+        }
+
+        return new CodingChunkResult(result, commit, null);
     }
 
     public async Task<IReadOnlyList<DocumentCoding>> GetCurrentAsync(
@@ -292,6 +265,155 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
 
         events.RemoveAt(events.Count - 1);
         return new CodingEventPage(events, new CodingEventCursor(events[^1].OccurredAt, events[^1].EventId));
+    }
+
+    private static async Task<(CodingWriteResult Result, WritePlan Plan)> ApplyInTransactionAsync(
+        WorkspaceTransaction tx, CodingWriteRequest request, CancellationToken cancellationToken)
+    {
+        var plan = new WritePlan();
+        var ws = request.WorkspaceId;
+        var targets = request.Documents.OrderBy(d => d.DocumentId).ToList();
+        var documentIds = targets.Select(d => d.DocumentId).ToArray();
+        var fieldIds = request.Operations.Select(o => o.FieldId).ToArray();
+        var hash = RequestHash(request);
+
+        // 1. Claim the idempotency key. A concurrent duplicate waits here on the unique index until the first commits.
+        var writeId = Guid.CreateVersion7();
+        if (!await ClaimAsync(tx, request, writeId, hash, cancellationToken).ConfigureAwait(false))
+        {
+            return (await ReplayAsync(tx, request, hash, cancellationToken).ConfigureAwait(false), plan);
+        }
+
+        // 2. Field definitions, share-locked so they cannot be retyped or deleted while this write runs.
+        var catalog = await FieldCatalogRepository.LoadCatalogAsync(tx, ws, false, fieldIds, true, cancellationToken).ConfigureAwait(false);
+        var (operations, fieldErrors) = Resolve(request.Operations, catalog);
+        if (fieldErrors.Count > 0)
+        {
+            return (CodingWriteResult.Failed(CodingWriteOutcome.Invalid, [.. fieldErrors]), plan);
+        }
+
+        // 3. Lock the documents (projection state) in DocumentId order.
+        var versions = await LockDocumentsAsync(tx, ws, documentIds, cancellationToken).ConfigureAwait(false);
+        if (request.Actor.Type == CodingActorType.Human && targets.Count == 1)
+        {
+            if (!versions.TryGetValue(targets[0].DocumentId, out var current))
+            {
+                return (CodingWriteResult.Failed(CodingWriteOutcome.NotFound), plan);
+            }
+
+            if (request.ExpectedVersion is { } expected && expected != current)
+            {
+                return (new CodingWriteResult(CodingWriteOutcome.VersionConflict,
+                    [new DocumentCodingResult(targets[0].DocumentId, DocumentCodingOutcome.Unchanged, current, [])], [], 0, false), plan);
+            }
+        }
+
+        // 4. Current state of the touched fields.
+        var state = await LoadStateAsync(tx, ws, documentIds, fieldIds, catalog, cancellationToken).ConfigureAwait(false);
+
+        // 5. State-based changes and Q-07 skips.
+        var results = new List<DocumentCodingResult>(targets.Count);
+        foreach (var target in targets)
+        {
+            if (!versions.TryGetValue(target.DocumentId, out var version))
+            {
+                results.Add(new DocumentCodingResult(target.DocumentId, DocumentCodingOutcome.NotFound, null, []));
+                continue;
+            }
+
+            var newVersion = version + 1;
+            var changed = false;
+            var skipped = new List<int>();
+            foreach (var op in operations)
+            {
+                state.TryGetValue((target.DocumentId, op.Field.FieldId), out var fieldState);
+                var currentValue = fieldState?.Value;
+                var desired = op.Apply(currentValue);
+                if (target.BaselineVersion is { } baseline && fieldState is not null
+                    && fieldState.ChangedAtVersion > baseline && fieldState.ChangedByJobId != request.JobId)
+                {
+                    skipped.Add(op.Field.FieldId);
+                    plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.BulkSkippedConcurrentEdit,
+                        currentValue, desired, version));
+                    continue;
+                }
+
+                if (FieldValues.AreEqual(currentValue, desired))
+                {
+                    continue;
+                }
+
+                changed = true;
+                plan.Fields.Add((target.DocumentId, op.Field.FieldId, op.Field.IsChoice ? null : desired?.ToJsonString(), newVersion));
+                if (op.Field.IsChoice)
+                {
+                    var before = FieldValues.ChoiceIds(currentValue);
+                    var after = FieldValues.ChoiceIds(desired);
+                    plan.RemovedChoices.AddRange(before.Except(after).Select(c => (target.DocumentId, op.Field.FieldId, c)));
+                    plan.AddedChoices.AddRange(after.Except(before).Select(c => (target.DocumentId, op.Field.FieldId, c)));
+                }
+
+                plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.ValueChanged, currentValue, desired, newVersion));
+                plan.TouchesSecurity |= op.Field.IsSecurityAffecting;
+            }
+
+            if (changed)
+            {
+                plan.BumpedDocuments.Add(target.DocumentId);
+            }
+
+            var outcome = skipped.Count > 0 ? DocumentCodingOutcome.Skipped
+                : changed ? DocumentCodingOutcome.Changed
+                : DocumentCodingOutcome.Unchanged;
+            results.Add(new DocumentCodingResult(target.DocumentId, outcome, changed ? newVersion : version, skipped));
+        }
+
+        // 6. Current state + events + version bumps, one round trip, same transaction.
+        if (plan.Events.Count > 0)
+        {
+            await WriteAsync(tx, request, writeId, plan, cancellationToken).ConfigureAwait(false);
+        }
+
+        return (new CodingWriteResult(CodingWriteOutcome.Applied, results, [], plan.Events.Count, plan.TouchesSecurity), plan);
+    }
+
+    /// <summary>The documents whose version this write bumped, with the version it wrote.</summary>
+    private static List<(Guid DocumentId, long DocumentVersion)> ChangedVersions(CodingWriteResult result, WritePlan plan)
+    {
+        var bumped = plan.BumpedDocuments.ToHashSet();
+        return [.. result.Documents.Where(d => bumped.Contains(d.DocumentId)).Select(d => (d.DocumentId, d.DocumentVersion!.Value))];
+    }
+
+    private static SearchChangeMask ChangeMask(WritePlan plan) =>
+        plan.TouchesSecurity ? SearchChangeMask.Coding | SearchChangeMask.Security : SearchChangeMask.Coding;
+
+    /// <summary>
+    /// The chunk's job counters and item results (ADR-010 §1): one Q-07 skip per document (first skipped field, all of them
+    /// in the detail), missing documents as failed items.
+    /// </summary>
+    private static ChunkCompletion Completion(CodingWriteResult result)
+    {
+        var items = new List<JobItemResult>();
+        foreach (var document in result.Documents)
+        {
+            if (document.SkippedFieldIds.Count > 0)
+            {
+                items.Add(new JobItemResult(JobItemResultKind.SkippedConcurrentEdit, document.DocumentId, null,
+                    document.SkippedFieldIds[0], "ConcurrentEdit", "Fields " + string.Join(',', document.SkippedFieldIds)));
+            }
+
+            if (document.Outcome == DocumentCodingOutcome.NotFound)
+            {
+                items.Add(new JobItemResult(JobItemResultKind.Failed, document.DocumentId, null, null, "DocumentNotFound"));
+            }
+        }
+
+        return new ChunkCompletion
+        {
+            ItemsApplied = result.Documents.Count(d => d.Outcome == DocumentCodingOutcome.Changed),
+            ItemsUnchanged = result.Documents.Count(d => d.Outcome == DocumentCodingOutcome.Unchanged),
+            ItemResults = items,
+        };
     }
 
     private static List<FieldError> ValidateShape(CodingWriteRequest request)

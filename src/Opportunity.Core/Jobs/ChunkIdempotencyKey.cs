@@ -37,6 +37,13 @@ public static class ChunkIdempotencyKey
     public static string ForOutbox(Guid workspaceId, Guid outboxId) =>
         Hash($"v1|{Id(workspaceId)}|outbox|{Id(outboxId)}");
 
+    /// <summary>The same formula for the <c>bigint</c> OutboxId of <c>search_outbox</c> (ADR-001 §1 R3), in invariant decimal.</summary>
+    public static string ForOutbox(Guid workspaceId, long outboxId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(outboxId);
+        return Hash($"v1|{Id(workspaceId)}|outbox|{outboxId.ToString(CultureInfo.InvariantCulture)}");
+    }
+
     private static string Id(Guid id) => id.ToString("D", CultureInfo.InvariantCulture);
 
     private static string Hash(string value) =>

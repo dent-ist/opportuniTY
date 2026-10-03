@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 
+using Opportunity.Application.Jobs;
 using Opportunity.Core.Coding;
 using Opportunity.Core.Fields;
 
@@ -19,7 +20,19 @@ public interface ICodingRepository
     /// Applies <paramref name="request"/> (one interactive save, or one bulk chunk). Re-applying a request with the same
     /// idempotency key changes nothing and returns <see cref="CodingWriteOutcome.Replayed"/>.
     /// </summary>
+    /// <remarks>
+    /// An applied interactive write (no job) that changes documents also inserts one SearchOutbox row per changed document
+    /// in the same transaction (ADR-001 R1). A job-originated write here creates no search work: bulk chunks use
+    /// <see cref="ApplyChunkAsync"/>.
+    /// </remarks>
     Task<CodingWriteResult> ApplyAsync(CodingWriteRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One bulk coding chunk in one transaction (§21): the coding writes, exactly one IndexChunkTask (none when nothing
+    /// changed) and no SearchOutbox rows, and fence F3 that commits the chunk. <paramref name="request"/> must be a
+    /// job-originated write of the leased chunk's job. When F3 refuses, nothing is written and the chunk is released.
+    /// </summary>
+    Task<CodingChunkResult> ApplyChunkAsync(ClaimedChunk chunk, CodingWriteRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Current coding of live documents with per-field change tracking (ChangedAtVersion / ChangedByJobId, ADR-010 §8).
@@ -40,6 +53,14 @@ public interface ICodingRepository
 }
 
 public sealed record CodingActor(Guid ActorId, CodingActorType Type);
+
+/// <param name="Coding">The write as planned; it took effect only when <paramref name="Commit"/> is committed.</param>
+/// <param name="Commit">Fence F3; null when the write itself was refused (invalid, replayed) and nothing was attempted.</param>
+/// <param name="IndexTaskId">The chunk's IndexChunkTask; null when the chunk did not commit or changed nothing.</param>
+public sealed record CodingChunkResult(CodingWriteResult Coding, ChunkCommitResult? Commit, Guid? IndexTaskId)
+{
+    public bool Committed => Commit?.Committed == true;
+}
 
 /// <param name="DocumentId">Document to code.</param>
 /// <param name="BaselineVersion">
