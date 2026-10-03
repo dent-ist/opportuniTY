@@ -1,0 +1,50 @@
+description: "§2/R6: OR of terms as a proximity operand (span_or)"
+query: "(apple OR pear) W/5 iphone"
+printed: "(apple OR pear) W/5 iphone"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "proximity",
+      "span": {
+        "start": 0,
+        "end": 26
+      },
+      "distance": 5,
+      "ordered": false,
+      "left": {
+        "kind": "or",
+        "span": {
+          "start": 0,
+          "end": 15
+        },
+        "children": [
+          {
+            "kind": "term",
+            "span": {
+              "start": 1,
+              "end": 6
+            },
+            "text": "apple"
+          },
+          {
+            "kind": "term",
+            "span": {
+              "start": 10,
+              "end": 14
+            },
+            "text": "pear"
+          }
+        ]
+      },
+      "right": {
+        "kind": "term",
+        "span": {
+          "start": 20,
+          "end": 26
+        },
+        "text": "iphone"
+      }
+    }
+  }

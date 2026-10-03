@@ -1,0 +1,33 @@
+description: "R1: W/n is case-insensitive"
+query: "apple w/5 iphone"
+printed: "apple W/5 iphone"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "proximity",
+      "span": {
+        "start": 0,
+        "end": 16
+      },
+      "distance": 5,
+      "ordered": false,
+      "left": {
+        "kind": "term",
+        "span": {
+          "start": 0,
+          "end": 5
+        },
+        "text": "apple"
+      },
+      "right": {
+        "kind": "term",
+        "span": {
+          "start": 10,
+          "end": 16
+        },
+        "text": "iphone"
+      }
+    }
+  }

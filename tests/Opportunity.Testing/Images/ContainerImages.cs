@@ -23,6 +23,9 @@ public static class ContainerImages
 
     public static string Toxiproxy => Resolve("TOXIPROXY", "ghcr.io/shopify/toxiproxy");
 
+    /// <summary>Keycloak (Apache-2.0), the developer OIDC provider (E05-T01).</summary>
+    public static string Keycloak => Resolve("KEYCLOAK", "keycloak/keycloak");
+
     public static string Resolve(string key, string repository) => Resolve(VersionsFile.Repository, key, repository);
 
     public static string Resolve(VersionsFile versions, string key, string repository)

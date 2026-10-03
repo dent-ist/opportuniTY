@@ -1,0 +1,7 @@
+description: "§5: more than 32 nested groups"
+query: "(((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))"
+error:
+  code: QUERY_TOO_DEEP
+  span: [32, 33]
+  expected: []
+  message: "The query nests more than 32 levels deep."

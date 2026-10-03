@@ -1,9 +1,11 @@
+using Opportunity.Security.Authentication;
+
 namespace Opportunity.Api.Conventions;
 
 /// <summary>
 /// Route groups every endpoint hangs off (ADR-019 §2.2–2.3). <see cref="Workspace"/> is
-/// <c>/api/v1/workspaces/{workspaceId}</c>; the workspace authorization filter (E05) is attached to it once, so no
-/// workspace-scoped endpoint can skip it.
+/// <c>/api/v1/workspaces/{workspaceId}</c>; workspace filters (MFA requirement now, membership with E05-T02) are
+/// attached to it once, so no workspace-scoped endpoint can skip them.
 /// </summary>
 public sealed record ApiRouteGroups(RouteGroupBuilder V1, RouteGroupBuilder Workspace);
 
@@ -23,7 +25,10 @@ public static class ApiRoutes
         ArgumentNullException.ThrowIfNull(app);
 
         var v1 = app.MapGroup(V1Prefix);
-        var workspace = v1.MapGroup($"/workspaces/{{{WorkspaceIdParameter}}}");
+        app.MapOpportunityAuthenticationEndpoints(v1);
+
+        // Every v1 endpoint requires a signed-in user (fallback policy); workspaces may also require MFA (ADR-015 D3.6).
+        var workspace = v1.MapGroup($"/workspaces/{{{WorkspaceIdParameter}}}").RequireWorkspaceMfa();
         var routes = new ApiRouteGroups(v1, workspace);
 
         foreach (var module in app.Services.GetServices<IApiEndpointModule>())

@@ -1,0 +1,7 @@
+description: "R4: W/s is unsupported"
+query: "apple W/s iphone"
+error:
+  code: UNSUPPORTED_SYNTAX
+  span: [6, 9]
+  expected: []
+  message: "'W/s' is not supported yet; use W/n (within n words, either order). Escape the '/' to search for it literally."

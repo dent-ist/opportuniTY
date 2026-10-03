@@ -1,12 +1,15 @@
-import { Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { UiPreferences } from './core/preferences/ui-preferences';
+import { ToastRegion } from './ui';
 
 @Component({
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, ToastRegion],
   selector: 'app-root',
-  styleUrl: './app.scss',
   templateUrl: './app.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App {
-  protected readonly title = signal('opportunity-web');
+  // Applies the persisted theme, density and locale to <html> before the first route renders.
+  protected readonly prefs = inject(UiPreferences);
 }

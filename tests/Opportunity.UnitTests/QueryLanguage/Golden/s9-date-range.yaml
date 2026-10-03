@@ -1,0 +1,31 @@
+description: "§9 example: inclusive date range (date = documentDate)"
+query: "date:[2025-01-01 TO 2025-12-31]"
+printed: "date:[2025-01-01 TO 2025-12-31]"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 31
+      },
+      "name": "date",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 5,
+          "end": 31
+        },
+        "lower": {
+          "value": "2025-01-01",
+          "inclusive": true
+        },
+        "upper": {
+          "value": "2025-12-31",
+          "inclusive": true
+        }
+      }
+    }
+  }

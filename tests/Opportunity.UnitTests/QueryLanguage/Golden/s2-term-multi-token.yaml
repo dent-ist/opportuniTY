@@ -1,0 +1,33 @@
+description: "§2: a term the analyzer splits is one term node (the planner makes it a phrase)"
+query: "e-mail john.smith"
+printed: "e-mail AND john.smith"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 17
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 6
+          },
+          "text": "e-mail"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 7,
+            "end": 17
+          },
+          "text": "john.smith"
+        }
+      ]
+    }
+  }

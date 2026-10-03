@@ -1,0 +1,64 @@
+// Tabs are directives on top of @angular/aria (src/app/ui/tabs), so their styles are global.
+
+.opp-tab-list {
+  display: flex;
+  gap: var(--opp-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.opp-tab-list[aria-orientation='vertical'] {
+  flex-direction: column;
+  border-block-end: 0;
+  border-inline-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.opp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  min-height: var(--opp-control-height);
+  min-width: var(--opp-target-min);
+  padding-inline: var(--opp-control-padding-x);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-control);
+  font-weight: var(--opp-font-weight-medium);
+  border-block-end: 3px solid transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.opp-tab:hover {
+  color: var(--opp-color-text);
+  background: var(--opp-color-hover);
+}
+
+.opp-tab[aria-selected='true'] {
+  color: var(--opp-color-text);
+  border-block-end-color: var(--opp-color-accent);
+}
+
+.opp-tab[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.opp-tab:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+.opp-tab-panel[inert] {
+  display: none;
+}
+
+.opp-tab-panel:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+@media (forced-colors: active) {
+  .opp-tab[aria-selected='true'] {
+    border-block-end-color: Highlight;
+  }
+}

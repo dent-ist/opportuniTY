@@ -1,0 +1,31 @@
+@if (service.toasts().length) {
+  <section class="toasts" aria-label="Notifications">
+    @for (toast of service.toasts(); track toast.id) {
+      <div
+        class="toast"
+        [class]="'toast--' + toast.tone"
+        (mouseenter)="service.pause(toast.id)"
+        (mouseleave)="service.resume(toast.id)"
+        (focusin)="service.pause(toast.id)"
+        (focusout)="service.resume(toast.id)"
+      >
+        <opp-icon class="toast__icon" [name]="icons[toast.tone]" />
+        <p class="toast__message">
+          <span class="opp-visually-hidden">{{ toast.tone }}:</span>
+          {{ toast.message }}
+        </p>
+        @if (toast.action; as action) {
+          <button type="button" oppButton="ghost" (click)="run(toast)">{{ action.label }}</button>
+        }
+        <button
+          type="button"
+          oppIconButton
+          label="Dismiss notification"
+          (click)="service.dismiss(toast.id)"
+        >
+          <opp-icon name="close" />
+        </button>
+      </div>
+    }
+  </section>
+}

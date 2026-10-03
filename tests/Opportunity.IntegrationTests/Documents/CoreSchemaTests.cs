@@ -26,7 +26,9 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
     /// Ceiling for loading 100K documents through staged binary COPY (container PostgreSQL 17, default settings).
     /// Recorded baseline 2026-10-02 on the development container: ~15 s end to end, of which ~6 s is the
     /// INSERT ... SELECT into the indexed table (~1.7 s of it the generated sort key). The ceiling leaves headroom for
-    /// shared CI runners; a regression past it needs investigation, not a bigger number.
+    /// shared CI runners; a regression past it needs investigation, not a bigger number. Since E05-T03 the load runs as
+    /// the RLS-bound app role; measured 2026-10-03 (3 alternating runs, noisy shared host): ~6.7 s bypassing RLS vs
+    /// ~7.5 s under RLS (+10-15 %). The formal number belongs to E18-T03 (ADR-015 D7.4.2).
     /// </summary>
     private static readonly TimeSpan CopyBaselineCeiling = TimeSpan.FromSeconds(60);
 
@@ -42,7 +44,8 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
         tables.Should().Contain(["workspace", "document", "document_projection_state", "retired_control_number",
             "stored_object", "page_set", "page", "page_image"]);
 
-        // P1, P2, P4: every primary key, unique constraint and secondary index leads with workspace_id.
+        // P1, P2, P4: every primary key, unique constraint and secondary index leads with workspace_id (installation-level
+        // tables, marked @global like the migrator's tenant-key lint, are exempt).
         var indexes = await db.ColumnAsync(
             """
             SELECT ic.relname::text
@@ -51,6 +54,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             JOIN pg_class t ON t.oid = i.indrelid
             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = i.indkey[0]
             WHERE t.relnamespace = 'opportunity'::regnamespace AND a.attname <> 'workspace_id'
+              AND coalesce(obj_description(t.oid, 'pg_class'), '') NOT LIKE '@global%'
             """);
         indexes.Should().BeEmpty();
 
@@ -62,6 +66,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             JOIN pg_attribute fa ON fa.attrelid = c.conrelid AND fa.attnum = c.conkey[1]
             JOIN pg_attribute ta ON ta.attrelid = c.confrelid AND ta.attnum = c.confkey[1]
             WHERE c.connamespace = 'opportunity'::regnamespace AND c.contype = 'f'
+              AND coalesce(obj_description(c.conrelid, 'pg_class'), '') NOT LIKE '@global%'
               AND (fa.attname <> 'workspace_id' OR ta.attname <> 'workspace_id'
                    OR (cardinality(c.conkey) = 1 AND c.confrelid <> 'opportunity.workspace'::regclass))
             """);
@@ -477,7 +482,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
     {
         await using var db = await CoreSchemaDatabase.CreateAsync(postgres);
         var ws = Guid.CreateVersion7();
-        await using (var context = db.NewDbContext())
+        await db.InDbContextAsync(ws, async context =>
         {
             context.Workspaces.Add(new Workspace
             {
@@ -488,7 +493,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
                 ControlNumberCaseSensitive = true,
             });
             await context.SaveChangesAsync(Ct);
-        }
+        });
 
         var sent = new DateTimeOffset(2025, 3, 1, 14, 5, 0, TimeSpan.Zero);
         var document = await db.InsertDocumentAsync(ws, "abc0001", d =>
@@ -502,7 +507,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
         var objectId = await db.InsertStoredObjectAsync(ws, document.DocumentId);
         var pageSetId = await db.InsertPageSetAsync(ws, document.DocumentId);
 
-        await using (var context = db.NewDbContext())
+        await db.InDbContextAsync(ws, async context =>
         {
             context.Pages.Add(new Page
             {
@@ -530,9 +535,9 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
                 Format = PageImageFormat.TiffG4,
             });
             await context.SaveChangesAsync(Ct);
-        }
+        });
 
-        await using (var context = db.NewDbContext())
+        await db.InDbContextAsync(ws, async context =>
         {
             var workspace = await context.Workspaces.SingleAsync(w => w.WorkspaceId == ws, Ct);
             workspace.Status.Should().Be(WorkspaceStatus.Active);
@@ -562,7 +567,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             tracked.FileName = "bypass.msg";
             var bypass = () => context.SaveChangesAsync(Ct);
             await bypass.Should().ThrowAsync<InvalidOperationException>();
-        }
+        });
     }
 
     private static void AttachTo(Document document, Document familyRoot, Document parent, int sequence)

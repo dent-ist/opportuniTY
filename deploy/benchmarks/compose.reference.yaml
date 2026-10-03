@@ -244,6 +244,7 @@ services:
       DOTNET_ENVIRONMENT: Production
       ConnectionStrings__Migrator: >-
         Host=pg-primary;Database=${OPPORTUNITY_DB:-opportunity};Username=${OPPORTUNITY_DB_OWNER_USER:-opportunity_owner};Password=${OPPORTUNITY_DB_OWNER_PASSWORD};GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq: amqp://${RABBITMQ_USER:-opportunity}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
     depends_on:
       pg-primary: { condition: service_healthy }
       os1: { condition: service_healthy }

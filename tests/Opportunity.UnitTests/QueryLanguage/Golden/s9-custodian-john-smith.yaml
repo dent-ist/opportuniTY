@@ -1,0 +1,24 @@
+description: "§9 example: keyword field with a phrase value"
+query: "custodian:\"John Smith\""
+printed: "custodian:\"John Smith\""
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 22
+      },
+      "name": "custodian",
+      "child": {
+        "kind": "phrase",
+        "span": {
+          "start": 10,
+          "end": 22
+        },
+        "text": "John Smith"
+      }
+    }
+  }

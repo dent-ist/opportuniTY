@@ -1,0 +1,7 @@
+description: "No wildcards in range bounds"
+query: "date:[2020* TO 2021]"
+error:
+  code: INVALID_RANGE
+  span: [6, 11]
+  expected: ["term", "phrase", "*"]
+  message: "Wildcards are not allowed in range bounds; use * alone for an open bound, or escape it as \\*."

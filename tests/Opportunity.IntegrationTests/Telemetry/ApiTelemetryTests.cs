@@ -16,6 +16,7 @@ using OpenTelemetry.Trace;
 using Opportunity.Api.Conventions;
 using Opportunity.Application.Telemetry;
 using Opportunity.Hosting.Health;
+using Opportunity.IntegrationTests.Api;
 
 namespace Opportunity.IntegrationTests.Telemetry;
 
@@ -37,8 +38,10 @@ public sealed class TelemetryApiFactory(string? connectionString = null, bool re
             builder.UseSetting($"ConnectionStrings:{PostgresReadiness.ConnectionStringName}", connectionString);
         }
 
+        builder.UsePlaceholderAuthenticationSettings();
         builder.ConfigureTestServices(services =>
         {
+            services.AddTestUserAuthentication();
             services.AddSingleton<IApiEndpointModule, TelemetryProbeEndpoints>();
             Capture.AddTo(services);
         });
@@ -163,7 +166,7 @@ public sealed class ApiTelemetryTests : IAsyncLifetime
     [Fact]
     public async Task Telemetry_is_off_by_default()
     {
-        await using var plain = new WebApplicationFactory<Program>();
+        await using var plain = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UsePlaceholderAuthenticationSettings());
         using var client = plain.CreateClient();
         (await client.GetAsync("/health/live", Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
 

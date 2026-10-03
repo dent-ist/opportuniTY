@@ -172,6 +172,9 @@ jobs:
         run: npm ci
       - name: Format check (Prettier)
         run: npx prettier --check .
+      # ADR-018 §4: the committed client in src/app/core/api/generated must match the OpenAPI document.
+      - name: API client drift check
+        run: npm run api:check
       - name: Build
         run: npm run build
       - name: Unit tests

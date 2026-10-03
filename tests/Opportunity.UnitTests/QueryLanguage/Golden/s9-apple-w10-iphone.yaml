@@ -1,0 +1,33 @@
+description: "§9 example: unordered proximity, at most 9 intervening words"
+query: "apple W/10 iphone"
+printed: "apple W/10 iphone"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "proximity",
+      "span": {
+        "start": 0,
+        "end": 17
+      },
+      "distance": 10,
+      "ordered": false,
+      "left": {
+        "kind": "term",
+        "span": {
+          "start": 0,
+          "end": 5
+        },
+        "text": "apple"
+      },
+      "right": {
+        "kind": "term",
+        "span": {
+          "start": 11,
+          "end": 17
+        },
+        "text": "iphone"
+      }
+    }
+  }

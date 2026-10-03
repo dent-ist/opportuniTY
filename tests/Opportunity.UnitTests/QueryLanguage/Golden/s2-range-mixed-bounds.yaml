@@ -1,0 +1,31 @@
+description: "§2: inclusive lower, exclusive upper"
+query: "controlnumber:[ABC0001 TO ABC0100}"
+printed: "controlnumber:[ABC0001 TO ABC0100}"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 34
+      },
+      "name": "controlnumber",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 14,
+          "end": 34
+        },
+        "lower": {
+          "value": "ABC0001",
+          "inclusive": true
+        },
+        "upper": {
+          "value": "ABC0100",
+          "inclusive": false
+        }
+      }
+    }
+  }

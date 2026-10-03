@@ -1,0 +1,57 @@
+description: "§9: Boolean operators and grouping"
+query: "(contract OR agreement) AND NOT draft"
+printed: "(contract OR agreement) AND NOT draft"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 37
+      },
+      "children": [
+        {
+          "kind": "or",
+          "span": {
+            "start": 0,
+            "end": 23
+          },
+          "children": [
+            {
+              "kind": "term",
+              "span": {
+                "start": 1,
+                "end": 9
+              },
+              "text": "contract"
+            },
+            {
+              "kind": "term",
+              "span": {
+                "start": 13,
+                "end": 22
+              },
+              "text": "agreement"
+            }
+          ]
+        },
+        {
+          "kind": "not",
+          "span": {
+            "start": 28,
+            "end": 37
+          },
+          "child": {
+            "kind": "term",
+            "span": {
+              "start": 32,
+              "end": 37
+            },
+            "text": "draft"
+          }
+        }
+      ]
+    }
+  }

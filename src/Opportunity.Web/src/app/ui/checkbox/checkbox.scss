@@ -1,0 +1,78 @@
+:host {
+  display: inline-flex;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  min-height: var(--opp-target-min);
+  cursor: pointer;
+  font-size: var(--opp-font-size-control);
+}
+
+.checkbox--disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+// The native input is the focus and hit target (24×24); the visual box is drawn over it.
+.checkbox__box {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--opp-target-min);
+  height: var(--opp-target-min);
+  flex: none;
+}
+
+.checkbox__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.checkbox__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-on-accent);
+  pointer-events: none;
+  font-size: 0.75rem;
+}
+
+.checkbox__input:checked + .checkbox__mark,
+.checkbox__input:indeterminate + .checkbox__mark {
+  background: var(--opp-color-accent);
+  border-color: var(--opp-color-accent);
+}
+
+.checkbox__input:focus-visible + .checkbox__mark {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: var(--opp-focus-ring-offset);
+}
+
+.checkbox__input[aria-invalid='true'] + .checkbox__mark {
+  border-color: var(--opp-color-danger-border);
+}
+
+.checkbox__label:empty {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  .checkbox__input {
+    opacity: 1;
+    position: static;
+  }
+
+  .checkbox__mark {
+    display: none;
+  }
+}

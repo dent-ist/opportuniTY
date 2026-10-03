@@ -13,10 +13,15 @@ namespace Opportunity.Data;
 /// <summary>
 /// EF Core mapping of the core schema. The schema itself is owned by the SQL migrations (never EF migrations).
 /// Documents and their projection state are read-only here: their writes go through <see cref="DocumentRepository"/>,
-/// which maintains DocumentVersion (ADR-001 §2).
+/// which maintains DocumentVersion (ADR-001 §2). Contexts come from <c>WorkspaceTransaction.CreateDbContext</c>: global
+/// query filters restrict tenant entities to <see cref="BoundWorkspaceId"/> (no rows when unbound) on top of RLS
+/// (ADR-015 D7). The workspace registry is not filtered; its RLS policy allows reads.
 /// </summary>
 public sealed class OpportunityDbContext(DbContextOptions<OpportunityDbContext> options) : DbContext(options)
 {
+    /// <summary>The workspace whose transaction this context is enlisted in; null matches no tenant rows.</summary>
+    public Guid? BoundWorkspaceId { get; internal init; }
+
     public DbSet<Workspace> Workspaces => Set<Workspace>();
 
     public DbSet<Document> Documents => Set<Document>();
@@ -62,26 +67,38 @@ public sealed class OpportunityDbContext(DbContextOptions<OpportunityDbContext> 
             e.Property(d => d.ControlNumberSortKey).ValueGeneratedOnAddOrUpdate();
             e.Property(d => d.Metadata).HasColumnType("jsonb");
             e.Property(d => d.MetadataRaw).HasColumnType("jsonb");
+            e.HasQueryFilter(d => d.WorkspaceId == BoundWorkspaceId);
         });
 
-        modelBuilder.Entity<DocumentProjectionState>(e => e.HasKey(s => new { s.WorkspaceId, s.DocumentId }));
+        modelBuilder.Entity<DocumentProjectionState>(e =>
+        {
+            e.HasKey(s => new { s.WorkspaceId, s.DocumentId });
+            e.HasQueryFilter(s => s.WorkspaceId == BoundWorkspaceId);
+        });
         modelBuilder.Entity<StoredObject>(e =>
         {
             e.HasKey(o => new { o.WorkspaceId, o.ObjectId });
             e.Property(o => o.CreatedAt).HasDefaultValueSql("now()");
+            e.HasQueryFilter(o => o.WorkspaceId == BoundWorkspaceId);
         });
         modelBuilder.Entity<PageSet>(e =>
         {
             e.HasKey(p => new { p.WorkspaceId, p.PageSetId });
             e.Property(p => p.CreatedAt).HasDefaultValueSql("now()");
+            e.HasQueryFilter(p => p.WorkspaceId == BoundWorkspaceId);
         });
         modelBuilder.Entity<Page>(e =>
         {
             e.HasKey(p => new { p.WorkspaceId, p.PageSetId, p.Ordinal });
             e.Property(p => p.WidthPt).HasPrecision(8, 2);
             e.Property(p => p.HeightPt).HasPrecision(8, 2);
+            e.HasQueryFilter(p => p.WorkspaceId == BoundWorkspaceId);
         });
-        modelBuilder.Entity<PageImage>(e => e.HasKey(p => new { p.WorkspaceId, p.PageSetId, p.Ordinal, p.Purpose }));
+        modelBuilder.Entity<PageImage>(e =>
+        {
+            e.HasKey(p => new { p.WorkspaceId, p.PageSetId, p.Ordinal, p.Purpose });
+            e.HasQueryFilter(p => p.WorkspaceId == BoundWorkspaceId);
+        });
 
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {

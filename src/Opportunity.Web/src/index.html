@@ -1,13 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-US">
   <head>
     <meta charset="utf-8" />
-    <title>OpportunityWeb</title>
+    <title>opportuniTY</title>
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
   </head>
   <body>
-    <app-root></app-root>
+    <!-- nginx replaces the placeholder with a per-response nonce (ADR-015 D4.6, deploy/docker/web). -->
+    <app-root ngCspNonce="__CSP_NONCE__"></app-root>
   </body>
 </html>

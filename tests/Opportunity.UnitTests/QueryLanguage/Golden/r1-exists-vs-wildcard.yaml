@@ -1,0 +1,48 @@
+description: "R1: field:* is exists; *x after a field is a wildcard"
+query: "filename:* AND extension:*x"
+printed: "filename:* AND extension:*x"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 27
+      },
+      "children": [
+        {
+          "kind": "field",
+          "span": {
+            "start": 0,
+            "end": 10
+          },
+          "name": "filename",
+          "child": {
+            "kind": "exists",
+            "span": {
+              "start": 9,
+              "end": 10
+            }
+          }
+        },
+        {
+          "kind": "field",
+          "span": {
+            "start": 15,
+            "end": 27
+          },
+          "name": "extension",
+          "child": {
+            "kind": "wildcard",
+            "span": {
+              "start": 25,
+              "end": 27
+            },
+            "pattern": "*x"
+          }
+        }
+      ]
+    }
+  }

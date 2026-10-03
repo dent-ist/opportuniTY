@@ -1,0 +1,20 @@
+<form (submit)="submit($event)">
+  <opp-dialog-layout [title]="options.title">
+    <p class="confirm__message">{{ options.message }}</p>
+    @if (options.typedConfirmation) {
+      <opp-text-field
+        [label]="'Type ' + options.typedConfirmation + ' to confirm'"
+        [(value)]="typed"
+        [required]="true"
+      />
+    }
+    <ng-container dialogActions>
+      <button type="button" oppButton="ghost" data-autofocus (click)="ref.close(false)">
+        {{ options.cancelLabel ?? 'Cancel' }}
+      </button>
+      <button type="submit" [oppButton]="options.tone ?? 'primary'" [disabled]="!canConfirm()">
+        {{ options.confirmLabel }}
+      </button>
+    </ng-container>
+  </opp-dialog-layout>
+</form>
