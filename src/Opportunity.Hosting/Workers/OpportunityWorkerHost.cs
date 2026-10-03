@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Opportunity.Application.Telemetry;
 using Opportunity.Hosting.Health;
 using Opportunity.Hosting.Options;
 
@@ -45,6 +46,7 @@ public static class OpportunityWorkerHost
 
         builder.Services.AddSingleton(sp => ActivatorUtilities.CreateInstance<WorkerStatus>(sp, enabled));
         builder.Services.AddSingleton<WorkerTelemetry>();
+        builder.Services.AddSingleton<IMessageProcessingMeter>(sp => sp.GetRequiredService<WorkerTelemetry>());
         builder.Services.AddHealthChecks().AddCheck<WorkerModulesReadyCheck>(ReadyCheckName, tags: [HealthTags.Ready]);
 
         foreach (var type in enabled)

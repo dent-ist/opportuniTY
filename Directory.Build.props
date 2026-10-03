@@ -13,4 +13,13 @@
     <Company>opportuniTY contributors</Company>
     <Product>opportuniTY</Product>
   </PropertyGroup>
+  <!--
+    E06-T05: IFaultInjector failpoints exist only in test builds. `dotnet publish -c Release` (every shipped artifact,
+    see deploy/docker/dotnet.Dockerfile) compiles them out; -p:OpportunityFailpoints=false forces that anywhere.
+  -->
+  <PropertyGroup>
+    <OpportunityFailpoints Condition="'$(OpportunityFailpoints)' == '' and '$(Configuration)' == 'Release' and '$(_IsPublishing)' == 'true'">false</OpportunityFailpoints>
+    <OpportunityFailpoints Condition="'$(OpportunityFailpoints)' == ''">true</OpportunityFailpoints>
+    <DefineConstants Condition="'$(OpportunityFailpoints)' == 'true'">$(DefineConstants);OPPORTUNITY_FAILPOINTS</DefineConstants>
+  </PropertyGroup>
 </Project>

@@ -13,12 +13,14 @@ namespace Opportunity.Hosting.Workers;
 /// using var processing = telemetry.BeginProcessing(WorkerTypes.Indexing, envelope.MessageType, queue, correlation, envelope.Headers);
 /// try { await handler.HandleAsync(...); } catch (Exception ex) { processing.Fail(ex.GetType().Name); throw; }
 /// </code>
+/// Consumers that already run under the transport's process span (the E06-T05 job chunk consumer) use
+/// <see cref="Measure"/>: the same metrics, no second span.
 /// </summary>
 public sealed class WorkerTelemetry(
     WorkerStatus status,
     OpportunityMetrics metrics,
     ILogger<WorkerTelemetry> logger,
-    TimeProvider time)
+    TimeProvider time) : IMessageProcessingMeter
 {
     public MessageProcessingScope BeginProcessing(
         string workerType,
@@ -36,6 +38,15 @@ public sealed class WorkerTelemetry(
         activity?.SetTag(TelemetryAttributes.WorkerType, workerType);
         var scope = logger.BeginScope(correlation.ToLogScope());
         return new MessageProcessingScope(this, activity, scope, workerType, messageType, destination, time.GetTimestamp());
+    }
+
+    /// <summary>Metrics and last-consumed only: no span, no logging scope.</summary>
+    public IMessageProcessingMeasurement Measure(string workerType, string messageType, string destination)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workerType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destination);
+        return new MessageProcessingScope(this, activity: null, logScope: null, workerType, messageType, destination, time.GetTimestamp());
     }
 
     internal void Complete(MessageProcessingScope processing, string? errorType)
@@ -58,7 +69,7 @@ public sealed class WorkerTelemetry(
     }
 }
 
-public sealed class MessageProcessingScope : IDisposable
+public sealed class MessageProcessingScope : IMessageProcessingMeasurement
 {
     private readonly WorkerTelemetry _owner;
     private readonly IDisposable? _logScope;

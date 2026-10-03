@@ -90,4 +90,12 @@ public static class AuditTaxonomy
         public const string Category = "AuthZ";
         public const string Denied = "Denied";
     }
+
+    public static class Integrity
+    {
+        public const string Category = "Integrity";
+
+        /// <summary>A worker rejected a message whose envelope disagrees with PostgreSQL (ADR-015 D9.3).</summary>
+        public const string MessageRejected = "MessageRejected";
+    }
 }
