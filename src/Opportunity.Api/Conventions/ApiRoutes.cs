@@ -4,8 +4,9 @@ namespace Opportunity.Api.Conventions;
 
 /// <summary>
 /// Route groups every endpoint hangs off (ADR-019 §2.2–2.3). <see cref="Workspace"/> is
-/// <c>/api/v1/workspaces/{workspaceId}</c>; workspace filters (MFA requirement now, membership with E05-T02) are
-/// attached to it once, so no workspace-scoped endpoint can skip them.
+/// <c>/api/v1/workspaces/{workspaceId}</c>; the MFA requirement is attached to it once. Membership and the endpoint's
+/// permission (<c>RequirePermission</c> / <c>RequireWorkspaceMember</c>) are enforced by PEP-1 middleware for every
+/// route with a <c>{workspaceId}</c> parameter, wherever it is mapped (E05-T02).
 /// </summary>
 public sealed record ApiRouteGroups(RouteGroupBuilder V1, RouteGroupBuilder Workspace);
 

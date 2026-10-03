@@ -13,6 +13,7 @@ using Opportunity.Api.Conventions;
 using Opportunity.Application.Audit;
 using Opportunity.Data.Migrations;
 using Opportunity.Hosting.Health;
+using Opportunity.IntegrationTests.Api;
 using Opportunity.Security.Authentication;
 using Opportunity.Testing.Postgres;
 
@@ -76,6 +77,9 @@ public sealed class AuthApiFactory(string connectionString, HttpMessageHandler? 
                 services.Configure<OpenIdConnectOptions>(AuthenticationSchemes.Oidc, options => options.BackchannelHttpHandler = backchannel);
             }
             services.AddSingleton<IApiEndpointModule, AuthProbeEndpoints>();
+
+            // These tests are about authentication; workspace authorization has its own suite (Authorization/).
+            services.AddAdminEverywhereSecurityState();
         });
     }
 }
@@ -85,9 +89,9 @@ internal sealed class AuthProbeEndpoints : IApiEndpointModule
 {
     public void MapEndpoints(ApiRouteGroups routes)
     {
-        routes.Workspace.MapGet("/auth-probe", (HttpContext context) =>
+        routes.MemberOnly().MapGet("/auth-probe", (HttpContext context) =>
             TypedResults.Ok(new { user = context.User.FindFirst(OpportunityClaimTypes.UserId)?.Value }));
-        routes.Workspace.MapPost("/auth-probe", () => TypedResults.Ok(new { changed = true }));
+        routes.MemberOnly().MapPost("/auth-probe", () => TypedResults.Ok(new { changed = true }));
         routes.V1.MapPost("/auth-probe", () => TypedResults.Ok(new { changed = true }));
         routes.V1.MapGet("/admin-probe", () => TypedResults.Ok(new { admin = true })).RequireMfa();
     }

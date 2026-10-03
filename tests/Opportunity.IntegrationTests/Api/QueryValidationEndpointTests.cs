@@ -9,7 +9,7 @@ namespace Opportunity.IntegrationTests.Api;
 /// <summary>The validate endpoint the query bar uses (E07-T06): AST or positioned errors; raw DSL is never accepted.</summary>
 public sealed class QueryValidationEndpointTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    private const string Path = "/api/v1/workspaces/ws-1/query-validations";
+    private const string Path = "/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/query-validations";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 

@@ -2,10 +2,13 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Opportunity.Api.Conventions;
+using Opportunity.Application.Authorization;
 using Opportunity.Application.Jobs;
 using Opportunity.Contracts.Api;
 using Opportunity.Core.Jobs;
+using Opportunity.Core.Security;
 using Opportunity.Data.Jobs;
+using Opportunity.Security.Authorization;
 
 namespace Opportunity.Api.Jobs;
 
@@ -18,17 +21,32 @@ public sealed class JobEndpoints : IApiEndpointModule
         routes.Workspace.MapGet("/jobs/{jobId}", GetJobAsync)
             .WithName("GetJob")
             .WithTags("Jobs")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .WithSummary("Job status with separate committed and indexed progress.");
+            .WithSummary("Job status with separate committed and indexed progress.")
+            .WithDescription("Users always see their own jobs; other users' jobs need Job.ViewAll.")
+            .RequireWorkspaceMember();
     }
 
     internal static async Task<Results<Ok<JobResource>, ProblemHttpResult>> GetJobAsync(
-        string workspaceId, string jobId, IJobRepository jobs, CancellationToken cancellationToken)
+        string workspaceId, string jobId, HttpContext context, IJobRepository jobs, IAuthorizationService authorization, CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(workspaceId, out var ws) || !Guid.TryParse(jobId, out var id)
-            || await jobs.GetAsync(ws, id, cancellationToken).ConfigureAwait(false) is not { } job)
+        // PEP-1 has resolved and authorized the route's workspace; use its result, not the raw route value.
+        _ = workspaceId;
+        if (context.GetWorkspaceAccess() is not { } access || !Guid.TryParse(jobId, out var id)
+            || await jobs.GetAsync(access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { } job)
         {
             return Problems.NotFound("No such job.");
+        }
+
+        if (job.InitiatedBy != access.Principal.UserId)
+        {
+            var decision = await authorization.AuthorizeAsync(access.Principal, access.WorkspaceId, Permission.JobViewAll, cancellationToken)
+                .ConfigureAwait(false);
+            if (!decision.IsAllowed)
+            {
+                return AuthorizationResults.Problem(decision);
+            }
         }
 
         return TypedResults.Ok(ToResource(job));

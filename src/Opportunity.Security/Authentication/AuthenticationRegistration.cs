@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 
 using Opportunity.Application.Audit;
 using Opportunity.Application.Identity;
+using Opportunity.Security.Authorization;
 using Opportunity.Security.Http;
 
 namespace Opportunity.Security.Authentication;
@@ -86,13 +87,17 @@ public static class AuthenticationRegistration
         return app.UseMiddleware<SecurityHeadersMiddleware>();
     }
 
-    /// <summary>Authentication, then CSRF (needs the principal and the endpoint), then authorization. After routing.</summary>
+    /// <summary>
+    /// Authentication, then CSRF (needs the principal and the endpoint), then authorization (signed-in user), then
+    /// workspace membership and permission (PEP-1, needs <c>AddOpportunityAuthorization</c>). After routing.
+    /// </summary>
     public static IApplicationBuilder UseOpportunityAuthentication(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
         app.UseAuthentication();
         app.UseMiddleware<CsrfProtectionMiddleware>();
         app.UseAuthorization();
+        app.UseMiddleware<WorkspaceAuthorizationMiddleware>();
         return app;
     }
 }

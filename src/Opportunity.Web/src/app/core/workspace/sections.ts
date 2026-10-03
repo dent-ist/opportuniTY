@@ -3,18 +3,18 @@
  * grants its permission in the workspace (RBAC-driven navigation, baseline §15). Search is part of
  * Documents, so there is no separate Search section. Review Batches stay hidden until M5.
  *
- * The permission names follow the E05-T02 catalogue style (`Area.Action`). Until that catalogue is
- * published, this table is the single place to align them.
+ * Names are the closed E05-T02 catalogue (docs/security/permission-matrix.md); `GET /api/v1/workspaces/{id}`
+ * returns the caller's effective subset. Navigation is an affordance only: the API authorizes every call.
  */
 export const PERMISSIONS = {
   documentView: 'Document.View',
-  searchTermsReportView: 'SearchTermsReport.View',
-  productionView: 'Production.View',
-  importView: 'Import.View',
-  exportView: 'Export.View',
-  jobView: 'Job.View',
-  workspaceAdmin: 'Workspace.Admin',
+  searchExecute: 'Search.Execute',
+  productionCreate: 'Production.Create',
+  importRun: 'Import.Run',
+  exportCreate: 'Export.Create',
+  manageFields: 'Workspace.ManageFields',
   manageUsers: 'Workspace.ManageUsers',
+  manageSecurity: 'Workspace.ManageSecurity',
   auditRead: 'Audit.Read',
 } as const;
 
@@ -30,26 +30,27 @@ export const WORKSPACE_SECTIONS: readonly WorkspaceSection[] = [
   {
     path: 'search-terms-reports',
     label: 'Search Terms Reports',
-    permission: PERMISSIONS.searchTermsReportView,
+    permission: PERMISSIONS.searchExecute,
   },
-  { path: 'productions', label: 'Productions', permission: PERMISSIONS.productionView },
-  { path: 'imports', label: 'Imports', permission: PERMISSIONS.importView },
-  { path: 'exports', label: 'Exports', permission: PERMISSIONS.exportView },
-  { path: 'jobs', label: 'Jobs', permission: PERMISSIONS.jobView },
+  { path: 'productions', label: 'Productions', permission: PERMISSIONS.productionCreate },
+  { path: 'imports', label: 'Imports', permission: PERMISSIONS.importRun },
+  { path: 'exports', label: 'Exports', permission: PERMISSIONS.exportCreate },
+  // Every member sees their own jobs (Job.ViewAll widens the list), so any role with Document.View qualifies.
+  { path: 'jobs', label: 'Jobs', permission: PERMISSIONS.documentView },
 ];
 
 /** Entries of the Admin ▾ menu, in guide order; paths are under `/w/:workspaceId/admin/`. */
 export const ADMIN_AREAS: readonly WorkspaceSection[] = [
-  { path: 'fields', label: 'Fields', permission: PERMISSIONS.workspaceAdmin },
-  { path: 'choices', label: 'Choices', permission: PERMISSIONS.workspaceAdmin },
-  { path: 'coding-layouts', label: 'Coding Layouts', permission: PERMISSIONS.workspaceAdmin },
-  { path: 'views', label: 'Views', permission: PERMISSIONS.workspaceAdmin },
-  { path: 'highlight-sets', label: 'Highlight Sets', permission: PERMISSIONS.workspaceAdmin },
-  { path: 'redaction-sets', label: 'Redaction Sets', permission: PERMISSIONS.workspaceAdmin },
+  { path: 'fields', label: 'Fields', permission: PERMISSIONS.manageFields },
+  { path: 'choices', label: 'Choices', permission: PERMISSIONS.manageFields },
+  { path: 'coding-layouts', label: 'Coding Layouts', permission: PERMISSIONS.manageFields },
+  { path: 'views', label: 'Views', permission: PERMISSIONS.manageFields },
+  { path: 'highlight-sets', label: 'Highlight Sets', permission: PERMISSIONS.manageFields },
+  { path: 'redaction-sets', label: 'Redaction Sets', permission: PERMISSIONS.manageFields },
   { path: 'users-groups', label: 'Users & Groups', permission: PERMISSIONS.manageUsers },
-  { path: 'roles-security', label: 'Roles & Security', permission: PERMISSIONS.workspaceAdmin },
-  { path: 'ethical-walls', label: 'Ethical Walls', permission: PERMISSIONS.workspaceAdmin },
-  { path: 'settings', label: 'Workspace Settings', permission: PERMISSIONS.workspaceAdmin },
+  { path: 'roles-security', label: 'Roles & Security', permission: PERMISSIONS.manageSecurity },
+  { path: 'ethical-walls', label: 'Ethical Walls', permission: PERMISSIONS.manageSecurity },
+  { path: 'settings', label: 'Workspace Settings', permission: PERMISSIONS.manageSecurity },
   { path: 'audit', label: 'Audit', permission: PERMISSIONS.auditRead },
 ];
 

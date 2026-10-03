@@ -50,6 +50,7 @@ public static class AuthenticationEndpoints
 
         auth.MapPost("/logout", async (HttpContext context, SignOutService signOut) =>
                 TypedResults.Ok(new LogoutResponse(await signOut.SignOutAsync(context).ConfigureAwait(false))))
+            .RequireAuthorization()
             .WithSummary("Ends the server session; the SPA then navigates to endSessionUrl to end the IdP session.");
 
         auth.MapPost("/backchannel-logout", async Task<Results<Ok, BadRequest<BackChannelLogoutError>>> (HttpContext context, BackChannelLogoutService logout) =>
@@ -81,6 +82,7 @@ public static class AuthenticationEndpoints
                     Mfa: user.HasMfa(settings.Mfa.ToPolicy()),
                     SessionExpiresAt: session is null ? null : SessionLifetime.ExpiresAt(session, settings.Session.ToTimeouts())));
             })
+            .RequireAuthorization()
             .WithName("GetCurrentUser")
             .WithTags("Authentication")
             .WithSummary("The signed-in user. Also issues the anti-forgery token cookie for later unsafe requests.")

@@ -15,7 +15,7 @@ public sealed class ApiConventionsTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task Json_uses_camelCase_string_enums_and_utc_millisecond_timestamps()
     {
         using var client = factory.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/workspaces/ws-1/test-jobs")
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/test-jobs")
         {
             Content = JsonContent.Create(new { name = "x" }),
         };
@@ -25,7 +25,7 @@ public sealed class ApiConventionsTests(ApiFactory factory) : IClassFixture<ApiF
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
         var job = body.RootElement;
-        job.GetProperty("workspaceId").GetString().Should().Be("ws-1");
+        job.GetProperty("workspaceId").GetString().Should().Be("0199a8a0-0000-7000-8000-0000000000a1");
         job.GetProperty("status").GetString().Should().Be("queued");
         job.GetProperty("createdAt").GetString().Should().Be("2026-10-02T14:03:22.123Z");
     }
@@ -35,7 +35,7 @@ public sealed class ApiConventionsTests(ApiFactory factory) : IClassFixture<ApiF
     {
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/api/v1/workspaces/ws-1/test-items?limit=2", Ct);
+        var response = await client.GetAsync("/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/test-items?limit=2", Ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
@@ -50,7 +50,7 @@ public sealed class ApiConventionsTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task Versioned_mutation_requires_matching_if_match()
     {
         using var client = factory.CreateClient();
-        const string path = "/api/v1/workspaces/ws-1/test-versioned";
+        const string path = "/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/test-versioned";
 
         var missing = await client.PutAsync(path, content: null, Ct);
         await missing.ShouldBeProblemAsync(HttpStatusCode.PreconditionRequired, "precondition-required");
@@ -70,7 +70,7 @@ public sealed class ApiConventionsTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task Correlation_id_is_echoed()
     {
         using var client = factory.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/workspaces/ws-1/test-items");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/test-items");
         request.Headers.Add("X-Correlation-Id", "client-abc-123");
 
         var response = await client.SendAsync(request, Ct);

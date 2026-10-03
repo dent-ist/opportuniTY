@@ -54,3 +54,5 @@ export type { TextSpan } from './models/text-span';
 export type { TotalCount } from './models/total-count';
 export type { TotalRelation } from './models/total-relation';
 export type { UnmappedColumnPolicy } from './models/unmapped-column-policy';
+export type { WorkspaceResource } from './models/workspace-resource';
+export type { WorkspaceResourceStatus } from './models/workspace-resource-status';

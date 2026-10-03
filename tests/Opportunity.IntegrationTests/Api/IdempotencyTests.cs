@@ -27,14 +27,14 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
     public async Task Job_creation_returns_202_with_job_location()
     {
         using var client = factory.CreateClient();
-        using var request = CreateJob("ws-1", Guid.NewGuid().ToString());
+        using var request = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", Guid.NewGuid().ToString());
 
         var response = await client.SendAsync(request, Ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.Accepted);
         using var job = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
         var jobId = job.RootElement.GetProperty("id").GetString();
-        response.Headers.Location!.OriginalString.Should().Be($"/api/v1/workspaces/ws-1/jobs/{jobId}");
+        response.Headers.Location!.OriginalString.Should().Be($"/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/jobs/{jobId}");
     }
 
     [Fact]
@@ -43,10 +43,10 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
         using var client = factory.CreateClient();
         var key = Guid.NewGuid().ToString();
 
-        using var firstRequest = CreateJob("ws-1", key);
+        using var firstRequest = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key);
         var first = await client.SendAsync(firstRequest, Ct);
         var createdAfterFirst = factory.Jobs.Created;
-        using var secondRequest = CreateJob("ws-1", key);
+        using var secondRequest = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key);
         var second = await client.SendAsync(secondRequest, Ct);
 
         second.StatusCode.Should().Be(HttpStatusCode.Accepted);
@@ -62,9 +62,9 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
         using var client = factory.CreateClient();
         var key = Guid.NewGuid().ToString();
 
-        using var firstRequest = CreateJob("ws-1", key, "first");
+        using var firstRequest = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key, "first");
         (await client.SendAsync(firstRequest, Ct)).StatusCode.Should().Be(HttpStatusCode.Accepted);
-        using var secondRequest = CreateJob("ws-1", key, "different");
+        using var secondRequest = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key, "different");
         var second = await client.SendAsync(secondRequest, Ct);
 
         await second.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, "idempotency-key-reuse");
@@ -76,9 +76,9 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
         using var client = factory.CreateClient();
         var key = Guid.NewGuid().ToString();
 
-        using var firstRequest = CreateJob("ws-1", key);
+        using var firstRequest = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key);
         var first = await client.SendAsync(firstRequest, Ct);
-        using var secondRequest = CreateJob("ws-2", key);
+        using var secondRequest = CreateJob("0199a8a0-0000-7000-8000-0000000000a2", key);
         var second = await client.SendAsync(secondRequest, Ct);
 
         second.StatusCode.Should().Be(HttpStatusCode.Accepted);
@@ -90,7 +90,7 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
     public async Task Missing_key_returns_400()
     {
         using var client = factory.CreateClient();
-        using var request = CreateJob("ws-1", key: null);
+        using var request = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key: null);
 
         var response = await client.SendAsync(request, Ct);
 
@@ -104,7 +104,7 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
     public async Task Invalid_key_returns_400(string key)
     {
         using var client = factory.CreateClient();
-        using var request = CreateJob("ws-1", key);
+        using var request = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key);
 
         var response = await client.SendAsync(request, Ct);
 
@@ -118,9 +118,9 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
         var key = Guid.NewGuid().ToString();
         factory.Jobs.FailNext = true;
 
-        using var firstRequest = CreateJob("ws-1", key);
+        using var firstRequest = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key);
         var first = await client.SendAsync(firstRequest, Ct);
-        using var retryRequest = CreateJob("ws-1", key);
+        using var retryRequest = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key);
         var retry = await client.SendAsync(retryRequest, Ct);
 
         first.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
@@ -136,7 +136,7 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
 
         using var first = InvalidJson(key);
         (await client.SendAsync(first, Ct)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        using var corrected = CreateJob("ws-1", key);
+        using var corrected = CreateJob("0199a8a0-0000-7000-8000-0000000000a1", key);
         var retry = await client.SendAsync(corrected, Ct);
 
         retry.StatusCode.Should().Be(HttpStatusCode.Accepted);
@@ -145,7 +145,7 @@ public sealed class IdempotencyTests(ApiFactory factory) : IClassFixture<ApiFact
 
     private static HttpRequestMessage InvalidJson(string key)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/workspaces/ws-1/test-jobs")
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/test-jobs")
         {
             Content = new StringContent("{not json", System.Text.Encoding.UTF8, "application/json"),
         };

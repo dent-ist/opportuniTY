@@ -57,10 +57,10 @@ describe('workspace core', () => {
 
   it('filters sections and admin areas by permission, keeping the familiar order', () => {
     const sections = allowedSections(WORKSPACE_SECTIONS, [
-      PERMISSIONS.jobView,
+      PERMISSIONS.importRun,
       PERMISSIONS.documentView,
     ]);
-    expect(sections.map((s) => s.label)).toEqual(['Documents', 'Jobs']);
+    expect(sections.map((s) => s.label)).toEqual(['Documents', 'Imports', 'Jobs']);
     expect(allowedSections(ADMIN_AREAS, [PERMISSIONS.auditRead]).map((a) => a.label)).toEqual([
       'Audit',
     ]);

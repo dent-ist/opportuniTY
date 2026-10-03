@@ -34,7 +34,16 @@ const reviewer = [PERMISSIONS.documentView];
 const admin = Object.values(PERMISSIONS);
 
 function workspace(id: string, name: string, permissions: readonly string[]): Workspace {
-  return { workspaceId: id, name, matterNumber: `M-${id}`, permissions };
+  return {
+    workspaceId: id,
+    name,
+    matterNumber: `M-${id}`,
+    displayTimeZone: 'UTC',
+    status: 'active',
+    createdAt: '2026-10-03T00:00:00.000Z',
+    breakGlassActive: false,
+    permissions: [...permissions],
+  };
 }
 
 const acme = workspace('ws-1', 'Acme v. Widget', admin);
@@ -181,7 +190,7 @@ describe('Application shell', () => {
     expect(current?.textContent?.trim()).toBe('Documents');
 
     await go(harness, '/w/ws-2/documents');
-    expect(tabs()).toEqual(['Documents']);
+    expect(tabs()).toEqual(['Documents', 'Jobs']);
     expect(
       harness.routeNativeElement!.querySelector('opp-workspace-switcher button')?.textContent,
     ).toContain('Beta Holdings');

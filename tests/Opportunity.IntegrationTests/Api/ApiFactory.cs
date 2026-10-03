@@ -97,7 +97,7 @@ internal sealed class ConventionsTestEndpoints(JobCounter jobs) : IApiEndpointMo
 
     public void MapEndpoints(ApiRouteGroups routes)
     {
-        routes.Workspace.MapPost("/test-jobs", (string workspaceId, CreateTestJob request) =>
+        routes.MemberOnly().MapPost("/test-jobs", (string workspaceId, CreateTestJob request) =>
         {
             if (jobs.FailNext)
             {
@@ -109,7 +109,7 @@ internal sealed class ConventionsTestEndpoints(JobCounter jobs) : IApiEndpointMo
             return ApiResults.JobAccepted(workspaceId, job.Id, job);
         }).RequireIdempotencyKey();
 
-        routes.Workspace.MapGet("/test-items", ([AsParameters] PageQuery page) =>
+        routes.MemberOnly().MapGet("/test-items", ([AsParameters] PageQuery page) =>
         {
             if (page.Validate() is { } problem)
             {
@@ -120,7 +120,7 @@ internal sealed class ConventionsTestEndpoints(JobCounter jobs) : IApiEndpointMo
             return TypedResults.Ok(new CursorPage<string>(items, NextCursor: null, new TotalCount(10_000, TotalRelation.Gte)));
         });
 
-        routes.Workspace.MapPut("/test-versioned", (HttpContext context) =>
+        routes.MemberOnly().MapPut("/test-versioned", (HttpContext context) =>
         {
             if (EntityTags.CheckIfMatch(context.Request, CurrentVersion) is { } problem)
             {
@@ -131,7 +131,7 @@ internal sealed class ConventionsTestEndpoints(JobCounter jobs) : IApiEndpointMo
             return TypedResults.NoContent();
         });
 
-        routes.Workspace.MapGet("/test-throws", IResult () =>
+        routes.MemberOnly().MapGet("/test-throws", IResult () =>
             throw new InvalidOperationException("SELECT * FROM secret_table at Opportunity.Secret()"));
     }
 }

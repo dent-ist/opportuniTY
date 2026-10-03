@@ -72,6 +72,9 @@ internal sealed class WorkspaceTransaction : IAsyncDisposable
 
     public NpgsqlCommand Command(string sql) => new(sql, Connection, Transaction);
 
+    /// <summary>Several statements in one round trip, inside this transaction.</summary>
+    public NpgsqlBatch Batch() => new(Connection, Transaction);
+
     /// <summary>
     /// An EF Core context enlisted in this transaction. Its global query filters (the second layer) match this
     /// workspace; RLS still applies underneath when a query ignores them.
