@@ -22,7 +22,7 @@ public static partial class ImportRowBuilder
     public const string StructuralRawPrefix = "s:";
 
     public static ImportRow Build(
-        CompiledMapping mapping, DatRecord record, long rowNo, long? lineNo, Guid importBatchId, IReadOnlySet<int> codingOverlayFieldIds)
+        CompiledMapping mapping, DatRecord record, long rowNo, long? lineNo, Guid workspaceId, Guid importBatchId, IReadOnlySet<int> codingOverlayFieldIds)
     {
         ArgumentNullException.ThrowIfNull(mapping);
         ArgumentNullException.ThrowIfNull(record);
@@ -41,6 +41,7 @@ public static partial class ImportRowBuilder
         var documentId = Guid.CreateVersion7();
         var document = new Document
         {
+            WorkspaceId = workspaceId,
             DocumentId = documentId,
             FamilyId = documentId,
             ControlNumber = mapped.ControlNumber ?? string.Empty,
@@ -138,7 +139,8 @@ public static partial class ImportRowBuilder
             }
         }
 
-        ApplyUpstreamRelationships(mapped, document, supplied);
+        var relationships = ApplyUpstreamRelationships(mapping, mapped, document, supplied);
+        issues.AddRange(relationships.Warnings.Select(w => new ImportRowIssue(ImportIssueSeverity.Warning, "relationship-adjusted", Truncate(w))));
         var failed = issues.Any(i => i.Severity == ImportIssueSeverity.Error) || mapped.ControlNumberNorm is null;
         if (!failed)
         {
@@ -155,24 +157,38 @@ public static partial class ImportRowBuilder
             Document = failed ? null : document,
             SuppliedColumns = supplied,
             Coding = coding,
+            DuplicateGroup = failed ? null : relationships.DuplicateGroup,
+            EmailThread = failed ? null : relationships.EmailThread,
             Issues = issues,
         };
     }
 
     /// <summary>
-    /// Upstream duplicate and email-thread identifiers (E09-T02). Integration point of #85: replace the body with
-    /// <c>UpstreamRelationships.Apply(document, UpstreamRelationshipExtractor.Extract(mapping, mapped),
-    /// UpstreamRelationshipExtractor.Options(mapping))</c> and add the relationship columns it set to
-    /// <paramref name="supplied"/> (overlay writes only supplied columns). Until then only a hex dedupe hash is kept.
+    /// Upstream duplicate group, dedupe/email hash and email thread (E09-T02, ADR-009 R13-R20). The columns it sets
+    /// become supplied columns, so an overlay replaces them; the store records the group and thread rows.
     /// </summary>
-    private static void ApplyUpstreamRelationships(MappedRow mapped, Document document, HashSet<string> supplied)
+    private static UpstreamRelationshipResult ApplyUpstreamRelationships(
+        CompiledMapping mapping, MappedRow mapped, Document document, HashSet<string> supplied)
     {
-        var hash = mapped.Cells.FirstOrDefault(c => c.Target.Structural == StructuralTarget.DedupeHash && c.Error is null)?.Value?.GetValue<string>();
-        if (hash is not null && UpstreamHash().IsMatch(hash.ToLowerInvariant()))
+        var result = UpstreamRelationships.Apply(document, UpstreamRelationshipExtractor.Extract(mapping, mapped), UpstreamRelationshipExtractor.Options(mapping));
+        if (result.DuplicateGroup is not null)
         {
-            document.UpstreamDedupeHash = hash.ToLowerInvariant();
-            supplied.Add("upstream_dedupe_hash");
+            supplied.Add("duplicate_group_id");
         }
+
+        if (document.UpstreamDedupeHash is not null)
+        {
+            supplied.Add("upstream_dedupe_hash");
+            supplied.Add("upstream_dedupe_hash_kind");
+        }
+
+        if (result.EmailThread is not null)
+        {
+            supplied.Add("email_thread_id");
+            supplied.Add("email_thread_source");
+        }
+
+        return result;
     }
 
     /// <summary>Sets the structural column of a system field (ADR-003 §1); false for computed or unknown fields.</summary>
@@ -217,9 +233,6 @@ public static partial class ImportRowBuilder
 
     private static string Truncate(string message) =>
         message.Length <= ImportRowIssue.MaxMessageLength ? message : message[..ImportRowIssue.MaxMessageLength];
-
-    [GeneratedRegex("^[0-9a-f]{1,128}$", RegexOptions.CultureInvariant)]
-    private static partial Regex UpstreamHash();
 
     [GeneratedRegex("([a-z0-9])([A-Z])", RegexOptions.CultureInvariant)]
     private static partial Regex KebabBoundary();

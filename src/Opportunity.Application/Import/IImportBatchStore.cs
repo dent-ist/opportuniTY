@@ -216,6 +216,12 @@ public sealed record ImportRow
 
     public IReadOnlyList<ImportCodingValue> Coding { get; init; } = [];
 
+    /// <summary>The upstream duplicate group the row names (E09-T02); the chunk records it with its documents.</summary>
+    public DuplicateGroupKey? DuplicateGroup { get; init; }
+
+    /// <summary>The upstream (or ConversationIndex) email thread the row names (E09-T02).</summary>
+    public EmailThreadKey? EmailThread { get; init; }
+
     public IReadOnlyList<ImportRowIssue> Issues { get; init; } = [];
 
     public bool HasErrors => Document is null || Issues.Any(i => i.Severity == ImportIssueSeverity.Error);

@@ -87,7 +87,7 @@ public sealed class ImportChunkExecutor(
                 }
 
                 firstLine ??= record.LineNumber;
-                rows.Add(ImportRowBuilder.Build(mapping, record, rowNo, range.LineFrom + record.LineNumber - firstLine.Value, batchId, codingFields));
+                rows.Add(ImportRowBuilder.Build(mapping, record, rowNo, range.LineFrom + record.LineNumber - firstLine.Value, ws, batchId, codingFields));
             }
         }
 

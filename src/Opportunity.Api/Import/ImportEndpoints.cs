@@ -500,8 +500,8 @@ public sealed class ImportStartOptions
 public static class ImportEndpointRegistration
 {
     /// <summary>
-    /// The import API with its stores. Object storage is registered when the <c>ObjectStorage</c> section is configured;
-    /// without it, starting an import answers 503.
+    /// The import API with its stores. Object storage comes from the content gateway's registration
+    /// (<c>AddProtectedContentGateway</c>, <c>ObjectStorage</c> section); without it, starting an import answers 503.
     /// </summary>
     public static IServiceCollection AddImportEndpoints(this IServiceCollection services, IConfiguration configuration)
     {
@@ -512,14 +512,6 @@ public static class ImportEndpointRegistration
         services.TryAddSingleton<IJobRepository, JobRepository>();
         services.TryAddSingleton<IFieldCatalogRepository, FieldCatalogRepository>();
         services.TryAddSingleton<IWorkspaceReader, WorkspaceReader>();
-        if (configuration.GetSection(ObjectStorageOptions.SectionName).Exists() && !services.Any(s => s.ServiceType == typeof(IObjectStore)))
-        {
-            var storage = new ObjectStorageOptions();
-            configuration.GetSection(ObjectStorageOptions.SectionName).Bind(storage);
-            storage.Validate();
-            services.AddObjectStorage(storage);
-        }
-
         services.AddSingleton<IApiEndpointModule, ImportEndpoints>();
         return services;
     }

@@ -7,6 +7,7 @@ using Npgsql;
 using NpgsqlTypes;
 
 using Opportunity.Application.Audit;
+using Opportunity.Application.Documents;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.SearchWork;
@@ -18,12 +19,13 @@ using Opportunity.Data.Audit;
 using Opportunity.Data.Coding;
 using Opportunity.Data.Documents;
 using Opportunity.Data.Jobs;
+using Opportunity.Data.Relationships;
 using Opportunity.Data.SearchWork;
 
 namespace Opportunity.Data.Import;
 
 /// <summary>
-/// PostgreSQL implementation of <see cref="IImportBatchStore"/> over <c>import_batch</c> and its satellite tables (V0013).
+/// PostgreSQL implementation of <see cref="IImportBatchStore"/> over <c>import_batch</c> and its satellite tables (V0018).
 /// The chunk write follows the bulk-coding pattern (<c>CodingRepository.ApplyChunkAsync</c>): every write of the chunk,
 /// fence F3 and the chunk's one IndexChunkTask (the transaction's last statement) commit together or not at all.
 /// </summary>
@@ -576,7 +578,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         var existing = new Dictionary<string, (Guid DocumentId, bool Deleted)>(StringComparer.Ordinal);
         await using (var command = tx.Command(
             """
-            SELECT u.n, d.document_id, s.is_deleted
+            SELECT u.n, d.document_id, s.is_deleted, d.duplicate_group_id, d.email_thread_id
             FROM unnest(@norms) AS u(n)
             JOIN opportunity.document d ON d.workspace_id = @ws AND d.control_number_norm = normalize(u.n, NFC)
             JOIN opportunity.document_projection_state s ON s.workspace_id = d.workspace_id AND s.document_id = d.document_id
@@ -590,6 +592,8 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 existing[reader.GetString(0)] = (reader.GetGuid(1), reader.GetBoolean(2));
+                plan.PreviousRelationships[reader.GetGuid(1)] =
+                    (reader.IsDBNull(3) ? null : reader.GetGuid(3), reader.IsDBNull(4) ? null : reader.GetGuid(4));
             }
         }
 
@@ -756,16 +760,28 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
 
     /// <summary>
     /// Duplicate groups and email threads of the chunk's documents (E09-T02), after the document writes and before the
-    /// search work. Integration point of #85: build the <c>RelationshipSync</c> from the chunk's documents (their
-    /// DuplicateGroupId/EmailThreadId keys; for overlays also the ids they referenced before the update), call
-    /// <c>RelationshipWriter.SyncAsync(tx, sync, cancellationToken)</c> and return its <c>OtherChangedDocuments</c> ids:
-    /// they get search work of their own (<see cref="RelationshipTasks"/>). Returns none until then.
+    /// search work, through <see cref="RelationshipWriter"/>: the group and thread rows the documents now reference (the
+    /// deferred foreign keys need them at commit), plus, for overlays, the ones they referenced before, so every touched
+    /// group is recounted and its primary re-elected. Documents outside the chunk whose primary flag changed are returned:
+    /// they get search work of their own (<see cref="RelationshipTasks"/>).
     /// </summary>
-    private static Task<IReadOnlyList<Guid>> SyncRelationshipsAsync(
+    private static async Task<IReadOnlyList<Guid>> SyncRelationshipsAsync(
         WorkspaceTransaction tx, ChunkPlan plan, IReadOnlySet<Guid> coveredDocumentIds, CancellationToken cancellationToken)
     {
-        _ = (tx, plan, coveredDocumentIds, cancellationToken);
-        return Task.FromResult<IReadOnlyList<Guid>>([]);
+        var rows = plan.Members.Select(m => m.Row).Concat(plan.Overlays.Select(o => o.Row)).ToList();
+        var previous = plan.Overlays.Select(o => plan.PreviousRelationships.GetValueOrDefault(o.DocumentId)).ToList();
+        var groups = rows.Select(r => r.DuplicateGroup).OfType<DuplicateGroupKey>().DistinctBy(g => g.DuplicateGroupId).ToList();
+        var threads = rows.Select(r => r.EmailThread).OfType<EmailThreadKey>().DistinctBy(t => t.EmailThreadId).ToList();
+        var previousGroups = previous.Select(p => p.DuplicateGroupId).OfType<Guid>().Distinct().ToList();
+        var previousThreads = previous.Select(p => p.EmailThreadId).OfType<Guid>().Distinct().ToList();
+        if (groups.Count == 0 && threads.Count == 0 && previousGroups.Count == 0 && previousThreads.Count == 0)
+        {
+            return [];
+        }
+
+        var result = await RelationshipWriter.SyncAsync(
+            tx, new RelationshipSync(groups, threads, coveredDocumentIds, previousGroups, previousThreads), cancellationToken).ConfigureAwait(false);
+        return [.. result.OtherChangedDocuments.Select(d => d.DocumentId)];
     }
 
     /// <summary>
@@ -1081,6 +1097,9 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         public List<(ImportRow Row, Guid DocumentId, short Action)> Members { get; } = [];
 
         public List<ImportRow> ErroredRows { get; } = [];
+
+        /// <summary>Duplicate group and email thread of each existing document before this chunk (overlay recounts).</summary>
+        public Dictionary<Guid, (Guid? DuplicateGroupId, Guid? EmailThreadId)> PreviousRelationships { get; } = [];
 
         /// <summary>Documents outside the chunk whose relationship flags the chunk changed (E09-T02).</summary>
         public List<Guid> OtherChangedDocuments { get; } = [];

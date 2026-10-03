@@ -41,7 +41,7 @@ public class ImportRowBuilderTests
             ["BEGDOC", "ENDDOC", "CUSTODIAN", "DOCDATE", "FILESIZE", "MD5HASH", "DEDUPEHASH", "FOLDERPATH"],
             ["ABC-1", "ABC-2", "Smith", "2020-01-02T03:04:05Z", "1,000", "D41D8CD98F00B204E9800998ECF8427E", "ABCDEF", @"\Mail\Inbox"]), Catalog(custodian));
 
-        var row = ImportRowBuilder.Build(mapping, records[0], 1, 2, Batch, new HashSet<int>());
+        var row = ImportRowBuilder.Build(mapping, records[0], 1, 2, Workspace, Batch, new HashSet<int>());
 
         row.HasErrors.Should().BeFalse();
         row.ControlNumberNorm.Should().Be("ABC-1");
@@ -52,7 +52,7 @@ public class ImportRowBuilderTests
         Convert.ToHexStringLower(d.Md5!).Should().Be("d41d8cd98f00b204e9800998ecf8427e");
         d.UpstreamDedupeHash.Should().Be("abcdef");
         row.SuppliedColumns.Should().BeEquivalentTo(
-            ["beg_bates", "end_bates", "document_date", "document_date_source", "file_size", "md5", "upstream_dedupe_hash"]);
+            ["beg_bates", "end_bates", "document_date", "document_date_source", "file_size", "md5", "upstream_dedupe_hash", "upstream_dedupe_hash_kind"]);
         JsonNode.Parse(d.Metadata)![FieldKey.For(custodian.FieldId)]!.GetValue<string>().Should().Be("Smith");
         var raw = JsonNode.Parse(d.MetadataRaw!)!;
         raw[FieldKey.For(SystemFields.FileSize)]!["raw"]!.GetValue<string>().Should().Be("1,000");
@@ -71,16 +71,16 @@ public class ImportRowBuilderTests
         };
         var (mapping, records) = await ParseAsync(Concordance(["BEGDOC", "RESP"], ["A-1", "yes"], ["A-2"]), Catalog(responsive), profile);
 
-        var enabled = ImportRowBuilder.Build(mapping, records[0], 1, 2, Batch, new HashSet<int> { 1000 });
+        var enabled = ImportRowBuilder.Build(mapping, records[0], 1, 2, Workspace, Batch, new HashSet<int> { 1000 });
         enabled.HasErrors.Should().BeFalse();
         enabled.Coding.Should().ContainSingle().Which.FieldId.Should().Be(1000);
         JsonNode.Parse(enabled.Document!.Metadata)!.AsObject().Should().BeEmpty("coding never lives in metadata (ADR-003 R2)");
 
-        var disabled = ImportRowBuilder.Build(mapping, records[0], 1, 2, Batch, new HashSet<int>());
+        var disabled = ImportRowBuilder.Build(mapping, records[0], 1, 2, Workspace, Batch, new HashSet<int>());
         disabled.Issues.Should().ContainSingle(i => i.Code == "coding-field-not-enabled" && i.Severity == ImportIssueSeverity.Error);
         disabled.Document.Should().BeNull();
 
-        var rejected = ImportRowBuilder.Build(mapping, records[1], 2, 3, Batch, new HashSet<int>());
+        var rejected = ImportRowBuilder.Build(mapping, records[1], 2, 3, Workspace, Batch, new HashSet<int>());
         rejected.HasErrors.Should().BeTrue();
         rejected.ControlNumber.Should().Be("A-2");
         rejected.Issues.Should().ContainSingle(i => i.Code == "field-count-mismatch");
