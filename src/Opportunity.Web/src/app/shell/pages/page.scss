@@ -1,0 +1,80 @@
+// Shared layout for the shell's own pages.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+}
+
+:host(.page--content) {
+  max-width: 64rem;
+  padding: var(--opp-space-5);
+}
+
+.page__title {
+  font-size: var(--opp-font-size-2xl);
+}
+
+.page__lead,
+.page__notice {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+}
+
+.page__notice {
+  padding: var(--opp-space-2) var(--opp-space-3);
+  color: var(--opp-color-success-text);
+  background: var(--opp-color-success-bg);
+  border: var(--opp-border-width) solid var(--opp-color-success-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.page__wide {
+  width: 100%;
+}
+
+.page__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+}
+
+.page__section h2 {
+  font-size: var(--opp-font-size-lg);
+}
+
+.page__section p {
+  margin: 0;
+  max-width: 48rem;
+}
+
+.page__fine {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+:host(.page--centered) {
+  align-items: center;
+  max-width: 40rem;
+  margin-inline: auto;
+  padding: var(--opp-space-7) var(--opp-space-4);
+  text-align: center;
+}
+
+.page__icon {
+  font-size: var(--opp-font-size-2xl);
+  color: var(--opp-color-text-muted);
+}
+
+.page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--opp-space-2);
+}
+
+.page__reference {
+  margin: 0;
+  font-size: var(--opp-font-size-xs);
+  color: var(--opp-color-text-muted);
+}

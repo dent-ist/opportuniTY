@@ -6,3 +6,25 @@ export { provideApiConfiguration } from './api-configuration';
 export { RequestBuilder } from './request-builder';
 export type { StrictHttpResponse } from './strict-http-response';
 export { OpportunityApi } from './opportunity-api';
+
+export type { HttpValidationProblemDetails } from './models/http-validation-problem-details';
+export type { JobCommittedProgress } from './models/job-committed-progress';
+export type { JobIndexedProgress } from './models/job-indexed-progress';
+export type { JobIndexState } from './models/job-index-state';
+export type { JobResource } from './models/job-resource';
+export type { JobResourceStatus } from './models/job-resource-status';
+export type { JobResourceType } from './models/job-resource-type';
+export type { JsonElement } from './models/json-element';
+export type { MeResponse } from './models/me-response';
+export type { ProblemDetails } from './models/problem-details';
+export type { QueryValidationDiagnostic } from './models/query-validation-diagnostic';
+export type { QueryValidationRequest } from './models/query-validation-request';
+export type { QueryValidationResult } from './models/query-validation-result';
+export type { TextSpan } from './models/text-span';
+
+export type { ApiV1MeGet$Params as ApiV1MeGet$Params } from './fn/authentication/api-v-1-me-get';
+export { apiV1MeGet as apiV1MeGet } from './fn/authentication/api-v-1-me-get';
+export type { ValidateQuery$Params as ValidateQuery$Params } from './fn/opportunity-api/validate-query';
+export { validateQuery as validateQuery } from './fn/opportunity-api/validate-query';
+export type { GetJob$Params as GetJob$Params } from './fn/jobs/get-job';
+export { getJob as getJob } from './fn/jobs/get-job';

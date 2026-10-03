@@ -5,7 +5,7 @@ import { Routes } from '@angular/router';
 export const devRoutes: Routes = [
   {
     path: 'dev/components',
-    title: 'Component showcase · opportuniTY',
+    title: 'Component showcase',
     loadComponent: () => import('./showcase/showcase').then((m) => m.Showcase),
   },
 ];

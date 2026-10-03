@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { DOCUMENT, Injectable, InjectionToken, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import type { MeResponse } from '../api/generated/models';
 import { ApiError, toApiError } from '../api/problem-details';
 
 /**
@@ -13,7 +14,7 @@ export interface SessionConfig {
   readonly principalUrl: string;
   /** Top-level navigation target that starts the OIDC code + PKCE flow; takes a relative `returnUrl`. */
   readonly loginUrl: string;
-  /** POST (anti-forgery protected) → revokes the server session; responds 200 `{ redirectUrl }` or 204. */
+  /** POST (anti-forgery protected) → revokes the server session; responds 200 `{ endSessionUrl }` (may be null). */
   readonly logoutUrl: string;
   /** Readable anti-forgery cookie set by the BFF and the header it expects on unsafe methods. */
   readonly xsrfCookieName: string;
@@ -32,11 +33,12 @@ export const SESSION_CONFIG = new InjectionToken<SessionConfig>('SESSION_CONFIG'
   factory: () => DEFAULT_SESSION_CONFIG,
 });
 
-/** The fields of `/api/v1/me` the shell needs; the generated client supplies the full type once published. */
-export interface SessionPrincipal {
-  id: string;
-  displayName: string;
-  [field: string]: unknown;
+/** `GET /api/v1/me` (generated from the OpenAPI document). */
+export type SessionPrincipal = MeResponse;
+
+/** `POST /bff/logout` body. The BFF route is outside the OpenAPI document, so it is typed here. */
+export interface LogoutResponse {
+  endSessionUrl?: string | null;
 }
 
 export type SessionStatus = 'unknown' | 'authenticated' | 'anonymous' | 'expired';
@@ -85,9 +87,13 @@ export class SessionService {
     this.document.location.assign(`${this.config.loginUrl}?returnUrl=${encodeURIComponent(safe)}`);
   }
 
+  /**
+   * Ends the server session, then leaves the app with a full-page navigation (which also drops every piece
+   * of client state): to the IdP's end-session URL when the BFF returns one, otherwise to the sign-in page.
+   */
   async logout(): Promise<void> {
     const response = await firstValueFrom(
-      this.http.post<{ redirectUrl?: string } | null>(this.config.logoutUrl, null),
+      this.http.post<LogoutResponse | null>(this.config.logoutUrl, null),
     ).catch((e: unknown) => {
       const error = toApiError(e);
       if (error.status === 401) return null;
@@ -95,12 +101,27 @@ export class SessionService {
     });
     this._principal.set(null);
     this._status.set('anonymous');
-    this.document.location.assign(response?.redirectUrl ?? '/');
+    this.document.location.assign(safeEndSessionUrl(response?.endSessionUrl) ?? SIGNED_OUT_PATH);
   }
 
   private currentPath(): string {
     const { pathname, search, hash } = this.document.location;
     return `${pathname}${search}${hash}`;
+  }
+}
+
+/** Where the app lands after signing out when the IdP has no end-session endpoint. */
+export const SIGNED_OUT_PATH = '/sign-in?signedOut=true';
+
+/** Only http(s) URLs or same-origin paths: never `javascript:` or other schemes. */
+function safeEndSessionUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('/') && !url.startsWith('//')) return url;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'https:' || protocol === 'http:' ? url : undefined;
+  } catch {
+    return undefined;
   }
 }
 

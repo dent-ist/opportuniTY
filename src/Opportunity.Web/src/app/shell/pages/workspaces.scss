@@ -1,0 +1,97 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-5);
+  max-width: 64rem;
+  padding: var(--opp-space-5);
+}
+
+.workspaces__title {
+  font-size: var(--opp-font-size-2xl);
+}
+
+.workspaces__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+}
+
+.workspaces__section h2 {
+  font-size: var(--opp-font-size-lg);
+}
+
+.workspaces__recent {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--opp-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workspaces__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  height: 100%;
+  padding: var(--opp-space-3) var(--opp-space-4);
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-inline-start: 3px solid var(--opp-color-accent);
+  border-radius: var(--opp-radius-md);
+  color: var(--opp-color-text);
+  text-decoration: none;
+}
+
+.workspaces__card:hover {
+  background: var(--opp-color-hover);
+}
+
+.workspaces__card-name {
+  font-weight: var(--opp-font-weight-semibold);
+  color: var(--opp-color-accent-text);
+  text-decoration: underline;
+}
+
+.workspaces__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.workspaces__filter {
+  flex: 0 1 24rem;
+}
+
+.workspaces__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.workspaces__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.workspaces__table th,
+.workspaces__table td {
+  height: var(--opp-row-height);
+  padding: var(--opp-space-1) var(--opp-cell-padding-x);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+}
+
+.workspaces__table th {
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.workspaces__table tbody tr:hover {
+  background: var(--opp-color-hover);
+}
