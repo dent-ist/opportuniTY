@@ -5,6 +5,7 @@ using Npgsql;
 using Opportunity.Core.Documents;
 using Opportunity.Data;
 using Opportunity.Data.Documents;
+using Opportunity.Data.Fields;
 using Opportunity.Data.Migrations;
 using Opportunity.IntegrationTests.Migrations;
 
@@ -19,6 +20,7 @@ internal sealed class CoreSchemaDatabase : IAsyncDisposable
         DataSource = NpgsqlDataSource.Create(connectionString);
         Documents = new DocumentRepository(DataSource);
         Reads = new DocumentReadQueries(DataSource);
+        Fields = new FieldCatalogRepository(DataSource);
     }
 
     public string ConnectionString { get; }
@@ -28,6 +30,8 @@ internal sealed class CoreSchemaDatabase : IAsyncDisposable
     public DocumentRepository Documents { get; }
 
     public DocumentReadQueries Reads { get; }
+
+    public FieldCatalogRepository Fields { get; }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
