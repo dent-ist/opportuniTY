@@ -1,16 +1,34 @@
+using System.Reflection;
+
 using Opportunity.Api.Conventions;
+using Opportunity.Data.Identity;
 using Opportunity.Hosting;
+using Opportunity.Security.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Build-time OpenAPI generation (dotnet-getdocument) starts the host without installation configuration; give it
+// inert placeholders so options validation passes. Real hosts must configure Authentication (ValidateOnStart).
+if (Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider")
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["Authentication:PublicOrigin"] = "https://localhost",
+        ["Authentication:Oidc:Authority"] = "https://idp.invalid",
+        ["Authentication:Oidc:ClientId"] = "openapi-generation",
+    });
+}
+
 builder.AddOpportunityHostDefaults();
 builder.Services.AddApiConventions();
+builder.Services.AddPostgresIdentityStores();
+builder.Services.AddOpportunityAuthentication();
 
 var app = builder.Build();
 
 app.UseApiConventions();
 app.MapOpportunityHostDefaults();
-app.MapOpenApi();
+app.MapOpenApi().AllowAnonymous();
 app.MapApiV1();
 
 app.Run();

@@ -6,6 +6,7 @@ using Opportunity.Api.Conventions.Idempotency;
 using Opportunity.Api.Conventions.Json;
 using Opportunity.Application.Idempotency;
 using Opportunity.Hosting.Options;
+using Opportunity.Security.Authentication;
 
 namespace Opportunity.Api.Conventions;
 
@@ -70,15 +71,20 @@ public static class ApiConventions
         return services;
     }
 
-    /// <summary>Middleware order matters: errors outermost, idempotency after routing (it reads endpoint metadata).</summary>
+    /// <summary>
+    /// Middleware order matters: security headers and errors outermost; authentication, CSRF and authorization after
+    /// routing (they read endpoint metadata) and before idempotency (keys are scoped to the user).
+    /// </summary>
     public static WebApplication UseApiConventions(this WebApplication app)
     {
         ArgumentNullException.ThrowIfNull(app);
 
+        app.UseOpportunitySecurityHeaders();
         app.UseExceptionHandler();
         app.UseStatusCodePages();
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseRouting();
+        app.UseOpportunityAuthentication();
         app.UseMiddleware<WorkspaceTelemetryMiddleware>();
         app.UseMiddleware<IdempotencyMiddleware>();
         return app;

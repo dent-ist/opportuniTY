@@ -1,0 +1,125 @@
+{
+  "realm": "opportunity",
+  "displayName": "opportuniTY (development IdP - not for real data)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": true,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 43200,
+  "revokeRefreshToken": false,
+  "groups": [
+    { "name": "workspace-admins" },
+    { "name": "reviewers" },
+    { "name": "qc-reviewers" },
+    { "name": "privilege-reviewers" },
+    { "name": "production-managers" },
+    { "name": "auditors" },
+    { "name": "wall-project-falcon" }
+  ],
+  "users": [
+    {
+      "username": "admin.dev",
+      "firstName": "Ada",
+      "lastName": "Admin",
+      "email": "admin.dev@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "opportunity", "temporary": false }],
+      "groups": ["/workspace-admins"]
+    },
+    {
+      "username": "reviewer.dev",
+      "firstName": "Riley",
+      "lastName": "Reviewer",
+      "email": "reviewer.dev@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "opportunity", "temporary": false }],
+      "groups": ["/reviewers"]
+    },
+    {
+      "username": "privilege.dev",
+      "firstName": "Priya",
+      "lastName": "Privilege",
+      "email": "privilege.dev@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "opportunity", "temporary": false }],
+      "groups": ["/reviewers", "/privilege-reviewers"]
+    },
+    {
+      "username": "walled.dev",
+      "firstName": "Wally",
+      "lastName": "Walled",
+      "email": "walled.dev@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "opportunity", "temporary": false }],
+      "groups": ["/reviewers", "/wall-project-falcon"]
+    },
+    {
+      "username": "auditor.dev",
+      "firstName": "Audrey",
+      "lastName": "Auditor",
+      "email": "auditor.dev@example.test",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "opportunity", "temporary": false }],
+      "groups": ["/auditors"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "opportunity-web",
+      "name": "opportuniTY",
+      "description": "The opportuniTY API acting as backend-for-frontend (confidential client, ADR-015 D3/D4).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "opportunity-dev-client",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "consentRequired": false,
+      "redirectUris": [
+        "http://localhost:8081/bff/callback",
+        "http://localhost:4200/bff/callback",
+        "https://localhost/bff/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8081/##http://localhost:4200/##https://localhost/",
+        "backchannel.logout.url": "http://api:8080/bff/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false",
+        "use.refresh.tokens": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

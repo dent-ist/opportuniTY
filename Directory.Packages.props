@@ -43,5 +43,8 @@
     <PackageVersion Include="JsonSchema.Net" Version="8.0.5" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <PackageVersion Include="HdrHistogram" Version="2.5.0" />
+    <!-- OIDC authentication with a BFF session (E05-T01, ADR-015 D3/D4); both MIT -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
   </ItemGroup>
 </Project>

@@ -29,6 +29,8 @@ public static class ProblemCodes
     public const string RateLimited = "rate-limited";
     public const string Internal = "internal-error";
     public const string ServiceUnavailable = "service-unavailable";
+    public const string CsrfValidationFailed = "csrf-validation-failed";
+    public const string StepUpRequired = "step-up-required";
 
     public static string TypeFor(string code) => TypePrefix + code;
 }

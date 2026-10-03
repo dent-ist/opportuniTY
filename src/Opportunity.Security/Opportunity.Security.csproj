@@ -1,8 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Authorization and policy decisions.</Description>
+    <Description>Authentication (OIDC with a BFF session, ADR-015 D3/D4), HTTP security controls, and authorization and policy decisions.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Opportunity.Core\Opportunity.Core.csproj" />
