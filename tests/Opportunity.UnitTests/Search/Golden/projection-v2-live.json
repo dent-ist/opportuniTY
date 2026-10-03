@@ -1,0 +1,99 @@
+{
+  "workspaceId": "6f1c2b3a-4d5e-4f60-8a9b-0c1d2e3f4a5b",
+  "documentId": "0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b",
+  "projectionVersion": 7,
+  "controlNumber": "ABC0000010",
+  "controlNumberSort": "ABC00000000000000000010",
+  "begBates": "prod 9",
+  "begBatesSort": "PROD 00000000000000000009",
+  "endBates": "PROD 12",
+  "endBatesSort": "PROD 00000000000000000012",
+  "begAttach": "ABC0000009",
+  "endAttach": "ABC0000011",
+  "familyId": "0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a60",
+  "parentDocumentId": "0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a60",
+  "familySequence": 1,
+  "familyStatus": "resolved",
+  "duplicateGroupId": "11111111-2222-4333-8444-555555555555",
+  "isDuplicatePrimary": true,
+  "emailThreadId": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+  "fileName": "Q3_Budget-final.xlsx",
+  "fileExtension": "xlsx",
+  "fileType": "Microsoft Excel",
+  "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "fileSize": 48213,
+  "pageCount": 3,
+  "documentDate": "2025-03-01T14:05:00Z",
+  "familyDate": "2025-03-01T14:05:00Z",
+  "dateSent": "2025-03-01T14:05:00Z",
+  "dateReceived": "2025-03-01T14:06:30.250Z",
+  "md5": "d41d8cd98f00b204e9800998ecf8427e",
+  "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "securityTags": [
+    "class:privilegestatus",
+    "wall:0f0e0d0c-0b0a-4908-8706-050403020100"
+  ],
+  "metadata": {
+    "kw": {
+      "s001": [
+        "Smith, John",
+        "Doe, Jane"
+      ]
+    },
+    "txt": {
+      "s001": "Quarterly results — café pricing"
+    },
+    "idt": {
+      "s001": "john.smith@acme.com"
+    },
+    "dec": {
+      "s001": 1234.5
+    },
+    "int": {
+      "s001": 42
+    },
+    "dt": {
+      "s001": "2025-03-01T00:00:00Z"
+    },
+    "bool": {
+      "s001": true
+    },
+    "ch": {
+      "s001": "7"
+    },
+    "usr": {
+      "s001": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+    }
+  },
+  "metadataOverflow": {
+    "f1009": "VND-17"
+  },
+  "coding": {
+    "bool": {
+      "s001": true
+    },
+    "ch": {
+      "s001": [
+        "3",
+        "5"
+      ],
+      "s002": "11"
+    },
+    "txt": {
+      "s001": "Key memo"
+    },
+    "dt": {
+      "s001": "2025-03-01T14:05:00Z"
+    }
+  },
+  "codingOverflow": {
+    "f1024": "2"
+  },
+  "textLength": 18000000,
+  "textTruncated": false,
+  "textMissing": false,
+  "nativeMissing": false,
+  "imagesIncomplete": true,
+  "text": "Quarterly results: the café pricing memo."
+}

@@ -33,7 +33,7 @@ public sealed class IndexManagerTests(OpenSearchFixture fixture)
 
         var info = await harness.Placements.PlaceAsync(a, request, Ct);
         await harness.Placements.PlaceAsync(b, request, Ct);
-        info.Should().Be(new WorkspaceSearchPlacementInfo(a, kind, 1, IndexPlacementState.Active));
+        info.Should().Be(new WorkspaceSearchPlacementInfo(a, kind, harness.Mappings.CurrentGeneration, IndexPlacementState.Active));
 
         var pa = await harness.Manager.ResolveAsync(a, IndexPurpose.Write, Ct);
         var pb = await harness.Manager.ResolveAsync(b, IndexPurpose.Write, Ct);

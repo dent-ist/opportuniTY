@@ -660,6 +660,48 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/fields": {
+      "get": {
+        "tags": [
+          "Fields"
+        ],
+        "summary": "The workspace's fields with query names and search capabilities (sortable, filterable, aggregatable, …).",
+        "description": "Every member can read the catalogue: reviewers need it for the grid, the query bar and coding.",
+        "operationId": "ListFields",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfFieldResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/import-targets": {
       "get": {
         "tags": [
@@ -1409,6 +1451,31 @@
           "mergedIntoDate"
         ]
       },
+      "CursorPageOfFieldResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfImportProfileSummary": {
         "required": [
           "items",
@@ -1532,6 +1599,143 @@
             "format": "int32"
           }
         }
+      },
+      "FieldCapabilitiesResource": {
+        "required": [
+          "sortable",
+          "filterable",
+          "rangeable",
+          "aggregatable",
+          "fullText",
+          "wildcard",
+          "leadingWildcard",
+          "highlightable",
+          "exists"
+        ],
+        "type": "object",
+        "properties": {
+          "sortable": {
+            "type": "boolean"
+          },
+          "filterable": {
+            "type": "boolean"
+          },
+          "rangeable": {
+            "type": "boolean"
+          },
+          "aggregatable": {
+            "type": "boolean"
+          },
+          "fullText": {
+            "type": "boolean"
+          },
+          "wildcard": {
+            "type": "boolean"
+          },
+          "leadingWildcard": {
+            "type": "boolean"
+          },
+          "highlightable": {
+            "type": "boolean"
+          },
+          "exists": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FieldResource": {
+        "required": [
+          "fieldId",
+          "displayName",
+          "queryName",
+          "type",
+          "storage",
+          "multiValue",
+          "isSystem",
+          "isHidden",
+          "isSecurityAffecting",
+          "datePrecision",
+          "capabilities",
+          "reducedCapabilities"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "queryName": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldResourceType"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/FieldResourceStorage"
+          },
+          "multiValue": {
+            "type": "boolean"
+          },
+          "isSystem": {
+            "type": "boolean"
+          },
+          "isHidden": {
+            "type": "boolean"
+          },
+          "isSecurityAffecting": {
+            "type": "boolean"
+          },
+          "datePrecision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FieldResourceDatePrecision"
+              }
+            ]
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/FieldCapabilitiesResource"
+          },
+          "reducedCapabilities": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FieldResourceDatePrecision": {
+        "enum": [
+          "date",
+          "dateTime",
+          null
+        ]
+      },
+      "FieldResourceStorage": {
+        "enum": [
+          "column",
+          "metadata",
+          "coding"
+        ]
+      },
+      "FieldResourceType": {
+        "enum": [
+          "text",
+          "keyword",
+          "integer",
+          "decimal",
+          "date",
+          "boolean",
+          "singleChoice",
+          "multiChoice",
+          "user"
+        ]
       },
       "HttpValidationProblemDetails": {
         "type": "object",
@@ -3419,6 +3623,9 @@
     },
     {
       "name": "Jobs"
+    },
+    {
+      "name": "Fields"
     },
     {
       "name": "Import"
