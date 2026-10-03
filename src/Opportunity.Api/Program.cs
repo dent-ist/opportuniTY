@@ -1,6 +1,6 @@
 using Opportunity.Api.Conventions;
-using Opportunity.Api.Search;
 using Opportunity.Api.Jobs;
+using Opportunity.Api.Search;
 using Opportunity.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
