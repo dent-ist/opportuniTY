@@ -1,6 +1,5 @@
 using System.Buffers.Text;
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -17,7 +16,6 @@ using Opportunity.Application.Authorization;
 using Opportunity.Application.Fields;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
-using Opportunity.Application.Storage;
 using Opportunity.Application.Workspaces;
 using Opportunity.Contracts.Api;
 using Opportunity.Contracts.Import;
@@ -31,7 +29,6 @@ using Opportunity.Import.Jobs;
 using Opportunity.Import.LoadFiles;
 using Opportunity.Import.Mapping;
 using Opportunity.Security.Authorization;
-using Opportunity.Storage;
 
 namespace Opportunity.Api.Import;
 
@@ -82,11 +79,13 @@ public sealed class ImportEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapGet("/{importId}/errors", DownloadErrorsAsync)
-            .WithName("DownloadImportErrors")
+        // JSON pages: non-JSON downloads belong to the protected-content gateway (ADR-015 D12.1); the CSV error file
+        // and import report are retained with the job by E08-T06.
+        group.MapGet("/{importId}/errors", ListErrorsAsync)
+            .WithName("ListImportErrors")
             .WithTags("Import")
-            .WithSummary("Row-level errors (and warnings with includeWarnings=true) of an import as CSV.")
-            .Produces(StatusCodes.Status200OK, contentType: "text/csv")
+            .WithSummary("Row-level errors (and warnings with includeWarnings=true) of an import, in row order.")
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
     }
@@ -99,6 +98,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
         IFieldCatalogRepository fields,
         IWorkspaceReader workspaces,
         IAuthorizationService authorization,
+        IImportSourceStore sources,
         IOptions<ImportStartOptions> options,
         IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> json,
         CancellationToken cancellationToken)
@@ -110,7 +110,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
         }
 
         var ws = access.WorkspaceId;
-        if (context.RequestServices.GetService<IObjectStore>() is not { } store)
+        if (!sources.IsAvailable)
         {
             return Problems.Create(StatusCodes.Status503ServiceUnavailable, ProblemCodes.ServiceUnavailable, "Object storage is not configured.");
         }
@@ -255,20 +255,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
 
         // Content-addressed upload (ADR-011): a retried start stores nothing new.
         var importId = Guid.CreateVersion7();
-        byte[] sha256;
-        var hashing = file.OpenReadStream();
-        await using (hashing.ConfigureAwait(false))
-        {
-            sha256 = await SHA256.HashDataAsync(hashing, cancellationToken).ConfigureAwait(false);
-        }
-
-        var key = ObjectKeys.ImportSource(ws, importId, Sha256Digest.FromBytes(sha256));
-        var upload = file.OpenReadStream();
-        await using (upload.ConfigureAwait(false))
-        {
-            await store.PutAsync(key, upload, new PutObjectOptions { ContentType = "application/octet-stream", ExpectedLength = file.Length }, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        var source = await sources.StoreAsync(ws, importId, file.OpenReadStream, file.Length, cancellationToken).ConfigureAwait(false);
 
         var principal = access.Principal;
         var creation = await batches.CreateAsync(new NewImportBatch
@@ -278,8 +265,8 @@ public sealed class ImportEndpoints : IApiEndpointModule
             Name = name,
             Mode = profile.Mode,
             SourceFileName = fileName,
-            SourceObjectKey = key.Value,
-            SourceSha256 = sha256,
+            SourceObjectKey = source.ObjectKey,
+            SourceSha256 = source.Sha256,
             SourceSize = file.Length,
             ProfileId = request.ProfileId,
             ProfileVersion = profileVersion,
@@ -362,8 +349,9 @@ public sealed class ImportEndpoints : IApiEndpointModule
         return TypedResults.Ok(ToResource(record, job));
     }
 
-    internal static async Task<IResult> DownloadErrorsAsync(
-        string workspaceId, string importId, bool? includeWarnings, HttpContext context, IImportBatchStore batches, CancellationToken cancellationToken)
+    internal static async Task<Results<Ok<CursorPage<ImportRowIssueResource>>, ValidationProblem, ProblemHttpResult>> ListErrorsAsync(
+        string workspaceId, string importId, bool? includeWarnings, [AsParameters] PageQuery page, HttpContext context, IImportBatchStore batches,
+        CancellationToken cancellationToken)
     {
         _ = workspaceId;
         if (context.GetWorkspaceAccess() is not { } access || !Guid.TryParse(importId, out var id)
@@ -372,39 +360,50 @@ public sealed class ImportEndpoints : IApiEndpointModule
             return Problems.NotFound("No such import.");
         }
 
-        var severity = includeWarnings == true ? (ImportIssueSeverity?)null : ImportIssueSeverity.Error;
-        var fileName = $"import-{record.ImportBatchId:N}-errors.csv";
-        return TypedResults.Stream(async output =>
+        if (page.Validate() is { } invalid)
         {
-            var writer = new StreamWriter(output, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true), 1 << 16, leaveOpen: true);
-            await using (writer.ConfigureAwait(false))
+            return invalid;
+        }
+
+        ImportRowIssueCursor? after = null;
+        if (page.Cursor is { } cursor)
+        {
+            if (DecodeIssueCursor(cursor) is not { } decoded)
             {
-                await writer.WriteAsync("Row,Line,Severity,ControlNumber,Column,Code,Message\r\n").ConfigureAwait(false);
-                ImportRowIssueCursor? after = null;
-                while (true)
-                {
-                    var issues = await batches.GetRowIssuesAsync(access.WorkspaceId, id, severity, after, 1_000, cancellationToken).ConfigureAwait(false);
-                    foreach (var issue in issues)
-                    {
-                        await writer.WriteAsync(string.Join(',',
-                            issue.RowNo.ToString(CultureInfo.InvariantCulture),
-                            issue.LineNo?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-                            issue.Severity.ToString(),
-                            Csv(issue.ControlNumber),
-                            Csv(issue.Column),
-                            Csv(issue.Code),
-                            Csv(issue.Message)) + "\r\n").ConfigureAwait(false);
-                    }
-
-                    if (issues.Count < 1_000)
-                    {
-                        break;
-                    }
-
-                    after = new ImportRowIssueCursor(issues[^1].RowNo, issues[^1].IssueNo);
-                }
+                return Validation("cursor", "The cursor is not valid.");
             }
-        }, "text/csv; charset=utf-8", fileName);
+
+            after = decoded;
+        }
+
+        var limit = page.EffectiveLimit;
+        var severity = includeWarnings == true ? (ImportIssueSeverity?)null : ImportIssueSeverity.Error;
+        var issues = await batches.GetRowIssuesAsync(access.WorkspaceId, record.ImportBatchId, severity, after, limit + 1, cancellationToken)
+            .ConfigureAwait(false);
+        var items = issues.Take(limit).Select(i => new ImportRowIssueResource(
+            i.RowNo, i.LineNo, i.Severity == ImportIssueSeverity.Error ? ImportRowIssueSeverity.Error : ImportRowIssueSeverity.Warning,
+            i.ControlNumber, i.Column, i.Code, i.Message)).ToList();
+        var next = issues.Count > limit
+            ? Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{issues[limit - 1].RowNo}|{issues[limit - 1].IssueNo}")))
+            : null;
+        return TypedResults.Ok(new CursorPage<ImportRowIssueResource>(
+            items, next, new TotalCount(items.Count, next is null && after is null ? TotalRelation.Eq : TotalRelation.Gte)));
+    }
+
+    private static ImportRowIssueCursor? DecodeIssueCursor(string cursor)
+    {
+        try
+        {
+            var parts = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(cursor)).Split('|');
+            return parts.Length == 2 && long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var row)
+                && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var issue)
+                    ? new ImportRowIssueCursor(row, issue)
+                    : null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     internal static ImportResource ToResource(ImportBatchRecord record, JobInfo job) => new(
@@ -428,22 +427,6 @@ public sealed class ImportEndpoints : IApiEndpointModule
         JobEndpoints.ToResource(job),
         record.CreatedAt,
         record.CompletedAt);
-
-    /// <summary>RFC 4180 quoting; a leading formula character is neutralized so spreadsheets do not execute it.</summary>
-    private static string Csv(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        if (value[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
-        {
-            value = "'" + value;
-        }
-
-        return value.AsSpan().IndexOfAny(",\"\r\n") >= 0 ? "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"" : value;
-    }
 
     private static string EncodeCursor(ImportBatchCursor cursor) =>
         Base64Url.EncodeToString(Encoding.UTF8.GetBytes(
@@ -512,6 +495,7 @@ public static class ImportEndpointRegistration
         services.TryAddSingleton<IJobRepository, JobRepository>();
         services.TryAddSingleton<IFieldCatalogRepository, FieldCatalogRepository>();
         services.TryAddSingleton<IWorkspaceReader, WorkspaceReader>();
+        services.AddImportSourceStore();
         services.AddSingleton<IApiEndpointModule, ImportEndpoints>();
         return services;
     }

@@ -7,31 +7,37 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-export interface DownloadImportErrors$Params {
+import { CursorPageOfImportRowIssueResource } from '../../models/cursor-page-of-import-row-issue-resource';
+
+export interface ListImportErrors$Params {
   workspaceId: string;
   importId: string;
   includeWarnings?: boolean;
+  limit?: number | string;
+  cursor?: string;
 }
 
-export function downloadImportErrors(
+export function listImportErrors(
   http: HttpClient,
   rootUrl: string,
-  params: DownloadImportErrors$Params,
+  params: ListImportErrors$Params,
   context?: HttpContext,
-): Observable<StrictHttpResponse<void>> {
-  const rb = new RequestBuilder(rootUrl, downloadImportErrors.PATH, 'get');
+): Observable<StrictHttpResponse<CursorPageOfImportRowIssueResource>> {
+  const rb = new RequestBuilder(rootUrl, listImportErrors.PATH, 'get');
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
     rb.path('importId', params.importId, {});
     rb.query('includeWarnings', params.includeWarnings, {});
+    rb.query('limit', params.limit, {});
+    rb.query('cursor', params.cursor, {});
   }
 
-  return http.request(rb.build({ responseType: 'text', accept: '*/*', context })).pipe(
+  return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return (r as HttpResponse<any>).clone({ body: undefined }) as StrictHttpResponse<void>;
+      return r as StrictHttpResponse<CursorPageOfImportRowIssueResource>;
     }),
   );
 }
 
-downloadImportErrors.PATH = '/api/v1/workspaces/{workspaceId}/imports/{importId}/errors';
+listImportErrors.PATH = '/api/v1/workspaces/{workspaceId}/imports/{importId}/errors';

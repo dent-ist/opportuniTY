@@ -47,6 +47,27 @@ public sealed record ImportResource(
     DateTimeOffset CreatedAt,
     DateTimeOffset? CompletedAt);
 
+public enum ImportRowIssueSeverity
+{
+    /// <summary>The row was not loaded.</summary>
+    Error,
+
+    /// <summary>The row was loaded; a value was adjusted or ignored.</summary>
+    Warning,
+}
+
+/// <summary>One row-level error or warning of an import (the error detail of the import report).</summary>
+/// <param name="Row">1-based data row of the load file.</param>
+/// <param name="Line">1-based physical line where the row starts.</param>
+public sealed record ImportRowIssueResource(
+    long Row,
+    long? Line,
+    ImportRowIssueSeverity Severity,
+    string? ControlNumber,
+    string? Column,
+    string Code,
+    string Message);
+
 /// <param name="RowsRead">Data rows in the file; null until the file has been read (preparation).</param>
 /// <param name="RowsImported">New documents created.</param>
 /// <param name="RowsOverlaid">Existing documents changed.</param>

@@ -43,8 +43,8 @@ export type { StartImport$Params as StartImport$Params } from './fn/import/start
 export { startImport as startImport } from './fn/import/start-import';
 export type { GetImport$Params as GetImport$Params } from './fn/import/get-import';
 export { getImport as getImport } from './fn/import/get-import';
-export type { DownloadImportErrors$Params as DownloadImportErrors$Params } from './fn/import/download-import-errors';
-export { downloadImportErrors as downloadImportErrors } from './fn/import/download-import-errors';
+export type { ListImportErrors$Params as ListImportErrors$Params } from './fn/import/list-import-errors';
+export { listImportErrors as listImportErrors } from './fn/import/list-import-errors';
 export type { DownloadDocumentNative$Params as DownloadDocumentNative$Params } from './fn/document-content/download-document-native';
 export { downloadDocumentNative as downloadDocumentNative } from './fn/document-content/download-document-native';
 export type { GetDocumentText$Params as GetDocumentText$Params } from './fn/document-content/get-document-text';

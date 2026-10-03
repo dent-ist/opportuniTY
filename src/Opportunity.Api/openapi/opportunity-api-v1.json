@@ -1443,8 +1443,8 @@
         "tags": [
           "Import"
         ],
-        "summary": "Row-level errors (and warnings with includeWarnings=true) of an import as CSV.",
-        "operationId": "DownloadImportErrors",
+        "summary": "Row-level errors (and warnings with includeWarnings=true) of an import, in row order.",
+        "operationId": "ListImportErrors",
         "parameters": [
           {
             "name": "workspaceId",
@@ -1468,11 +1468,47 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfImportRowIssueResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
           },
           "403": {
             "description": "Forbidden",
@@ -2370,6 +2406,31 @@
           }
         }
       },
+      "CursorPageOfImportRowIssueResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportRowIssueResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfImportTargetResource": {
         "required": [
           "items",
@@ -3024,6 +3085,64 @@
             "format": "date-time"
           }
         }
+      },
+      "ImportRowIssueResource": {
+        "required": [
+          "row",
+          "line",
+          "severity",
+          "controlNumber",
+          "column",
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "row": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "line": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ImportRowIssueSeverity"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "column": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ImportRowIssueSeverity": {
+        "enum": [
+          "error",
+          "warning"
+        ]
       },
       "ImportStartForm": {
         "type": "object",

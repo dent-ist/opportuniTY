@@ -73,14 +73,16 @@ public sealed class ImportApiTests(MigrationPostgresFixture postgres)
         var list = JsonDocument.Parse(await client.GetStringAsync(new Uri($"/api/v1/workspaces/{ws}/imports?limit=10", UriKind.Relative), Ct)).RootElement;
         list.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("importId").GetGuid()).Should().Equal(importId);
 
-        using var csv = await client.GetAsync(new Uri($"/api/v1/workspaces/{ws}/imports/{importId}/errors", UriKind.Relative), Ct);
-        csv.StatusCode.Should().Be(HttpStatusCode.OK);
-        csv.Content.Headers.ContentType!.MediaType.Should().Be("text/csv");
-        var lines = (await csv.Content.ReadAsStringAsync(Ct)).TrimStart('﻿').Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
-        lines[0].Should().Be("Row,Line,Severity,ControlNumber,Column,Code,Message");
-        lines.Skip(1).Select(l => string.Join(',', l.Split(',').Take(6))).Should().Equal(
-            "2,3,Error,API-2,DATESENT,invalid-date",
-            "3,4,Error,API-1,,duplicate-control-number");
+        // Row-level errors, paged in row order.
+        var first = JsonDocument.Parse(await client.GetStringAsync(new Uri($"/api/v1/workspaces/{ws}/imports/{importId}/errors?limit=1", UriKind.Relative), Ct)).RootElement;
+        var cursor = first.GetProperty("nextCursor").GetString();
+        var second = JsonDocument.Parse(await client.GetStringAsync(
+            new Uri($"/api/v1/workspaces/{ws}/imports/{importId}/errors?limit=1&cursor={Uri.EscapeDataString(cursor!)}", UriKind.Relative), Ct)).RootElement;
+        static string Describe(JsonElement page) => string.Join(';', page.GetProperty("items").EnumerateArray().Select(i =>
+            $"{i.GetProperty("row").GetInt64()},{i.GetProperty("line").GetInt64()},{i.GetProperty("severity").GetString()},{i.GetProperty("controlNumber").GetString()},{(i.GetProperty("column").ValueKind == JsonValueKind.Null ? "" : i.GetProperty("column").GetString())},{i.GetProperty("code").GetString()}"));
+        Describe(first).Should().Be("2,3,error,API-2,DATESENT,invalid-date");
+        Describe(second).Should().Be("3,4,error,API-1,,duplicate-control-number");
+        second.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
 
         (await client.GetAsync(new Uri($"/api/v1/workspaces/{ws}/imports/{Guid.NewGuid()}", UriKind.Relative), Ct)).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
