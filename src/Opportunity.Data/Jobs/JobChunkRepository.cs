@@ -610,7 +610,8 @@ public sealed class JobChunkRepository(NpgsqlDataSource dataSource) : IJobChunkR
     // so a chunk another dispatcher holds is skipped, never substituted. That alone does not keep the budgets across
     // dispatchers (each counts in-flight chunks in its own snapshot), so ClaimForDispatchAsync first takes a
     // transaction-scoped advisory lock per workspace: claim passes in a workspace run one at a time and each one sees
-    // the claims the previous pass committed.
+    // the claims the previous pass committed (READ COMMITTED: the claim statement takes its snapshot after the lock wait;
+    // now() is the earlier transaction start, which only makes claims look live longer).
     private static readonly string ClaimForDispatchSql =
         $"""
         WITH running AS (

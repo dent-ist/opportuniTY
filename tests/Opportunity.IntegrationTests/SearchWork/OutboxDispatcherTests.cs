@@ -399,18 +399,35 @@ public sealed class OutboxDispatcherTests(MigrationPostgresFixture postgres, Rab
         await using var a = RunningDispatcher.Start(db, publisher, RunningDispatcher.FastOptions("dispatcher-job-a"));
         await using var b = RunningDispatcher.Start(db, publisher, RunningDispatcher.FastOptions("dispatcher-job-b"));
 
-        // The transient failure puts chunk 3 in RetryWait; its backoff (5 s) is shortened instead of waited for.
-        await DispatcherTestData.EventuallyAsync(async () =>
+        // The transient failure puts chunk 3 in RetryWait; its backoff (5 s) is shortened instead of waited for. The new
+        // available_at lies in the past: the status read above it may be stale, and a chunk re-dispatched meanwhile must
+        // stay due for the worker whose claim transaction began before this update (else the claim says NotDue, the
+        // message is dropped and the chunk waits for the 60 s re-dispatch).
+        var maxInFlight = 0L;
+        try
         {
-            var chunk = (await db.Jobs.GetChunksAsync(ws, job, cancellationToken: Ct)).Single(c => c.Sequence == 3);
-            if (chunk.Status == JobChunkStatus.RetryWait)
+            await DispatcherTestData.EventuallyAsync(async () =>
             {
-                await db.Core.ExecuteAsync("UPDATE opportunity.job_chunk SET available_at = now() WHERE chunk_id = @c", ("c", chunk.ChunkId));
-            }
+                await db.Core.ExecuteAsync(
+                    "UPDATE opportunity.job_chunk SET available_at = now() - interval '1 minute' " +
+                    "WHERE job_id = @job AND status = @retry AND available_at > now() - interval '1 minute'",
+                    ("job", job), ("retry", (short)JobChunkStatus.RetryWait));
+                maxInFlight = Math.Max(maxInFlight, await db.Core.ScalarAsync<long>(
+                    "SELECT count(*) FROM opportunity.job_chunk WHERE job_id = @job " +
+                    "AND (status IN (2, 3) OR (claim_owner IS NOT NULL AND claim_expires_at > now()))", ("job", job)));
+                return (await db.Jobs.GetAsync(ws, job, Ct))!.Status == JobStatus.Completed;
+            }, TimeSpan.FromSeconds(60), "the job completed");
+        }
+        catch (TimeoutException ex)
+        {
+            var chunks = await db.Core.ScalarAsync<string>(
+                "SELECT string_agg(format('seq %s status %s attempts %s available %s dispatched %s claim %s until %s lease until %s', " +
+                "chunk_sequence, status, attempt_count, available_at, dispatched_at, claim_owner, claim_expires_at, lease_expires_at), " +
+                "E'\\n' ORDER BY chunk_sequence) FROM opportunity.job_chunk WHERE job_id = @job", ("job", job));
+            throw new TimeoutException($"{ex.Message} Chunks at {DateTimeOffset.UtcNow:O}:\n{chunks}", ex);
+        }
 
-            return (await db.Jobs.GetAsync(ws, job, Ct))!.Status == JobStatus.Completed;
-        }, TimeSpan.FromSeconds(60), "the job completed");
-
+        maxInFlight.Should().BeLessThanOrEqualTo(4, "ADR-010 §6: in PostgreSQL too, at most 4 chunks of a job are in flight");
         maxRunning.Should().BeLessThanOrEqualTo(4, "ADR-010 §6: at most 4 chunks of a job in flight, across dispatchers");
         maxRunning.Should().BeGreaterThan(1, "chunks of a job do run in parallel");
         executor.Executions.Should().HaveCount(12);
