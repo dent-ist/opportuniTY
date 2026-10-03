@@ -59,6 +59,7 @@ Decided in [ADR-019](0019-layering-and-api-conventions.md) (resolves review find
 | ADR-017 | Observability & SLOs | §4, §17, §28 | Not yet written | DevOps / SRE | #160 (`E19-T04`), #161 (`E19-T05`) |
 | ADR-018 | Frontend architecture & UX baseline | §3, §4, §28 | Not yet written | UI/UX | #122 (`E15-T01`) |
 | [ADR-019](0019-layering-and-api-conventions.md) | Solution layering, API conventions and message-contract versioning | §2, §11, §18, §20, §32 | **Accepted** | Backend | #27 (`E02-T01`) |
+| [ADR-020](0020-bundled-object-storage.md) | Bundled object storage (Lite filesystem, Full SeaweedFS, RustFS fallback) | §4, §15, §16, §17 | **Accepted** | DevOps / SRE | #158 (`E19-T02`) |
 
 ADR-001…018 are registered but not yet written; the file link is added when the ADR's PR merges. ADR-017 has no
 dedicated authoring ticket: it is written by the DevOps / SRE owner as part of `E19-T04`/`E19-T05` and must be

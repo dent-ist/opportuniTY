@@ -31,9 +31,9 @@ public sealed class FileSystemObjectStoreContractTests : ObjectStoreContractTest
     }
 }
 
-/// <summary>S3-compatible provider against SeaweedFS (Apache-2.0).</summary>
-[Collection(SeaweedFsGroup.Name)]
-public sealed class S3ObjectStoreContractTests(SeaweedFsFixture fixture) : ObjectStoreContractTests
+/// <summary>S3-compatible provider against SeaweedFS (Apache-2.0) or the candidate chosen by <see cref="S3Provider.ProviderVariable"/>.</summary>
+[Collection(S3StoreGroup.Name)]
+public sealed class S3ObjectStoreContractTests(S3StoreFixture fixture) : ObjectStoreContractTests
 {
     private readonly string _prefix = NewInstallationPrefix();
 
@@ -45,7 +45,7 @@ public sealed class S3ObjectStoreContractTests(SeaweedFsFixture fixture) : Objec
     {
         using var raw = fixture.CreateRawClient();
         await raw.PutObjectAsync(
-            new PutObjectRequest { BucketName = SeaweedFsFixture.Bucket, Key = $"{_prefix}/{key.Value}", InputStream = new MemoryStream(replacement) },
+            new PutObjectRequest { BucketName = fixture.Bucket, Key = $"{_prefix}/{key.Value}", InputStream = new MemoryStream(replacement) },
             Ct);
     }
 }
