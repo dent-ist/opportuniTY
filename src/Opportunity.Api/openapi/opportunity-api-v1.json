@@ -12,6 +12,7 @@
           "Authentication"
         ],
         "summary": "The signed-in user. Also issues the anti-forgery token cookie for later unsafe requests.",
+        "operationId": "GetCurrentUser",
         "responses": {
           "200": {
             "description": "OK",

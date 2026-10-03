@@ -81,6 +81,7 @@ public static class AuthenticationEndpoints
                     Mfa: user.HasMfa(settings.Mfa.ToPolicy()),
                     SessionExpiresAt: session is null ? null : SessionLifetime.ExpiresAt(session, settings.Session.ToTimeouts())));
             })
+            .WithName("GetCurrentUser")
             .WithTags("Authentication")
             .WithSummary("The signed-in user. Also issues the anti-forgery token cookie for later unsafe requests.")
             .ProducesProblem(StatusCodes.Status401Unauthorized);
