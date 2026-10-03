@@ -214,7 +214,9 @@ public sealed class WorkspaceManagementApiTests(MigrationPostgresFixture postgre
         var members = first.RootElement.GetProperty("items").EnumerateArray().Concat(second.RootElement.GetProperty("items").EnumerateArray())
             .Select(m => $"{m.GetProperty("kind").GetString()}|{m.GetProperty("role").GetString()}|{(m.GetProperty("userId").ValueKind == JsonValueKind.Null ? m.GetProperty("groupName").GetString() : m.GetProperty("userId").GetString())}")
             .ToList();
-        members.Should().Equal($"user|WorkspaceAdmin|{admin}", $"user|Reviewer|{reviewer}", "group|Auditor|cn=audit");
+        // Pages follow the assignment id, not the order of assignment (ids minted in the same millisecond may sort
+        // either way), so compare the membership as a set: every assignment exactly once across the two pages.
+        members.Should().BeEquivalentTo([$"user|WorkspaceAdmin|{admin}", $"user|Reviewer|{reviewer}", "group|Auditor|cn=audit"]);
 
         // A cursor is bound to the workspace it was served for.
         var other = await db.Core.CreateWorkspaceAsync();

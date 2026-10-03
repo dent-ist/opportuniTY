@@ -228,12 +228,19 @@ public sealed class WorkspaceStoreTests(MigrationPostgresFixture postgres)
         var store = new WorkspaceStore(db.Core.AppDataSource);
         var first = await store.ListMembersAsync(ws, null, 2, Ct);
         first.Total.Should().Be(3);
-        first.Items.Select(m => (m.Role, m.UserId, m.UserDisplayName, m.GroupName)).Should().Equal(
-            (WorkspaceRole.WorkspaceAdmin, alice, "Alice Example", null),
-            (WorkspaceRole.Reviewer, null, null, "cn=review"));
+        first.Items.Should().HaveCount(2);
         var second = await store.ListMembersAsync(ws, first.NextAfter, 2, Ct);
-        second.Items.Should().ContainSingle().Which.Role.Should().Be(WorkspaceRole.Auditor);
+        second.Items.Should().ContainSingle();
         second.NextAfter.Should().BeNull();
+
+        // Pages follow the assignment id, not the order of assignment (ids minted in the same millisecond may sort
+        // either way): every assignment of this workspace appears exactly once across the pages.
+        first.Items.Concat(second.Items).Select(m => (m.Role, m.UserId, m.UserDisplayName, m.GroupName)).Should().BeEquivalentTo(
+        [
+            (WorkspaceRole.WorkspaceAdmin, (Guid?)alice, "Alice Example", (string?)null),
+            (WorkspaceRole.Reviewer, (Guid?)null, (string?)null, "cn=review"),
+            (WorkspaceRole.Auditor, (Guid?)alice, "Alice Example", (string?)null),
+        ]);
     }
 
     private static AuthorizationService Pdp(AuthorizationDatabase db) => new(db.Reader, new InMemoryAuditEventWriter(), TimeProvider.System);
