@@ -148,6 +148,10 @@ cmd_up() {
   lite_warning
   local build=(--build)
   [[ "$images" == ghcr ]] && build=(--no-build --pull missing)
+  # Group roles added by newer migrations must exist before the migrator runs (it cannot create roles).
+  compose up -d --wait --wait-timeout "${OPPORTUNITY_WAIT_TIMEOUT:-600}" postgres
+  compose exec -T postgres psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+    -f /docker-entrypoint-initdb.d/20-group-roles.sql
   compose up -d "${build[@]}" --wait --wait-timeout "${OPPORTUNITY_WAIT_TIMEOUT:-600}" "$@"
   compose ps
   local web api

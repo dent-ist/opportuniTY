@@ -80,7 +80,7 @@ Never rename or re-type a column in place; add, backfill, switch, drop.
 
 | Role | Purpose | Privileges |
 |---|---|---|
-| migrator login (deployment-provided) | owns schema `opportunity` and all objects | DDL; needs `CREATEROLE` for V0001 only |
+| migrator login (deployment-provided) | owns schema `opportunity` and all objects | DDL; needs `CREATEROLE` only if the NOLOGIN group roles below do not exist yet (V0001, V0010); otherwise pre-create them as a DBA, as `deploy/docker-compose/postgres/init/20-group-roles.sql` does |
 | `opportunity_app` (NOLOGIN) | API and workers; deployment grants it to their login | CONNECT/TEMP, DML on parents (not partitions), read `schema_history`; no DDL, no TRUNCATE, no BYPASSRLS; subject to RLS |
 | `opportunity_readonly` (NOLOGIN) | support and reporting | CONNECT, SELECT; subject to RLS (sets a context to see rows) |
 | `opportunity_audit_sealer` (NOLOGIN, V0010) | audit hash-chain sealer (E14-T03) | SELECT and UPDATE of the reserved chain columns of `audit.audit_event`, once per row (trigger-enforced) |
