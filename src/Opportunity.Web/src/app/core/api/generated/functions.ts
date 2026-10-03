@@ -5,6 +5,10 @@ export type { GetCurrentUser$Params as GetCurrentUser$Params } from './fn/authen
 export { getCurrentUser as getCurrentUser } from './fn/authentication/get-current-user';
 export type { ValidateQuery$Params as ValidateQuery$Params } from './fn/opportunity-api/validate-query';
 export { validateQuery as validateQuery } from './fn/opportunity-api/validate-query';
+export type { RunSearch$Params as RunSearch$Params } from './fn/search/run-search';
+export { runSearch as runSearch } from './fn/search/run-search';
+export type { GetSearchPage$Params as GetSearchPage$Params } from './fn/search/get-search-page';
+export { getSearchPage as getSearchPage } from './fn/search/get-search-page';
 export type { GetJob$Params as GetJob$Params } from './fn/jobs/get-job';
 export { getJob as getJob } from './fn/jobs/get-job';
 export type { GetWorkspace$Params as GetWorkspace$Params } from './fn/workspaces/get-workspace';

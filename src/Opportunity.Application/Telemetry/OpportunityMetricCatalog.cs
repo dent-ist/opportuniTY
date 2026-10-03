@@ -136,6 +136,11 @@ public static class OpportunityMetricCatalog
         "Search execution time by query class (§17: simple p95 < 1 s, complex p95 < 3 s).",
         ["opportunity.search.class", TelemetryAttributes.Outcome], "E07-T07", Buckets: DurationBuckets);
 
+    public static MetricDefinition SearchPostFilterDropped { get; } = new(
+        "opportunity.search.post_filter.dropped", MetricKind.Counter, "{document}",
+        "Search hits dropped by the per-page PostgreSQL re-check (Q-12, ADR-015 D8.4), by PDP reason; never audited per hit.",
+        ["opportunity.search.drop_reason"], "E07-T05");
+
     // --- Jobs and chunks (ADR-010) ----------------------------------------------------------------------------------
 
     public static MetricDefinition Jobs { get; } = new(
@@ -175,6 +180,6 @@ public static class OpportunityMetricCatalog
         OutboxPending, OutboxOldestAge, QueueDepth, QueueConsumers, DeadLetteredMessages,
         SearchGenerationCommitted, SearchGenerationIndexed, SearchIndexLag, SearchCommitToSearchable,
         SecurityProjectionLag, SearchStaleVersionRejections, IndexChunkTasks, IndexChunkTaskOldestAge,
-        SearchRequestDuration, Jobs, JobsActive, JobChunks, JobChunkDuration, AuditWriteDuration,
+        SearchRequestDuration, SearchPostFilterDropped, Jobs, JobsActive, JobChunks, JobChunkDuration, AuditWriteDuration,
     ];
 }

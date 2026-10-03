@@ -28,6 +28,7 @@ if (Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider")
 builder.AddOpportunityHostDefaults();
 builder.Services.AddApiConventions();
 builder.Services.AddQueryValidation();
+builder.Services.AddSearchEndpoints();
 builder.Services.AddJobEndpoints();
 builder.Services.AddWorkspaceEndpoints();
 builder.Services.AddPostgresIdentityStores();
