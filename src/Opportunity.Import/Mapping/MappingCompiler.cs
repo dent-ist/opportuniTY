@@ -25,6 +25,9 @@ public static class MappingCompiler
 {
     public const int MaxTargetsPerColumn = 4;
 
+    /// <summary>Trailing column of a re-loadable error file (<c>DatErrorFileWriter.ErrorColumn</c>); never loaded.</summary>
+    public const string ImportErrorColumn = "ImportError";
+
     private enum Rank
     {
         Exact = 0,
@@ -114,6 +117,13 @@ public static class MappingCompiler
             BindTimeColumn(column, column.Parsing!.TimeColumn!, byName, issues);
         }
 
+        // The trailing column of a re-loadable error file (E08-T06) is never loaded, so a fixed error file loads unchanged.
+        foreach (var column in columns.Where(c => c.Status == ColumnStatus.Unmapped && !profileRows.ContainsKey(c)
+                     && string.Equals(c.Column.Trim(), ImportErrorColumn, StringComparison.OrdinalIgnoreCase)))
+        {
+            column.Status = ColumnStatus.Ignored;
+        }
+
         // 2. Auto-map.
         if (options.AutoMap)
         {
@@ -175,6 +185,11 @@ public static class MappingCompiler
         if (profile.ControlNumberPrefix is { Length: > 0 } prefix && (prefix.Length > 50 || prefix.Any(char.IsControl)))
         {
             issues.Add(Error("invalid-prefix", "The control number prefix must be at most 50 characters without control characters."));
+        }
+
+        if (profile.StopAfterErrors is < 1)
+        {
+            issues.Add(Error("invalid-stop-after-errors", "'Stop after N errors' must be at least 1 (or not set, to load the whole file)."));
         }
 
         var paths = profile.Paths ?? new PathSettings();

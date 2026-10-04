@@ -56,6 +56,9 @@ public sealed class DatReaderOptions
     /// <summary>Also return rejected rows from <see cref="DatReader.ReadAsync"/> (flagged <see cref="DatRecord.IsRejected"/>), e.g. for preview.</summary>
     public bool ReturnRejectedRecords { get; init; }
 
+    /// <summary>Copy each returned record's raw bytes into <see cref="DatRecord.RawRecord"/> (re-loadable error file, E08-T06).</summary>
+    public bool CaptureRawRecords { get; init; }
+
     /// <summary>Receivers of issues and rejected rows (error file, error report).</summary>
     public IReadOnlyList<IDatIssueSink> Sinks { get; init; } = [];
 

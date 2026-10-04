@@ -497,7 +497,9 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
             await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await AuditCompletedAsync(tx, batch, job.Status, job.CorrelationId, cancellationToken, reasonCode).ConfigureAwait(false);
+        var completed = await ReadAsync(tx, workspaceId, importBatchId, cancellationToken).ConfigureAwait(false) ?? batch;
+        var report = await ImportReportSql.FreezeAsync(tx, completed, cancellationToken).ConfigureAwait(false);
+        await AuditCompletedAsync(tx, completed, job.Status, job.CorrelationId, cancellationToken, reasonCode, report).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -1191,13 +1193,14 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
 
         if (finished && batch.CompletedAt is null)
         {
-            await AuditCompletedAsync(tx, updated, jobStatus!.Value, chunk.CorrelationId, cancellationToken).ConfigureAwait(false);
+            var report = await ImportReportSql.FreezeAsync(tx, updated, cancellationToken).ConfigureAwait(false);
+            await AuditCompletedAsync(tx, updated, jobStatus!.Value, chunk.CorrelationId, cancellationToken, report: report).ConfigureAwait(false);
         }
     }
 
     private static Task AuditCompletedAsync(
         WorkspaceTransaction tx, ImportBatchRecord batch, JobStatus status, string? correlationId, CancellationToken cancellationToken,
-        string? reasonCode = null) =>
+        string? reasonCode = null, ImportReportData? report = null) =>
         AuditSql.InsertAsync(tx, new AuditEvent
         {
             WorkspaceId = batch.WorkspaceId,
@@ -1223,7 +1226,7 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
                 ["RowsOverlaid"] = Invariant(batch.RowsOverlaid),
                 ["RowsSkipped"] = Invariant(batch.RowsSkipped),
                 ["RowsErrored"] = Invariant(batch.RowsErrored),
-            },
+            }.Concat(report is null ? [] : ImportReportSql.AuditDetails(report)).ToDictionary(StringComparer.Ordinal),
         }, cancellationToken);
 
     private static AuditEvent ServiceEvent(

@@ -50,6 +50,7 @@ builder.Services.AddBulkCodingEndpoints();
 builder.Services.AddUserPreferenceEndpoints();
 builder.Services.AddExportEndpoints();
 builder.Services.AddExportContentEndpoints();
+builder.Services.AddImportContentEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();
