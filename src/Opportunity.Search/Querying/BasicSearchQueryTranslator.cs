@@ -24,7 +24,8 @@ public sealed class BasicSearchQueryTranslator : ISearchQueryTranslator
         Boolean,
     }
 
-    private sealed record FieldInfo(string Path, FieldKind Kind, string? WildcardPath = null);
+    /// <param name="LeadingWildcard">Leading and infix wildcards are allowed (ADR-008 R7: a <c>wildcard</c>-typed subfield).</param>
+    private sealed record FieldInfo(string Path, FieldKind Kind, string? WildcardPath = null, bool LeadingWildcard = false);
 
     private static readonly Dictionary<string, FieldInfo> Fields = BuildFields();
 
@@ -108,7 +109,7 @@ public sealed class BasicSearchQueryTranslator : ISearchQueryTranslator
                     return null;
                 }
 
-                var minimum = field.Kind == FieldKind.Text ? limits.MinWildcardPrefix : 1;
+                var minimum = field.LeadingWildcard ? 0 : field.Kind == FieldKind.Text ? limits.MinWildcardPrefix : 1;
                 if (wildcard.LiteralPrefixLength < minimum)
                 {
                     errors.Add(new QueryDiagnostic(SearchQueryErrorCodes.LeadingWildcard,
@@ -230,7 +231,7 @@ public sealed class BasicSearchQueryTranslator : ISearchQueryTranslator
         var fields = new Dictionary<string, FieldInfo>(StringComparer.OrdinalIgnoreCase)
         {
             ["text"] = new(ProjectionFields.Text, FieldKind.Text),
-            ["fileName"] = new(ProjectionFields.FileName, FieldKind.Text, ProjectionFields.FileNameKeyword),
+            ["fileName"] = new(ProjectionFields.FileName, FieldKind.Text, ProjectionFields.FileNameWildcard, LeadingWildcard: true),
             ["controlNumber"] = new(ProjectionFields.ControlNumber, FieldKind.Keyword),
         };
         foreach (var keyword in new[]
@@ -256,6 +257,10 @@ public sealed class BasicSearchQueryTranslator : ISearchQueryTranslator
         {
             fields[flag] = new(flag, FieldKind.Boolean);
         }
+
+        // Catalogue query names (FieldQueryNames.Structural, GET …/fields) that differ from the projection path.
+        fields["date"] = fields["documentDate"];
+        fields["extension"] = fields["fileExtension"];
 
         return fields;
     }

@@ -106,6 +106,30 @@
   contain: strict;
 }
 
+// Filter row (#191) and the no-results message: sized by their content, not by the row height.
+.grid__row--filters,
+.grid__row--message {
+  block-size: auto;
+  contain: none;
+
+  &:hover {
+    background: var(--opp-color-surface);
+  }
+
+  .grid__cell {
+    contain: none;
+    overflow: visible;
+    padding-block: var(--opp-space-1);
+  }
+}
+
+.grid__row--message .grid__cell {
+  grid-column: 1 / -1;
+  padding-block: var(--opp-space-4);
+  color: var(--opp-color-text-muted);
+  white-space: normal;
+}
+
 .grid__cell--numeric {
   justify-content: flex-end;
   font-variant-numeric: tabular-nums;

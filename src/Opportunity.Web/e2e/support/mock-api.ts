@@ -60,20 +60,20 @@ function searchPage(total: number, pageSize: number, number: number) {
   };
 }
 
-/** The structural columns of the review grid. */
+/** The structural columns of the review grid, with their types (GET …/fields, ADR-007 §3). */
 const SYSTEM_FIELDS = [
-  ['controlnumber', 'Control Number'],
-  ['date', 'Document Date'],
-  ['filename', 'File Name'],
-  ['filetype', 'File Type'],
-  ['extension', 'File Extension'],
-  ['filesize', 'File Size'],
-  ['pagecount', 'Page Count'],
-].map(([queryName, displayName], i) => ({
+  ['controlnumber', 'Control Number', 'keyword'],
+  ['date', 'Document Date', 'date'],
+  ['filename', 'File Name', 'text'],
+  ['filetype', 'File Type', 'keyword'],
+  ['extension', 'File Extension', 'keyword'],
+  ['filesize', 'File Size', 'integer'],
+  ['pagecount', 'Page Count', 'integer'],
+].map(([queryName, displayName, type], i) => ({
   fieldId: i + 1,
   queryName,
   displayName,
-  type: 'keyword',
+  type,
   storage: 'column',
   multiValue: false,
   isSystem: true,
@@ -87,9 +87,9 @@ const SYSTEM_FIELDS = [
     aggregatable: false,
     fullText: false,
     highlightable: false,
-    wildcard: true,
-    leadingWildcard: false,
-    rangeable: false,
+    wildcard: type === 'keyword' || type === 'text',
+    leadingWildcard: queryName === 'filename',
+    rangeable: type !== 'keyword' && type !== 'text',
     exists: true,
   },
   choices: null,
@@ -193,6 +193,7 @@ function problem(status: number, title: string) {
 export async function mockApi(page: Page, options: MockApiOptions = {}): Promise<string[]> {
   const { signedIn = true, permissions = ALL_PERMISSIONS, documents = 250 } = options;
   let pageSize = 100;
+  let total = documents;
   // The "server" copy of the preferences outlives reloads of the page, like the real profile.
   const preferences: Record<string, unknown> = { ...options.preferences };
   // Likewise the user's query history per workspace (newest first, distinct, at most 50).
@@ -254,8 +255,11 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       }
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches$/.test(path) && method === 'POST') {
-      pageSize = Number((route.request().postDataJSON() as { pageSize?: number })?.pageSize ?? 100);
-      return json(route, searchPage(documents, pageSize, 1));
+      const body = route.request().postDataJSON() as { pageSize?: number; query?: string };
+      pageSize = Number(body?.pageSize ?? 100);
+      // A fielded query (the filter row) narrows the list, so filtering is visible end to end.
+      total = body?.query?.includes(':') ? Math.min(documents, 12) : documents;
+      return json(route, searchPage(total, pageSize, 1));
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches\/[^/]+\/pages$/.test(path)) {
       const cursor = url.searchParams.get('cursor');
@@ -263,9 +267,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       const n = cursor
         ? Number(cursor.slice(1))
         : last
-          ? Math.max(1, Math.ceil(documents / pageSize))
+          ? Math.max(1, Math.ceil(total / pageSize))
           : Number(url.searchParams.get('page') ?? 1);
-      return json(route, searchPage(documents, pageSize, n));
+      return json(route, searchPage(total, pageSize, n));
     }
     if (signedIn && path === '/api/v1/workspaces')
       return json(route, {

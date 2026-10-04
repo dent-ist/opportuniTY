@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DOCUMENT,
   DestroyRef,
   ElementRef,
   Injector,
@@ -31,6 +32,20 @@ import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { Announcer, Button, EmptyState, ErrorState, Icon, LoadingState } from '../../../ui';
 import { GridColumn, defaultColumns, familyMarker } from './grid-columns';
+import { GridFilter, FilterChange } from './grid-filter';
+import {
+  CompiledQuery,
+  FilterSet,
+  FilterSpec,
+  FilterValue,
+  clauseAt,
+  compileFilter,
+  compileQuery,
+  describeFilter,
+  filterSpec,
+  quotePhrase,
+} from './grid-filters';
+import { ActiveFilter, FilterSummary } from './filter-summary';
 import { CellFormatter, countLabel, freshnessLabel } from './grid-format';
 import { PageRequest, ReviewSearchApi } from './review-search';
 import { LoadedPage, ResultWindow, toLoadedPage } from './result-window';
@@ -52,6 +67,10 @@ export interface GridOpenEvent {
 export const PAGE_SIZES = [50, 100, 250, 500] as const;
 export const DEFAULT_PAGE_SIZE = 100;
 const PAGE_SIZE_KEY = 'grid.pageSize';
+/** Whether the filter row is shown (a user preference, #191). */
+export const FILTER_ROW_KEY = 'grid.filterRow';
+/** Selected documents checked per request when a filter changes (control numbers ORed in one query). */
+const VERIFY_CHUNK = 100;
 
 /** Rows rendered above and below the viewport. */
 const BUFFER_ROWS = 10;
@@ -64,7 +83,20 @@ const COL_SELECT = 0;
 const COL_CONTROL = 1;
 const FIXED_COLUMNS = 3;
 
-type Status = 'loading' | 'ready' | 'empty' | 'not-indexed' | 'error';
+/** `invalid`: the server rejected a filter; its message is shown under it. */
+type Status = 'loading' | 'ready' | 'empty' | 'invalid' | 'not-indexed' | 'error';
+
+interface QueryError {
+  readonly message?: string;
+  readonly span?: { readonly start: number | string };
+}
+
+interface RunOptions {
+  anchor?: string | null;
+  notice?: string;
+  /** A filter was added or changed: selected documents that left the results are deselected. */
+  narrowed?: boolean;
+}
 
 interface ResultInfo {
   readonly searchId: string;
@@ -86,6 +118,9 @@ interface ResultInfo {
  * - Keyboard: arrows, PageUp/PageDown, Home/End (Ctrl too) move the focused row, Left/Right the cell; Enter
  *   on a header sorts. Commands of the `grid` scope (open, select row/page, clear) come from the registry.
  * - Selection is kept by document id and exposed for Mass Actions (E16-T06).
+ * - Filter row (#191): one control per filterable column under the headers, compiled into the query language
+ *   and ANDed with the keyword query, so a filtered list is an ordinary, audited, reproducible search. Arrows
+ *   move between filters, Escape clears one; active filters stay listed above the grid as removable chips.
  */
 @Component({
   selector: 'opp-review-grid',
@@ -94,6 +129,8 @@ interface ResultInfo {
     CommandScopeDirective,
     EmptyState,
     ErrorState,
+    FilterSummary,
+    GridFilter,
     Icon,
     LoadingState,
     NgTemplateOutlet,
@@ -114,7 +151,11 @@ export class ReviewGrid {
   private readonly storage = inject(PreferenceStorage);
   private readonly announcer = inject(Announcer);
   private readonly injector = inject(Injector);
+  private readonly document = inject(DOCUMENT);
   private readonly viewport = viewChild<ElementRef<HTMLElement>>('viewport');
+  private readonly filterRow = viewChild<ElementRef<HTMLElement>>('filterRow');
+  private readonly filtersButton = viewChild('filtersButton', { read: ElementRef });
+  private readonly summary = viewChild(FilterSummary);
 
   protected readonly canSearch = this.context.can(PERMISSIONS.searchExecute);
   protected readonly gridId = `grid-${this.context.workspaceId}`;
@@ -138,6 +179,62 @@ export class ReviewGrid {
   protected readonly format = computed(
     () => new CellFormatter(this.prefs.locale(), this.context.workspace.displayTimeZone || 'UTC'),
   );
+
+  // Filters (#191)
+  protected readonly filtersOpen = computed(
+    () => this.storage.read<boolean>(FILTER_ROW_KEY) === true,
+  );
+  /** The filter of each grid column, in column order (null: no control). */
+  protected readonly filterCells = computed<(FilterSpec | null)[]>(() => {
+    const byName = new Map((this.fields() ?? []).map((f) => [f.queryName.toLowerCase(), f]));
+    const spec = (c: GridColumn) => filterSpec(byName.get(c.queryName), c.label, c.format);
+    const { controlNumber, view } = this.columns();
+    return [null, spec(controlNumber), null, ...view.map(spec)];
+  });
+  private readonly specs = computed(
+    () => new Map(this.filterCells().flatMap((s) => (s ? [[s.queryName, s] as const] : []))),
+  );
+  private readonly _filters = signal<FilterSet>(new Map());
+  /** Active filters by query name (saved searches, E07-T09). */
+  readonly filters = this._filters.asReadonly();
+  protected readonly filterErrors = signal<ReadonlyMap<string, string>>(new Map());
+  private readonly compiled = computed<CompiledQuery>(() => {
+    const specs = this.specs();
+    const clauses = [...this._filters()].flatMap(([queryName, value]) => {
+      const spec = specs.get(queryName);
+      const clause = spec && compileFilter(spec, value);
+      return clause ? [{ queryName, clause }] : [];
+    });
+    return compileQuery(this.search().query, clauses);
+  });
+  /** The query the list shows: the keyword query ANDed with the filters. */
+  readonly effectiveQuery = computed(() => this.compiled().query);
+  protected readonly activeFilters = computed<ActiveFilter[]>(() => {
+    const specs = this.specs();
+    const errors = this.filterErrors();
+    return [...this._filters()].map(([queryName, value]) => {
+      const spec = specs.get(queryName);
+      return {
+        queryName,
+        label: spec?.label ?? queryName,
+        description: spec ? describeFilter(spec, value) : '',
+        error: errors.get(queryName) ?? null,
+      };
+    });
+  });
+  /** The grid stays on screen while filters are active, even without results, so they can be changed. */
+  protected readonly showTable = computed(() => {
+    const status = this.status();
+    return (
+      status === 'ready' ||
+      (this._filters().size > 0 && (status === 'empty' || status === 'invalid'))
+    );
+  });
+  /** Rows above the data rows: the header, and the filter row when it is open. */
+  protected readonly headRows = computed(() => (this.filtersOpen() ? 2 : 1));
+  /** Last filter control that had focus: the row's single Tab stop. */
+  private filterStop = 0;
+  private readonly controlNumbers = new Map<string, string>();
 
   // Search state
   protected readonly status = signal<Status>('loading');
@@ -199,7 +296,7 @@ export class ReviewGrid {
   protected readonly approximateTotal = computed(() => this.result()?.total.relation === 'gte');
   protected readonly ariaRowCount = computed(() => {
     const r = this.result();
-    return r && r.total.relation === 'eq' ? Number(r.total.value) + 1 : -1;
+    return r && r.total.relation === 'eq' ? Number(r.total.value) + this.headRows() : -1;
   });
   /** The page whose rows the user is looking at: the focused row's when it is on screen, else the top row's. */
   protected readonly currentPage = computed(() => {
@@ -255,15 +352,18 @@ export class ReviewGrid {
 
   constructor() {
     const registry = inject(CommandRegistry);
-    const ready = { enabled: () => this.status() === 'ready' };
-    registry.handle('grid.openDocument', () => this.openFocused(), {
-      enabled: () => this.status() === 'ready' && this.focusRow() >= 0,
-    });
-    registry.handle('selection.toggleRow', () => this.toggleRow(this.focusRow()), {
-      enabled: () => this.status() === 'ready' && this.focusRow() >= 0,
-    });
+    // Keys typed in the filter row belong to its controls (Space, Enter, Ctrl+A in a text box).
+    const ready = { enabled: () => this.status() === 'ready' && !this.inFilterRow() };
+    const onRow = {
+      enabled: () => this.status() === 'ready' && this.focusRow() >= 0 && !this.inFilterRow(),
+    };
+    registry.handle('grid.openDocument', () => this.openFocused(), onRow);
+    registry.handle('selection.toggleRow', () => this.toggleRow(this.focusRow()), onRow);
     registry.handle('selection.allOnPage', () => this.selectPage(true), ready);
     registry.handle('selection.clear', () => this.setSelection(new Set()), ready);
+    registry.handle('grid.toggleFilters', () => this.toggleFilters(true), {
+      enabled: () => this.canSearch,
+    });
 
     if (this.canSearch) {
       this.api.fields().then(
@@ -278,11 +378,19 @@ export class ReviewGrid {
     });
 
     effect(() => {
-      // Density changes the row height; the columns whether the grid scrolls sideways.
+      // Density changes the row height; the columns whether the grid scrolls sideways; the filter row the head.
       this.prefs.density();
       this.columns();
       this.status();
-      afterNextRender(() => this.measure(), { injector: this.injector });
+      this.filtersOpen();
+      this.filterErrors();
+      afterNextRender(
+        () => {
+          this.measure();
+          this.syncFilterStops();
+        },
+        { injector: this.injector },
+      );
     });
 
     const resize =
@@ -298,7 +406,7 @@ export class ReviewGrid {
   // ── Searching ────────────────────────────────────────────────────────────────────────────────────────────
 
   /** Runs the search (again), keeping `anchor` focused when it is in the first page. */
-  private async run(options: { anchor?: string | null; notice?: string } = {}): Promise<void> {
+  private async run(options: RunOptions = {}): Promise<void> {
     if (!this.canSearch) {
       this.status.set('error');
       this.error.set({
@@ -309,14 +417,15 @@ export class ReviewGrid {
       return;
     }
     const seq = ++this.seq;
-    if (this.status() !== 'ready') this.status.set('loading');
+    if (!this.showTable()) this.status.set('loading');
     this.busy.set(true);
     this.loadError.set(null);
     const sort = this.sort();
+    const compiled = this.compiled();
     let page: SearchResultPage;
     try {
       page = await this.api.run({
-        query: this.search().query,
+        query: compiled.query,
         sort: sort ? [sort] : null,
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
@@ -325,12 +434,13 @@ export class ReviewGrid {
     } catch (e) {
       if (seq !== this.seq) return;
       this.busy.set(false);
-      this.fail(toApiError(e));
+      this.fail(toApiError(e), compiled);
       return;
     }
     if (seq !== this.seq) return;
     this.busy.set(false);
     this.error.set(null);
+    this.filterErrors.set(new Map());
     if (!page.searchId) {
       this.window.set(ResultWindow.EMPTY);
       this.result.set(null);
@@ -348,11 +458,34 @@ export class ReviewGrid {
     const notice = options.notice ?? (page.resultsRefreshed ? REFRESHED : null);
     this.notice.set(notice);
     this.announcer.announce(notice ?? `${this.countText()} documents`);
+    if (options.narrowed) void this.pruneSelection(window, compiled, seq);
   }
 
-  private fail(error: ApiError): void {
+  private fail(error: ApiError, compiled: CompiledQuery): void {
     this.window.set(ResultWindow.EMPTY);
     this.result.set(null);
+    if (error.code === 'invalid-query' && compiled.clauses.length > 0) {
+      // Messages about a filter's clause go under that filter; the grid stays so it can be corrected.
+      const errors = (error.problem['queryErrors'] as QueryError[] | undefined) ?? [];
+      const byFilter = new Map<string, string>();
+      let other = false;
+      for (const e of errors) {
+        const queryName = clauseAt(compiled, Number(e.span?.start ?? -1));
+        if (!queryName) other = true;
+        else if (!byFilter.has(queryName))
+          byFilter.set(queryName, e.message ?? 'This filter cannot be applied.');
+      }
+      if (byFilter.size > 0 && !other) {
+        this.filterErrors.set(byFilter);
+        this.status.set('invalid');
+        const labels = [...byFilter.keys()].map((q) => this.specs().get(q)?.label ?? q);
+        this.announcer.announce(`The ${labels.join(', ')} filter cannot be applied.`, {
+          politeness: 'assertive',
+        });
+        return;
+      }
+    }
+    this.filterErrors.set(new Map());
     this.status.set('error');
     if (error.status === 403) {
       this.error.set({
@@ -498,6 +631,166 @@ export class ReviewGrid {
     this.announcer.announce(REFRESHED);
   }
 
+  // ── Filters (#191) ───────────────────────────────────────────────────────────────────────────────────────
+
+  /** Shows or hides the filter row (toolbar button, command); the command moves focus into the row. */
+  toggleFilters(focus = false): void {
+    const open = !this.filtersOpen();
+    const hadFocus = this.inFilterRow();
+    this.storage.write(FILTER_ROW_KEY, open);
+    afterNextRender(
+      () => {
+        if (open && focus) this.filterStops()[0]?.focus();
+        else if (!open && hadFocus) this.viewport()?.nativeElement.focus({ preventScroll: true });
+      },
+      { injector: this.injector },
+    );
+  }
+
+  /** A filter control changed: run the search again (sort kept, from the first page). */
+  protected onFilterChange(queryName: string, change: FilterChange): void {
+    this.setFilter(queryName, change.value);
+  }
+
+  setFilter(queryName: string, value: FilterValue | null): void {
+    const current = this._filters();
+    if (sameValue(current.get(queryName) ?? null, value)) return;
+    const next = new Map(current);
+    if (value) next.set(queryName, value);
+    else next.delete(queryName);
+    this._filters.set(next);
+    this.filterErrors.update((e) => {
+      const rest = new Map(e);
+      rest.delete(queryName);
+      return rest;
+    });
+    void this.run({ narrowed: value !== null });
+  }
+
+  protected removeFilter(queryName: string): void {
+    const index = [...this._filters().keys()].indexOf(queryName);
+    this.setFilter(queryName, null);
+    this.afterFilterRemoval(index);
+  }
+
+  clearFilters(): void {
+    if (this._filters().size === 0) return;
+    this._filters.set(new Map());
+    this.filterErrors.set(new Map());
+    void this.run();
+    this.afterFilterRemoval(-1);
+  }
+
+  /** Keeps focus near a removed chip: the next chip, else the Filters button, else the list. */
+  private afterFilterRemoval(index: number): void {
+    afterNextRender(
+      () => {
+        if (index >= 0 && this._filters().size > 0) this.summary()?.focusChip(index);
+        else (this.filtersButton() ?? this.viewport())?.nativeElement.focus();
+      },
+      { injector: this.injector },
+    );
+  }
+
+  private inFilterRow(): boolean {
+    return !!this.document.activeElement?.closest('.grid__row--filters');
+  }
+
+  private filterStops(): HTMLElement[] {
+    const row = this.filterRow()?.nativeElement;
+    return row ? [...row.querySelectorAll<HTMLElement>('[data-filter-stop]')] : [];
+  }
+
+  /** One Tab stop in the filter row (roving tabindex): the control used last. */
+  private syncFilterStops(): void {
+    const stops = this.filterStops();
+    const current = Math.min(this.filterStop, stops.length - 1);
+    stops.forEach((el, i) => (el.tabIndex = i === current ? 0 : -1));
+  }
+
+  protected onFilterFocus(event: FocusEvent): void {
+    const index = this.filterStops().indexOf(event.target as HTMLElement);
+    if (index < 0) return;
+    this.filterStop = index;
+    this.syncFilterStops();
+  }
+
+  /** Left/Right (at the ends of a text box) and Home/End move between the filter controls. */
+  protected onFilterKeydown(event: KeyboardEvent): void {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const target = event.target as HTMLElement;
+    const stops = this.filterStops();
+    const index = stops.indexOf(target);
+    if (index < 0) return;
+    const text = target instanceof HTMLInputElement ? target : null;
+    let next: number;
+    switch (event.key) {
+      case 'ArrowLeft':
+        if (text && (text.selectionStart !== 0 || text.selectionEnd !== 0)) return;
+        next = index - 1;
+        break;
+      case 'ArrowRight':
+        if (text && text.selectionStart !== text.value.length) return;
+        next = index + 1;
+        break;
+      case 'Home':
+      case 'End':
+        if (text) return;
+        next = event.key === 'Home' ? 0 : stops.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    stops[Math.max(0, Math.min(stops.length - 1, next))].focus();
+  }
+
+  /**
+   * After a filter was added or changed, deselects documents no longer in the results: by the loaded rows when
+   * they are the whole result, otherwise by asking the server which selected documents still match.
+   */
+  private async pruneSelection(
+    window: ResultWindow,
+    compiled: CompiledQuery,
+    seq: number,
+  ): Promise<void> {
+    const shown = new Set(window.rows.map((r) => r.documentId));
+    const unknown = [...this.selection()].filter((id) => !shown.has(id));
+    if (unknown.length === 0) return;
+    let gone: string[];
+    if (!window.hasNext && !window.hasPrevious) {
+      gone = unknown;
+    } else {
+      gone = [];
+      const checkable = unknown.filter((id) => this.controlNumbers.has(id));
+      for (let i = 0; i < checkable.length; i += VERIFY_CHUNK) {
+        const ids = checkable.slice(i, i + VERIFY_CHUNK);
+        const numbers = ids.map((id) => quotePhrase(this.controlNumbers.get(id)!)).join(' OR ');
+        const clause = { queryName: 'controlnumber', clause: `controlnumber:(${numbers})` };
+        const query = compileQuery(compiled.query, [clause]).query;
+        let found: Set<string>;
+        try {
+          const page = await this.api.run({ query, pageSize: ids.length, highlight: false });
+          found = new Set(page.items.map((h) => h.documentId));
+        } catch {
+          return; // Unknown: the selection stays as it is.
+        }
+        if (seq !== this.seq) return;
+        gone.push(...ids.filter((id) => !found.has(id)));
+      }
+    }
+    if (seq !== this.seq || gone.length === 0) return;
+    const next = new Set(this.selection());
+    for (const id of gone) next.delete(id);
+    this.setSelection(next);
+    const n = gone.length;
+    this.announcer.announce(
+      n === 1
+        ? '1 selected document is not in the filtered results and was deselected.'
+        : `${n} selected documents are not in the filtered results and were deselected.`,
+    );
+  }
+
   // ── Paging (Q-49) ────────────────────────────────────────────────────────────────────────────────────────
 
   protected async goFirst(): Promise<void> {
@@ -617,6 +910,8 @@ export class ReviewGrid {
   // ── Keyboard and pointer ─────────────────────────────────────────────────────────────────────────────────
 
   protected onKeydown(event: KeyboardEvent): void {
+    // Keys typed in the filter row (inside the grid element) are the filters' own.
+    if (event.target !== event.currentTarget) return;
     if (event.altKey || event.metaKey || this.status() !== 'ready') return;
     const last = this.rows().length - 1;
     const page = Math.max(1, this.visibleCount() - 1);
@@ -741,6 +1036,11 @@ export class ReviewGrid {
   }
 
   private setSelection(next: ReadonlySet<string>): void {
+    // Control numbers of selected rows, to check them against a filtered result later.
+    for (const row of this.rows()) {
+      if (next.has(row.documentId)) this.controlNumbers.set(row.documentId, row.controlNumber);
+    }
+    for (const id of this.controlNumbers.keys()) if (!next.has(id)) this.controlNumbers.delete(id);
     this._selected.set(next);
     this.selectionChange.emit(next);
   }
@@ -762,8 +1062,9 @@ export class ReviewGrid {
 
   protected rowIndex(index: number): number {
     const position = this.window().position(index);
-    // Header is row 1. Without a known position (end of an inexact result) rows are numbered as loaded.
-    return (position ?? index + 1) + 1;
+    // The header (and the filter row) come first. Without a known position (end of an inexact result) rows are
+    // numbered as loaded.
+    return (position ?? index + 1) + this.headRows();
   }
 
   /** Formatted View cells of a row, built once per row while the columns and formats stay the same. */
@@ -812,6 +1113,10 @@ const EXPIRED = 'Results refreshed: the search had expired and was run again.';
 /** `b` directly follows `a` (both numbered). */
 function adjacent(a: LoadedPage | undefined, b: LoadedPage | undefined): boolean {
   return !!a && !!b && a.number !== null && b.number === a.number + 1;
+}
+
+function sameValue(a: FilterValue | null, b: FilterValue | null): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function resultInfo(searchId: string, page: SearchResultPage): ResultInfo {

@@ -1,0 +1,50 @@
+.fd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+}
+
+.fd__modes,
+.fd__choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fd__legend {
+  margin-block-end: var(--opp-space-1);
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.fd__mode {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  min-block-size: var(--opp-target-min);
+  cursor: pointer;
+}
+
+.fd__mode input {
+  margin: 0;
+  accent-color: var(--opp-color-accent);
+}
+
+.fd__choices {
+  max-block-size: 16rem;
+  overflow: auto;
+}
+
+.fd__range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--opp-space-3);
+}
+
+.fd__note {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
