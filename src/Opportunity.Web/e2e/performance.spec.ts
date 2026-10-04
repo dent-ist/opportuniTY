@@ -212,6 +212,10 @@ test.describe('review grid', () => {
       5_000 * rowPx,
     );
     expect(result.maxRowsInDom, 'only visible rows plus a buffer are rendered').toBeLessThan(100);
-    expect(result.fps, 'scroll frame rate').toBeGreaterThanOrEqual(50);
+    // ADR-018 §14's ≥ 50 fps is a reference-hardware target: enforced on benchmark hardware with
+    // OPPORTUNITY_STRICT_LATENCY=1 (Q-44, Q-67). Shared CI runners (software rendering, CPU slowed) record the rate
+    // and fail only on clear breakage.
+    const strict = process.env['OPPORTUNITY_STRICT_LATENCY'] === '1';
+    expect(result.fps, 'scroll frame rate').toBeGreaterThanOrEqual(strict ? 50 : 20);
   });
 });
