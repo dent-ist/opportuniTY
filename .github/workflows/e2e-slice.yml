@@ -1,0 +1,98 @@
+# Vertical-slice E2E suite (E03-T03, baseline §32; test-strategy E2E layer): Playwright against the real developer
+# Compose profile, not the mocked API of the web gates. Boots the profile like the CI "Compose developer profile" job
+# (images built from deploy/docker), seeds the demo workspace, then src/Opportunity.Web/e2e-slice imports a 1K synthetic
+# corpus through the API and walks search → view → code → search the coding → Mass Edit → verify → export, with the
+# mouse and with the keyboard only, signed in through Keycloak as the demo users. Nightly, and on PRs that touch the
+# web app or the API. Traces, videos and HARs of failed tests are uploaded. See docs/ci.md#vertical-slice-e2e-e03-t03.
+name: E2E vertical slice
+
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  pull_request:
+    paths:
+      - 'src/Opportunity.Web/**'
+      - 'src/Opportunity.Api/**'
+      - '.github/workflows/e2e-slice.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  slice:
+    name: Vertical slice (Playwright on the Compose developer profile)
+    runs-on: ubuntu-latest
+    # Image builds and boot (~6-8 min) plus the suite, which has its own 20-minute budget below.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      # The suite generates its corpus with tools/Opportunity.DataGenerator.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE }}
+          cache: npm
+          cache-dependency-path: src/Opportunity.Web/package-lock.json
+      - name: Raise vm.max_map_count for OpenSearch
+        run: sudo sysctl -w vm.max_map_count=262144
+      - name: Generate .env (random secrets)
+        working-directory: deploy/docker-compose
+        run: ./opportunity.sh init
+      # The import share (Import:VolumeShareRoot) is bind-mounted read-only into the worker; created by the runner user
+      # first, so the suite can write its corpus into it while the stack runs.
+      - name: Create the import share
+        working-directory: deploy/docker-compose
+        run: mkdir -p import-share
+      - name: Preflight, build and start; waits until every service is healthy
+        working-directory: deploy/docker-compose
+        run: ./opportunity.sh up
+      - name: Seed the demo workspace and its coding fields
+        working-directory: deploy/docker-compose
+        run: ./opportunity.sh seed
+      - name: Install
+        working-directory: src/Opportunity.Web
+        run: npm ci
+      - name: Type-check the suite
+        working-directory: src/Opportunity.Web
+        run: npx tsc -p e2e-slice/tsconfig.json
+      - name: Install Chromium
+        working-directory: src/Opportunity.Web
+        run: npx playwright install --with-deps --only-shell chromium
+      - name: Vertical slice (Playwright, headless)
+        working-directory: src/Opportunity.Web
+        timeout-minutes: 20
+        run: npm run e2e:slice
+      - name: Upload traces, videos and HARs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-slice-failures
+          path: |
+            src/Opportunity.Web/test-results/e2e-slice/
+            src/Opportunity.Web/TestResults/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Logs on failure
+        if: ${{ failure() }}
+        working-directory: deploy/docker-compose
+        run: ./opportunity.sh compose --profile '*' logs --no-color --tail 300
+      - name: Tear down
+        if: ${{ always() }}
+        working-directory: deploy/docker-compose
+        run: ./opportunity.sh compose --profile '*' down --volumes --remove-orphans || true

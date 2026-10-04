@@ -1,0 +1,27 @@
+{
+  // Vertical-slice E2E corpus (E03-T03): 1K synthetic documents with extracted text, small enough to import and
+  // index in about a minute on a CI runner. Omitted settings take the enterprise-reference defaults.
+  "profileVersion": 1,
+  "name": "e2e-slice",
+  "documentCount": 1000,
+  "controlNumberPrefix": "SLC",
+  "controlNumberDigits": 7,
+  "families": {
+    "containerMinChildren": 5,
+    "containerMaxChildren": 20
+  },
+  "custodians": {
+    "count": 12
+  },
+  "text": {
+    "medianBytes": 3072,
+    "p99Bytes": 32768,
+    "maxBytes": 65536
+  },
+  // Planted terms: the mouse path works on the first set, the keyboard-only path on the second.
+  "needles": [
+    { "term": "quillfarrow", "docRate": 0.05, "maxOccurrences": 2, "scope": "any" },
+    { "term": "brindlequost", "docRate": 0.05, "maxOccurrences": 2, "scope": "any" }
+  ],
+  "proximityPairs": []
+}

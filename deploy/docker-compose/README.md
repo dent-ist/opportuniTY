@@ -79,7 +79,7 @@ Run from this directory (`deploy/docker-compose`). `make <target>` does the same
 | `./opportunity.sh init` | Creates `.env` from [`.env.example`](.env.example) with random passwords (mode 600, git-ignored). Keeps an existing `.env`, adding only secrets that are new in `.env.example` |
 | `./opportunity.sh preflight` | Fails on Docker Engine < 25, Compose < 2.24, < 6 GB memory for Docker or free on a Linux host, or `vm.max_map_count` < 262144; warns below 16 GB |
 | `./opportunity.sh up` | `init` + `preflight` + build the four images + start + wait until every service is healthy (default timeout 10 min, `OPPORTUNITY_WAIT_TIMEOUT`) |
-| `./opportunity.sh seed` | Creates the demo workspace `00000000-0000-4000-8000-00000000d3e0` (idempotent) |
+| `./opportunity.sh seed` | Creates the demo workspace `00000000-0000-4000-8000-00000000d3e0` with demo coding fields (Responsiveness, Issues, Key Document, Reviewer Comments) in its default coding layout (idempotent) |
 | `./opportunity.sh demo-documents [file.dat]` | Imports synthetic demo documents into the demo workspace through the real import API, signed in as `admin.dev` (default `seed/demo-documents.dat`: 10 generated documents, an email family with attachments, its duplicate and two loose files). Each run imports another copy; run `reset` first for a clean set. Bigger sets: `dotnet run --project tools/Opportunity.DataGenerator -- generate --seed 42 --documents 500 --volumes --no-natives --no-images --no-text --out ./demo` and pass `./demo/VOL001/DATA/VOL001.dat` |
 | `./opportunity.sh ps` | Service status; every service shows `(healthy)`, the migrator `Exited (0)` |
 | `./opportunity.sh logs [service]` | Follows logs (`make logs SERVICE=api`) |

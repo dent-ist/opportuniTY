@@ -10,7 +10,7 @@
 #     reset       down and delete all volumes (database, index, queues, objects); asks unless -y
 #     logs [svc]  follow logs
 #     ps          service status
-#     seed        create the demo workspace (idempotent)
+#     seed        create the demo workspace with demo coding fields and layout (idempotent)
 #     demo-documents [file.dat]
 #                 import synthetic demo documents into the demo workspace through the real import API, signed in as
 #                 admin.dev (default: seed/demo-documents.dat, 10 generated documents; run after `up` and `seed`)
@@ -181,8 +181,11 @@ cmd_reset() {
 }
 
 cmd_seed() {
-  compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$OPPORTUNITY_DB_OWNER_USER" -d "$OPPORTUNITY_DB"' \
-    <"$here/seed/demo-workspace.sql"
+  local sql
+  for sql in demo-workspace.sql demo-coding.sql; do
+    compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$OPPORTUNITY_DB_OWNER_USER" -d "$OPPORTUNITY_DB"' \
+      <"$here/seed/$sql"
+  done
 }
 
 # Signs in through the BFF and Keycloak like a browser (the demo user's password is the realm's dev default), then

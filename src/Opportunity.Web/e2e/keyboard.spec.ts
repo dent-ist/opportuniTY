@@ -821,9 +821,9 @@ test('codes with the keyboard only: field jumps, access digits, required fields,
   expect(save.layoutId).toBe('layout-first-pass');
   expect(save.changes).toEqual(
     expect.arrayContaining([
-      { fieldId: '1000', operation: 'set', value: '1' },
-      { fieldId: '1002', operation: 'set', value: '22' },
-      { fieldId: '1003', operation: 'set', value: ['32'] },
+      { fieldId: '1000', operation: 'set', value: 1 },
+      { fieldId: '1002', operation: 'set', value: 22 },
+      { fieldId: '1003', operation: 'set', value: [32] },
       { fieldId: '1006', operation: 'set', value: true },
       { fieldId: '1007', operation: 'set', value: 'Pricing terms' },
     ]),
