@@ -1,5 +1,12 @@
+using Opportunity.Hosting.Operations;
 using Opportunity.Hosting.Workers;
 using Opportunity.Storage;
+
+// `jobs …` runs the operations CLI (docs/operations) instead of the worker host.
+if (await JobOperationsCli.TryRunAsync(args) is { } exitCode)
+{
+    return exitCode;
+}
 
 // Thin composition root (ADR-019 R5). Lite runs this with the default (every worker type); the same image runs a
 // single type with Workers__Enabled=<type>. Object storage is registered here, not in Opportunity.Hosting, which must
@@ -15,3 +22,4 @@ if (storage.Exists())
 }
 
 await OpportunityWorkerHost.Build(builder.AddWorkerModules()).RunAsync();
+return 0;

@@ -210,11 +210,38 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
         }
 
         // Replay feeds chunks back to a job that is still executing, or reopens one that completed with errors.
-        if (locked.Job.Status is not (JobStatus.Running or JobStatus.Paused or JobStatus.CompletedWithErrors))
+        if (!CanReplayChunks(locked.Job.Status))
         {
             return new ChunkReplayResult(JobTransitionOutcome.NotAllowed, 0, locked.Job.Status);
         }
 
+        var (replayed, status, after) = await ReplayChunksInTransactionAsync(tx, locked, chunkId, cancellationToken).ConfigureAwait(false);
+        if (replayed > 0)
+        {
+            await JobSql.AuditAsync(tx, after.Job, AuditTaxonomy.Job.Replayed, requestedBy, cancellationToken, details: new Dictionary<string, string?>
+            {
+                ["ChunksReplayed"] = replayed.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["ChunkId"] = chunkId?.ToString(),
+            }).ConfigureAwait(false);
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new ChunkReplayResult(JobTransitionOutcome.Applied, replayed, status);
+    }
+
+    /// <summary>Whether Failed chunks of a job in <paramref name="status"/> may be replayed (ADR-010 §2).</summary>
+    internal static bool CanReplayChunks(JobStatus status) => status is JobStatus.Running or JobStatus.Paused or JobStatus.CompletedWithErrors;
+
+    /// <summary>
+    /// Failed chunks of the locked job (or the one given) → Pending with attempts reset, the job reopened from
+    /// CompletedWithErrors and its counters settled. The caller checked <see cref="CanReplayChunks"/> and audits.
+    /// Returns the count, the job status after and the job row as locked after the change.
+    /// </summary>
+    internal static async Task<(int Replayed, JobStatus Status, LockedJob Locked)> ReplayChunksInTransactionAsync(
+        WorkspaceTransaction tx, LockedJob locked, Guid? chunkId, CancellationToken cancellationToken)
+    {
+        var workspaceId = locked.Job.WorkspaceId;
+        var jobId = locked.Job.JobId;
         int replayed;
         await using (var command = tx.Command(
             $"""
@@ -231,25 +258,20 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
         }
 
         var status = locked.Job.Status;
-        if (replayed > 0)
+        if (replayed == 0)
         {
-            if (status == JobStatus.CompletedWithErrors)
-            {
-                status = await JobSql.TransitionJobAsync(tx, locked, JobTrigger.ReplayFailedChunks, "Failed chunks replayed.", cancellationToken)
-                    .ConfigureAwait(false);
-                locked = (await JobSql.LockJobAsync(tx, workspaceId, jobId, cancellationToken).ConfigureAwait(false))!;
-            }
-
-            status = await JobSql.SettleAsync(tx, locked, new JobDelta { Replayed = replayed }, cancellationToken).ConfigureAwait(false);
-            await JobSql.AuditAsync(tx, locked.Job, AuditTaxonomy.Job.Replayed, requestedBy, cancellationToken, details: new Dictionary<string, string?>
-            {
-                ["ChunksReplayed"] = replayed.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["ChunkId"] = chunkId?.ToString(),
-            }).ConfigureAwait(false);
+            return (0, status, locked);
         }
 
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return new ChunkReplayResult(JobTransitionOutcome.Applied, replayed, status);
+        if (status == JobStatus.CompletedWithErrors)
+        {
+            await JobSql.TransitionJobAsync(tx, locked, JobTrigger.ReplayFailedChunks, "Failed chunks replayed.", cancellationToken)
+                .ConfigureAwait(false);
+            locked = (await JobSql.LockJobAsync(tx, workspaceId, jobId, cancellationToken).ConfigureAwait(false))!;
+        }
+
+        status = await JobSql.SettleAsync(tx, locked, new JobDelta { Replayed = replayed }, cancellationToken).ConfigureAwait(false);
+        return (replayed, status, locked);
     }
 
     public async Task RecordIndexTasksAppliedAsync(Guid workspaceId, Guid jobId, int count, CancellationToken cancellationToken = default)

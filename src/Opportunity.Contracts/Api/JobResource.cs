@@ -19,7 +19,10 @@ public sealed record JobResource(
     JobCommittedProgress Committed,
     JobIndexedProgress Indexed);
 
-/// <summary>PostgreSQL progress: chunks and items, from O(1) counters.</summary>
+/// <summary>
+/// PostgreSQL progress: chunks and items, from O(1) counters. <see cref="Done"/> of <see cref="Total"/> is the progress
+/// bar: chunks committed in PostgreSQL of all planned chunks (failed and cancelled chunks never count as done).
+/// </summary>
 public sealed record JobCommittedProgress(
     long ChunksTotal,
     long ChunksCommitted,
@@ -30,7 +33,12 @@ public sealed record JobCommittedProgress(
     long ItemsUnchanged,
     long ItemsSkippedConcurrentEdit,
     long ItemsExcludedNoAccess,
-    long ItemsFailed);
+    long ItemsFailed)
+{
+    public long Done => ChunksCommitted;
+
+    public long Total => ChunksTotal;
+}
 
 /// <summary>Search progress: index tasks created by committed chunks and how many have been applied.</summary>
 public sealed record JobIndexedProgress(JobIndexState State, long IndexTasksTotal, long IndexTasksApplied);

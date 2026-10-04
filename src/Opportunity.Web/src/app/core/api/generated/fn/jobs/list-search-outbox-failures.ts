@@ -7,31 +7,33 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { JobDetail } from '../../models/job-detail';
+import { CursorPageOfJobFailure } from '../../models/cursor-page-of-job-failure';
 
-export interface GetJob$Params {
+export interface ListSearchOutboxFailures$Params {
   workspaceId: string;
-  jobId: string;
+  limit?: number | string;
+  cursor?: string;
 }
 
-export function getJob(
+export function listSearchOutboxFailures(
   http: HttpClient,
   rootUrl: string,
-  params: GetJob$Params,
+  params: ListSearchOutboxFailures$Params,
   context?: HttpContext,
-): Observable<StrictHttpResponse<JobDetail>> {
-  const rb = new RequestBuilder(rootUrl, getJob.PATH, 'get');
+): Observable<StrictHttpResponse<CursorPageOfJobFailure>> {
+  const rb = new RequestBuilder(rootUrl, listSearchOutboxFailures.PATH, 'get');
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
-    rb.path('jobId', params.jobId, {});
+    rb.query('limit', params.limit, {});
+    rb.query('cursor', params.cursor, {});
   }
 
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<JobDetail>;
+      return r as StrictHttpResponse<CursorPageOfJobFailure>;
     }),
   );
 }
 
-getJob.PATH = '/api/v1/workspaces/{workspaceId}/jobs/{jobId}';
+listSearchOutboxFailures.PATH = '/api/v1/workspaces/{workspaceId}/search-outbox/failures';

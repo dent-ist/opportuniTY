@@ -493,25 +493,17 @@
         }
       }
     },
-    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}": {
+    "/api/v1/workspaces/{workspaceId}/job-events": {
       "get": {
         "tags": [
           "Jobs"
         ],
-        "summary": "Job status with separate committed and indexed progress.",
-        "description": "Users always see their own jobs; other users' jobs need Job.ViewAll.",
-        "operationId": "GetJob",
+        "summary": "Live job changes as server-sent events (event 'job': {jobId, status, committed, searchable, updatedAt}).",
+        "description": "Your own jobs, or all with Job.ViewAll. A ': heartbeat' comment every 15 s; the stream ends after at most 30 minutes and EventSource reconnects with Last-Event-ID. Fallback: GET …/jobs?updatedSince=<ISO 8601> every ≥ 5 s.",
+        "operationId": "StreamJobEvents",
         "parameters": [
           {
             "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "jobId",
             "in": "path",
             "required": true,
             "schema": {
@@ -521,24 +513,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobResource"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
+            "description": "OK"
           },
           "404": {
             "description": "Not Found",
@@ -1535,6 +1510,534 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SnapshotResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Jobs, newest first (or, with updatedSince, in change order): your own, or everyone's with Job.ViewAll.",
+        "description": "Filters: type and status (repeat or comma-separate), createdBy=me|all (all needs Job.ViewAll, else only your own jobs are listed), from/to (creation time, ISO 8601). updatedSince=<ISO 8601> is the polling fallback of the job-events stream: jobs changed after that instant, oldest change first. Timestamps have millisecond precision and a change becomes visible when its transaction commits, so poll with the newest updatedAt seen minus a few seconds; items are state, so a repeated one is harmless.",
+        "operationId": "ListJobs",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "createdBy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "updatedSince",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfJobSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Job detail: committed and searchable progress, chunks by state, attempts, last error and ETA.",
+        "description": "Users always see their own jobs; other users' jobs need Job.ViewAll.",
+        "operationId": "GetJob",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}/failures": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Failed chunks and index tasks of the job, oldest failure first (PostgreSQL is the failure ledger).",
+        "operationId": "ListJobFailures",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfJobFailure"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}/cancel": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Cancel a job: pending chunks are cancelled now, running chunks stop at their next fence (your own jobs, or Job.Manage).",
+        "description": "Committed chunks stay (no undo, Q-34) and their index tasks still run. Repeating the call is harmless.",
+        "operationId": "CancelJob",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}/retry-failed": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Replay the job's failed chunks and index tasks from PostgreSQL (Job.Replay); idempotent and audited.",
+        "description": "Failed rows return to Pending with their attempts reset and the dispatcher publishes them again; dead-lettered broker messages are never re-published (ADR-010 §7.3). Chunks replay while the job is running, paused or completed with errors; index tasks always (a committed change must reach the index). Fix the cause first.",
+        "operationId": "RetryFailedJobWork",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobReplayResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/search-outbox/failures": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Failed SearchOutbox rows (interactive edits not yet searchable), oldest failure first (Job.ViewAll).",
+        "operationId": "ListSearchOutboxFailures",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfJobFailure"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/search-outbox/retry-failed": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Replay every failed SearchOutbox row of the workspace from PostgreSQL (Job.Replay); idempotent and audited.",
+        "operationId": "RetrySearchOutboxFailures",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOutboxReplayResource"
                 }
               }
             }
@@ -5086,6 +5589,56 @@
           }
         }
       },
+      "CursorPageOfJobFailure": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobFailure"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfJobSummary": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfSnapshotResource": {
         "required": [
           "items",
@@ -7391,6 +7944,67 @@
           }
         }
       },
+      "JobChunkCounts": {
+        "required": [
+          "pending",
+          "running",
+          "done",
+          "failed",
+          "deadLettered",
+          "cancelled"
+        ],
+        "type": "object",
+        "properties": {
+          "pending": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "running": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "done": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "failed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deadLettered": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "cancelled": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "JobCommittedProgress": {
         "required": [
           "chunksTotal",
@@ -7485,8 +8099,232 @@
               "string"
             ],
             "format": "int64"
+          },
+          "done": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
           }
         }
+      },
+      "JobCreator": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "JobDetail": {
+        "required": [
+          "jobId",
+          "type",
+          "name",
+          "status",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "committed",
+          "searchable",
+          "errorCount",
+          "correlationId",
+          "snapshotId",
+          "link",
+          "chunks",
+          "attempts",
+          "lastError",
+          "etaSeconds",
+          "workspaceId",
+          "jobType",
+          "statusReason",
+          "initiatedBy",
+          "targetSnapshotId",
+          "startedAt",
+          "finishedAt",
+          "indexed"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobResourceType"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobResourceStatus"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/JobCreator"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "committed": {
+            "$ref": "#/components/schemas/JobCommittedProgress"
+          },
+          "searchable": {
+            "$ref": "#/components/schemas/JobSearchableProgress"
+          },
+          "errorCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "correlationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "link": {
+            "type": "string"
+          },
+          "chunks": {
+            "$ref": "#/components/schemas/JobChunkCounts"
+          },
+          "attempts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "etaSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobType": {
+            "$ref": "#/components/schemas/JobResourceType"
+          },
+          "statusReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "initiatedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetSnapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          },
+          "indexed": {
+            "$ref": "#/components/schemas/JobIndexedProgress"
+          }
+        }
+      },
+      "JobFailure": {
+        "required": [
+          "kind",
+          "id",
+          "attempts",
+          "error",
+          "failedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/JobFailureKind"
+          },
+          "id": {
+            "type": "string"
+          },
+          "attempts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "failedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "JobFailureKind": {
+        "enum": [
+          "chunk",
+          "indexTask",
+          "outbox"
+        ]
       },
       "JobIndexState": {
         "enum": [
@@ -7520,6 +8358,35 @@
               "string"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "JobReplayResource": {
+        "required": [
+          "chunksReplayed",
+          "indexTasksReplayed",
+          "job"
+        ],
+        "type": "object",
+        "properties": {
+          "chunksReplayed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "indexTasksReplayed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobDetail"
           }
         }
       },
@@ -7611,6 +8478,119 @@
           "production",
           "render"
         ]
+      },
+      "JobSearchableProgress": {
+        "required": [
+          "done",
+          "total",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "done": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobSearchableState"
+          }
+        }
+      },
+      "JobSearchableState": {
+        "enum": [
+          "notApplicable",
+          "pending",
+          "catchingUp",
+          "current"
+        ]
+      },
+      "JobSummary": {
+        "required": [
+          "jobId",
+          "type",
+          "name",
+          "status",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "committed",
+          "searchable",
+          "errorCount",
+          "correlationId",
+          "snapshotId",
+          "link"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobResourceType"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobResourceStatus"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/JobCreator"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "committed": {
+            "$ref": "#/components/schemas/JobCommittedProgress"
+          },
+          "searchable": {
+            "$ref": "#/components/schemas/JobSearchableProgress"
+          },
+          "errorCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "correlationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "link": {
+            "type": "string"
+          }
+        }
       },
       "JsonElement": { },
       "JsonNode": { },
@@ -8506,6 +9486,22 @@
           "isFamilyParent": {
             "type": "boolean",
             "default": false
+          }
+        }
+      },
+      "SearchOutboxReplayResource": {
+        "required": [
+          "rowsReplayed"
+        ],
+        "type": "object",
+        "properties": {
+          "rowsReplayed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },

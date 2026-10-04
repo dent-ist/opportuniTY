@@ -7,9 +7,11 @@ export interface JobCommittedProgress {
   chunksFailed: number | string;
   chunksPending: number | string;
   chunksTotal: number | string;
+  done?: number | string;
   itemsApplied: number | string;
   itemsExcludedNoAccess: number | string;
   itemsFailed: number | string;
   itemsSkippedConcurrentEdit: number | string;
   itemsUnchanged: number | string;
+  total?: number | string;
 }

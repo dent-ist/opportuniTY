@@ -9,18 +9,18 @@ import { RequestBuilder } from '../../request-builder';
 
 import { JobDetail } from '../../models/job-detail';
 
-export interface GetJob$Params {
+export interface CancelJob$Params {
   workspaceId: string;
   jobId: string;
 }
 
-export function getJob(
+export function cancelJob(
   http: HttpClient,
   rootUrl: string,
-  params: GetJob$Params,
+  params: CancelJob$Params,
   context?: HttpContext,
 ): Observable<StrictHttpResponse<JobDetail>> {
-  const rb = new RequestBuilder(rootUrl, getJob.PATH, 'get');
+  const rb = new RequestBuilder(rootUrl, cancelJob.PATH, 'post');
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
     rb.path('jobId', params.jobId, {});
@@ -34,4 +34,4 @@ export function getJob(
   );
 }
 
-getJob.PATH = '/api/v1/workspaces/{workspaceId}/jobs/{jobId}';
+cancelJob.PATH = '/api/v1/workspaces/{workspaceId}/jobs/{jobId}/cancel';

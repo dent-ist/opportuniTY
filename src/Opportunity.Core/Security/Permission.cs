@@ -36,6 +36,7 @@ public enum Permission
     WorkspaceManageSecurity = 24,
     WorkspaceManageFields = 25,
     WorkspaceRequestDeletion = 26,
+    JobReplay = 27,
 }
 
 /// <summary>Catalogue entry: the dotted wire name used in docs, audit details and the API, and what it allows.</summary>
@@ -71,7 +72,8 @@ public static class PermissionCatalog
         new(Permission.ProductionFinalize, "Production.Finalize", "Finalize productions."),
         new(Permission.PrivilegeLogGenerate, "PrivilegeLog.Generate", "Generate privilege logs."),
         new(Permission.JobViewAll, "Job.ViewAll", "See every user's jobs (users always see their own)."),
-        new(Permission.JobManage, "Job.Manage", "Cancel and replay jobs."),
+        new(Permission.JobManage, "Job.Manage", "Cancel, pause and resume other users' jobs (users may cancel their own)."),
+        new(Permission.JobReplay, "Job.Replay", "Replay failed job chunks, index tasks and search outbox rows from PostgreSQL (ADR-010 §7.4)."),
         new(Permission.AuditRead, "Audit.Read", "Read the workspace audit trail."),
         new(Permission.AuditReadSearchText, "Audit.ReadSearchText", "Read search query text in the audit trail (Q-16)."),
         new(Permission.WorkspaceManageUsers, "Workspace.ManageUsers", "Assign and revoke workspace roles."),
