@@ -1,0 +1,315 @@
+@let current = layout();
+<div class="coding__body">
+  <div class="coding__top">
+    @if (layoutOptions().length > 1) {
+      <opp-select
+        class="coding__layout"
+        label="Layout"
+        [options]="layoutOptions()"
+        [value]="current?.id ?? ''"
+        (valueChange)="chooseLayout($event)"
+      />
+    } @else if (current) {
+      <p class="coding__layout-name">
+        <span class="coding__muted">Layout</span> <strong>{{ current.name }}</strong>
+      </p>
+    }
+    <div class="coding__status" role="status">
+      @switch (indexBadge()) {
+        @case ('saving') {
+          <opp-badge tone="neutral" icon="clock">Saving…</opp-badge>
+        }
+        @case ('pending') {
+          <opp-badge tone="info" icon="refresh">Saved · indexing</opp-badge>
+        }
+        @case ('searchable') {
+          <opp-badge tone="success" icon="success">Saved · searchable</opp-badge>
+        }
+        @case ('failed') {
+          <opp-badge tone="warning" icon="warning">Saved · search update delayed</opp-badge>
+        }
+      }
+      @if (dirty()) {
+        <span class="coding__dirty">Unsaved changes</span>
+      }
+    </div>
+  </div>
+
+  @if (conflict()) {
+    <opp-coding-conflict
+      class="coding__conflict"
+      [title]="conflictTitle()"
+      [titleId]="uid + '-conflict'"
+      [differences]="differences()"
+      (reload)="reloadTheirs()"
+      (overwrite)="overwrite()"
+    />
+  }
+
+  @if (message(); as text) {
+    <p class="coding__message" role="alert"><opp-icon name="error" />{{ text }}</p>
+  }
+
+  @switch (stateKind()) {
+    @case ('loading') {
+      <opp-loading-state label="Loading coding…" />
+    }
+    @case ('unavailable') {
+      <p class="coding__muted">The coding of this document could not be loaded.</p>
+    }
+    @default {
+      @if (layouts() === null) {
+        <opp-loading-state label="Loading coding layout…" />
+      } @else if (sections().length === 0) {
+        <p class="coding__muted">This workspace has no coding fields yet.</p>
+      } @else {
+        <form
+          class="coding__form"
+          novalidate
+          [attr.aria-label]="'Coding of this document, layout ' + (current?.name ?? '')"
+          (submit)="$event.preventDefault(); save()"
+        >
+          @for (section of sections(); track section.id) {
+            <section class="coding__section" [attr.aria-labelledby]="section.id">
+              <h3 class="coding__section-title" [id]="section.id">{{ section.title }}</h3>
+              @for (row of section.rows; track row.field.queryName) {
+                <div
+                  class="coding__field"
+                  [attr.data-coding-field]="row.field.queryName"
+                  [class.is-invalid]="!!row.error"
+                >
+                  @if (!row.editable) {
+                    <div class="coding__readonly" tabindex="-1">
+                      <span class="coding__label">
+                        {{ row.field.label }}
+                        @if (row.field.securityAffecting) {
+                          <span class="coding__access"><opp-icon name="lock" />Affects access</span>
+                        }
+                      </span>
+                      <span
+                        class="coding__value"
+                        [class.coding__muted]="row.display === 'Not set'"
+                        >{{ row.display }}</span
+                      >
+                      @if (row.lockedReason) {
+                        <span class="coding__hint">{{ row.lockedReason }}</span>
+                      }
+                    </div>
+                  } @else {
+                    @switch (row.kind) {
+                      @case ('text') {
+                        <opp-text-field
+                          [label]="row.field.label"
+                          [required]="row.field.required"
+                          [error]="row.error ?? undefined"
+                          [hint]="row.field.securityAffecting ? accessHint : undefined"
+                          [value]="text(row.value)"
+                          (valueChange)="setText(row.field, $event)"
+                        />
+                      }
+                      @case ('number') {
+                        <opp-text-field
+                          [label]="row.field.label"
+                          [required]="row.field.required"
+                          [error]="row.error ?? undefined"
+                          [hint]="row.field.type === 'integer' ? 'Whole number' : 'Number'"
+                          [value]="text(row.value)"
+                          (valueChange)="setText(row.field, $event)"
+                        />
+                      }
+                      @case ('date') {
+                        <opp-text-field
+                          type="date"
+                          [label]="row.field.label"
+                          [required]="row.field.required"
+                          [error]="row.error ?? undefined"
+                          [value]="text(row.value)"
+                          (valueChange)="setText(row.field, $event)"
+                        />
+                      }
+                      @case ('dateTime') {
+                        <opp-text-field
+                          type="datetime-local"
+                          hint="Date and time in UTC"
+                          [label]="row.field.label"
+                          [required]="row.field.required"
+                          [error]="row.error ?? undefined"
+                          [value]="dateTime(row.value)"
+                          (valueChange)="setDateTime(row.field, $event)"
+                        />
+                      }
+                      @case ('user') {
+                        <opp-select
+                          placeholder="Not set"
+                          [label]="row.field.label"
+                          [required]="row.field.required"
+                          [error]="row.error ?? undefined"
+                          [options]="userOptions(row)"
+                          [value]="text(row.value)"
+                          (valueChange)="setText(row.field, $event)"
+                        />
+                      }
+                      @case ('longText') {
+                        <ng-container
+                          [ngTemplateOutlet]="area"
+                          [ngTemplateOutletContext]="{ row, multi: false }"
+                        />
+                      }
+                      @case ('lines') {
+                        <ng-container
+                          [ngTemplateOutlet]="area"
+                          [ngTemplateOutletContext]="{ row, multi: true }"
+                        />
+                      }
+                      @default {
+                        <ng-container
+                          [ngTemplateOutlet]="choices"
+                          [ngTemplateOutletContext]="{ row }"
+                        />
+                      }
+                    }
+                  }
+                </div>
+              }
+            </section>
+          }
+        </form>
+      }
+    }
+  }
+</div>
+
+@if (showActions()) {
+  <div class="coding__actions">
+    <button type="button" oppButton="ghost" [disabled]="!dirty()" (click)="discard()">
+      Cancel
+    </button>
+    <button type="button" oppButton="secondary" [busy]="saving()" (click)="save()">
+      <opp-icon name="check" />Save
+    </button>
+    <button type="button" oppButton="secondary" (click)="move.emit('previous')">
+      <opp-icon name="chevron-left" />Save &amp; Previous
+    </button>
+    <button type="button" oppButton="primary" (click)="move.emit('next')">
+      Save &amp; Next<opp-icon name="chevron-right" />
+    </button>
+  </div>
+}
+
+<ng-template #area let-row="row" let-multi="multi">
+  <label class="coding__label" [for]="row.id">
+    {{ row.field.label }}
+    @if (row.field.required) {
+      <span class="coding__required" aria-hidden="true">*</span>
+    }
+  </label>
+  <textarea
+    class="coding__textarea"
+    rows="3"
+    [id]="row.id"
+    [required]="row.field.required"
+    [value]="multi ? lines(row.value) : text(row.value)"
+    [attr.aria-invalid]="row.error ? true : null"
+    [attr.aria-describedby]="areaDescribedBy(row, multi)"
+    (input)="multi ? setLines(row.field, $event) : setLongText(row.field, $event)"
+  ></textarea>
+  @if (multi || row.field.securityAffecting) {
+    <p class="coding__hint" [id]="row.id + '-hint'">
+      {{ multi ? 'One value per line.' : '' }}
+      {{ row.field.securityAffecting ? accessHint : '' }}
+    </p>
+  }
+  @if (row.error) {
+    <p class="coding__error" [id]="row.id + '-error'">
+      <span class="opp-visually-hidden">Error:</span>{{ row.error }}
+    </p>
+  }
+</ng-template>
+
+<ng-template #choices let-row="row">
+  @let single = row.kind === 'radio' || row.kind === 'yesNo' || row.kind === 'filterSingle';
+  @let filtered = row.kind === 'filterSingle' || row.kind === 'filterMulti';
+  <fieldset
+    class="coding__choices"
+    [attr.role]="single ? 'radiogroup' : null"
+    [attr.aria-required]="single && row.field.required ? true : null"
+    [attr.aria-invalid]="row.error ? true : null"
+    [attr.aria-describedby]="row.id + '-hint' + (row.error ? ' ' + row.id + '-error' : '')"
+    (keydown)="onChoiceKey($event, row)"
+  >
+    <legend class="coding__label">
+      {{ row.field.label }}
+      @if (row.field.required) {
+        <span class="coding__required" aria-hidden="true">*</span>
+        @if (!single) {
+          <span class="opp-visually-hidden">(required)</span>
+        }
+      }
+      @if (row.field.securityAffecting) {
+        <span class="coding__access"><opp-icon name="lock" />Affects access</span>
+      }
+    </legend>
+    @if (filtered) {
+      <input
+        type="search"
+        class="coding__filter"
+        autocomplete="off"
+        [attr.aria-label]="'Filter ' + row.field.label + ' choices'"
+        [value]="filterOf(row.field)"
+        (input)="setFilter(row.field, $event)"
+      />
+    }
+    <div class="coding__options" [class.coding__options--scroll]="filtered">
+      @for (option of row.options; track option.label; let i = $index) {
+        <label class="coding__option" [class.is-checked]="option.checked">
+          @if (single) {
+            <input
+              type="radio"
+              [name]="row.id"
+              [checked]="option.checked"
+              [disabled]="option.disabled"
+              (change)="pick(row, option)"
+            />
+          } @else {
+            <!-- A long list is one Tab stop; Up / Down move through it (roving focus). -->
+            <input
+              type="checkbox"
+              [tabIndex]="filtered && i !== rovingIndex(row) ? -1 : 0"
+              [checked]="option.checked"
+              [disabled]="option.disabled"
+              (focus)="filtered && setRoving(row, i)"
+              (change)="choose(row, option)"
+            />
+          }
+          <span class="coding__digit" aria-hidden="true">{{
+            option.digit ? '(' + option.digit + ')' : ''
+          }}</span>
+          <span class="coding__option-label">{{ option.label }}</span>
+        </label>
+      } @empty {
+        <p class="coding__muted">No choices match.</p>
+      }
+    </div>
+    @if (filtered && row.value && !single) {
+      <p class="coding__hint">Chosen: {{ chosenSummary(row) }}</p>
+    }
+    @if (single && row.value !== null && row.value !== undefined && row.value !== '') {
+      <!-- Out of the Tab order: the chosen choice's digit clears it from the keyboard (see the hint). -->
+      <button
+        type="button"
+        oppButton="ghost"
+        class="coding__clear"
+        tabindex="-1"
+        (click)="set(row.field, null)"
+      >
+        Clear<span class="opp-visually-hidden"> {{ row.field.label }}</span>
+      </button>
+    }
+    <p class="opp-visually-hidden" [id]="row.id + '-hint'">{{ keysHint(row, single) }}</p>
+    @if (row.error) {
+      <p class="coding__error" [id]="row.id + '-error'">
+        <span class="opp-visually-hidden">Error:</span>{{ row.error }}
+      </p>
+    }
+  </fieldset>
+</ng-template>

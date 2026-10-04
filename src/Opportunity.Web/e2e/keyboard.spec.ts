@@ -760,3 +760,174 @@ test.describe('a large selection', () => {
     expect(mock.bulkCoding[0].body['changes']).toEqual([{ fieldId: '1000', operation: 'clear' }]);
   });
 });
+
+// Coding pane (E16-T05, familiarity guide §3.3–§4): code → Save & Next with the keyboard only.
+
+test('codes with the keyboard only: field jumps, access digits, required fields, Tab order and Save & Next (E16-T05)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  await page.getByRole('grid', { name: 'Documents' }).focus();
+  await page.keyboard.press('Enter');
+  const coding = page.getByRole('region', { name: 'Coding' });
+  const position = page.locator('.review__position');
+  await expect(position).toHaveText('Doc 1 of 250');
+  await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+
+  // Alt+Shift+C, then 5: the fifth field on screen (Key Document); 1 picks Yes.
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit5');
+  await expect(coding.getByRole('radio', { name: 'Yes', exact: true })).toBeFocused();
+  await page.keyboard.press('Digit1');
+  await expect(coding.getByRole('radio', { name: 'Yes', exact: true })).toBeChecked();
+  await expect(coding.getByText('Unsaved changes')).toBeVisible();
+
+  // Save & Next with the required Responsiveness empty: no save, no move, focus on the field with its message.
+  await page.keyboard.press('Control+Enter');
+  await expect(coding.getByText('Responsiveness is required.')).toBeVisible();
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).toBeFocused();
+  await expect(position).toHaveText('Doc 1 of 250');
+  expect(mock.coding.saves).toEqual([]);
+
+  // Digits code the focused choice field; Privilege Basis appears only for Withhold / Redact.
+  await page.keyboard.press('Digit1');
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).toBeChecked();
+  await expect(coding.getByRole('group', { name: /Privilege Basis/ })).toHaveCount(0);
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit2');
+  await page.keyboard.press('Digit2');
+  await expect(coding.getByRole('radio', { name: 'Withhold' })).toBeChecked();
+  await expect(coding.getByRole('group', { name: /Privilege Basis/ })).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(coding.getByRole('checkbox', { name: 'Attorney-Client' })).toBeFocused();
+  await page.keyboard.press('Digit2');
+  await expect(coding.getByRole('checkbox', { name: 'Work Product' })).toBeChecked();
+
+  // A comment, then Tab through the actions to Save & Next.
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit7');
+  const comments = coding.getByRole('textbox', { name: 'Reviewer Comments' });
+  await expect(comments).toBeFocused();
+  await page.keyboard.type('Pricing terms');
+  await tabTo(page, coding.getByRole('button', { name: 'Save & Next' }), 6);
+  await page.keyboard.press('Enter');
+  await expect(position).toHaveText('Doc 2 of 250');
+  expect(mock.coding.saves).toHaveLength(1);
+  const save = mock.coding.saves[0];
+  expect(save.documentId).toBe('doc-1');
+  expect(save.ifMatch).toBe('"3"');
+  expect(save.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+  expect(save.layoutId).toBe('layout-first-pass');
+  expect(save.changes).toEqual(
+    expect.arrayContaining([
+      { fieldId: '1000', operation: 'set', value: '1' },
+      { fieldId: '1002', operation: 'set', value: '22' },
+      { fieldId: '1003', operation: 'set', value: ['32'] },
+      { fieldId: '1006', operation: 'set', value: true },
+      { fieldId: '1007', operation: 'set', value: 'Pricing terms' },
+    ]),
+  );
+
+  // Ctrl+S saves and stays: "Saved · indexing", then searchable once the index caught up.
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).not.toBeChecked();
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit1');
+  await page.keyboard.press('Digit2');
+  await page.keyboard.press('Control+KeyS');
+  const status = coding.getByRole('status');
+  await expect(status).toContainText('Saved · indexing');
+  await expect(status).toContainText('Saved · searchable', { timeout: 10_000 });
+  await expect(position).toHaveText('Doc 2 of 250');
+
+  // Back on the first document its saved coding is shown.
+  await page.keyboard.press('Alt+Shift+Comma');
+  await expect(position).toHaveText('Doc 1 of 250');
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).toBeChecked();
+  await expect(comments).toHaveValue('Pricing terms');
+
+  // Ctrl+Enter from inside a field: the next document opens with focus back in the same field.
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit1');
+  await page.keyboard.press('Digit3');
+  await page.keyboard.press('Control+Enter');
+  await expect(position).toHaveText('Doc 2 of 250');
+  await expect(coding.getByRole('radio', { name: 'Not Responsive' })).toBeFocused();
+  expect(mock.coding.saves).toHaveLength(3);
+});
+
+test('a version conflict shows who changed what and when; Overwrite with mine saves on their version (E16-T05)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  await page.getByRole('grid', { name: 'Documents' }).focus();
+  await page.keyboard.press('Enter');
+  const coding = page.getByRole('region', { name: 'Coding' });
+  await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+
+  // Someone else codes the document after it was read.
+  mock.coding.codeAsOtherUser(1, 1000, 2, 'J. Smith');
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit1');
+  await page.keyboard.press('Digit1');
+  await page.keyboard.press('Control+KeyS');
+  const alert = coding.getByRole('alert').filter({ hasText: 'Changed by J. Smith' });
+  await expect(alert).toContainText(/Changed by J\. Smith at \d{1,2}:\d{2}/);
+  await expect(alert).toBeFocused();
+  await expect(alert.getByRole('row', { name: /Responsiveness/ })).toContainText('Not Responsive');
+  expect(mock.coding.saves.map((s) => s.ifMatch)).toEqual(['"3"']);
+
+  await tabTo(page, alert.getByRole('button', { name: 'Overwrite with mine' }), 4);
+  await page.keyboard.press('Enter');
+  await expect(coding.getByRole('status')).toContainText('Saved');
+  await expect(alert).toHaveCount(0);
+  expect(mock.coding.saves.map((s) => s.ifMatch)).toEqual(['"3"', '"4"']);
+  expect(mock.coding.saves[1].idempotencyKey).not.toBe(mock.coding.saves[0].idempotencyKey);
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).toBeChecked();
+});
+
+test.describe('without Coding.Write', () => {
+  test.use({ api: { permissions: ['Document.View', 'Search.Execute'] } });
+
+  test('the coding pane shows values without inputs and no save actions (E16-T05)', async ({
+    page,
+  }) => {
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    for (let i = 0; i < 2; i++) await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    const coding = page.getByRole('region', { name: 'Coding' });
+    const responsiveness = coding.locator('[data-coding-field="responsiveness"]');
+    await expect(responsiveness).toContainText('Responsiveness');
+    await expect(responsiveness.getByText('Responsive', { exact: true })).toBeVisible();
+    await expect(coding.getByRole('radio')).toHaveCount(0);
+    await expect(coding.getByRole('button', { name: 'Save & Next' })).toHaveCount(0);
+  });
+});
+
+test.describe('while a save is indexing', () => {
+  test.use({ api: { indexDelayMs: 2_500 } });
+
+  test('the list marks the reviewer’s own saved coding until it is searchable (E16-T05)', async ({
+    page,
+  }) => {
+    await openPage(page, '/w/ws-1/documents');
+    const grid = page.getByRole('grid', { name: 'Documents' });
+    await grid.focus();
+    await page.keyboard.press('Enter');
+    const coding = page.getByRole('region', { name: 'Coding' });
+    await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+    await page.keyboard.press('Alt+Shift+KeyC');
+    await page.keyboard.press('Digit1');
+    await page.keyboard.press('Digit2');
+    await page.keyboard.press('Control+KeyS');
+    await expect(coding.getByRole('status')).toContainText('Saved · indexing');
+
+    await page.keyboard.press('Alt+Shift+KeyL');
+    await expect(grid).toBeFocused();
+    const cell = grid.getByRole('gridcell', { name: /^ACM0000001/ });
+    await expect(cell).toContainText('Saved, indexing');
+    await expect(cell).not.toContainText('Saved, indexing', { timeout: 15_000 });
+  });
+});

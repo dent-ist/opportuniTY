@@ -1,3 +1,17 @@
+// A long field list scrolls in the dialog body and the actions stay on screen: the overlay pane's limit (CDK's
+// percentage max-height does not resolve here) is set on the host and reaches the layout through the form.
+:host,
+form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+}
+
+:host {
+  max-height: calc(100dvh - 2 * var(--opp-space-4));
+}
+
 .me__steps {
   display: flex;
   flex-wrap: wrap;

@@ -50,6 +50,7 @@ import { CellFormatter, countLabel, freshnessLabel } from './grid-format';
 import { PageRequest, ReviewSearchApi } from './review-search';
 import { LoadedPage, ResultWindow, toLoadedPage } from './result-window';
 import type { CursorSource } from '../review/review-cursor';
+import { PendingCoding } from '../review/coding/pending-coding';
 import {
   AllResultsSelection,
   SelectionTarget,
@@ -161,6 +162,8 @@ export class ReviewGrid implements CursorSource {
   readonly refreshed = output<string>();
 
   private readonly api = inject(ReviewSearchApi);
+  /** The reviewer's own saves search has not caught up with (E16-T05): their rows are marked until searchable. */
+  protected readonly pendingCoding = inject(PendingCoding, { optional: true });
   private readonly context = inject(WorkspaceContext);
   private readonly prefs = inject(UiPreferences);
   private readonly storage = inject(PreferenceStorage);

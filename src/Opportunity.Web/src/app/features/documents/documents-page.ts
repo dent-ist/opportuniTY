@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { CommandRegionDirective, CommandRegistry } from '../../core/commands';
 import { GridOpenEvent, GridSearch, ReviewGrid } from './grid/review-grid';
+import { PendingCoding } from './review/coding/pending-coding';
 import { DocumentLoader } from './review/document-loader';
 import { CursorSource, ReviewCursor } from './review/review-cursor';
 import {
@@ -83,6 +84,7 @@ import { MassEditJobs } from './mass-edit/mass-edit-jobs';
     DocumentLoader,
     { provide: DocumentContentApi, useClass: HttpDocumentContentApi },
     { provide: CodingApi, useClass: HttpCodingApi },
+    PendingCoding,
     { provide: BulkCodingApi, useClass: HttpBulkCodingApi },
     MassEditJobs,
   ],
