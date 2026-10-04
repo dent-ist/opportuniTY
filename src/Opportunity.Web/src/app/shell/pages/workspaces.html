@@ -1,14 +1,29 @@
-<h1 class="workspaces__title">Workspaces</h1>
+<div class="workspaces__header">
+  <h1 class="workspaces__title">Workspaces</h1>
+  @if (canCreate()) {
+    <button type="button" oppButton="primary" (click)="create()">
+      <opp-icon name="plus" />
+      New workspace
+    </button>
+  }
+</div>
 
 @if (loading()) {
   <opp-loading-state label="Loading workspaces…" />
 } @else if (error() && items().length === 0) {
   <opp-error-state [error]="error()!" (retry)="load()" />
 } @else if (items().length === 0) {
-  <opp-empty-state
-    title="No workspaces yet"
-    message="You are not a member of any workspace. Ask your administrator to add you to one."
-  />
+  @if (canCreate()) {
+    <opp-empty-state
+      title="No workspaces yet"
+      message="Create the first workspace with New workspace. A setup checklist then guides you through importing documents and adding fields, coding layouts and users."
+    />
+  } @else {
+    <opp-empty-state
+      title="No workspaces yet"
+      message="You are not a member of any workspace. Ask your administrator to add you to one."
+    />
+  }
 } @else {
   @if (recent().length) {
     <section class="workspaces__section" aria-labelledby="workspaces-recent">
@@ -41,24 +56,38 @@
       <p class="workspaces__muted" role="status">{{ summary() }}</p>
     </div>
     @if (filtered().length) {
-      <table class="workspaces__table">
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Matter number</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (ws of filtered(); track ws.workspaceId) {
+      <div class="workspaces__table-wrap" tabindex="0" role="region" aria-label="Workspace table">
+        <table class="workspaces__table">
+          <thead>
             <tr>
-              <td>
-                <a [routerLink]="['/w', ws.workspaceId]">{{ ws.name }}</a>
-              </td>
-              <td>{{ ws.matterNumber ?? '' }}</td>
+              <th scope="col">Name</th>
+              <th scope="col">Matter number</th>
+              <th scope="col">Status</th>
+              <th scope="col">Time zone</th>
+              <th scope="col">Created</th>
             </tr>
-          }
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            @for (ws of filtered(); track ws.workspaceId) {
+              <tr>
+                <td>
+                  <a [routerLink]="['/w', ws.workspaceId]">{{ ws.name }}</a>
+                </td>
+                <td>{{ ws.matterNumber ?? '' }}</td>
+                <td>
+                  @if (ws.status === 'active') {
+                    <opp-badge tone="success">Active</opp-badge>
+                  } @else {
+                    <opp-badge tone="neutral" icon="lock">Closed</opp-badge>
+                  }
+                </td>
+                <td>{{ ws.displayTimeZone }}</td>
+                <td class="workspaces__nowrap">{{ date(ws.createdAt) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
     } @else {
       <opp-empty-state
         title="No matching workspaces"

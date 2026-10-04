@@ -96,6 +96,8 @@ const PAGES = [
   { path: '/w/ws-1/imports/new', interact: { role: 'button', name: /User menu/ } },
   { path: '/w/ws-1/jobs', interact: { role: 'button', name: /^Jobs, / } },
   { path: '/w/ws-1/jobs/job-exp-3', interact: { role: 'button', name: /^Jobs, / } },
+  { path: '/w/ws-1/admin/settings', interact: { role: 'button', name: /User menu/ } },
+  { path: '/w/ws-1/admin/setup', interact: { role: 'button', name: /User menu/ } },
 ] as const;
 
 for (const { path, interact } of PAGES) {

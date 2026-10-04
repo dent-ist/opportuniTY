@@ -11,6 +11,7 @@ const alex: SessionPrincipal = {
   groups: [],
   mfa: false,
   sessionExpiresAt: null,
+  installationPermissions: [],
 };
 
 describe('SessionService', () => {
@@ -55,6 +56,19 @@ describe('SessionService', () => {
     refresh = session.refresh();
     backend.expectOne('/api/v1/me').flush(null, { status: 401, statusText: 'Unauthorized' });
     expect(await refresh).toBe('expired');
+  });
+
+  it('signs in again with MFA (step-up) and returns to a relative URL only', () => {
+    session.stepUp('/workspaces?new=true');
+    expect(assign).toHaveBeenLastCalledWith(
+      '/bff/login?stepUp=true&returnUrl=%2Fworkspaces%3Fnew%3Dtrue',
+    );
+    session.stepUp('/workspaces', '/bff/login?stepUp=true&acr=mfa');
+    expect(assign).toHaveBeenLastCalledWith(
+      '/bff/login?stepUp=true&acr=mfa&returnUrl=%2Fworkspaces',
+    );
+    session.stepUp('https://evil.example/', 'https://evil.example/login');
+    expect(assign).toHaveBeenLastCalledWith('/bff/login?stepUp=true&returnUrl=%2F');
   });
 
   it('starts login with a relative return URL only', () => {

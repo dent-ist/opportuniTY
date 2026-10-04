@@ -5,6 +5,7 @@ export interface MeResponse {
   displayName: string;
   email: string | null;
   groups: Array<string>;
+  installationPermissions: Array<string>;
   mfa: boolean;
   sessionExpiresAt: any;
   userId: string;

@@ -1,0 +1,254 @@
+// Workspace management: setup checklist, Workspace Settings and their dialogs (E04-T07).
+
+:host(.wsa-page) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 56rem;
+  padding: var(--opp-space-5);
+}
+
+.wsa__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.wsa__heading-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+}
+
+.wsa__title {
+  font-size: var(--opp-font-size-2xl);
+}
+
+.wsa__lead {
+  margin: 0;
+  max-width: 44rem;
+  color: var(--opp-color-text-muted);
+}
+
+.wsa__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.wsa__fine {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+}
+
+// Setup checklist.
+
+.wsa__progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  max-width: 28rem;
+}
+
+.wsa__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wsa__step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-4);
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+}
+
+.wsa__step-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--opp-color-accent);
+  border-radius: var(--opp-radius-pill);
+  color: var(--opp-color-accent-text);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.wsa__step.is-done .wsa__step-marker {
+  border-color: var(--opp-color-success-border);
+  background: var(--opp-color-success-bg);
+  color: var(--opp-color-success-text);
+}
+
+.wsa__step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  min-width: 0;
+}
+
+.wsa__step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+
+.wsa__step-title {
+  font-size: var(--opp-font-size-lg);
+}
+
+.wsa__step-text {
+  margin: 0;
+}
+
+.wsa__step-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  align-self: flex-start;
+  margin-block-start: var(--opp-space-1);
+  font-weight: var(--opp-font-weight-medium);
+}
+
+// Workspace Settings.
+
+.wsa__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-4);
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+}
+
+.wsa__card p {
+  margin: 0;
+}
+
+.wsa__card--danger {
+  border-color: var(--opp-color-danger-border);
+}
+
+.wsa__card-title {
+  font-size: var(--opp-font-size-lg);
+}
+
+.wsa__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+}
+
+.wsa__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+.wsa__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--opp-space-3) var(--opp-space-5);
+  margin: 0;
+}
+
+.wsa__facts dt {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.wsa__facts dd {
+  margin: var(--opp-space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.wsa__code {
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-sm);
+}
+
+// Notices inside forms and dialogs: the state is carried by the title text and icon, not colour alone.
+
+.wsa__notice {
+  display: flex;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid;
+  border-radius: var(--opp-radius-md);
+}
+
+.wsa__notice p {
+  margin: 0;
+}
+
+.wsa__notice > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  align-items: flex-start;
+}
+
+.wsa__notice opp-icon {
+  flex: none;
+  margin-block-start: 0.125rem;
+}
+
+.wsa__notice--warning {
+  color: var(--opp-color-warning-text);
+  background: var(--opp-color-warning-bg);
+  border-color: var(--opp-color-warning-border);
+}
+
+.wsa__notice--danger {
+  color: var(--opp-color-danger-text);
+  background: var(--opp-color-danger-bg);
+  border-color: var(--opp-color-danger-border);
+}
+
+.wsa__notice-title {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+// Dialog bodies.
+
+form {
+  display: contents;
+}
+
+.wsa__columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--opp-space-4);
+}
+
+.wsa__subheading {
+  margin-block-end: var(--opp-space-1);
+  font-size: var(--opp-font-size-md);
+}
+
+.wsa__list {
+  margin: 0;
+  padding-inline-start: var(--opp-space-5);
+}
+
+.wsa__list li + li {
+  margin-block-start: var(--opp-space-1);
+}
+
+.wsa__dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+}
