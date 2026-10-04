@@ -104,7 +104,7 @@ Installation (self-hosted)
 └── Workspace "ACME v. Widget" ← everything below is scoped to one workspace
     ├── Documents        (default landing)
     ├── Review Batches   (M5; hidden until enabled)
-    ├── Search Terms Reports
+    ├── Searches         Saved Searches · Search Terms Reports (Q-65)
     ├── Productions
     ├── Imports
     ├── Exports
@@ -142,7 +142,8 @@ There is **no separate top-level "Search" section.** Practitioners search *from 
 |---|---|---|
 | **Documents** | Browser pane (Saved Searches · Field Browser · Imports), search panel (keyword + conditions + include family/duplicates/thread), document list with Views, Mass Actions, and Review mode (viewer + coding + related items) | Everyone |
 | **Review Batches** (M5) | Batch Sets, batches, check-out/in, reviewer progress, QC sampling | Review managers, reviewers |
-| **Search Terms Reports** | List of reports. New report: name, scope (saved search / frozen set / workspace), terms (paste or CSV). Results table and CSV/XLSX download. Clicking a term opens its hits in Documents | Case team, lit support |
+| **Searches** (Q-65) | Home for saved searches. Tabs across the top: *Saved Searches* (list with folders, owner, sharing, last run and hit count; create, edit conditions, duplicate, move, delete, share with users/groups, run in Documents) and *Search Terms Reports* (below). The Documents browser pane keeps quick access to run saved searches | Everyone with search; sharing needs `SavedSearch.Share` |
+| ↳ **Search Terms Reports** | List of reports. New report: name, scope (saved search / frozen set / workspace), terms (paste or CSV). Results table and CSV/XLSX download. Clicking a term opens its hits in Documents | Case team, lit support |
 | **Productions** | List (name, Bates range, doc/page counts, status). Production page tabs: *Settings · Documents · QC · Output · Privilege Log* | Production managers |
 | **Imports** | Import history (each with report + error file) and *New Import* wizard. Import profiles | Lit support / admins (Q-31) |
 | **Exports** | Export history and *New Export* wizard. Export profiles | Lit support |
@@ -374,7 +375,7 @@ Each step lists what an experienced user expects to find. "→" means the next s
 2. Use the Include toggles to add family, duplicates or email thread, with delta counts.
 3. **Save as…** → name, folder, *Private / Shared*, View to use. The saved search appears in the browser.
 4. Saved search ⋯ menu: Run · Edit · Copy · Move · Delete · Search Terms Report · Mass Edit results · Export · Use in production. Users who may not see some results get fewer results; the search itself is the same (permissions are the runner's, `E07-T09`).
-5. **Search Terms Reports → New report**: name, scope (saved search / frozen set / whole workspace), paste terms one per line or upload CSV `Name,Expression` → run (a materialized snapshot is created). Results table columns: Term · Documents with hits · With family · Unique hits · Unique with family. Totals row: documents with ≥1 hit / with family / no hits. Invalid terms show a per-term error. Downloads: CSV, XLSX. The report header states scope, snapshot ID, "Current as of …", and warns if the index was not current at run time. Clicking a count opens Documents with those hits.
+5. **Searches → Search Terms Reports → New report**: name, scope (saved search / frozen set / whole workspace), paste terms one per line or upload CSV `Name,Expression` → run (a materialized snapshot is created). Results table columns: Term · Documents with hits · With family · Unique hits · Unique with family. Totals row: documents with ≥1 hit / with family / no hits. Invalid terms show a per-term error. Downloads: CSV, XLSX. The report header states scope, snapshot ID, "Current as of …", and warns if the index was not current at run time. Clicking a count opens Documents with those hits.
 
 ### 5.3 Review (ad-hoc now; batches in M5)
 

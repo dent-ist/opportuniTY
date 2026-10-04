@@ -27,16 +27,19 @@ export interface WorkspaceSection {
 
 export const WORKSPACE_SECTIONS: readonly WorkspaceSection[] = [
   { path: 'documents', label: 'Documents', permission: PERMISSIONS.documentView },
-  {
-    path: 'search-terms-reports',
-    label: 'Search Terms Reports',
-    permission: PERMISSIONS.searchExecute,
-  },
+  // Saved searches: create, organise, share and report on them (Search Terms Reports is one of its tabs).
+  { path: 'searches', label: 'Searches', permission: PERMISSIONS.searchExecute },
   { path: 'productions', label: 'Productions', permission: PERMISSIONS.productionCreate },
   { path: 'imports', label: 'Imports', permission: PERMISSIONS.importRun },
   { path: 'exports', label: 'Exports', permission: PERMISSIONS.exportCreate },
   // Every member sees their own jobs (Job.ViewAll widens the list), so any role with Document.View qualifies.
   { path: 'jobs', label: 'Jobs', permission: PERMISSIONS.documentView },
+];
+
+/** Tabs of the Searches section, in order; paths are under `/w/:workspaceId/searches/`. */
+export const SEARCH_AREAS: readonly WorkspaceSection[] = [
+  { path: 'saved', label: 'Saved Searches', permission: PERMISSIONS.searchExecute },
+  { path: 'terms-reports', label: 'Search Terms Reports', permission: PERMISSIONS.searchExecute },
 ];
 
 /** Entries of the Admin ▾ menu, in guide order; paths are under `/w/:workspaceId/admin/`. */

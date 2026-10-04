@@ -19,7 +19,13 @@ import { PreferenceStorage } from '../core/preferences/preference-storage';
 import { SessionService } from '../core/session/session';
 import { WorkspaceDirectory } from '../core/workspace/workspace-api';
 import { ActiveWorkspace } from '../core/workspace/workspace-context';
-import { ADMIN_AREAS, WORKSPACE_SECTIONS, allowedSections } from '../core/workspace/sections';
+import {
+  ADMIN_AREAS,
+  SEARCH_AREAS,
+  WORKSPACE_SECTIONS,
+  allowedSections,
+  type WorkspaceSection,
+} from '../core/workspace/sections';
 import { Button, DialogService, Icon, type IconName } from '../ui';
 import { Brand } from './brand';
 import { SHELL_PATHS } from './navigation';
@@ -29,10 +35,16 @@ import { SkipLink } from './skip-link';
 import { UserMenu } from './user-menu';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
+interface Subnav {
+  readonly label: string;
+  readonly base: string;
+  readonly areas: readonly WorkspaceSection[];
+}
+
 /** Sidebar icon per workspace section (original icons, `ui/icon`). */
 const SECTION_ICONS: Readonly<Record<string, IconName>> = {
   documents: 'documents',
-  'search-terms-reports': 'report',
+  searches: 'search',
   productions: 'production',
   imports: 'import',
   exports: 'export',
@@ -114,6 +126,16 @@ export class AppShell {
     { initialValue: this.router.url },
   );
   protected readonly inAdmin = computed(() => /^\/w\/[^/]+\/admin(\/|$)/.test(this.url()));
+  private readonly searchAreas = computed(() =>
+    allowedSections(SEARCH_AREAS, this.workspace()?.permissions ?? []),
+  );
+  /** Tabs across the top of the main region for a section with sub-pages (Q-64). */
+  protected readonly subnav = computed((): Subnav | null => {
+    if (this.inAdmin()) return { label: 'Admin', base: 'admin', areas: this.adminAreas() };
+    if (/^\/w\/[^/]+\/searches(\/|$)/.test(this.url()))
+      return { label: 'Searches', base: 'searches', areas: this.searchAreas() };
+    return null;
+  });
 
   constructor() {
     this.registerShellCommands();

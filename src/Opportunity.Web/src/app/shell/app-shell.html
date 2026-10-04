@@ -76,22 +76,24 @@
   }
   <main id="main" class="shell__main" tabindex="-1">
     @if (workspace(); as ws) {
-      @if (inAdmin() && adminAreas().length) {
-        <nav class="shell__subnav" aria-label="Admin">
-          <ul class="shell__tabs">
-            @for (area of adminAreas(); track area.path) {
-              <li>
-                <a
-                  class="shell__tab"
-                  [routerLink]="['/w', ws.workspaceId, 'admin', area.path]"
-                  routerLinkActive="is-active"
-                  ariaCurrentWhenActive="page"
-                  >{{ area.label }}</a
-                >
-              </li>
-            }
-          </ul>
-        </nav>
+      @if (subnav(); as sub) {
+        @if (sub.areas.length) {
+          <nav class="shell__subnav" [attr.aria-label]="sub.label">
+            <ul class="shell__tabs">
+              @for (area of sub.areas; track area.path) {
+                <li>
+                  <a
+                    class="shell__tab"
+                    [routerLink]="['/w', ws.workspaceId, sub.base, area.path]"
+                    routerLinkActive="is-active"
+                    ariaCurrentWhenActive="page"
+                    >{{ area.label }}</a
+                  >
+                </li>
+              }
+            </ul>
+          </nav>
+        }
       }
     }
     @if (sessionEnded()) {

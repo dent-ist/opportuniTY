@@ -1,6 +1,11 @@
 import { Route, Routes } from '@angular/router';
 import { WORKSPACE_DATA } from './core/workspace/workspace-context';
-import { ADMIN_AREAS, PERMISSIONS, WORKSPACE_SECTIONS } from './core/workspace/sections';
+import {
+  ADMIN_AREAS,
+  PERMISSIONS,
+  SEARCH_AREAS,
+  WORKSPACE_SECTIONS,
+} from './core/workspace/sections';
 import { devRoutes } from './dev/dev-routes';
 import { AppShell } from './shell/app-shell';
 import {
@@ -26,13 +31,28 @@ export const workspaceChildren: Routes = [
     canActivate: [requirePermission(PERMISSIONS.documentView)],
     loadComponent: () => import('./features/documents/documents-page').then((m) => m.DocumentsPage),
   },
-  ...WORKSPACE_SECTIONS.filter((s) => s.path !== 'documents').map((s): Route => ({
-    path: s.path,
-    title: s.label,
-    canActivate: [requirePermission(s.permission)],
-    data: { section: s.label },
-    loadComponent: sectionPage,
-  })),
+  {
+    path: 'searches',
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: SEARCH_AREAS[0].path },
+      ...SEARCH_AREAS.map((a): Route => ({
+        path: a.path,
+        title: a.label,
+        canActivate: [requirePermission(a.permission)],
+        data: { section: a.label },
+        loadComponent: sectionPage,
+      })),
+    ],
+  },
+  ...WORKSPACE_SECTIONS.filter((s) => s.path !== 'documents' && s.path !== 'searches').map(
+    (s): Route => ({
+      path: s.path,
+      title: s.label,
+      canActivate: [requirePermission(s.permission)],
+      data: { section: s.label },
+      loadComponent: sectionPage,
+    }),
+  ),
   {
     path: 'admin',
     children: [

@@ -212,7 +212,7 @@ Out of scope here: M5 tickets (E10-T06, E11-T05, E12-T09, E13-T05, E13-T06), whi
 - **SHOULD** — Add core components the guide relies on: tri-state checkbox (Mass Edit add/remove/unchanged), split-pane with collapse, step-rail wizard, badge with text alternative for family/duplicate indicators.
 
 ### E15-T02 (#123) Application shell and workspace context — *changes*
-- **MUST** — Replace primary navigation "Review, Search, Jobs, Admin" with the guide §2.1 sections: **Documents** (default landing), Review Batches (hidden until M5), Search Terms Reports, Productions, Imports, Exports, Jobs, Admin ▾. Search is part of Documents, with no separate Search section. Tabs are RBAC-filtered.
+- **MUST** — Replace primary navigation "Review, Search, Jobs, Admin" with the guide §2.1 sections: **Documents** (default landing), Review Batches (hidden until M5), Searches (Saved Searches · Search Terms Reports, Q-65), Productions, Imports, Exports, Jobs, Admin ▾. Search is part of Documents, with no separate Search section. Tabs are RBAC-filtered.
 - **MUST** — Add an installation-level **Workspaces list** after login (recent + search) and a workspace switcher in the header.
 - **MUST** — "No access" and "not found" are one indistinguishable page (Q-13).
 - **MUST** — The About page carries the licence notice (Q-25) and no third-party marks.
