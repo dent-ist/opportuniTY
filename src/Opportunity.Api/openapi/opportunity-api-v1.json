@@ -1758,7 +1758,7 @@
         "tags": [
           "Import"
         ],
-        "summary": "Start an import: upload the DAT with a saved or ad-hoc import profile; 202 with the import and its job.",
+        "summary": "Start an import: upload the DAT (and/or an OPT) with a saved or ad-hoc import profile; 202 with the import and its job.",
         "operationId": "StartImport",
         "parameters": [
           {
@@ -1996,7 +1996,7 @@
         "tags": [
           "Import"
         ],
-        "summary": "Row-level errors (and warnings with includeWarnings=true) of an import, in row order.",
+        "summary": "Row-level errors (and warnings with includeWarnings=true) of an import, DAT rows then OPT rows, in row order.",
         "operationId": "ListImportErrors",
         "parameters": [
           {
@@ -3576,6 +3576,20 @@
         "type": "string",
         "format": "binary"
       },
+      "ImageMatchField": {
+        "enum": [
+          "controlNumber",
+          "begBates"
+        ]
+      },
+      "ImageSettings": {
+        "type": "object",
+        "properties": {
+          "matchBy": {
+            "$ref": "#/components/schemas/ImageMatchField"
+          }
+        }
+      },
       "ImportFieldType": {
         "enum": [
           "text",
@@ -3588,6 +3602,13 @@
           "singleChoice",
           "multiChoice"
         ]
+      },
+      "ImportIssueFile": {
+        "enum": [
+          "dat",
+          "opt"
+        ],
+        "default": "dat"
       },
       "ImportMode": {
         "enum": [
@@ -3621,6 +3642,9 @@
           },
           "paths": {
             "$ref": "#/components/schemas/PathSettings"
+          },
+          "images": {
+            "$ref": "#/components/schemas/ImageSettings"
           },
           "unmappedColumns": {
             "$ref": "#/components/schemas/UnmappedColumnPolicy"
@@ -3926,6 +3950,16 @@
           },
           "completedAt": {
             "format": "date-time"
+          },
+          "optFileName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imagesOnly": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -3978,6 +4012,9 @@
           },
           "message": {
             "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/ImportIssueFile"
           }
         }
       },
@@ -3991,7 +4028,24 @@
         "type": "object",
         "properties": {
           "file": {
-            "$ref": "#/components/schemas/IFormFile"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IFormFile"
+              }
+            ]
+          },
+          "opt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IFormFile"
+              }
+            ]
           },
           "request": {
             "type": [

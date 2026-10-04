@@ -17,6 +17,7 @@ using Opportunity.Data.Jobs;
 using Opportunity.Data.SearchWork;
 using Opportunity.Data.Workspaces;
 using Opportunity.Import.Jobs;
+using Opportunity.Import.Volumes;
 using Opportunity.Jobs;
 using Opportunity.Messaging;
 
@@ -49,6 +50,11 @@ public static class ImportWorkerModule
         services.TryAddSingleton<IFieldCatalogRepository>(sp => new FieldCatalogRepository(sp.GetRequiredService<NpgsqlDataSource>()));
         services.TryAddSingleton<IWorkspaceReader>(sp => new WorkspaceReader(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddJobChunkConsumer();
+        // Volumes whose OPT images (and natives/text, E08-T04) the worker reads: Import:VolumeShareRoot (E08-T05).
+        services.TryAddSingleton(new ImportVolumeOptions
+        {
+            VolumeShareRoot = configuration[$"{ImportVolumeOptions.SectionName}:{nameof(ImportVolumeOptions.VolumeShareRoot)}"],
+        });
         services.AddImportJobs();
 
         // The dispatcher (E06-T04) publishes import chunks to import.chunks; this worker consumes them when RabbitMQ is

@@ -94,6 +94,9 @@ public sealed record ImportProfileDefinition
 
     public PathSettings Paths { get; init; } = new();
 
+    /// <summary>How OPT image cross-references find their documents (E08-T05).</summary>
+    public ImageSettings Images { get; init; } = new();
+
     public UnmappedColumnPolicy UnmappedColumns { get; init; } = UnmappedColumnPolicy.Ignore;
 
     /// <summary>Optional prefix prepended to every control number of the load (Q-27).</summary>
@@ -183,6 +186,21 @@ public sealed record PathSettings
 
     /// <summary>Leading path portion removed from native/text paths before resolving (e.g. <c>\\server\export\</c>).</summary>
     public string? StripPrefix { get; init; }
+}
+
+/// <summary>Which document value an OPT document's image key (the key of its first page, column 1) is matched against.</summary>
+public enum ImageMatchField
+{
+    ControlNumber,
+
+    /// <summary>The received Beg Bates value: the DAT's (with a DAT) or the document's (OPT-only load).</summary>
+    BegBates,
+}
+
+/// <summary>OPT image settings (E08-T05).</summary>
+public sealed record ImageSettings
+{
+    public ImageMatchField MatchBy { get; init; } = ImageMatchField.ControlNumber;
 }
 
 /// <summary>One load-file column: ignored, or mapped to one or more targets (e.g. <c>BEGDOC</c> → Control Number and Beg Bates).</summary>
