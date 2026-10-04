@@ -131,6 +131,34 @@ public sealed class SearchOutboxRepository(NpgsqlDataSource dataSource) : ISearc
         return applied;
     }
 
+    public async Task<SearchOutboxStatus?> ReturnUnappliedAsync(
+        Guid workspaceId, long outboxId, string reason, bool permanent, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+
+        // attempt_count already counts the publish that delivered this row; same backoff as an unconfirmed publish.
+        await using var command = tx.Command(
+            """
+            UPDATE opportunity.search_outbox o
+            SET status = CASE WHEN @permanent OR o.attempt_count >= @max THEN 5 ELSE 1 END,
+                available_at = now() + least(@base * power(2, least(greatest(o.attempt_count, 1) - 1, 16)), @cap),
+                claim_owner = NULL, claim_expires_at = NULL, last_error = @error, updated_at = now()
+            WHERE o.workspace_id = @ws AND o.outbox_id = @id AND o.status = 3
+            RETURNING o.status
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("id", outboxId);
+        command.Parameters.AddWithValue("permanent", permanent);
+        command.Parameters.AddWithValue("max", SearchOutboxRetryPolicy.MaxAttempts);
+        command.Parameters.AddWithValue("base", SearchOutboxRetryPolicy.BaseDelay);
+        command.Parameters.AddWithValue("cap", SearchOutboxRetryPolicy.MaxDelay);
+        command.Parameters.AddWithValue("error", Truncate(reason));
+        var status = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return status is short value ? (SearchOutboxStatus)value : null;
+    }
+
     public async Task<SearchOutboxRow?> GetAsync(Guid workspaceId, long outboxId, CancellationToken cancellationToken = default)
     {
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);

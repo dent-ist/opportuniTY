@@ -164,6 +164,10 @@ public class SearchWorkRulesTests
         public Task<int> MarkAppliedThroughAsync(Guid workspaceId, Guid documentId, long documentVersion, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<SearchOutboxStatus?> ReturnUnappliedAsync(
+            Guid workspaceId, long outboxId, string reason, bool permanent, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<SearchOutboxRow?> GetAsync(Guid workspaceId, long outboxId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }

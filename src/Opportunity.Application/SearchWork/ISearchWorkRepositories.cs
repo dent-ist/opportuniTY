@@ -1,4 +1,5 @@
 using Opportunity.Application.Jobs;
+using Opportunity.Core.SearchWork;
 
 namespace Opportunity.Application.SearchWork;
 
@@ -34,6 +35,16 @@ public interface ISearchOutboxRepository
     /// </summary>
     Task<int> MarkAppliedThroughAsync(
         Guid workspaceId, Guid documentId, long documentVersion, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The index worker could not apply a Dispatched row (ADR-001 §6.4: retry state lives in PostgreSQL): it returns to
+    /// Pending with the outbox backoff for the dispatcher to publish again, or becomes Failed when
+    /// <paramref name="permanent"/> or its attempts are used up. Rows in any other status are left alone (another
+    /// delivery is already on its way, or the row was applied meanwhile). Returns the resulting status, or null when
+    /// nothing changed.
+    /// </summary>
+    Task<SearchOutboxStatus?> ReturnUnappliedAsync(
+        Guid workspaceId, long outboxId, string reason, bool permanent, CancellationToken cancellationToken = default);
 
     Task<SearchOutboxRow?> GetAsync(Guid workspaceId, long outboxId, CancellationToken cancellationToken = default);
 }
