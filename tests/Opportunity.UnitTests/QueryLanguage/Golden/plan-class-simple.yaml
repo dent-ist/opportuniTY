@@ -1,0 +1,79 @@
+description: "§29 gate class: two terms and a metadata filter are simple"
+query: "contract termination custodian:smith"
+printed: "contract AND termination AND custodian:smith"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 36
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 8
+          },
+          "text": "contract"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 9,
+            "end": 20
+          },
+          "text": "termination"
+        },
+        {
+          "kind": "field",
+          "span": {
+            "start": 21,
+            "end": 36
+          },
+          "name": "custodian",
+          "child": {
+            "kind": "term",
+            "span": {
+              "start": 31,
+              "end": 36
+            },
+            "text": "smith"
+          }
+        }
+      ]
+    }
+  }
+queryClass: simple
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "text": {
+              "query": "contract"
+            }
+          }
+        },
+        {
+          "match": {
+            "text": {
+              "query": "termination"
+            }
+          }
+        },
+        {
+          "term": {
+            "metadata.kw.s001": {
+              "value": "smith",
+              "case_insensitive": true
+            }
+          }
+        }
+      ]
+    }
+  }

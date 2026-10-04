@@ -20,7 +20,7 @@ public sealed class SearchDslTests
     private static readonly Guid Workspace = Guid.Parse("0199a8a0-1111-7000-8000-000000000001");
     private static readonly Guid Other = Guid.Parse("0199a8a0-2222-7000-8000-000000000002");
     private static readonly string Ws = Workspace.ToString("D");
-    private static readonly SearchTranslationContext Context = new(Workspace, 1, QueryLimits.Default);
+    private static readonly SearchTranslationContext Context = new(Workspace, 2, QueryLimits.Default);
     private static readonly SourceSpan Span = new(0, 1);
 
     private static readonly string[] Words =
@@ -39,7 +39,7 @@ public sealed class SearchDslTests
     [Fact]
     public async Task Ten_thousand_random_asts_all_keep_the_workspace_term_in_the_top_level_filter()
     {
-        var translator = new BasicSearchQueryTranslator();
+        var translator = PlannerFixture.Planner();
         var random = new Random(20261003);
         var translated = 0;
         var refused = 0;
@@ -70,7 +70,7 @@ public sealed class SearchDslTests
     [Fact]
     public async Task Random_query_text_with_workspace_injection_never_reaches_the_filter()
     {
-        var translator = new BasicSearchQueryTranslator();
+        var translator = PlannerFixture.Planner();
         var random = new Random(4711);
         for (var i = 0; i < 2_000; i++)
         {

@@ -29,3 +29,13 @@ ast: |
       }
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "controlNumberSort": {
+        "gte": "ABC00000000000000000001",
+        "lt": "ABC00000000000000000100"
+      }
+    }
+  }

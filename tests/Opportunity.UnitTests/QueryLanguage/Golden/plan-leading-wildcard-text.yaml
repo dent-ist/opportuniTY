@@ -1,0 +1,21 @@
+description: "R7: no leading wildcard on full text"
+query: "*tract"
+printed: "*tract"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "wildcard",
+      "span": {
+        "start": 0,
+        "end": 6
+      },
+      "pattern": "*tract"
+    }
+  }
+planError:
+  code: LEADING_WILDCARD
+  span: [0, 6]
+  expected: []
+  message: "A wildcard on 'text' needs at least 3 literal character(s) before the first * or ?."

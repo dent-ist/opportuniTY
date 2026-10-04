@@ -26,6 +26,9 @@ public sealed class SearchServiceOptions
 
     public int FacetBuckets { get; set; } = 25;
 
+    /// <summary>How long the planner reuses a workspace's field catalogue; field changes reach searches within this time.</summary>
+    public TimeSpan FieldCatalogCacheTtl { get; set; } = TimeSpan.FromSeconds(5);
+
     internal void Validate(string section)
     {
         Require(DefaultPageSize >= 1 && DefaultPageSize <= MaxPageSize, section, nameof(DefaultPageSize));
@@ -37,6 +40,7 @@ public sealed class SearchServiceOptions
         Require(SnippetFragmentSize is >= 20 and <= 1000, section, nameof(SnippetFragmentSize));
         Require(SnippetsPerHit is >= 0 and <= 10, section, nameof(SnippetsPerHit));
         Require(FacetBuckets is >= 1 and <= 200, section, nameof(FacetBuckets));
+        Require(FieldCatalogCacheTtl >= TimeSpan.Zero && FieldCatalogCacheTtl <= TimeSpan.FromMinutes(5), section, nameof(FieldCatalogCacheTtl));
     }
 
     private static void Require(bool condition, string section, string setting)

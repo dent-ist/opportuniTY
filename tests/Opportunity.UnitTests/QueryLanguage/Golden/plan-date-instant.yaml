@@ -1,0 +1,37 @@
+description: "R8: ISO 8601 instants with an offset (quoted, : is reserved); open upper bound"
+query: "datesent:[\"2025-03-01T10:00:00+01:00\" TO *]"
+printed: "datesent:[\"2025-03-01T10:00:00+01:00\" TO *]"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 43
+      },
+      "name": "datesent",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 9,
+          "end": 43
+        },
+        "lower": {
+          "value": "2025-03-01T10:00:00+01:00",
+          "inclusive": true
+        },
+        "upper": null
+      }
+    }
+  }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "dateSent": {
+        "gte": "2025-03-01T09:00:00.000Z"
+      }
+    }
+  }

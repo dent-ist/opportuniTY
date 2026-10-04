@@ -117,6 +117,8 @@ internal sealed partial class SearchService(
             return SearchOutcome.InvalidQuery(errors);
         }
 
+        plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, facets.Count) };
+
         var now = time.GetUtcNow();
         var search = new SearchSessionRecord(
             caller.WorkspaceId,
@@ -145,8 +147,17 @@ internal sealed partial class SearchService(
 
         var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
         var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
-        var result = await ExecuteAsync(placement, search with { PointInTimeId = pit }, query, sort, Navigation.First(), facets, cancellationToken)
-            .ConfigureAwait(false);
+        SearchResult result;
+        try
+        {
+            result = await ExecuteAsync(placement, search with { PointInTimeId = pit }, query, sort, Navigation.First(), facets, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (QueryRejectedException rejected)
+        {
+            RecordDuration(started, plan.QueryClass, "rejected");
+            return SearchOutcome.InvalidQuery(plan.Rejection(rejected.Code));
+        }
 
         var served = await ServeAsync(caller, search with { PointInTimeId = result.PointInTimeId }, placement, result, Navigation.First(), plan.Normalized, cancellationToken)
             .ConfigureAwait(false);
@@ -233,8 +244,18 @@ internal sealed partial class SearchService(
         }
 
         var sort = SortKey.FromJson(search.SortJson);
+        plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, 0) };
         var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
-        var result = await ExecuteAsync(placement, search, query, sort, navigation, [], cancellationToken).ConfigureAwait(false);
+        SearchResult result;
+        try
+        {
+            result = await ExecuteAsync(placement, search, query, sort, navigation, [], cancellationToken).ConfigureAwait(false);
+        }
+        catch (QueryRejectedException rejected)
+        {
+            RecordDuration(started, plan.QueryClass, "rejected");
+            return SearchOutcome.InvalidQuery(plan.Rejection(rejected.Code));
+        }
         var current = search with { PointInTimeId = result.PointInTimeId };
         var served = await ServeAsync(caller, current, placement, result, navigation, plan.Normalized, cancellationToken).ConfigureAwait(false);
 
@@ -292,8 +313,18 @@ internal sealed partial class SearchService(
                 : [new QueryDiagnostic(SearchQueryErrorCodes.UnsupportedForField, "The query cannot be planned.", ast.Span)]);
         }
 
-        return new QueryPlan(ast, translation.Query, QueryPrinter.Print(ast), translation.QueryClass, null);
+        return new QueryPlan(ast, translation.Query, QueryPrinter.Print(ast), translation.QueryClass, null)
+        {
+            BoundedExpansions = translation.BoundedExpansions,
+        };
     }
+
+    /// <summary>
+    /// The §29 gate class (docs/benchmarks/query-taxonomy.md): a grid sort other than relevance or facets make any
+    /// query complex, as the benchmark's classifier counts them.
+    /// </summary>
+    private static string GateClass(string queryClass, IReadOnlyList<SortKey> sort, int facets) =>
+        facets > 0 || sort.Any(k => !k.IsScore) ? SearchTranslation.Complex : queryClass;
 
     private async Task<string> OpenPointInTimeAsync(Placement placement, CancellationToken cancellationToken)
     {
@@ -339,8 +370,14 @@ internal sealed partial class SearchService(
                 Timeout = Settings.QueryTimeout,
             });
 
-            var response = await connection.SendAsync(HttpMethod.Post, "_search", body, cancellationToken, HttpStatusCode.NotFound)
+            var response = await connection.SendAsync(
+                HttpMethod.Post, "_search", body, cancellationToken, HttpStatusCode.NotFound, HttpStatusCode.BadRequest, HttpStatusCode.InternalServerError)
                 .ConfigureAwait(false);
+            if (IsClauseLimit(response))
+            {
+                // ADR-008 R7: a wildcard expansion inside W/n exceeded the clause limit; never truncated, reported.
+                throw new QueryRejectedException(SearchQueryErrorCodes.WildcardTooBroad);
+            }
             if (IsPointInTimeGone(response) && !refreshed)
             {
                 // Q-33: the live reader expired; reopen it and say so ("results refreshed").
@@ -350,10 +387,16 @@ internal sealed partial class SearchService(
                 continue;
             }
 
-            if (response.Status == HttpStatusCode.NotFound || response.Body is not JsonObject json)
+            if (response.Status != HttpStatusCode.OK || response.Body is not JsonObject json)
             {
                 throw new OpenSearchRequestException(
                     $"OpenSearch search failed with {(int)response.Status} {OpenSearchConnection.ErrorType(response.Body)}.");
+            }
+
+            if (json["timed_out"]?.GetValue<bool>() == true)
+            {
+                // ADR-008 §5: partial results are never presented as complete.
+                throw new QueryRejectedException(SearchQueryErrorCodes.QueryTimeout);
             }
 
             var hits = json["hits"]?["hits"]?.AsArray() ?? [];
@@ -369,6 +412,20 @@ internal sealed partial class SearchService(
                 refreshed,
                 json["aggregations"] as JsonObject);
         }
+    }
+
+    /// <summary>OpenSearch refused to expand a multi-term query past <c>indices.query.bool.max_clause_count</c>.</summary>
+    private static bool IsClauseLimit(OpenSearchResponse response)
+    {
+        if (response.Status == HttpStatusCode.OK)
+        {
+            return false;
+        }
+
+        var text = response.Body?.ToJsonString() ?? string.Empty;
+        return text.Contains("maxClauseCount", StringComparison.Ordinal)
+            || text.Contains("too_many_clauses", StringComparison.Ordinal)
+            || text.Contains("too_many_nested_clauses", StringComparison.Ordinal);
     }
 
     private static bool IsPointInTimeGone(OpenSearchResponse response)
@@ -715,6 +772,20 @@ internal sealed partial class SearchService(
 
     private sealed record QueryPlan(QueryNode? Ast, JsonObject? Query, string Normalized, string QueryClass, IReadOnlyList<QueryValidationDiagnostic>? Errors)
     {
+        public IReadOnlyList<SourceSpan> BoundedExpansions { get; init; } = [];
+
+        /// <summary>The positioned errors of a search OpenSearch refused: at the bounded wildcards, else the whole query.</summary>
+        public IReadOnlyList<QueryValidationDiagnostic> Rejection(string code)
+        {
+            var message = code == SearchQueryErrorCodes.WildcardTooBroad
+                ? "A wildcard inside W/n matches too many different words to search exactly; add more literal characters."
+                : "The search took too long and was stopped; narrow the query (fewer wildcards, smaller W/n) and try again.";
+            IReadOnlyList<SourceSpan> spans = code == SearchQueryErrorCodes.WildcardTooBroad && BoundedExpansions.Count > 0
+                ? BoundedExpansions
+                : [Ast!.Span];
+            return [.. spans.Select(s => new QueryValidationDiagnostic(code, message, new TextSpan(s.Start, s.End), []))];
+        }
+
         public static QueryPlan Failed(IReadOnlyList<QueryDiagnostic> errors) => new(null, null, string.Empty, SearchTranslation.Simple,
             [.. errors.Select(d => new QueryValidationDiagnostic(d.Code, d.Message, new TextSpan(d.Span.Start, d.Span.End), d.Expected))]);
     }
@@ -737,4 +808,10 @@ internal sealed partial class SearchService(
 
         public static Navigation LastPage() => new("last", null, true, 0, null, true);
     }
+}
+
+/// <summary>OpenSearch refused or did not finish a planned query; answered as a positioned query error (400).</summary>
+internal sealed class QueryRejectedException(string code) : Exception(code)
+{
+    public string Code { get; } = code;
 }

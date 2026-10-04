@@ -31,3 +31,25 @@ ast: |
       ]
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "text": {
+              "query": "contract"
+            }
+          }
+        },
+        {
+          "match": {
+            "text": {
+              "query": "termination"
+            }
+          }
+        }
+      ]
+    }
+  }

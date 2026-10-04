@@ -1,0 +1,79 @@
+description: "R6: multi-token term and phrase operands become ordered slop-0 span_near"
+query: "e-mail W/3 \"trade secret\""
+printed: "e-mail W/3 \"trade secret\""
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "proximity",
+      "span": {
+        "start": 0,
+        "end": 25
+      },
+      "distance": 3,
+      "ordered": false,
+      "left": {
+        "kind": "term",
+        "span": {
+          "start": 0,
+          "end": 6
+        },
+        "text": "e-mail"
+      },
+      "right": {
+        "kind": "phrase",
+        "span": {
+          "start": 11,
+          "end": 25
+        },
+        "text": "trade secret"
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "span_near": {
+      "clauses": [
+        {
+          "span_near": {
+            "clauses": [
+              {
+                "span_term": {
+                  "text": "e"
+                }
+              },
+              {
+                "span_term": {
+                  "text": "mail"
+                }
+              }
+            ],
+            "slop": 0,
+            "in_order": true
+          }
+        },
+        {
+          "span_near": {
+            "clauses": [
+              {
+                "span_term": {
+                  "text": "trade"
+                }
+              },
+              {
+                "span_term": {
+                  "text": "secret"
+                }
+              }
+            ],
+            "slop": 0,
+            "in_order": true
+          }
+        }
+      ],
+      "slop": 2,
+      "in_order": false
+    }
+  }

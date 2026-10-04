@@ -1,0 +1,29 @@
+description: "An unknown choice name is an error listing the choices"
+query: "responsiveness:maybe"
+printed: "responsiveness:maybe"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 20
+      },
+      "name": "responsiveness",
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 15,
+          "end": 20
+        },
+        "text": "maybe"
+      }
+    }
+  }
+planError:
+  code: INVALID_FIELD_VALUE
+  span: [15, 20]
+  expected: ["Responsive", "Not Responsive"]
+  message: "Field 'responsiveness' has no choice named 'maybe'."

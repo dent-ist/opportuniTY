@@ -31,3 +31,23 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "span_near": {
+      "clauses": [
+        {
+          "span_term": {
+            "text": "a"
+          }
+        },
+        {
+          "span_term": {
+            "text": "b"
+          }
+        }
+      ],
+      "slop": 999,
+      "in_order": false
+    }
+  }

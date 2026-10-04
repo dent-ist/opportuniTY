@@ -111,6 +111,9 @@ services:
       DISABLE_INSTALL_DEMO_CONFIG: "true"
       # Ignored while the security plugin is off; required (>= 2.12) as soon as it is enabled.
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?set OPENSEARCH_INITIAL_ADMIN_PASSWORD in .env}
+      # ADR-008 R7: wildcards inside W/n expand to at most Search:MaxWildcardExpansion terms; beyond it the search fails
+      # with WILDCARD_TOO_BROAD instead of being truncated.
+      indices.query.bool.max_clause_count: "4096"
     # No memlock/nofile ulimits: rootless Docker and some VMs refuse raising them, and single-node discovery skips
     # the bootstrap checks that need them. Fine for development; Full (E19-T06) sets them.
     volumes:

@@ -1,0 +1,61 @@
+description: "R6: a common field around the proximity"
+query: "notes:(budget W/4 forecast)"
+printed: "notes:(budget W/4 forecast)"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 27
+      },
+      "name": "notes",
+      "child": {
+        "kind": "proximity",
+        "span": {
+          "start": 6,
+          "end": 27
+        },
+        "distance": 4,
+        "ordered": false,
+        "left": {
+          "kind": "term",
+          "span": {
+            "start": 7,
+            "end": 13
+          },
+          "text": "budget"
+        },
+        "right": {
+          "kind": "term",
+          "span": {
+            "start": 18,
+            "end": 26
+          },
+          "text": "forecast"
+        }
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "span_near": {
+      "clauses": [
+        {
+          "span_term": {
+            "metadata.txt.s001": "budget"
+          }
+        },
+        {
+          "span_term": {
+            "metadata.txt.s001": "forecast"
+          }
+        }
+      ],
+      "slop": 3,
+      "in_order": false
+    }
+  }

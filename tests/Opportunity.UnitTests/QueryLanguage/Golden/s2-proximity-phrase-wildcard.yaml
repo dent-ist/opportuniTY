@@ -31,3 +31,43 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "span_near": {
+      "clauses": [
+        {
+          "span_near": {
+            "clauses": [
+              {
+                "span_term": {
+                  "text": "trade"
+                }
+              },
+              {
+                "span_term": {
+                  "text": "secret"
+                }
+              }
+            ],
+            "slop": 0,
+            "in_order": true
+          }
+        },
+        {
+          "span_multi": {
+            "match": {
+              "wildcard": {
+                "text": {
+                  "value": "misappropriat*",
+                  "rewrite": "constant_score_boolean"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "slop": 2,
+      "in_order": false
+    }
+  }

@@ -1,0 +1,38 @@
+description: "R5: purely negative query"
+query: "NOT privileged"
+printed: "NOT privileged"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "not",
+      "span": {
+        "start": 0,
+        "end": 14
+      },
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 4,
+          "end": 14
+        },
+        "text": "privileged"
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "must_not": [
+        {
+          "match": {
+            "text": {
+              "query": "privileged"
+            }
+          }
+        }
+      ]
+    }
+  }

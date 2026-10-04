@@ -1,0 +1,29 @@
+description: "Injected-only fields answer as unknown (ADR-008 R11)"
+query: "workspaceId:abc"
+printed: "workspaceId:abc"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 15
+      },
+      "name": "workspaceId",
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 12,
+          "end": 15
+        },
+        "text": "abc"
+      }
+    }
+  }
+planError:
+  code: UNKNOWN_FIELD
+  span: [0, 11]
+  expected: []
+  message: "Unknown field 'workspaceId'."

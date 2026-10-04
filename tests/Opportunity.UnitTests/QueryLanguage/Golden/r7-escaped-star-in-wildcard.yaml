@@ -14,3 +14,14 @@ ast: |
       "pattern": "a\\*b*"
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "wildcard": {
+      "text": {
+        "value": "a\\*b*",
+        "case_insensitive": true,
+        "rewrite": "constant_score"
+      }
+    }
+  }

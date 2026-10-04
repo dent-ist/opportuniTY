@@ -86,8 +86,8 @@ public static class QueryTokens
 
 /// <summary>
 /// Query complexity limits (ADR-008 §5). The parser enforces length, nodes, depth, terms, wildcard terms and the
-/// proximity distance; <see cref="MinWildcardPrefix"/> and <see cref="MaxWildcardExpansion"/> depend on the field and
-/// the index, so the binder and planner enforce them.
+/// proximity distance; <see cref="MinWildcardPrefix"/>, <see cref="MaxWildcardExpansion"/>, <see cref="MaxClauses"/> and
+/// <see cref="MaxProximityWildcards"/> depend on the fields and the index, so the binder and planner enforce them.
 /// </summary>
 public sealed record QueryLimits
 {
@@ -114,6 +114,18 @@ public sealed record QueryLimits
 
     /// <summary>Literal characters before the first wildcard on full-text fields (<c>Search:MinWildcardPrefix</c>); enforced by the binder.</summary>
     public int MinWildcardPrefix { get; init; } = 3;
+
+    /// <summary>
+    /// Leaf clauses after binding (<c>Search:MaxQueryClauses</c>): field expansion (e.g. custodian → All Custodians) and
+    /// choice-name resolution can multiply the leaves the parser counted; enforced by the planner.
+    /// </summary>
+    public int MaxClauses { get; init; } = 1_024;
+
+    /// <summary>
+    /// Wildcard terms inside <c>W/n</c> per query (<c>Search:MaxProximityWildcards</c>). Each one expands to up to
+    /// <see cref="MaxWildcardExpansion"/> span terms, so this bounds the span work of one query; enforced by the planner.
+    /// </summary>
+    public int MaxProximityWildcards { get; init; } = 8;
 }
 
 /// <summary>Outcome of <see cref="QueryParser.Parse(string, QueryLimits?)"/>: an AST, or at least one positioned error.</summary>

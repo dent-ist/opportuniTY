@@ -3,6 +3,9 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Opportunity.Application.Search;
 
 namespace Opportunity.IntegrationTests.Api;
 
@@ -88,9 +91,14 @@ public sealed class QueryValidationEndpointTests(ApiFactory factory) : IClassFix
         body.GetProperty("errors")[0].GetProperty("code").GetString().Should().Be("QUERY_TOO_LONG");
     }
 
+    /// <summary>
+    /// Parse-level behaviour: this host has no catalogue database or OpenSearch, so the planner's binder is removed
+    /// (binding errors through the API are covered by <c>SearchApiTests</c>).
+    /// </summary>
     private async Task<JsonElement> ValidateAsync(string query)
     {
-        using var client = factory.CreateClient();
+        using var parseOnly = factory.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.RemoveAll<IQueryBinder>()));
+        using var client = parseOnly.CreateClient();
         var response = await client.PostAsJsonAsync(Path, new { query }, Ct);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));

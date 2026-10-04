@@ -1,0 +1,37 @@
+description: "Integer range, open upper bound"
+query: "filesize:[1000 TO *]"
+printed: "filesize:[1000 TO *]"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 20
+      },
+      "name": "filesize",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 9,
+          "end": 20
+        },
+        "lower": {
+          "value": "1000",
+          "inclusive": true
+        },
+        "upper": null
+      }
+    }
+  }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "fileSize": {
+        "gte": 1000
+      }
+    }
+  }

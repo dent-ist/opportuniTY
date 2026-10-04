@@ -29,3 +29,13 @@ ast: |
       }
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "metadata.dec.s001": {
+        "gte": 1000.50,
+        "lte": 2000
+      }
+    }
+  }

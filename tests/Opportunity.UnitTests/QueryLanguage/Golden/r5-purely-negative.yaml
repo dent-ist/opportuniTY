@@ -21,3 +21,18 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "must_not": [
+        {
+          "match": {
+            "text": {
+              "query": "privileged"
+            }
+          }
+        }
+      ]
+    }
+  }

@@ -1,0 +1,41 @@
+description: "R8: an exclusive whole-unit lower bound starts after the unit"
+query: "date:{2024 TO 2025]"
+printed: "date:{2024 TO 2025]"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 19
+      },
+      "name": "date",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 5,
+          "end": 19
+        },
+        "lower": {
+          "value": "2024",
+          "inclusive": false
+        },
+        "upper": {
+          "value": "2025",
+          "inclusive": true
+        }
+      }
+    }
+  }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "documentDate": {
+        "gte": "2025-01-01T00:00:00.000Z",
+        "lt": "2026-01-01T00:00:00.000Z"
+      }
+    }
+  }

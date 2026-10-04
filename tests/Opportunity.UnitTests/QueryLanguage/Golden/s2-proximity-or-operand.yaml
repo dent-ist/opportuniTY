@@ -48,3 +48,34 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "span_near": {
+      "clauses": [
+        {
+          "span_or": {
+            "clauses": [
+              {
+                "span_term": {
+                  "text": "apple"
+                }
+              },
+              {
+                "span_term": {
+                  "text": "pear"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "span_term": {
+            "text": "iphone"
+          }
+        }
+      ],
+      "slop": 4,
+      "in_order": false
+    }
+  }

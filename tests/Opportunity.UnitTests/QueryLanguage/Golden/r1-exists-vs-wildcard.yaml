@@ -46,3 +46,8 @@ ast: |
       ]
     }
   }
+planError:
+  code: UNSUPPORTED_FOR_FIELD
+  span: [25, 27]
+  expected: []
+  message: "Wildcards are not supported for field 'extension'."

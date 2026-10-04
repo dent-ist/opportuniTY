@@ -1,0 +1,29 @@
+description: "Dates are validated"
+query: "date:yesterday"
+printed: "date:yesterday"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 14
+      },
+      "name": "date",
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 5,
+          "end": 14
+        },
+        "text": "yesterday"
+      }
+    }
+  }
+planError:
+  code: INVALID_FIELD_VALUE
+  span: [5, 14]
+  expected: []
+  message: "'yesterday' is not valid for field 'date': expected a date (YYYY, YYYY-MM, YYYY-MM-DD or ISO 8601)."

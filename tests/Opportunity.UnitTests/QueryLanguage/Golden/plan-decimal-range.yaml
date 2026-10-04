@@ -1,0 +1,41 @@
+description: "R9: invariant decimals, mixed bounds"
+query: "amount:{10.5 TO 100]"
+printed: "amount:{10.5 TO 100]"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 20
+      },
+      "name": "amount",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 7,
+          "end": 20
+        },
+        "lower": {
+          "value": "10.5",
+          "inclusive": false
+        },
+        "upper": {
+          "value": "100",
+          "inclusive": true
+        }
+      }
+    }
+  }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "metadata.dec.s001": {
+        "gt": 10.5,
+        "lte": 100
+      }
+    }
+  }

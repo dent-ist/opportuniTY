@@ -7,9 +7,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
 using Opportunity.Application.Bootstrap;
+using Opportunity.Application.Fields;
 using Opportunity.Application.Search;
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Contracts.Search;
+using Opportunity.Data.Fields;
 using Opportunity.Data.Search;
 using Opportunity.Data.Security;
 using Opportunity.IntegrationTests.Authorization;
@@ -53,6 +55,10 @@ internal sealed class SearchHarness : IAsyncDisposable
 
     public IIndexManager Indexes => _services.GetRequiredService<IIndexManager>();
 
+    public IFieldCatalogRepository Fields => _services.GetRequiredService<IFieldCatalogRepository>();
+
+    public IServiceProvider Services => _services;
+
     public OpenSearchOptions Options => _services.GetRequiredService<OpenSearchOptions>();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -67,6 +73,7 @@ internal sealed class SearchHarness : IAsyncDisposable
             Endpoint = openSearch.BaseAddress,
             IndexPrefix = scope.Prefix,
             Placement = { CacheTtl = TimeSpan.Zero },
+            Search = { FieldCatalogCacheTtl = TimeSpan.Zero },
         };
         configure?.Invoke(options);
 
@@ -79,6 +86,7 @@ internal sealed class SearchHarness : IAsyncDisposable
         services.AddSingleton<ISecurityStateReader>(db.Reader);
         services.AddSingleton<IIndexPlacementStore>(new IndexPlacementStore(db.Core.AppDataSource));
         services.AddSingleton<ISearchSessionStore>(new SearchSessionStore(db.Core.AppDataSource));
+        services.AddSingleton<IFieldCatalogRepository>(new FieldCatalogRepository(db.Core.AppDataSource));
         services.AddOpenSearchIndexTemplateBootstrap(options);
         services.AddOpportunityAuthorization();
         services.AddOpenSearchSearchService();
