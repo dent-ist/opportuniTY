@@ -1,0 +1,86 @@
+<p class="step__intro">
+  {{ modeLabels[store.mode()] }} matches each load-file row to an existing document by the overlay
+  key and changes only the mapped fields.
+</p>
+
+<div class="step__grid">
+  <opp-select
+    label="Overlay key"
+    hint="Only fields that are unique in the workspace can be the overlay key."
+    [options]="keyFields"
+    [value]="store.overlay().keyField"
+    (valueChange)="set('keyField', $event)"
+  />
+</div>
+
+<fieldset class="step__group">
+  <legend>Blank values in the load file</legend>
+  <div class="step__radios">
+    <label class="step__radio">
+      <input
+        type="radio"
+        name="overlay-blank"
+        [checked]="!store.overlay().blankValuesOverwrite"
+        (change)="set('blankValuesOverwrite', false)"
+      />
+      <span class="step__radio-text">
+        <span>Leave existing values</span>
+        <span class="step__radio-hint">A blank value changes nothing.</span>
+      </span>
+    </label>
+    <label class="step__radio">
+      <input
+        type="radio"
+        name="overlay-blank"
+        [checked]="store.overlay().blankValuesOverwrite"
+        (change)="set('blankValuesOverwrite', true)"
+      />
+      <span class="step__radio-text">
+        <span>Clear existing values</span>
+        <span class="step__radio-hint">A blank value empties the field.</span>
+      </span>
+    </label>
+  </div>
+</fieldset>
+
+<fieldset class="step__group">
+  <legend>Multi-value fields</legend>
+  <div class="step__radios">
+    <label class="step__radio">
+      <input
+        type="radio"
+        name="overlay-multi"
+        [checked]="store.overlay().multiValue === 'replace'"
+        (change)="set('multiValue', 'replace')"
+      />
+      <span class="step__radio-text">
+        <span>Replace</span>
+        <span class="step__radio-hint">The load file's values replace the existing ones.</span>
+      </span>
+    </label>
+    <label class="step__radio">
+      <input
+        type="radio"
+        name="overlay-multi"
+        [checked]="store.overlay().multiValue === 'merge'"
+        (change)="set('multiValue', 'merge')"
+      />
+      <span class="step__radio-text">
+        <span>Merge</span>
+        <span class="step__radio-hint">The load file's values are added to the existing ones.</span>
+      </span>
+    </label>
+  </div>
+</fieldset>
+
+<div class="step__group">
+  <opp-checkbox
+    [checked]="store.overlay().allowCodingFields"
+    (checkedChange)="set('allowCodingFields', $event)"
+    >Allow coding-field overlay</opp-checkbox
+  >
+  <p class="step__hint">
+    Coding and privilege fields can be mapped only when this is ticked. The import records which
+    coding fields it changed in the audit log.
+  </p>
+</div>

@@ -1,0 +1,153 @@
+// Shared layout of the import wizard's steps.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+}
+
+.step__intro {
+  margin: 0;
+  max-width: 48rem;
+  color: var(--opp-color-text-muted);
+}
+
+.step__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--opp-space-3) var(--opp-space-4);
+}
+
+.step__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.step__group legend,
+.step__label {
+  margin-block-end: var(--opp-space-1);
+  padding: 0;
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.step__heading {
+  font-size: var(--opp-font-size-md);
+}
+
+.step__hint {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.step__file {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+}
+
+.step__file input {
+  max-width: 100%;
+  padding: var(--opp-space-1);
+  border: var(--opp-border-width) dashed var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface-sunken);
+  color: var(--opp-color-text);
+  font: inherit;
+  font-size: var(--opp-font-size-sm);
+}
+
+.step__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--opp-space-2);
+  margin: 0;
+}
+
+.step__facts div {
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface-sunken);
+}
+
+.step__facts dt {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.step__facts dd {
+  margin: 0;
+  font-weight: var(--opp-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.step__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--opp-space-2);
+}
+
+.step__callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-info-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+}
+
+.step__callout--warning {
+  border-color: var(--opp-color-warning-border);
+  background: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+}
+
+.step__callout--danger {
+  border-color: var(--opp-color-danger-border);
+  background: var(--opp-color-danger-bg);
+  color: var(--opp-color-danger-text);
+}
+
+.step__callout--success {
+  border-color: var(--opp-color-success-border);
+  background: var(--opp-color-success-bg);
+  color: var(--opp-color-success-text);
+}
+
+.step__callout p,
+.step__callout ul {
+  margin: 0;
+}
+
+.step__select {
+  min-inline-size: 12rem;
+  max-inline-size: 100%;
+  min-block-size: var(--opp-control-height);
+  padding: 0 var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font: inherit;
+  font-size: var(--opp-font-size-control);
+}
+
+.step__inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}

@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   downloadNative: 'Document.DownloadNative',
   productionCreate: 'Production.Create',
   importRun: 'Import.Run',
+  importOverlay: 'Import.Overlay',
   exportCreate: 'Export.Create',
   manageFields: 'Workspace.ManageFields',
   manageUsers: 'Workspace.ManageUsers',

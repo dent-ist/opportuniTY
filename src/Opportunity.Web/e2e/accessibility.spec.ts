@@ -1,6 +1,7 @@
 import { expectNoSeriousAxeViolations } from './support/axe';
 import { expect, openPage, test, useTheme } from './support/fixtures';
 import type { Theme } from '../src/app/core/preferences/ui-preferences';
+import { DEMO_DAT } from './support/mock-imports';
 
 // axe in a real browser over every app-shell route, in each theme (ADR-018 §10.3): colour contrast, landmarks and
 // heading structure are checked here, which jsdom cannot do. Add new routes to these lists as features land.
@@ -14,6 +15,8 @@ const SIGNED_IN_ROUTES = [
   '/not-available',
   '/w/ws-1/documents',
   '/w/ws-1/jobs',
+  '/w/ws-1/imports',
+  '/w/ws-1/imports/imp-1',
   '/w/ws-1/admin/fields',
   '/w/ws-1/admin/audit',
 ];
@@ -224,6 +227,46 @@ for (const theme of THEMES) {
       await coding.getByRole('textbox', { name: 'Pages Reviewed' }).fill('many');
       await page.keyboard.press('Control+KeyS');
       await expect(coding.getByText('Pages Reviewed: enter a whole number')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('import wizard: every step, custom delimiters, the profile form and validation (E08-T08)', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/imports/new');
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByLabel('Load file (DAT or CSV)').setInputFiles(DEMO_DAT);
+      await page.getByRole('radio', { name: /^Overlay/ }).check();
+      const next = page.getByRole('button', { name: 'Continue' });
+      const step = (name: string) => page.getByRole('heading', { level: 2, name });
+
+      await next.click();
+      await expect(step('File format')).toBeFocused();
+      await page.getByRole('combobox', { name: 'Delimiters' }).selectOption('custom');
+      await expect(page.getByRole('textbox', { name: 'Column delimiter' })).toBeVisible();
+      await expect(page.getByText('DC4 (20)')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await next.click();
+      await expect(step('Field mapping')).toBeFocused();
+      await page.getByRole('button', { name: 'Save as Import profile…' }).click();
+      await page.getByRole('button', { name: 'Save profile' }).click();
+      await expect(page.getByText('Enter a name for the import profile.')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await next.click();
+      await expect(step('Overlay settings')).toBeFocused();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await next.click();
+      await expect(step('Natives, text & images')).toBeFocused();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await next.click();
+      await expect(step('Validate & run')).toBeFocused();
+      await expect(page.getByRole('checkbox', { name: /I have reviewed/ })).toBeVisible();
+      await page.getByRole('button', { name: 'Start import' }).click();
+      await expect(page.getByRole('alert')).toContainText('Acknowledge the warnings');
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 

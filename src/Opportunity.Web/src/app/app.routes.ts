@@ -44,15 +44,38 @@ export const workspaceChildren: Routes = [
       })),
     ],
   },
-  ...WORKSPACE_SECTIONS.filter((s) => s.path !== 'documents' && s.path !== 'searches').map(
-    (s): Route => ({
-      path: s.path,
-      title: s.label,
-      canActivate: [requirePermission(s.permission)],
-      data: { section: s.label },
-      loadComponent: sectionPage,
-    }),
-  ),
+  {
+    // Import history, New Import wizard and one import's progress and report (E08-T08).
+    path: 'imports',
+    canActivate: [requirePermission(PERMISSIONS.importRun)],
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        title: 'Imports',
+        loadComponent: () => import('./features/imports/imports-page').then((m) => m.ImportsPage),
+      },
+      {
+        path: 'new',
+        title: 'New Import',
+        loadComponent: () => import('./features/imports/import-wizard').then((m) => m.ImportWizard),
+      },
+      {
+        path: ':importId',
+        title: 'Import',
+        loadComponent: () => import('./features/imports/import-detail').then((m) => m.ImportDetail),
+      },
+    ],
+  },
+  ...WORKSPACE_SECTIONS.filter(
+    (s) => s.path !== 'documents' && s.path !== 'searches' && s.path !== 'imports',
+  ).map((s): Route => ({
+    path: s.path,
+    title: s.label,
+    canActivate: [requirePermission(s.permission)],
+    data: { section: s.label },
+    loadComponent: sectionPage,
+  })),
   {
     path: 'admin',
     children: [

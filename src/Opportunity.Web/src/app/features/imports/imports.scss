@@ -1,0 +1,169 @@
+// Imports list and import detail.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 80rem;
+  padding: var(--opp-space-5);
+}
+
+.imports__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.imports__heading-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+}
+
+.imports__back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  align-self: flex-start;
+  font-size: var(--opp-font-size-sm);
+}
+
+.imports__title {
+  font-size: var(--opp-font-size-2xl);
+}
+
+.imports__muted {
+  display: block;
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-regular);
+}
+
+.imports__table-wrap {
+  overflow-x: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.imports__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.imports__table caption:not(.opp-visually-hidden) {
+  padding: var(--opp-space-2) var(--opp-space-3);
+  text-align: start;
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.imports__table th,
+.imports__table td {
+  height: var(--opp-row-height);
+  padding: var(--opp-space-1) var(--opp-cell-padding-x);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.imports__table thead th {
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+  white-space: nowrap;
+}
+
+.imports__table tbody tr:hover {
+  background: var(--opp-color-hover);
+}
+
+.imports__name {
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.imports__table .imports__num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.imports__nowrap {
+  white-space: nowrap;
+}
+
+.imports__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-4) var(--opp-space-5);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  background: var(--opp-color-surface);
+}
+
+.imports__panel h2 {
+  font-size: var(--opp-font-size-lg);
+}
+
+.imports__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2) var(--opp-space-3);
+}
+
+.imports__phase {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr) 12rem;
+  align-items: center;
+  gap: var(--opp-space-3);
+}
+
+.imports__phase-label {
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.imports__phase-value {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.imports__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--opp-space-2);
+  margin: 0;
+}
+
+.imports__facts div {
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.imports__facts dt {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.imports__facts dd {
+  margin: 0;
+  font-size: var(--opp-font-size-lg);
+  font-weight: var(--opp-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.imports__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+.imports__note {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
