@@ -27,30 +27,6 @@
   color: var(--opp-color-text-muted);
 }
 
-.viewer__body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--opp-space-2);
-  min-block-size: 0;
-}
-
-.viewer__text {
-  flex: 1;
-  min-block-size: 6rem;
-  margin: 0;
-  padding: var(--opp-space-4);
-  overflow: auto;
-  border: var(--opp-border-width) solid var(--opp-color-border);
-  border-radius: var(--opp-radius-md);
-  background: var(--opp-color-surface);
-  color: var(--opp-color-text);
-  font-size: var(--opp-font-size-md);
-  line-height: var(--opp-line-height-normal);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .related__family {
   margin: 0;
 }

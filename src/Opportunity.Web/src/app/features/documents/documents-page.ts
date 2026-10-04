@@ -21,6 +21,9 @@ import {
 } from './review/review-ports';
 import { ReviewWorkspace } from './review/review-workspace';
 import { QueryBar, QuerySubmission } from './search/query-bar';
+import { BulkCodingApi, HttpBulkCodingApi } from './mass-edit/bulk-coding-api';
+import { MassActions } from './mass-edit/mass-actions';
+import { MassEditJobs } from './mass-edit/mass-edit-jobs';
 
 /**
  * Documents: the default landing page of a workspace (familiarity guide §2.1, §3), with two modes on one route.
@@ -32,13 +35,15 @@ import { QueryBar, QuerySubmission } from './search/query-bar';
  * the cursor walks, and "Back to list" returns to the same scroll position and selection, with the reviewed
  * document focused.
  *
+ * Mass Actions (E16-T06) sit in the list's header and act on its selection (Mass Edit: bulk coding job).
+ *
  * Keyboard (guide §4, command registry E15-T03): "Focus keyword search" (Alt+Shift+K, or `/` while single-key
  * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel and the list, or
  * between the review panes.
  */
 @Component({
   selector: 'opp-documents-page',
-  imports: [CommandRegionDirective, QueryBar, ReviewGrid, ReviewWorkspace],
+  imports: [CommandRegionDirective, MassActions, QueryBar, ReviewGrid, ReviewWorkspace],
   template: `<h1 class="documents__title" [class.opp-visually-hidden]="reviewing()">Documents</h1>
     <div class="documents__list" [hidden]="reviewing()">
       <section
@@ -55,7 +60,15 @@ import { QueryBar, QuerySubmission } from './search/query-bar';
           [search]="search()"
           (open)="onOpen($event)"
           (refreshed)="onRefreshed($event)"
-        />
+        >
+          <opp-mass-actions
+            gridActions
+            [target]="grid().selectionTarget()"
+            [listCount]="grid().countText()"
+            [fields]="grid().fieldCatalogue()"
+            [returnFocus]="listElement"
+          />
+        </opp-review-grid>
       </section>
     </div>
     @if (reviewing()) {
@@ -72,6 +85,8 @@ import { QueryBar, QuerySubmission } from './search/query-bar';
     { provide: DocumentContentApi, useClass: HttpDocumentContentApi },
     { provide: CodingApi, useClass: HttpCodingApi },
     PendingCoding,
+    { provide: BulkCodingApi, useClass: HttpBulkCodingApi },
+    MassEditJobs,
   ],
   host: { '[class.is-reviewing]': 'reviewing()' },
 })
@@ -91,6 +106,8 @@ export class DocumentsPage {
     fetchMore: (direction) => this.grid().fetchMore(direction),
   };
   protected readonly cursor = new ReviewCursor(this.source);
+  /** Mass Actions dialogs return focus to the list. */
+  protected readonly listElement = () => this.grid().focusTarget();
 
   constructor() {
     inject(CommandRegistry).handle('search.focus', () => this.queryBar().focus(), {

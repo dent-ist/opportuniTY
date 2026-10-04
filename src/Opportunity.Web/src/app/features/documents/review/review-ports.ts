@@ -1,5 +1,5 @@
 import { HttpClient, HttpResponse } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { DOCUMENT, Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiConfiguration } from '../../../core/api/generated/api-configuration';
 import { listCodingLayouts } from '../../../core/api/generated/fn/fields/list-coding-layouts';
@@ -8,7 +8,11 @@ import type {
   CodingChangeRequest,
   CodingLayoutFieldResource,
   CodingLayoutResource,
+  CursorPageOfDocumentPageResource,
   DocumentCodingResource,
+  DocumentPageResource,
+  DocumentResource,
+  DocumentTextChunkResource,
   DocumentViewRecord,
   FieldResource,
   UpdateDocumentCodingRequest,
@@ -27,59 +31,146 @@ import { WorkspaceContext } from '../../../core/workspace/workspace-context';
  */
 export type ContentPurpose = 'display' | 'prefetch';
 
-/** The first chunk of a document's extracted text, as the gateway delivered it. */
-export interface TextChunk {
-  readonly documentId: string;
-  readonly text: string;
-  /** More text follows this chunk (the viewer loads it on demand, E16-T04). */
-  readonly partial: boolean;
-  /** The gateway's audit reference for this delivery (`X-Opportunity-Retrieval-Id`), sent with the view. */
+/** A gateway delivery: the content and its audit reference (`X-Opportunity-Retrieval-Id`), sent with the view. */
+export interface Delivered<T> {
+  readonly value: T;
   readonly retrievalId: string | null;
 }
 
-/** Bytes of extracted text in the first chunk. */
-export const FIRST_CHUNK_BYTES = 64 * 1024;
+/** One fixed-size chunk of a document's extracted text (`GET …/text/chunks/{n}`, 256 KiB of UTF-8 each). */
+export interface TextChunk {
+  readonly documentId: string;
+  readonly index: number;
+  readonly count: number;
+  readonly text: string;
+  readonly isLast: boolean;
+  /** The document has no stored text (chunk 0 of a document without text). */
+  readonly missing: boolean;
+  /** Search indexed only the start of the text (Q-29); the viewer still shows all of it. */
+  readonly truncated: boolean;
+  readonly encodingWarning: boolean;
+  readonly retrievalId: string | null;
+}
 
+/** Page image or thumbnail of the active page set. */
+export type PageImageKind = 'image' | 'thumbnail';
+
+/**
+ * The document content API (E11-T01) as the viewer uses it. Every call goes through the protected-content gateway,
+ * which authorizes and audits it before the first byte; nothing here is cached by the browser (`no-store`).
+ */
 @Injectable()
 export abstract class DocumentContentApi {
-  /** The first chunk of extracted text through the protected-content gateway; empty text when there is none. */
-  abstract firstText(documentId: string, purpose: ContentPurpose): Promise<TextChunk>;
+  /** `GET …/documents/{id}`: fields with display values and which artifacts (text, images, native) exist. */
+  abstract document(
+    documentId: string,
+    purpose: ContentPurpose,
+  ): Promise<Delivered<DocumentResource>>;
+  /** `GET …/documents/{id}/text/chunks/{n}`; chunk 0 of a document without text answers `missing`. */
+  abstract textChunk(
+    documentId: string,
+    index: number,
+    purpose: ContentPurpose,
+  ): Promise<TextChunk>;
+  /** `GET …/documents/{id}/pages`: every page of the active page set, in order. */
+  abstract pages(
+    documentId: string,
+    purpose: ContentPurpose,
+  ): Promise<Delivered<readonly DocumentPageResource[]>>;
+  /** `GET …/documents/{id}/pages/{n}/image|thumbnail` as bytes, shown through a short-lived object URL. */
+  abstract pageImage(
+    documentId: string,
+    pageNumber: number,
+    kind: PageImageKind,
+    purpose: ContentPurpose,
+  ): Promise<Delivered<Blob>>;
+  /**
+   * Starts the browser download of the native (`Document.DownloadNative`; the gateway audits it and sends an
+   * attachment). `fileName` is the name the gateway gives it too (`ControlNumber.ext`).
+   */
+  abstract downloadNative(documentId: string, fileName: string): void;
   /** Records that the viewer displayed the document (`Document.Viewed`); never called for a prefetch alone. */
   abstract recordView(documentId: string, retrievalId: string | null): Promise<void>;
 }
 
-/** `GET …/documents/{id}/text?purpose=` (range: the first chunk) and `POST …/documents/{id}/views`. */
+/** The content routes of ADR-019 under `…/workspaces/{id}/documents/{documentId}`. */
 @Injectable()
 export class HttpDocumentContentApi extends DocumentContentApi {
   private readonly http = inject(HttpClient);
   private readonly context = inject(WorkspaceContext);
+  private readonly page = inject(DOCUMENT);
 
-  async firstText(documentId: string, purpose: ContentPurpose): Promise<TextChunk> {
-    let response: HttpResponse<Blob>;
-    try {
-      response = await firstValueFrom(
-        this.http.get(this.context.apiUrl('documents', documentId, 'text'), {
-          params: { purpose },
-          headers: { Range: `bytes=0-${FIRST_CHUNK_BYTES - 1}` },
-          observe: 'response',
-          responseType: 'blob',
-        }),
+  async document(
+    documentId: string,
+    purpose: ContentPurpose,
+  ): Promise<Delivered<DocumentResource>> {
+    const response = await firstValueFrom(
+      this.http.get<DocumentResource>(this.context.apiUrl('documents', documentId), {
+        params: { purpose },
+        observe: 'response',
+      }),
+    );
+    return { value: response.body!, retrievalId: retrievalIdOf(response) };
+  }
+
+  async textChunk(documentId: string, index: number, purpose: ContentPurpose): Promise<TextChunk> {
+    const response = await firstValueFrom(
+      this.http.get<DocumentTextChunkResource>(
+        this.context.apiUrl('documents', documentId, 'text', 'chunks', String(index)),
+        { params: { purpose }, observe: 'response' },
+      ),
+    );
+    return toTextChunk(documentId, response.body!, retrievalIdOf(response));
+  }
+
+  async pages(
+    documentId: string,
+    purpose: ContentPurpose,
+  ): Promise<Delivered<readonly DocumentPageResource[]>> {
+    const items: DocumentPageResource[] = [];
+    let cursor: string | null = null;
+    let first: string | null = null;
+    do {
+      const params: Record<string, string> = cursor ? { purpose, cursor } : { purpose };
+      const response: HttpResponse<CursorPageOfDocumentPageResource> = await firstValueFrom(
+        this.http.get<CursorPageOfDocumentPageResource>(
+          this.context.apiUrl('documents', documentId, 'pages'),
+          { params, observe: 'response' },
+        ),
       );
-    } catch (e) {
-      // 416: the document has no extracted text (an empty object has no first byte).
-      if ((e as { status?: number }).status === 416) {
-        return { documentId, text: '', partial: false, retrievalId: null };
-      }
-      throw e;
-    }
-    const body = response.body ?? new Blob();
-    const total = /\/(\d+)$/.exec(response.headers.get('Content-Range') ?? '')?.[1];
-    return {
-      documentId,
-      text: decodeChunk(new Uint8Array(await body.arrayBuffer())),
-      partial: response.status === 206 && total !== undefined && Number(total) > body.size,
-      retrievalId: response.headers.get('X-Opportunity-Retrieval-Id'),
-    };
+      first ??= retrievalIdOf(response);
+      items.push(...(response.body?.items ?? []));
+      cursor = response.body?.nextCursor ?? null;
+    } while (cursor);
+    return { value: items, retrievalId: first };
+  }
+
+  async pageImage(
+    documentId: string,
+    pageNumber: number,
+    kind: PageImageKind,
+    purpose: ContentPurpose,
+  ): Promise<Delivered<Blob>> {
+    const response = await firstValueFrom(
+      this.http.get(
+        this.context.apiUrl('documents', documentId, 'pages', String(pageNumber), kind),
+        { params: { purpose }, observe: 'response', responseType: 'blob' },
+      ),
+    );
+    return { value: response.body ?? new Blob(), retrievalId: retrievalIdOf(response) };
+  }
+
+  downloadNative(documentId: string, fileName: string): void {
+    // A navigation, so the browser streams the attachment to disk (natives can be large) with the session cookie.
+    // The link exists only for this click: there is no content address on the page to copy.
+    const link = this.page.createElement('a');
+    link.href = this.context.apiUrl('documents', documentId, 'native');
+    // `download` keeps a refused request (a problem response) from replacing the review page.
+    link.download = fileName;
+    link.rel = 'noopener';
+    this.page.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   async recordView(documentId: string, retrievalId: string | null): Promise<void> {
@@ -90,9 +181,26 @@ export class HttpDocumentContentApi extends DocumentContentApi {
   }
 }
 
-/** UTF-8 text of a byte range, without the replacement character a cut multi-byte sequence leaves at the end. */
-export function decodeChunk(bytes: Uint8Array): string {
-  return new TextDecoder('utf-8').decode(bytes).replace(/�+$/, '');
+function retrievalIdOf(response: HttpResponse<unknown>): string | null {
+  return response.headers.get('X-Opportunity-Retrieval-Id');
+}
+
+export function toTextChunk(
+  documentId: string,
+  body: DocumentTextChunkResource,
+  retrievalId: string | null,
+): TextChunk {
+  return {
+    documentId,
+    index: Number(body.chunkIndex),
+    count: Number(body.chunkCount),
+    text: body.text ?? '',
+    isLast: body.isLast,
+    missing: body.missing,
+    truncated: body.truncated,
+    encodingWarning: body.encodingWarning,
+    retrievalId,
+  };
 }
 
 /** A coding value as the API carries it (ADR-003 types: text, number, yes/no, choice names, user id). */

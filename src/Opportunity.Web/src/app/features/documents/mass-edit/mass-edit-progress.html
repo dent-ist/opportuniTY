@@ -1,0 +1,78 @@
+<h3 class="mp__heading" tabindex="-1" data-step-heading>
+  {{ finished() ? 'Mass Edit finished' : 'Mass Edit is running' }}
+</h3>
+<div class="mp__status">
+  <opp-status-pill [status]="jobStatus()" />
+  @if (!finished()) {
+    <span class="mp__note"
+      >You can close this dialog: the job keeps running and you are told when it finishes.</span
+    >
+  }
+</div>
+<div class="mp__phase">
+  <span class="mp__phase-label" [id]="ids + '-saved'">Saved</span>
+  <progress
+    [attr.aria-labelledby]="ids + '-saved'"
+    [max]="count() || 1"
+    [value]="saved()"
+  ></progress>
+  <span class="mp__phase-value">{{ n().format(saved()) }} of {{ n().format(count()) }}</span>
+</div>
+<div class="mp__phase">
+  <span class="mp__phase-label" [id]="ids + '-searchable'">Searchable</span>
+  <progress
+    [attr.aria-labelledby]="ids + '-searchable'"
+    [max]="indexed().max"
+    [value]="indexed().value"
+  ></progress>
+  <span class="mp__phase-value">
+    {{
+      job()?.searchable ? 'Searchable' : finished() ? 'Updating the search index…' : 'After saving'
+    }}
+  </span>
+</div>
+@if (finished() && job(); as j) {
+  <dl class="mp__outcome" aria-label="Outcome">
+    <div>
+      <dt>Updated</dt>
+      <dd>{{ n().format(j.applied) }}</dd>
+    </div>
+    <div>
+      <dt>Skipped</dt>
+      <dd>{{ n().format(j.skipped) }}</dd>
+    </div>
+    <div>
+      <dt>Failed</dt>
+      <dd>{{ n().format(j.failed) }}</dd>
+    </div>
+    @if (j.unchanged) {
+      <div>
+        <dt>Already set</dt>
+        <dd>{{ n().format(j.unchanged) }}</dd>
+      </div>
+    }
+    @if (j.excluded) {
+      <div>
+        <dt>No longer permitted</dt>
+        <dd>{{ n().format(j.excluded) }}</dd>
+      </div>
+    }
+  </dl>
+  @if (j.skipped) {
+    <p class="mp__note">
+      Skipped documents were changed by someone else after the job started and were left as they
+      were; the job keeps their list.
+    </p>
+  }
+  @if (j.statusReason) {
+    <p class="mp__note">{{ j.statusReason }}</p>
+  }
+}
+@if (jobError(); as e) {
+  <div class="mp__callout" role="note">
+    <opp-icon name="warning" />
+    <p>
+      Progress cannot be shown right now ({{ e.status || 'no connection' }}). The job keeps running.
+    </p>
+  </div>
+}

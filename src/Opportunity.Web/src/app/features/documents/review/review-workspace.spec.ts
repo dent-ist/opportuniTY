@@ -14,6 +14,7 @@ import { PERMISSIONS } from '../../../core/workspace/sections';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
 import { FakeResultOptions, fakePage, hit } from '../grid/grid-fixtures.testing';
 import { ReviewCoding } from './coding/coding-pane';
+import { documentResource, textChunkResource } from './viewer/viewer-fixtures.testing';
 
 const WS = '/api/v1/workspaces/ws-1';
 const SEARCHES = `${WS}/searches`;
@@ -89,7 +90,11 @@ describe('Review mode (E16-T03)', () => {
       );
     for (let n = 1; n <= 260; n++) {
       api
-        .on('GET', `${WS}/documents/doc-${n}/text`, (req) => text(req, n))
+        .on('GET', `${WS}/documents/doc-${n}`, (req) => ({
+          body: documentResource(n),
+          headers: { 'X-Opportunity-Retrieval-Id': `m-${n}-${req.params.get('purpose')}` },
+        }))
+        .on('GET', `${WS}/documents/doc-${n}/text/chunks/0`, (req) => text(req, n))
         .on('POST', `${WS}/documents/doc-${n}/views`, { status: 204 })
         .on('GET', `${WS}/documents/doc-${n}/coding`, {
           body: {
@@ -116,12 +121,9 @@ describe('Review mode (E16-T03)', () => {
   }
 
   function text(req: HttpRequest<unknown>, n: number): FakeResponse {
-    const body = `Extracted text of document ${n}`;
     return {
-      status: 206,
-      body: new Blob([body]),
+      body: textChunkResource(`Extracted text of document ${n}`),
       headers: {
-        'Content-Range': `bytes 0-${body.length - 1}/${body.length}`,
         'X-Opportunity-Retrieval-Id': `r-${++retrievals}-${req.params.get('purpose')}`,
       },
     };
@@ -151,8 +153,8 @@ describe('Review mode (E16-T03)', () => {
   const viewerText = () => review()!.querySelector('.viewer__text')?.textContent;
   const textRequests = () =>
     api.requests
-      .filter((r) => r.method === 'GET' && r.url.endsWith('/text'))
-      .map((r) => `${r.url.split('/').at(-2)}:${r.params.get('purpose')}`);
+      .filter((r) => r.method === 'GET' && r.url.endsWith('/text/chunks/0'))
+      .map((r) => `${r.url.split('/').at(-4)}:${r.params.get('purpose')}`);
   const views = () =>
     api.requests
       .filter((r) => r.method === 'POST' && r.url.endsWith('/views'))

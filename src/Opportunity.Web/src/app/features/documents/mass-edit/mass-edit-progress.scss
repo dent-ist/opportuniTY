@@ -1,0 +1,98 @@
+.mp__heading {
+  margin: 0 0 var(--opp-space-2);
+  font-size: var(--opp-font-size-md);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.mp__heading:focus {
+  outline: none;
+}
+
+.mp__heading:focus-visible {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: var(--opp-focus-ring-offset);
+}
+
+.mp__note {
+  margin: 0 0 var(--opp-space-3);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.mp__callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-warning-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+}
+
+.mp__callout p {
+  margin: 0;
+}
+
+.mp__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2) var(--opp-space-3);
+  margin-block-end: var(--opp-space-3);
+}
+
+.mp__status .mp__note {
+  margin: 0;
+}
+
+.mp__phase {
+  display: grid;
+  grid-template-columns: 6rem 1fr auto;
+  align-items: center;
+  gap: var(--opp-space-3);
+  margin-block-end: var(--opp-space-2);
+}
+
+.mp__phase-label {
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.mp__phase-value {
+  min-inline-size: 9rem;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mp__phase progress {
+  inline-size: 100%;
+  block-size: 0.5rem;
+  accent-color: var(--opp-color-accent);
+}
+
+.mp__outcome {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+  margin: var(--opp-space-3) 0;
+}
+
+.mp__outcome div {
+  min-inline-size: 7rem;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.mp__outcome dt {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.mp__outcome dd {
+  margin: 0;
+  font-size: var(--opp-font-size-lg);
+  font-weight: var(--opp-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}

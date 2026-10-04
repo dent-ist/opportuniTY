@@ -12,8 +12,7 @@ const PREFIX = 'opp.pref.';
  * Keys that belong to the user profile and follow the reviewer across browsers and machines. Anything else
  * (for example the recent-workspaces list) stays in this browser only.
  */
-const PROFILE_KEY =
-  /^(ui|shortcuts|pane\.[A-Za-z0-9_.-]+|grid\.[A-Za-z0-9_.-]+|coding\.[A-Za-z0-9_.-]+)$/;
+const PROFILE_KEY = /^(ui|shortcuts|(?:pane|grid|viewer|coding)\.[A-Za-z0-9_.-]+)$/;
 
 /** Wait this long after the last change of a key before saving it, so a burst of changes is one request. */
 export const PREFERENCE_SAVE_DELAY_MS = 400;

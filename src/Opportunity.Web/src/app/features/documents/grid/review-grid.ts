@@ -30,7 +30,7 @@ import { PreferenceStorage } from '../../../core/preferences/preference-storage'
 import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
-import { Announcer, Button, EmptyState, ErrorState, Icon, LoadingState } from '../../../ui';
+import { Announcer, Button, EmptyState, ErrorState, Icon, LoadingState, MENU } from '../../../ui';
 import { GridColumn, defaultColumns, familyMarker } from './grid-columns';
 import { GridFilter, FilterChange } from './grid-filter';
 import {
@@ -51,6 +51,13 @@ import { PageRequest, ReviewSearchApi } from './review-search';
 import { LoadedPage, ResultWindow, toLoadedPage } from './result-window';
 import type { CursorSource } from '../review/review-cursor';
 import { PendingCoding } from '../review/coding/pending-coding';
+import {
+  AllResultsSelection,
+  SelectionTarget,
+  rangeBetween,
+  selectionAnnouncement,
+  selectionLabel,
+} from './selection';
 
 /** What the document list shows. */
 export interface GridSearch {
@@ -121,7 +128,9 @@ interface ResultInfo {
  *   keeps the focused document where it can and shows "Results refreshed".
  * - Keyboard: arrows, PageUp/PageDown, Home/End (Ctrl too) move the focused row, Left/Right the cell; Enter
  *   on a header sorts. Commands of the `grid` scope (open, select row/page, clear) come from the registry.
- * - Selection is kept by document id and exposed for Mass Actions (E16-T06).
+ * - Selection (E16-T06): rows by document id (Space, Shift+Arrow, Shift+click, Ctrl+A for the page), or all results
+ *   of the search, kept as its query and generation rather than ids. `selectionTarget` is what Mass Actions freeze.
+ *   The count is announced; a page selection offers "Select all results" in a banner.
  * - Filter row (#191): one control per filterable column under the headers, compiled into the query language
  *   and ANDed with the keyword query, so a filtered list is an ordinary, audited, reproducible search. Arrows
  *   move between filters, Escape clears one; active filters stay listed above the grid as removable chips.
@@ -138,6 +147,7 @@ interface ResultInfo {
     Icon,
     LoadingState,
     NgTemplateOutlet,
+    ...MENU,
   ],
   providers: [ReviewSearchApi],
   templateUrl: './review-grid.html',
@@ -271,8 +281,23 @@ export class ReviewGrid implements CursorSource {
   protected readonly focusRow = signal(0);
   protected readonly focusCol = signal(COL_CONTROL);
   private readonly _selected = signal<ReadonlySet<string>>(new Set());
-  /** Document ids of the selected rows (Mass Actions, E16-T06). */
+  /** Document ids of the rows checked one by one (empty while all results are selected). */
   readonly selection = this._selected.asReadonly();
+  private readonly _allResults = signal<AllResultsSelection | null>(null);
+  /** Every result of the search is selected, as its query and generation (E16-T06). */
+  readonly allResults = this._allResults.asReadonly();
+  /** What Mass Actions act on; null when nothing is selected. */
+  readonly selectionTarget = computed<SelectionTarget | null>(() => {
+    const all = this._allResults();
+    if (all) return all;
+    const ids = this._selected();
+    return ids.size > 0 ? { kind: 'documents', documentIds: [...ids] } : null;
+  });
+  protected readonly selectedText = computed(() =>
+    selectionLabel(this.selectionTarget(), this.prefs.locale()),
+  );
+  /** After "select this page": the banner offers all results when there are more than the page. */
+  protected readonly offerAll = signal(false);
 
   // Virtualization
   protected readonly rowHeight = signal(DEFAULT_ROW_PX);
@@ -350,6 +375,7 @@ export class ReviewGrid implements CursorSource {
   });
   protected readonly selectedOnPage = computed(() => {
     const ids = this.pageRows(this.currentPage()).map((r) => r.documentId);
+    if (this._allResults()) return { all: ids.length > 0, some: false };
     const selected = this.selection();
     const count = ids.filter((id) => selected.has(id)).length;
     return { all: ids.length > 0 && count === ids.length, some: count > 0 && count < ids.length };
@@ -373,7 +399,8 @@ export class ReviewGrid implements CursorSource {
     registry.handle('grid.openDocument', () => this.openFocused(), onRow);
     registry.handle('selection.toggleRow', () => this.toggleRow(this.focusRow()), onRow);
     registry.handle('selection.allOnPage', () => this.selectPage(true), ready);
-    registry.handle('selection.clear', () => this.setSelection(new Set()), ready);
+    registry.handle('selection.allResults', () => this.selectAllResults(), ready);
+    registry.handle('selection.clear', () => this.clearSelection(), ready);
     registry.handle('grid.toggleFilters', () => this.toggleFilters(true), {
       enabled: () => this.canSearch,
     });
@@ -435,6 +462,14 @@ export class ReviewGrid implements CursorSource {
     this.loadError.set(null);
     const sort = this.sort();
     const compiled = this.compiled();
+    const all = this._allResults();
+    if (all && all.query !== compiled.query) {
+      // "All results" meant the results of the previous search; a new search does not inherit it.
+      this.offerAll.set(false);
+      this._allResults.set(null);
+      this.selectionChange.emit(this._selected());
+      this.announcer.announce('Selection of all results cleared: the search changed.');
+    }
     let page: SearchResultPage;
     try {
       page = await this.api.run({
@@ -1103,20 +1138,27 @@ export class ReviewGrid implements CursorSource {
   private anchor = -1;
 
   protected isSelected(hit: SearchHit): boolean {
-    return this.selection().has(hit.documentId);
+    return this._allResults() !== null || this.selection().has(hit.documentId);
   }
 
-  protected toggleRow(index: number): void {
+  /** Space or a checkbox click; Shift+click checks the rows between the last toggled row and this one. */
+  protected toggleRow(index: number, range = false): void {
     const hit = this.rows()[index];
     if (!hit) return;
-    const next = new Set(this.selection());
-    if (next.has(hit.documentId)) next.delete(hit.documentId);
+    const next = new Set(this.rowSelection());
+    if (range && this.anchor >= 0 && this.anchor !== index) {
+      for (const i of rangeBetween(this.anchor, index)) {
+        const row = this.rows()[i];
+        if (row) next.add(row.documentId);
+      }
+    } else if (next.has(hit.documentId)) next.delete(hit.documentId);
     else next.add(hit.documentId);
     this.anchor = index;
     this.setSelection(next);
   }
 
   private extendSelection(from: number, to: number): void {
+    if (this._allResults()) return; // every row is selected already
     const rows = this.rows();
     const next = new Set(this.selection());
     for (const i of [from, to]) if (rows[i]) next.add(rows[i].documentId);
@@ -1124,13 +1166,49 @@ export class ReviewGrid implements CursorSource {
     this.setSelection(next);
   }
 
+  /** Checks (or unchecks) the rows of the page in view (Ctrl+A, the header checkbox, Select › This page). */
   protected selectPage(select: boolean): void {
-    const next = new Set(this.selection());
+    const next = new Set(this.rowSelection());
     for (const hit of this.pageRows(this.currentPage())) {
       if (select) next.add(hit.documentId);
       else next.delete(hit.documentId);
     }
     this.setSelection(next);
+    const w = this.window();
+    this.offerAll.set(select && (w.hasNext || w.hasPrevious || w.pages.length > 1));
+  }
+
+  /** Select › This page: the page in view and nothing else. */
+  protected selectOnlyPage(): void {
+    this._allResults.set(null);
+    this._selected.set(new Set());
+    this.selectPage(true);
+  }
+
+  /** Selects every result of the search, loaded or not, as the query and the generation it was served at. */
+  selectAllResults(): void {
+    const r = this.result();
+    if (!r || this.status() !== 'ready') return;
+    this._selected.set(new Set());
+    this.controlNumbers.clear();
+    this.offerAll.set(false);
+    this._allResults.set({
+      kind: 'all',
+      query: this.compiled().query,
+      generation:
+        r.freshness.servedGeneration === null ? null : String(r.freshness.servedGeneration),
+      total: r.total,
+      countText: this.countText(),
+    });
+    this.selectionChange.emit(this._selected());
+    this.announceSelection();
+  }
+
+  /** The rows selected one by one; leaving "all results" keeps the loaded rows selected, so a row can be unchecked. */
+  private rowSelection(): ReadonlySet<string> {
+    if (!this._allResults()) return this.selection();
+    this._allResults.set(null);
+    return new Set(this.rows().map((r) => r.documentId));
   }
 
   private setSelection(next: ReadonlySet<string>): void {
@@ -1139,13 +1217,36 @@ export class ReviewGrid implements CursorSource {
       if (next.has(row.documentId)) this.controlNumbers.set(row.documentId, row.controlNumber);
     }
     for (const id of this.controlNumbers.keys()) if (!next.has(id)) this.controlNumbers.delete(id);
+    if (next.size === 0) this._allResults.set(null);
+    if (this._allResults() === null) this.offerAll.set(false);
     this._selected.set(next);
     this.selectionChange.emit(next);
+    this.announceSelection();
   }
 
-  /** Clears the selection (Mass Actions, after a run). */
+  private announceSelection(): void {
+    // One message per burst (Shift+Arrow held down), the latest count.
+    this.announcer.announce(selectionAnnouncement(this.selectionTarget(), this.prefs.locale()), {
+      throttleKey: `${this.gridId}-selection`,
+      minIntervalMs: 600,
+    });
+  }
+
+  /** Clears the selection (Select › None, Alt+Shift+0, Mass Actions after a run). */
   clearSelection(): void {
+    this._allResults.set(null);
+    this.offerAll.set(false);
     this.setSelection(new Set());
+  }
+
+  /** Puts keyboard focus on the list (focus returns here after Mass Actions). */
+  focus(): void {
+    this.viewport()?.nativeElement.focus({ preventScroll: true });
+  }
+
+  /** The list element, for dialogs that return focus to it. */
+  focusTarget(): HTMLElement | undefined {
+    return this.viewport()?.nativeElement;
   }
 
   // ── Rendering helpers ────────────────────────────────────────────────────────────────────────────────────

@@ -61,9 +61,7 @@ function field(
   };
 }
 
-const ISSUES = [
-  'Pricing',
-  'Termination',
+const TOPICS = [
   'Intellectual Property',
   'Exclusivity',
   'Payment Terms',
@@ -80,9 +78,14 @@ const ISSUES = [
   'Board Approval',
   'Audit Rights',
   'Force Majeure',
+  'Pricing Committee',
+  'Supply Chain',
 ] as const;
 
-/** Coding fields of the mock workspace: the default template (guide §3.4) plus one field of every other type. */
+/**
+ * Coding fields of the mock workspace: the default template (guide §3.4) plus one field of every other type. Ids
+ * 1000–1002 and their choice ids are shared with the Mass Edit tests (E16-T06).
+ */
 export const CODING_FIELDS = [
   field(1000, 'Responsiveness', 'singleChoice', {
     choices: [
@@ -91,34 +94,38 @@ export const CODING_FIELDS = [
       [3, 'Needs Further Review'],
     ],
   }),
-  field(1001, 'Privilege Status', 'singleChoice', {
+  field(1001, 'Issues', 'multiChoice', {
+    choices: [
+      [11, 'Pricing'],
+      [12, 'Termination'],
+      [13, 'Supply'],
+    ],
+  }),
+  field(1002, 'Privilege', 'singleChoice', {
     security: true,
     choices: [
-      [11, 'Not Privileged'],
-      [12, 'Withhold'],
-      [13, 'Redact'],
-      [14, 'Needs 2L Review'],
+      [21, 'Not Privileged'],
+      [22, 'Withhold'],
+      [23, 'Redact'],
+      [24, 'Needs 2L Review'],
     ],
   }),
-  field(1002, 'Privilege Basis', 'multiChoice', {
+  field(1003, 'Privilege Basis', 'multiChoice', {
     choices: [
-      [21, 'Attorney-Client'],
-      [22, 'Work Product'],
-      [23, 'Common Interest'],
-      [24, 'Other'],
+      [31, 'Attorney-Client'],
+      [32, 'Work Product'],
+      [33, 'Common Interest'],
+      [34, 'Other'],
     ],
   }),
-  field(1003, 'Privilege Description', 'text'),
-  field(1004, 'Confidentiality Designation', 'singleChoice', {
+  field(1004, 'Privilege Description', 'text'),
+  field(1005, 'Confidentiality Designation', 'singleChoice', {
     security: true,
     choices: [
-      [31, 'None'],
-      [32, 'CONFIDENTIAL'],
-      [33, 'HIGHLY CONFIDENTIAL – AEO'],
+      [41, 'None'],
+      [42, 'CONFIDENTIAL'],
+      [43, 'HIGHLY CONFIDENTIAL – AEO'],
     ],
-  }),
-  field(1005, 'Issues', 'multiChoice', {
-    choices: ISSUES.map((name, i) => [40 + i, name] as const),
   }),
   field(1006, 'Key Document', 'boolean'),
   field(1007, 'Reviewer Comments', 'text'),
@@ -128,6 +135,10 @@ export const CODING_FIELDS = [
   field(1011, 'Hours Spent', 'decimal'),
   field(1012, 'Second-Level Reviewer', 'user'),
   field(1013, 'Key Terms', 'keyword', { multi: true }),
+  // More than 15 choices: a filterable list in the coding pane.
+  field(1014, 'Topics', 'multiChoice', {
+    choices: TOPICS.map((name, i) => [51 + i, name] as const),
+  }),
 ];
 
 const layoutField = (
@@ -158,12 +169,12 @@ export const CODING_LAYOUTS = [
         sectionId: 's-priv',
         title: 'Privilege',
         fields: [
-          layoutField(1001),
-          layoutField(1002, { when: [1001, [12, 13]] }),
-          layoutField(1004),
+          layoutField(1002),
+          layoutField(1003, { when: [1002, [22, 23]] }),
+          layoutField(1005),
         ],
       },
-      { sectionId: 's-issues', title: 'Issues', fields: [layoutField(1005), layoutField(1006)] },
+      { sectionId: 's-issues', title: 'Issues', fields: [layoutField(1001), layoutField(1006)] },
       { sectionId: 's-notes', title: 'Notes', fields: [layoutField(1007)] },
     ],
   },
@@ -176,10 +187,10 @@ export const CODING_LAYOUTS = [
         sectionId: 's-priv',
         title: 'Privilege',
         fields: [
-          layoutField(1001, { required: true }),
-          layoutField(1002, { required: true, when: [1001, [12, 13]] }),
-          layoutField(1003, { when: [1001, [12, 13]] }),
-          layoutField(1004),
+          layoutField(1002, { required: true }),
+          layoutField(1003, { required: true, when: [1002, [22, 23]] }),
+          layoutField(1004, { when: [1002, [22, 23]] }),
+          layoutField(1005),
         ],
       },
       { sectionId: 's-resp', title: 'Context', fields: [layoutField(1000, { readOnly: true })] },
@@ -193,7 +204,7 @@ export const CODING_LAYOUTS = [
       {
         sectionId: 's-details',
         title: 'Details',
-        fields: [1008, 1009, 1010, 1011, 1012, 1013].map((id) => layoutField(id)),
+        fields: [1008, 1009, 1010, 1011, 1012, 1013, 1014].map((id) => layoutField(id)),
       },
     ],
   },
