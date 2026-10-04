@@ -29,7 +29,7 @@ namespace Opportunity.Data.Import;
 /// The chunk write follows the bulk-coding pattern (<c>CodingRepository.ApplyChunkAsync</c>): every write of the chunk,
 /// fence F3 and the chunk's one IndexChunkTask (the transaction's last statement) commit together or not at all.
 /// </summary>
-public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImportBatchStore
+public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) : IImportBatchStore
 {
     /// <summary>Actor of chunk-level audit events: the import worker, on behalf of the job's initiator.</summary>
     public const string ImportWorkerActor = "service:import";
@@ -43,7 +43,8 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         workspace_id, import_batch_id, job_id, name, mode, source_file_name, source_object_key, source_sha256, source_size,
         profile_id, profile_version, profile::text, coding_overlay_field_ids, header::text, dat_encoding, dat_encoding_fallback,
         data_offset, rows_total, fields_created, choices_created, prepared_at, rows_imported, rows_overlaid, rows_skipped,
-        rows_errored, created_by, created_at, completed_at, may_create_fields
+        rows_errored, created_by, created_at, completed_at, may_create_fields, opt_file_name, opt_object_key, opt_sha256, opt_size,
+        images_only, opt_rows_total
         """;
 
     // Overlay may set these document columns; identity, family and artifact columns belong to other tickets.
@@ -93,9 +94,10 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             $"""
             INSERT INTO opportunity.import_batch
                 (workspace_id, import_batch_id, job_id, name, mode, source_file_name, source_object_key, source_sha256, source_size,
-                 profile_id, profile_version, profile, coding_overlay_field_ids, may_create_fields, created_by)
+                 profile_id, profile_version, profile, coding_overlay_field_ids, may_create_fields, created_by,
+                 opt_file_name, opt_object_key, opt_sha256, opt_size, images_only)
             VALUES (@ws, @id, @job, @name, @mode, @file, @key, @sha, @size, @profile_id, @profile_version, @profile::jsonb, @coding,
-                    @may_create_fields, @by)
+                    @may_create_fields, @by, @opt_file, @opt_key, @opt_sha, @opt_size, @images_only)
             RETURNING {Columns}
             """))
         {
@@ -114,6 +116,11 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             insert.Parameters.AddWithValue("coding", batch.CodingOverlayFieldIds.Distinct().Order().ToArray());
             insert.Parameters.AddWithValue("may_create_fields", batch.MayCreateFields);
             insert.Parameters.AddWithValue("by", batch.InitiatedBy);
+            insert.Parameters.Add(Nullable("opt_file", NpgsqlDbType.Text, batch.Opt?.FileName));
+            insert.Parameters.Add(Nullable("opt_key", NpgsqlDbType.Text, batch.Opt?.ObjectKey));
+            insert.Parameters.Add(Nullable("opt_sha", NpgsqlDbType.Bytea, batch.Opt?.Sha256));
+            insert.Parameters.Add(Nullable("opt_size", NpgsqlDbType.Bigint, batch.Opt?.Size));
+            insert.Parameters.AddWithValue("images_only", batch.ImagesOnly);
             await using var reader = await insert.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
             record = Read(reader);
@@ -130,6 +137,9 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             ["ProfileId"] = record.ProfileId?.ToString(),
             ["CodingOverlayFields"] = string.Join(',', record.CodingOverlayFieldIds),
             ["MayCreateFields"] = record.MayCreateFields ? "true" : "false",
+            ["OptFileName"] = record.Opt is { } opt ? Truncate(opt.FileName, 255) : null,
+            ["OptSha256"] = record.Opt is { } o ? Convert.ToHexStringLower(o.Sha256) : null,
+            ["ImagesOnly"] = record.ImagesOnly ? "true" : null,
         };
         await AuditSql.InsertAsync(tx, batch.AuditTemplate with
         {
@@ -295,7 +305,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             """
             UPDATE opportunity.import_batch
             SET header = @header::jsonb, dat_encoding = @encoding, dat_encoding_fallback = @fallback, data_offset = @offset,
-                rows_total = @rows, fields_created = @fields, choices_created = @choices, prepared_at = now()
+                rows_total = @rows, fields_created = @fields, choices_created = @choices, opt_rows_total = @opt_rows, prepared_at = now()
             WHERE workspace_id = @ws AND import_batch_id = @id AND prepared_at IS NULL
             """))
         {
@@ -308,6 +318,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             update.Parameters.AddWithValue("rows", preparation.RowsTotal);
             update.Parameters.AddWithValue("fields", preparation.FieldsCreated);
             update.Parameters.AddWithValue("choices", preparation.ChoicesCreated);
+            update.Parameters.Add(Nullable("opt_rows", NpgsqlDbType.Bigint, preparation.OptRowsTotal));
             if (await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
             {
                 return false;
@@ -462,12 +473,12 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         await using var command = tx.Command(
             """
-            SELECT row_no, issue_no, severity, line_no, control_number, column_name, code, message
+            SELECT row_no, issue_no, severity, line_no, control_number, column_name, code, message, source
             FROM opportunity.import_row_issue
             WHERE workspace_id = @ws AND import_batch_id = @id
               AND (@severity::smallint IS NULL OR severity = @severity)
-              AND (@after_row::bigint IS NULL OR (row_no, issue_no) > (@after_row, @after_issue))
-            ORDER BY row_no, issue_no
+              AND (@after_row::bigint IS NULL OR (source, row_no, issue_no) > (@after_source, @after_row, @after_issue))
+            ORDER BY source, row_no, issue_no
             LIMIT @limit
             """);
         command.Parameters.AddWithValue("ws", workspaceId);
@@ -475,6 +486,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         command.Parameters.Add(Nullable("severity", NpgsqlDbType.Smallint, (short?)severity));
         command.Parameters.Add(Nullable("after_row", NpgsqlDbType.Bigint, after?.RowNo));
         command.Parameters.Add(Nullable("after_issue", NpgsqlDbType.Integer, after?.IssueNo));
+        command.Parameters.Add(Nullable("after_source", NpgsqlDbType.Smallint, (short?)after?.Source));
         command.Parameters.AddWithValue("limit", limit);
         var issues = new List<ImportRowIssueRecord>();
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
@@ -489,7 +501,8 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
                     reader.IsDBNull(4) ? null : reader.GetString(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5),
                     reader.GetString(6),
-                    reader.GetString(7)));
+                    reader.GetString(7),
+                    (ImportIssueSource)reader.GetInt16(8)));
             }
         }
 
@@ -535,6 +548,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         }
 
         rows.RemoveAll(r => done.Contains(r.RowNo));
+        plan.DoneRows.UnionWith(done);
         foreach (var row in done)
         {
             plan.Issues.Remove(row);
@@ -738,9 +752,13 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         var covered = plan.Members.Select(m => m.DocumentId).Concat(plan.Overlays.Select(o => o.DocumentId)).ToHashSet();
         plan.OtherChangedDocuments.AddRange(await SyncRelationshipsAsync(tx, plan, covered, cancellationToken).ConfigureAwait(false));
 
+        // OPT page sets (E08-T05) of the documents the chunk created or overlaid; a replaced page set is an overlay change.
+        var pagesChanged = await WritePageSetsAsync(tx, batch, plan, changed, cancellationToken).ConfigureAwait(false);
+
         foreach (var (row, documentId) in plan.Overlays)
         {
-            plan.Members.Add((row, documentId, changed.Contains(documentId) || codingChanged.Contains(documentId) ? ActionOverlaid : ActionSkipped));
+            plan.Members.Add((row, documentId,
+                changed.Contains(documentId) || codingChanged.Contains(documentId) || pagesChanged.Contains(documentId) ? ActionOverlaid : ActionSkipped));
         }
 
         if (plan.Members.Count > 0)
@@ -880,6 +898,41 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
 
     private static async Task InsertIssuesAsync(WorkspaceTransaction tx, Guid importBatchId, ChunkPlan plan, CancellationToken cancellationToken)
     {
+        // (file, row) -> issues in order: DAT rows, the OPT rows of OPT-only documents, then the OPT rows' own warnings.
+        var entries = new SortedDictionary<(short Source, long Row), (long? Line, string? ControlNumber, List<ImportRowIssue> Issues)>();
+        void Add(ImportIssueSource source, long rowNo, long? line, string? controlNumber, ImportRowIssue issue)
+        {
+            if (!entries.TryGetValue(((short)source, rowNo), out var entry))
+            {
+                entry = (line, controlNumber, []);
+                entries[((short)source, rowNo)] = entry;
+            }
+
+            entry.Issues.Add(issue);
+        }
+
+        foreach (var (rowNo, issues) in plan.Issues)
+        {
+            var row = plan.Rows.GetValueOrDefault(rowNo);
+            foreach (var issue in issues)
+            {
+                if (row?.OptRowNo is { } optRow)
+                {
+                    Add(ImportIssueSource.Opt, optRow, row.LineNo, row.ControlNumber, issue);
+                }
+                else
+                {
+                    Add(ImportIssueSource.Dat, rowNo, row?.LineNo, row?.ControlNumber, issue);
+                }
+            }
+        }
+
+        foreach (var issue in plan.Rows.Values.Where(r => !plan.DoneRows.Contains(r.RowNo)).SelectMany(r => r.OptIssues).Concat(plan.OptIssues))
+        {
+            Add(ImportIssueSource.Opt, issue.OptRow, issue.LineNo, issue.ImageKey, issue.Issue);
+        }
+
+        var sources = new List<short>();
         var rows = new List<long>();
         var numbers = new List<int>();
         var severities = new List<short>();
@@ -888,16 +941,16 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         var columns = new List<string?>();
         var codes = new List<string>();
         var messages = new List<string>();
-        foreach (var (rowNo, issues) in plan.Issues.OrderBy(i => i.Key))
+        foreach (var ((source, rowNo), (line, controlNumber, issues)) in entries)
         {
-            var row = plan.Rows.GetValueOrDefault(rowNo);
             for (var i = 0; i < issues.Count; i++)
             {
+                sources.Add(source);
                 rows.Add(rowNo);
                 numbers.Add(i + 1);
                 severities.Add((short)issues[i].Severity);
-                lines.Add(row?.LineNo);
-                controlNumbers.Add(Truncate(row?.ControlNumber, 1000));
+                lines.Add(line);
+                controlNumbers.Add(Truncate(controlNumber, 1000));
                 columns.Add(Truncate(issues[i].Column, 1000));
                 codes.Add(Truncate(issues[i].Code, ImportRowIssue.MaxCodeLength)!);
                 messages.Add(Truncate(issues[i].Message, ImportRowIssue.MaxMessageLength)!);
@@ -912,13 +965,14 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         await using var command = tx.Command(
             """
             INSERT INTO opportunity.import_row_issue
-                (workspace_id, import_batch_id, row_no, issue_no, severity, line_no, control_number, column_name, code, message)
-            SELECT @ws, @id, u.row_no, u.issue_no, u.severity, u.line_no, u.control_number, u.column_name, u.code, u.message
-            FROM unnest(@rows, @numbers, @severities, @lines, @control_numbers, @columns, @codes, @messages)
-                AS u(row_no, issue_no, severity, line_no, control_number, column_name, code, message)
+                (workspace_id, import_batch_id, source, row_no, issue_no, severity, line_no, control_number, column_name, code, message)
+            SELECT @ws, @id, u.source, u.row_no, u.issue_no, u.severity, u.line_no, u.control_number, u.column_name, u.code, u.message
+            FROM unnest(@sources, @rows, @numbers, @severities, @lines, @control_numbers, @columns, @codes, @messages)
+                AS u(source, row_no, issue_no, severity, line_no, control_number, column_name, code, message)
             """);
         command.Parameters.AddWithValue("ws", tx.WorkspaceId);
         command.Parameters.AddWithValue("id", importBatchId);
+        command.Parameters.AddWithValue("sources", sources.ToArray());
         command.Parameters.AddWithValue("rows", rows.ToArray());
         command.Parameters.AddWithValue("numbers", numbers.ToArray());
         command.Parameters.AddWithValue("severities", severities.ToArray());
@@ -1049,7 +1103,8 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
                 reader.GetInt64(16),
                 reader.GetInt64(17),
                 reader.GetInt32(18),
-                reader.GetInt32(19));
+                reader.GetInt32(19),
+                reader.IsDBNull(34) ? null : reader.GetInt64(34));
         }
 
         return new ImportBatchRecord
@@ -1077,6 +1132,10 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             CreatedAt = reader.GetFieldValue<DateTimeOffset>(26),
             CompletedAt = reader.IsDBNull(27) ? null : reader.GetFieldValue<DateTimeOffset>(27),
             MayCreateFields = reader.GetBoolean(28),
+            Opt = reader.IsDBNull(30)
+                ? null
+                : new ImportOptSource(reader.GetString(29), reader.GetString(30), reader.GetFieldValue<byte[]>(31), reader.GetInt64(32)),
+            ImagesOnly = reader.GetBoolean(33),
         };
     }
 
@@ -1094,6 +1153,12 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         public Dictionary<long, List<ImportRowIssue>> Issues { get; } = [];
 
         public Dictionary<long, ImportRow> Rows { get; } = [];
+
+        /// <summary>Rows an earlier committed attempt already wrote.</summary>
+        public HashSet<long> DoneRows { get; } = [];
+
+        /// <summary>OPT warnings the chunk itself found (images of rows that were not loaded).</summary>
+        public List<ImportOptIssue> OptIssues { get; } = [];
 
         public List<ImportRow> Inserts { get; } = [];
 

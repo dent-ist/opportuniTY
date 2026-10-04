@@ -8,10 +8,12 @@ using Opportunity.Application.Jobs;
 using Opportunity.Application.Storage;
 using Opportunity.Application.Workspaces;
 using Opportunity.Contracts.Import;
+using Opportunity.Core.Documents;
 using Opportunity.Core.Fields;
 using Opportunity.Core.Jobs;
 using Opportunity.Import.LoadFiles;
 using Opportunity.Import.Mapping;
+using Opportunity.Import.Volumes;
 
 namespace Opportunity.Import.Jobs;
 
@@ -55,6 +57,8 @@ public enum ImportPreparationOutcome
 /// and DAT bytes), creates the fields and choices the load needs (deferred from E08-T02), and plans one ImportRows chunk
 /// per range. Memory stays constant: rows are mapped and dropped; keys go to PostgreSQL in batches. Re-running after a
 /// crash is safe: keys keep their first row, fields and choices are reused by name, and the start is a single transition.
+/// With an OPT (E08-T05) the pass then stages every OPT row, assigns each OPT document to its DAT row and reports the
+/// orphans; an OPT-only load plans its chunks over the OPT's documents instead of DAT rows.
 /// </summary>
 public sealed partial class ImportJobPreparer(
     IImportBatchStore batches,
@@ -63,8 +67,11 @@ public sealed partial class ImportJobPreparer(
     IWorkspaceReader workspaces,
     IObjectStore store,
     ImportJobOptions options,
-    ILogger<ImportJobPreparer> logger)
+    ILogger<ImportJobPreparer> logger,
+    ImportVolumeOptions? volumes = null)
 {
+    public const string ImageVolumeUnavailable = "image-volume-unavailable";
+
     public async Task<ImportPreparationOutcome> PrepareAsync(Guid workspaceId, Guid importBatchId, CancellationToken cancellationToken = default)
     {
         if (!await batches.TryClaimPreparationAsync(workspaceId, importBatchId, options.WorkerId, options.PreparationClaim, cancellationToken)
@@ -148,6 +155,18 @@ public sealed partial class ImportJobPreparer(
         }
 
         var workspace = await workspaces.GetAsync(ws, cancellationToken).ConfigureAwait(false);
+        var caseSensitive = workspace?.ControlNumberCaseSensitive ?? false;
+        if (batch.Opt is not null && !ImportVolume.TryOpen(volumes ?? new ImportVolumeOptions(), profile.Paths.VolumeRoot, out _, out var volumeError))
+        {
+            return ScanResult.Fail(ImageVolumeUnavailable, volumeError + " The OPT's images are read from the volume root (paths.volumeRoot).");
+        }
+
+        if (batch.ImagesOnly)
+        {
+            return await ScanImagesOnlyAsync(batch, profile, caseSensitive, cancellationToken).ConfigureAwait(false);
+        }
+
+        var matchByBates = batch.Opt is not null && profile.Images.MatchBy == ImageMatchField.BegBates;
         var catalog = await fields.GetCatalogAsync(ws, cancellationToken: cancellationToken).ConfigureAwait(false);
         var stream = await ImportSource.OpenAsync(store, batch, cancellationToken).ConfigureAwait(false);
         var reader = await DatReader.OpenAsync(stream, readerOptions, leaveOpen: false, cancellationToken).ConfigureAwait(false);
@@ -188,6 +207,7 @@ public sealed partial class ImportJobPreparer(
 
             var chunks = new List<ImportChunkRange>();
             var keys = new List<ImportKey>(options.KeyBatchSize);
+            var batesKeys = new List<ImportKey>(matchByBates ? options.KeyBatchSize : 0);
             var missingChoices = new Dictionary<string, (TargetBinding Target, HashSet<string> Names)>(StringComparer.Ordinal);
             long? dataOffset = null;
             long rows = 0;
@@ -221,6 +241,17 @@ public sealed partial class ImportJobPreparer(
                     }
                 }
 
+                if (matchByBates
+                    && mapped.Cells.FirstOrDefault(c => c.Target.FieldId == SystemFields.BegBates && c.Error is null && c.Value is not null) is { } bates
+                    && ControlNumber.TryNormalize(bates.Value!.GetValue<string>(), caseSensitive, null, out var batesNorm, out _))
+                {
+                    batesKeys.Add(new ImportKey(batesNorm, record.RowNumber));
+                    if (batesKeys.Count >= options.KeyBatchSize)
+                    {
+                        await FlushBatesAsync(batch, batesKeys, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
                 foreach (var cell in mapped.Cells.Where(c => c.Status == CoercionStatus.MissingChoices))
                 {
                     if (!missingChoices.TryGetValue(cell.Target.Key, out var entry))
@@ -239,6 +270,7 @@ public sealed partial class ImportJobPreparer(
             }
 
             await FlushKeysAsync(batch, keys, cancellationToken).ConfigureAwait(false);
+            await FlushBatesAsync(batch, batesKeys, cancellationToken).ConfigureAwait(false);
             if (!batch.MayCreateFields && missingChoices.Count > 0)
             {
                 return ScanResult.Fail(ImportStartScope.FieldCreationNotAuthorized,
@@ -246,6 +278,13 @@ public sealed partial class ImportJobPreparer(
             }
 
             var (fieldsCreated, choicesCreated) = await CreateFieldsAndChoicesAsync(ws, mapping, missingChoices, cancellationToken).ConfigureAwait(false);
+            long? optRows = null;
+            if (batch.Opt is not null)
+            {
+                var mode = matchByBates ? ImportImageMatchMode.BegBates : ImportImageMatchMode.ControlNumber;
+                (optRows, _) = await StageOptAsync(batch, profile, caseSensitive, mode, cancellationToken).ConfigureAwait(false);
+            }
+
             var encoding = reader.Encoding;
             return new ScanResult(
                 new ImportPreparation(
@@ -255,10 +294,106 @@ public sealed partial class ImportJobPreparer(
                     dataOffset ?? batch.SourceSize,
                     rows,
                     fieldsCreated,
-                    choicesCreated),
+                    choicesCreated,
+                    optRows),
                 chunks,
                 null,
                 null);
+        }
+    }
+
+    /// <summary>An OPT-only load: the OPT's documents are the rows, planned in chunks of <see cref="ImportJobOptions.RowsPerChunk"/>.</summary>
+    private async Task<ScanResult> ScanImagesOnlyAsync(
+        ImportBatchRecord batch, ImportProfileDefinition profile, bool caseSensitive, CancellationToken cancellationToken)
+    {
+        var (optRows, match) = await StageOptAsync(batch, profile, caseSensitive, ImportImageMatchMode.OptDocuments, cancellationToken)
+            .ConfigureAwait(false);
+        var chunks = new List<ImportChunkRange>();
+        for (var from = 1L; from <= match.Documents; from += options.RowsPerChunk)
+        {
+            chunks.Add(new ImportChunkRange(from, Math.Min(from + options.RowsPerChunk - 1, match.Documents), 0, 0, 1));
+        }
+
+        return new ScanResult(
+            new ImportPreparation([], nameof(LoadFileEncodingKind.Utf8), false, 0, match.Documents, 0, 0, optRows), chunks, null, null);
+    }
+
+    /// <summary>
+    /// Stages the OPT row by row (document numbers from the 'Y' breaks, the normalized key of each break) in batches,
+    /// then lets the store assign documents to rows and report the orphans.
+    /// </summary>
+    private async Task<(long Rows, ImportImageMatch Match)> StageOptAsync(
+        ImportBatchRecord batch, ImportProfileDefinition profile, bool caseSensitive, ImportImageMatchMode mode, CancellationToken cancellationToken)
+    {
+        var prefix = mode == ImportImageMatchMode.BegBates || profile.Images.MatchBy == ImageMatchField.BegBates ? null : profile.ControlNumberPrefix;
+        var stream = await store.OpenReadAsync(ObjectKey.Parse(batch.Opt!.ObjectKey), null, cancellationToken).ConfigureAwait(false);
+        var reader = OptReader.Open(stream);
+        long rows = 0;
+        await using (reader.ConfigureAwait(false))
+        {
+            var buffer = new List<ImportImageRow>(options.KeyBatchSize);
+            long document = 0;
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false) is { } record)
+            {
+                rows = record.RowNumber;
+                if (record.DocumentBreak)
+                {
+                    document++;
+                }
+
+                string? matchKey = null;
+                if (record.DocumentBreak && record.ImageKey.Length > 0
+                    && ControlNumber.TryNormalize(record.ImageKey, caseSensitive, prefix, out var norm, out _))
+                {
+                    matchKey = norm;
+                }
+
+                buffer.Add(new ImportImageRow(record.RowNumber, record.LineNumber, document, record.DocumentBreak, record.ImageKey, record.Volume,
+                    record.Path, record.PageCount, record.Problem, matchKey));
+                if (buffer.Count >= options.KeyBatchSize)
+                {
+                    await FlushImageRowsAsync(batch, buffer, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            await FlushImageRowsAsync(batch, buffer, cancellationToken).ConfigureAwait(false);
+        }
+
+        var match = await batches.MatchImageRowsAsync(batch.WorkspaceId, batch.ImportBatchId, mode, cancellationToken).ConfigureAwait(false);
+        LogOptStaged(logger, batch.ImportBatchId, rows, match.Documents, match.Matched, match.Unmatched);
+        return (rows, match);
+    }
+
+    private async Task FlushImageRowsAsync(ImportBatchRecord batch, List<ImportImageRow> rows, CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        await batches.AddImageRowsAsync(batch.WorkspaceId, batch.ImportBatchId, rows, cancellationToken).ConfigureAwait(false);
+        rows.Clear();
+        await RenewClaimAsync(batch, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task FlushBatesAsync(ImportBatchRecord batch, List<ImportKey> keys, CancellationToken cancellationToken)
+    {
+        if (keys.Count == 0)
+        {
+            return;
+        }
+
+        await batches.AddBatesKeysAsync(batch.WorkspaceId, batch.ImportBatchId, keys, cancellationToken).ConfigureAwait(false);
+        keys.Clear();
+        await RenewClaimAsync(batch, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task RenewClaimAsync(ImportBatchRecord batch, CancellationToken cancellationToken)
+    {
+        if (!await batches.TryClaimPreparationAsync(batch.WorkspaceId, batch.ImportBatchId, options.WorkerId, options.PreparationClaim, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            throw new OperationCanceledException("Another worker took over the preparation of this import.");
         }
     }
 
@@ -271,11 +406,7 @@ public sealed partial class ImportJobPreparer(
 
         await batches.AddKeysAsync(batch.WorkspaceId, batch.ImportBatchId, keys, cancellationToken).ConfigureAwait(false);
         keys.Clear();
-        if (!await batches.TryClaimPreparationAsync(batch.WorkspaceId, batch.ImportBatchId, options.WorkerId, options.PreparationClaim, cancellationToken)
-                .ConfigureAwait(false))
-        {
-            throw new OperationCanceledException("Another worker took over the preparation of this import.");
-        }
+        await RenewClaimAsync(batch, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -348,6 +479,10 @@ public sealed partial class ImportJobPreparer(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Import {ImportBatchId} prepared: {Chunks} chunks planned")]
     private static partial void LogStarted(ILogger logger, Guid importBatchId, int chunks);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Import {ImportBatchId}: {OptRows} OPT rows, {Documents} OPT documents, {Matched} matched, {Unmatched} without a row")]
+    private static partial void LogOptStaged(ILogger logger, Guid importBatchId, long optRows, long documents, long matched, long unmatched);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Import {ImportBatchId} cannot run: {Reason}")]
     private static partial void LogFailed(ILogger logger, Guid importBatchId, string reason);

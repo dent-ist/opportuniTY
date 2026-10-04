@@ -8,10 +8,12 @@ export interface ImportResource {
   codingOverlayFieldIds: Array<number | string>;
   completedAt: any;
   createdAt: any;
+  imagesOnly?: boolean;
   importId: string;
   job: JobResource;
   mode: ImportMode;
   name: string;
+  optFileName?: string | null;
   profileId: string | null;
   report: ImportReport;
   sourceFileName: string;

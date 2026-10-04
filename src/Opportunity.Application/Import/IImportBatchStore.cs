@@ -4,6 +4,8 @@ using Opportunity.Application.Audit;
 using Opportunity.Application.Jobs;
 using Opportunity.Contracts.Import;
 using Opportunity.Core.Documents;
+using Opportunity.Core.Pages;
+using Opportunity.Core.Storage;
 
 namespace Opportunity.Application.Import;
 
@@ -61,7 +63,31 @@ public interface IImportBatchStore
     /// </summary>
     Task RecordCompletedAsync(Guid workspaceId, Guid importBatchId, string? reasonCode = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Row errors and warnings in row order, keyset-paged.</summary>
+    /// <summary>First rows of normalized Beg Bates values (OPT matched by Beg Bates); idempotent like <see cref="AddKeysAsync"/>.</summary>
+    Task AddBatesKeysAsync(Guid workspaceId, Guid importBatchId, IReadOnlyList<ImportKey> keys, CancellationToken cancellationToken = default);
+
+    /// <summary>Stages OPT rows read by the preparation pass; rows already staged (a re-run) are kept.</summary>
+    Task AddImageRowsAsync(Guid workspaceId, Guid importBatchId, IReadOnlyList<ImportImageRow> rows, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Assigns every staged OPT document to the row it belongs to (the first OPT document wins a key) and records a
+    /// warning on the first OPT row of each document that belongs to none (orphan, duplicate key, rows before the first
+    /// document break). Idempotent.
+    /// </summary>
+    Task<ImportImageMatch> MatchImageRowsAsync(Guid workspaceId, Guid importBatchId, ImportImageMatchMode mode, CancellationToken cancellationToken = default);
+
+    /// <summary>Staged OPT rows of data rows <paramref name="rowFrom"/>…<paramref name="rowTo"/>, in OPT order.</summary>
+    Task<IReadOnlyList<ImportImageRow>> GetImageRowsAsync(
+        Guid workspaceId, Guid importBatchId, long rowFrom, long rowTo, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Live documents of the workspace by normalized control number, or by Beg Bates (compared trimmed, and upper-cased
+    /// unless <paramref name="caseSensitive"/>); a key that several documents share is left out.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, ImportExistingDocument>> FindDocumentsAsync(
+        Guid workspaceId, IReadOnlyCollection<string> keys, ImportImageMatchMode by, bool caseSensitive, CancellationToken cancellationToken = default);
+
+    /// <summary>Row errors and warnings in load-file and row order (DAT first, then OPT), keyset-paged.</summary>
     Task<IReadOnlyList<ImportRowIssueRecord>> GetRowIssuesAsync(
         Guid workspaceId, Guid importBatchId, ImportIssueSeverity? severity, ImportRowIssueCursor? after, int limit,
         CancellationToken cancellationToken = default);
@@ -87,6 +113,12 @@ public sealed record NewImportBatch
     public required byte[] SourceSha256 { get; init; }
 
     public required long SourceSize { get; init; }
+
+    /// <summary>The OPT loaded with the DAT (or alone, <see cref="ImagesOnly"/>), stored like the DAT.</summary>
+    public ImportOptSource? Opt { get; init; }
+
+    /// <summary>An OPT-only load: the source is the OPT; its documents replace pages of existing documents.</summary>
+    public bool ImagesOnly { get; init; }
 
     public Guid? ProfileId { get; init; }
 
@@ -118,7 +150,10 @@ public sealed record ImportBatchCreation(ImportBatchRecord Batch, JobInfo Job, b
 
 public readonly record struct ImportBatchCursor(DateTimeOffset CreatedAt, Guid ImportBatchId);
 
-public readonly record struct ImportRowIssueCursor(long RowNo, int IssueNo);
+public readonly record struct ImportRowIssueCursor(long RowNo, int IssueNo, ImportIssueSource Source = ImportIssueSource.Dat);
+
+/// <summary>An OPT stored for an import (ADR-011 import source area).</summary>
+public sealed record ImportOptSource(string FileName, string ObjectKey, byte[] Sha256, long Size);
 
 public sealed record ImportBatchRecord
 {
@@ -139,6 +174,11 @@ public sealed record ImportBatchRecord
     public required byte[] SourceSha256 { get; init; }
 
     public long SourceSize { get; init; }
+
+    public ImportOptSource? Opt { get; init; }
+
+    /// <summary>An OPT-only load (<see cref="NewImportBatch.ImagesOnly"/>).</summary>
+    public bool ImagesOnly { get; init; }
 
     public Guid? ProfileId { get; init; }
 
@@ -174,6 +214,7 @@ public sealed record ImportBatchRecord
 /// <summary>What the preparation pass found; every chunk reads the DAT with exactly these settings.</summary>
 /// <param name="DataOffset">Bytes before the first data row (byte-order mark, header, blank lines).</param>
 /// <param name="EncodingFallback">The reader's row-level encoding fallback (on when the encoding was detected).</param>
+/// <param name="OptRowsTotal">OPT rows staged for the import; null without an OPT.</param>
 public sealed record ImportPreparation(
     IReadOnlyList<string> Header,
     string DatEncoding,
@@ -181,12 +222,20 @@ public sealed record ImportPreparation(
     long DataOffset,
     long RowsTotal,
     int FieldsCreated,
-    int ChoicesCreated);
+    int ChoicesCreated,
+    long? OptRowsTotal = null);
 
 /// <summary>Data rows <c>RowFrom…RowTo</c> occupy bytes <c>ByteFrom…ByteTo</c> (exclusive) of the DAT.</summary>
 public sealed record ImportChunkRange(long RowFrom, long RowTo, long ByteFrom, long ByteTo, long LineFrom);
 
 public sealed record ImportKey(string ControlNumberNorm, long RowNo);
+
+/// <summary>The load file an issue's row refers to. Stored as smallint.</summary>
+public enum ImportIssueSource : short
+{
+    Dat = 1,
+    Opt = 2,
+}
 
 public enum ImportIssueSeverity : short
 {
@@ -236,8 +285,98 @@ public sealed record ImportRow
 
     public IReadOnlyList<ImportRowIssue> Issues { get; init; } = [];
 
+    /// <summary>The page images (OPT) of the row's document, stored for <see cref="ImportImages.DocumentId"/>.</summary>
+    public ImportImages? Images { get; init; }
+
+    /// <summary>Warnings about the row's OPT rows (missing or rejected images, page count mismatch).</summary>
+    public IReadOnlyList<ImportOptIssue> OptIssues { get; init; } = [];
+
+    /// <summary>
+    /// OPT-only loads: the row is an OPT document and <see cref="Issues"/> are reported against this OPT row (its
+    /// document break) instead of a DAT row.
+    /// </summary>
+    public long? OptRowNo { get; init; }
+
     public bool HasErrors => Document is null || Issues.Any(i => i.Severity == ImportIssueSeverity.Error);
 }
+
+/// <summary>A warning about one OPT row.</summary>
+public sealed record ImportOptIssue(long OptRow, long LineNo, string? ImageKey, ImportRowIssue Issue);
+
+/// <summary>
+/// The Imported page set of one document (ADR-012 §1.6): pages in order and the original rasters, already stored under
+/// <see cref="DocumentId"/>'s image area. The chunk registers the objects and writes the set in its transaction.
+/// </summary>
+public sealed record ImportImages
+{
+    /// <summary>The document the objects were stored for; the chunk links them only to that document.</summary>
+    public required Guid DocumentId { get; init; }
+
+    /// <summary>The OPT row that starts the document (its document break).</summary>
+    public required long BreakOptRow { get; init; }
+
+    public required long BreakLineNo { get; init; }
+
+    public string? BreakImageKey { get; init; }
+
+    public IReadOnlyList<ImportImageObject> Objects { get; init; } = [];
+
+    public IReadOnlyList<ImportPage> Pages { get; init; } = [];
+
+    /// <summary>Some page has no image: the set is Incomplete and the document <c>ImagesIncomplete</c>.</summary>
+    public bool Incomplete => Pages.Count == 0 || Pages.Any(p => p.ImageMissing);
+}
+
+/// <summary>A stored image file (ADR-011 §2.3 registry values).</summary>
+public sealed record ImportImageObject(
+    string LogicalKey, byte[] Sha256, long SizeBytes, string ContentType, string KeyId, EncryptionScheme EncryptionScheme);
+
+/// <param name="Raster">Null when the page's image is missing.</param>
+public sealed record ImportPage(int Ordinal, string? ImageKey, int SourceFrame, ImportPageRaster? Raster)
+{
+    public bool ImageMissing => Raster is null;
+}
+
+/// <summary>The original raster of a page: frame <see cref="ImportPage.SourceFrame"/> of the object <see cref="LogicalKey"/>.</summary>
+public sealed record ImportPageRaster(
+    string LogicalKey, int WidthPx, int HeightPx, int DpiX, int DpiY, PageImageFormat Format, PageColorMode ColorMode);
+
+/// <summary>How the preparation pass assigns OPT documents to rows.</summary>
+public enum ImportImageMatchMode
+{
+    /// <summary>Break-row image key = the DAT row's normalized control number.</summary>
+    ControlNumber,
+
+    /// <summary>Break-row image key = the DAT row's normalized Beg Bates.</summary>
+    BegBates,
+
+    /// <summary>OPT-only load: every OPT document is its own row (the first of a repeated key wins).</summary>
+    OptDocuments,
+}
+
+/// <summary>One staged OPT row.</summary>
+/// <param name="DocNo">1-based OPT document; 0 for rows before the first document break.</param>
+/// <param name="RowNo">The row the document belongs to; null for orphans.</param>
+public sealed record ImportImageRow(
+    long OptRow,
+    long LineNo,
+    long DocNo,
+    bool IsBreak,
+    string ImageKey,
+    string Volume,
+    string Path,
+    int? PageCount,
+    string? Problem,
+    string? MatchKey,
+    long? RowNo = null);
+
+/// <param name="Documents">OPT documents (document breaks) staged.</param>
+/// <param name="Matched">Documents assigned to a row.</param>
+/// <param name="Unmatched">Documents (and leading rows without a break) reported as belonging to no row.</param>
+public sealed record ImportImageMatch(long Documents, long Matched, long Unmatched);
+
+/// <summary>A live document found for an OPT key.</summary>
+public sealed record ImportExistingDocument(Guid DocumentId, string ControlNumber, string ControlNumberNorm);
 
 public sealed record ImportChunkWrite(Guid ImportBatchId, ImportMode Mode, IReadOnlyList<ImportRow> Rows);
 
@@ -256,4 +395,5 @@ public sealed record ImportRowIssueRecord(
     string? ControlNumber,
     string? Column,
     string Code,
-    string Message);
+    string Message,
+    ImportIssueSource Source = ImportIssueSource.Dat);

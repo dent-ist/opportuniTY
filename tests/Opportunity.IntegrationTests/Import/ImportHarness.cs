@@ -22,6 +22,7 @@ using Opportunity.Data.Workspaces;
 using Opportunity.Import.Jobs;
 using Opportunity.Import.LoadFiles;
 using Opportunity.Import.Mapping;
+using Opportunity.Import.Volumes;
 using Opportunity.IntegrationTests.Documents;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.Jobs;
@@ -72,6 +73,9 @@ internal sealed class ImportHarness : IAsyncDisposable
 
     public InMemoryAuditEventWriter RejectionAudit { get; } = new();
 
+    /// <summary>The import worker's volume share (E08-T05): where OPT image paths are resolved.</summary>
+    public ImportVolumeOptions Volumes { get; set; } = new();
+
     public static readonly Guid User = Guid.CreateVersion7();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -92,9 +96,9 @@ internal sealed class ImportHarness : IAsyncDisposable
     }
 
     public ImportJobPreparer Preparer() =>
-        new(Batches, Jobs, Db.Fields, Workspaces, Store, Options, NullLogger<ImportJobPreparer>.Instance);
+        new(Batches, Jobs, Db.Fields, Workspaces, Store, Options, NullLogger<ImportJobPreparer>.Instance, Volumes);
 
-    public ImportChunkExecutor Executor() => new(Batches, Db.Fields, Workspaces, Store);
+    public ImportChunkExecutor Executor() => new(Batches, Db.Fields, Workspaces, Store, Volumes);
 
     /// <summary>A Concordance DAT (þ qualifier, DC4 separator, CRLF rows).</summary>
     public static string Dat(params string[][] rows) =>
@@ -105,7 +109,7 @@ internal sealed class ImportHarness : IAsyncDisposable
     /// <summary>What the API does on start: freeze the auto-mapped profile, upload the DAT, create batch and job.</summary>
     public async Task<ImportBatchRecord> StartAsync(
         Guid ws, byte[] dat, ImportProfileDefinition? profile = null, ImportMode mode = ImportMode.Append,
-        IReadOnlyList<int>? codingFields = null, string name = "volume.dat", bool? mayCreateFields = null)
+        IReadOnlyList<int>? codingFields = null, string name = "volume.dat", bool? mayCreateFields = null, byte[]? opt = null)
     {
         codingFields ??= [];
         profile = (profile ?? new ImportProfileDefinition()) with { Mode = mode };
@@ -128,6 +132,7 @@ internal sealed class ImportHarness : IAsyncDisposable
         var sha = SHA256.HashData(dat);
         var key = ObjectKeys.ImportSource(ws, id, Sha256Digest.FromBytes(sha));
         await Store.PutAsync(key, new MemoryStream(dat), cancellationToken: Ct);
+        var optSource = opt is null ? null : await PutOptAsync(ws, id, opt);
         var creation = await Batches.CreateAsync(new NewImportBatch
         {
             WorkspaceId = ws,
@@ -138,25 +143,60 @@ internal sealed class ImportHarness : IAsyncDisposable
             SourceObjectKey = key.Value,
             SourceSha256 = sha,
             SourceSize = dat.Length,
+            Opt = optSource,
             ProfileJson = ImportProfileRules.Serialize(mapping.EffectiveProfile),
             CodingOverlayFieldIds = codingFields,
             // Like the API: granted exactly when the start-time mapping creates fields or choices (Workspace.ManageFields).
             MayCreateFields = mayCreateFields
                 ?? (mapping.Targets.Any(t => t.CreatesField is not null) || mapping.Columns.Any(c => c.Parsing?.CreateMissingChoices == true)),
             InitiatedBy = User,
-            AuditTemplate = new AuditEvent
-            {
-                OccurredAt = DateTimeOffset.UtcNow,
-                Category = AuditTaxonomy.Import.Category,
-                Action = AuditTaxonomy.Import.Started,
-                ActorType = AuditActorType.User,
-                ActorId = User.ToString(),
-                ActorDisplay = "Import Tester",
-                Outcome = AuditOutcome.Success,
-            },
+            AuditTemplate = StartedAudit(),
         }, Ct);
         return creation.Batch;
     }
+
+    /// <summary>What the API does for an OPT without a DAT: an overlay of the pages of existing documents.</summary>
+    public async Task<ImportBatchRecord> StartImagesOnlyAsync(Guid ws, byte[] opt, ImportProfileDefinition? profile = null, string name = "images.opt")
+    {
+        var id = Guid.CreateVersion7();
+        var source = await PutOptAsync(ws, id, opt, name);
+        var creation = await Batches.CreateAsync(new NewImportBatch
+        {
+            WorkspaceId = ws,
+            ImportBatchId = id,
+            Name = name + " import",
+            Mode = ImportMode.Overlay,
+            SourceFileName = name,
+            SourceObjectKey = source.ObjectKey,
+            SourceSha256 = source.Sha256,
+            SourceSize = source.Size,
+            Opt = source,
+            ImagesOnly = true,
+            ProfileJson = ImportProfileRules.Serialize((profile ?? new ImportProfileDefinition()) with { Mode = ImportMode.Overlay }),
+            InitiatedBy = User,
+            AuditTemplate = StartedAudit(),
+        }, Ct);
+        return creation.Batch;
+    }
+
+    private async Task<ImportOptSource> PutOptAsync(Guid ws, Guid importId, byte[] opt, string name = "volume.opt")
+    {
+        var sha = SHA256.HashData(opt);
+        var key = ObjectKeys.ImportSource(ws, importId, Sha256Digest.FromBytes(sha));
+        await Store.PutAsync(key, new MemoryStream(opt), cancellationToken: Ct);
+        return new ImportOptSource(name, key.Value, sha, opt.Length);
+    }
+
+    private static AuditEvent StartedAudit() => new()
+    {
+        OccurredAt = DateTimeOffset.UtcNow,
+        Category = AuditTaxonomy.Import.Category,
+        Action = AuditTaxonomy.Import.Started,
+        ActorType = AuditActorType.User,
+        ActorId = User.ToString(),
+        ActorDisplay = "Import Tester",
+        Outcome = AuditOutcome.Success,
+    };
 
     public Task<ImportPreparationOutcome> PrepareAsync(ImportBatchRecord batch) => Preparer().PrepareAsync(batch.WorkspaceId, batch.ImportBatchId, Ct);
 
