@@ -117,8 +117,9 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Shutdown: leave the delivery unsettled; closing the channel returns it (see Subscription.DisposeAsync).
             activity?.SetStatus(ActivityStatusCode.Error, "cancelled");
-            await subscription.SettleAsync(delivery, ack: false, requeue: true).ConfigureAwait(false);
+            LogLeftForRedelivery(_logger, queue.Name, envelope.MessageType);
             return;
         }
         catch (PermanentMessageException ex)
@@ -278,6 +279,13 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
             }
         }
 
+        /// <summary>
+        /// Stops consuming. In-flight handlers are cancelled and their deliveries, like any prefetched but not yet
+        /// started, are deliberately left unsettled until the channel closes. A <c>basic.nack(requeue)</c> here would
+        /// count as a failed delivery against the quorum queue's <c>x-delivery-limit</c>, and the broker may hand the
+        /// message straight back to this still-registered consumer, which would nack it again: a stopping worker would
+        /// dead-letter healthy work. Deliveries returned by the channel close are not counted as failed.
+        /// </summary>
         public async ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -331,7 +339,7 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
             {
                 if (_stopping.IsCancellationRequested)
                 {
-                    await SettleAsync(delivery, ack: false, requeue: true).ConfigureAwait(false);
+                    // Prefetched after the stop began: not started, not settled; the channel close returns it.
                     return;
                 }
 
@@ -371,6 +379,9 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not hand a message from {Queue} off to {Exchange}; requeueing it")]
     private static partial void LogHandOffFailed(ILogger logger, string queue, string exchange, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Handling {MessageType} from {Queue} was cancelled by shutdown; the delivery returns to the queue when the channel closes")]
+    private static partial void LogLeftForRedelivery(ILogger logger, string queue, string messageType);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not settle a delivery from {Queue}; the broker will redeliver it")]
     private static partial void LogSettleFailed(ILogger logger, string queue, Exception exception);

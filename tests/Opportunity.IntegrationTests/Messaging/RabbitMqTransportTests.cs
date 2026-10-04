@@ -455,6 +455,46 @@ public sealed class RabbitMqTransportTests(RabbitMqFixture fixture)
         maxInFlight.Should().Be(2);
     }
 
+    /// <summary>
+    /// A stopping consumer returns its in-flight deliveries charged at most one delivery attempt each. It used to
+    /// nack-requeue them while still registered, so the broker handed them (and the ready backlog) straight back to be
+    /// nacked again; one stop could exhaust <c>x-delivery-limit</c> and dead-letter healthy work.
+    /// </summary>
+    [Fact]
+    public async Task Stopping_a_consumer_mid_batch_charges_each_delivery_at_most_once_and_dead_letters_nothing()
+    {
+        var queue = new WorkQueue("test.shutdown", "indexing", MessageLane.Bulk, Prefetch: 4);
+        await using var vhost = await fixture.CreateVirtualHostAsync(Ct);
+        await using var harness = await MessagingHarness.StartAsync(vhost.AmqpUri, vhost.AmqpUri, queues: [queue]);
+        const int Messages = 12;
+        for (var i = 0; i < Messages; i++)
+        {
+            await harness.Publisher.PublishAsync(MessagingHarness.ChunkTask(queue), Ct);
+        }
+
+        var hanging = 0;
+        var subscription = await harness.Consumer.SubscribeAsync(queue, async (_, ct) =>
+        {
+            Interlocked.Increment(ref hanging);
+            await Task.Delay(Timeout.Infinite, ct);
+        }, Ct);
+        await WaitUntilAsync(() => Task.FromResult(Volatile.Read(ref hanging) == queue.Prefetch));
+        await subscription.DisposeAsync();
+
+        var deliveryCounts = new ConcurrentDictionary<Guid, int>();
+        await harness.SubscribeAsync(queue, (message, _) =>
+        {
+            deliveryCounts[message.Envelope.MessageId] = message.DeliveryCount;
+            return Task.CompletedTask;
+        });
+        await WaitUntilAsync(async () => deliveryCounts.Count + await harness.CountAsync(RabbitMqTopology.DeadLetterQueue(queue)) >= Messages);
+
+        (await harness.CountAsync(RabbitMqTopology.DeadLetterQueue(queue))).Should().Be(0, "a stop is not a crash loop");
+        deliveryCounts.Should().HaveCount(Messages);
+        deliveryCounts.Values.Should().OnlyContain(count => count <= 1, "one stop returns each delivery once");
+        deliveryCounts.Values.Count(count => count == 1).Should().Be(queue.Prefetch, "only the in-flight deliveries were returned");
+    }
+
     [Fact]
     public async Task Worker_credentials_can_consume_retry_and_dead_letter_but_not_publish_work()
     {
