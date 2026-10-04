@@ -66,20 +66,17 @@ test('opens a workspace, switches sections and reaches Admin with the keyboard o
     'page',
   );
 
-  const admin = sections.getByRole('button', { name: 'Admin' });
-  await tabTo(page, admin);
+  // Admin opens its first area; its own areas are tabs across the top of the main region (Q-64).
+  await tabTo(page, sections.getByRole('link', { name: 'Admin' }));
   await page.keyboard.press('Enter');
-  const menu = page.getByRole('menu', { name: 'Admin' });
-  await expect(menu).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(menu).toBeHidden();
-  await expect(admin).toBeFocused();
-
-  await page.keyboard.press('ArrowDown');
-  await expect(menu).toBeVisible();
-  await expect(menu.getByRole('menuitem', { name: 'Fields' })).toBeFocused();
-  await page.keyboard.press('ArrowDown');
-  await expect(menu.getByRole('menuitem', { name: 'Choices' })).toBeFocused();
+  await expect(page).toHaveURL(/\/w\/ws-1\/admin\/fields$/);
+  await expect(sections.getByRole('link', { name: 'Admin' })).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  const areas = page.getByRole('navigation', { name: 'Admin' });
+  await expect(areas.getByRole('link', { name: 'Fields' })).toHaveAttribute('aria-current', 'page');
+  await tabTo(page, areas.getByRole('link', { name: 'Choices' }));
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/w\/ws-1\/admin\/choices$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Choices' })).toBeVisible();

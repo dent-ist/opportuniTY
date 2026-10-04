@@ -88,9 +88,118 @@
   margin-inline-start: auto;
 }
 
+.shell__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+// Workspace sections: a collapsible left sidebar (Q-64), sticky below the banner.
+.shell__sidebar {
+  position: sticky;
+  inset-block-start: 3rem;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 14rem;
+  height: calc(100dvh - 3rem);
+  overflow-y: auto;
+  background: var(--opp-color-sidebar-bg);
+  border-inline-end: var(--opp-border-width) solid var(--opp-color-sidebar-border);
+}
+
+.shell__sidebar.is-collapsed {
+  width: 3.5rem;
+}
+
+.shell__side-list {
+  margin: 0;
+  padding: var(--opp-space-2) 0;
+  list-style: none;
+}
+
+.shell__side-link,
+.shell__collapse {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-3);
+  width: 100%;
+  min-height: 2.75rem;
+  padding-inline: var(--opp-space-4);
+  border: 0;
+  border-inline-start: 3px solid transparent;
+  background: transparent;
+  color: var(--opp-color-sidebar-text);
+  font: inherit;
+  font-weight: var(--opp-font-weight-medium);
+  text-align: start;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.shell__side-link opp-icon,
+.shell__collapse opp-icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.shell__side-link:hover,
+.shell__collapse:hover {
+  background: var(--opp-color-sidebar-hover);
+  color: var(--opp-color-sidebar-text-active);
+}
+
+.shell__side-link.is-active {
+  background: var(--opp-color-sidebar-active-bg);
+  border-inline-start-color: var(--opp-color-sidebar-indicator);
+  color: var(--opp-color-sidebar-text-active);
+}
+
+.shell__side-link:focus-visible,
+.shell__collapse:focus-visible {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-sidebar-indicator);
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+.shell__collapse {
+  border-block-start: var(--opp-border-width) solid var(--opp-color-sidebar-border);
+  font-weight: var(--opp-font-weight-regular);
+}
+
+// Collapsed: icons only; the labels stay in the accessibility tree (visually hidden), titles show them on hover.
+.is-collapsed .shell__side-link,
+.is-collapsed .shell__collapse {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.is-collapsed .shell__side-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .shell__main {
   flex: 1;
   min-width: 0;
+}
+
+// A section's own navigation (e.g. Admin areas) across the top of the main region.
+.shell__subnav {
+  padding-inline: var(--opp-space-4);
+  background: var(--opp-color-surface);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  overflow-x: auto;
+}
+
+.shell__subnav .shell__tabs {
+  flex-wrap: nowrap;
 }
 
 .shell__main:focus {
@@ -118,5 +227,9 @@
 @media (forced-colors: active) {
   .shell__tab.is-active {
     border-block-end-color: Highlight;
+  }
+
+  .shell__side-link.is-active {
+    border-inline-start-color: Highlight;
   }
 }

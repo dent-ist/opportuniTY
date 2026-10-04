@@ -20,7 +20,6 @@ const SIGNED_IN_ROUTES = [
 
 /** Popups are rendered only while open, so each is opened and checked separately. */
 const POPUPS = [
-  { name: 'admin menu', path: '/w/ws-1/documents', trigger: { role: 'button', name: 'Admin' } },
   { name: 'user menu', path: '/workspaces', trigger: { role: 'button', name: /User menu/ } },
   {
     name: 'workspace switcher',
@@ -49,6 +48,13 @@ for (const theme of THEMES) {
         await expectNoSeriousAxeViolations(page, testInfo);
       });
     }
+
+    test('workspace sidebar collapsed to icons', async ({ page }, testInfo) => {
+      await openPage(page, '/w/ws-1/admin/fields');
+      await page.getByRole('button', { name: 'Collapse navigation' }).click();
+      await expect(page.getByRole('button', { name: 'Expand navigation' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
 
     test('keyboard shortcut dialogs open', async ({ page }, testInfo) => {
       await openPage(page, '/w/ws-1/documents');

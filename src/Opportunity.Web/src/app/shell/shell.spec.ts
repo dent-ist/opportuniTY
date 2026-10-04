@@ -187,9 +187,11 @@ describe('Application shell', () => {
     setup();
     const harness = await open('/w/ws-1/documents');
     const tabs = () =>
-      [...harness.routeNativeElement!.querySelectorAll('nav .shell__tab')].map((t) =>
-        t.textContent!.trim(),
-      );
+      [
+        ...harness.routeNativeElement!.querySelectorAll(
+          'nav[aria-label="Workspace sections"] .shell__side-link',
+        ),
+      ].map((t) => t.textContent!.trim());
     expect(tabs()).toEqual([
       'Documents',
       'Search Terms Reports',
@@ -207,6 +209,43 @@ describe('Application shell', () => {
     expect(
       harness.routeNativeElement!.querySelector('opp-workspace-switcher button')?.textContent,
     ).toContain('Beta Holdings');
+  });
+
+  it("shows a section's own tabs (Admin areas) at the top of the main region", async () => {
+    setup();
+    const harness = await open('/w/ws-1/admin/choices');
+    const main = harness.routeNativeElement!.querySelector('main')!;
+    const sub = main.querySelector('nav[aria-label="Admin"]')!;
+    expect([...sub.querySelectorAll('.shell__tab')].map((t) => t.textContent!.trim())).toContain(
+      'Fields',
+    );
+    expect(sub.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('Choices');
+    const sidebar = harness.routeNativeElement!.querySelector(
+      'nav[aria-label="Workspace sections"]',
+    )!;
+    expect(sidebar.querySelector('[aria-current="true"]')?.textContent?.trim()).toBe('Admin');
+
+    await go(harness, '/w/ws-1/documents');
+    expect(harness.routeNativeElement!.querySelector('nav[aria-label="Admin"]')).toBeNull();
+  });
+
+  it('collapses the sidebar to icons and keeps the section names for assistive technology', async () => {
+    setup();
+    const harness = await open('/w/ws-1/documents');
+    const sidebar = () =>
+      harness.routeNativeElement!.querySelector<HTMLElement>(
+        'nav[aria-label="Workspace sections"]',
+      )!;
+    const toggle = sidebar().querySelector<HTMLButtonElement>('.shell__collapse')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    toggle.click();
+    harness.detectChanges();
+    expect(sidebar().classList).toContain('is-collapsed');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.textContent?.trim()).toBe('Expand navigation');
+    const documents = sidebar().querySelector('.shell__side-link')!;
+    expect(documents.textContent?.trim()).toBe('Documents');
+    expect(documents.getAttribute('title')).toBe('Documents');
   });
 
   it('shows one "Not available" page for a missing workspace, a forbidden one and a forbidden section', async () => {

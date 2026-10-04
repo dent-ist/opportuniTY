@@ -112,6 +112,12 @@ Installation (self-hosted)
 
 ### 2.2 Workspace header (every workspace page)
 
+> **Updated by Q-64 (product owner, 2026-10-04):** the workspace sections moved from header tabs to a **collapsible
+> left sidebar** (deep navy, cyan active indicator per the brand guide); a section with sub-pages shows them as **tabs
+> across the top of the main region** (Admin's areas replace the former Admin ▾ menu). The header keeps the mark,
+> workspace switcher, freshness pill, job tray and user menu. The diagram below shows the earlier header-tab layout;
+> section order, RBAC filtering and everything else in this section still apply.
+
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────────┐
 │ [opportuniTY mark]  ACME v. Widget ▾ │ Documents  Search Terms Reports  Productions  Imports │
