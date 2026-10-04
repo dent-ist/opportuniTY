@@ -51,7 +51,7 @@ import { LiveNote } from './live-note';
 /**
  * One job (E06-T07): status, the two phases Saved (committed in the database) and Searchable (applied to the search
  * index) with count, percent and time left, chunk, attempt and error counts, the failed and dead-lettered chunks with
- * "Retry failed chunks" (`Job.Replay` / `Job.Manage` only), Cancel (the owner or `Job.Cancel` / `Job.Manage`) and the
+ * "Retry failed chunks" (`Job.Replay` only), Cancel (the owner or `Job.Manage`) and the
  * copyable correlation and frozen-set ids support asks for. Follows the job through the workspace's job feed and
  * announces status changes politely.
  */

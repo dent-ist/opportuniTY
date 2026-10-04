@@ -41,7 +41,7 @@ const failedExport = jobDetail({
 });
 const othersJob = jobSummary({
   jobId: 'job-3',
-  type: 'index',
+  type: 'reindex',
   name: 'Search index rebuild',
   createdBy: { userId: 'u-2', displayName: 'Sam' },
 });
@@ -258,7 +258,7 @@ describe('Jobs section (E06-T07)', () => {
     expect(button('Cancel job')).toBeUndefined();
 
     TestBed.resetTestingModule();
-    await setup([PERMISSIONS.documentView, 'Job.Manage']);
+    await setup([PERMISSIONS.documentView, 'Job.Replay']);
     await go('/w/ws-1/jobs/job-2');
     button('Retry failed chunks')!.click();
     await settle();

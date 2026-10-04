@@ -111,7 +111,8 @@ export const JOB_TYPES: readonly { value: string; label: string }[] = [
   { value: 'bulkCoding', label: 'Mass Edit' },
   { value: 'export', label: 'Export' },
   { value: 'production', label: 'Production' },
-  { value: 'index', label: 'Search index' },
+  { value: 'reindex', label: 'Reindex' },
+  { value: 'relationshipFixup', label: 'Family and duplicate updates' },
   { value: 'render', label: 'Rendering' },
 ];
 
@@ -223,9 +224,9 @@ export function phasesText(job: JobSummary, locale: string): string {
 /** Permission names (docs/security/permission-matrix.md); the contract's finer names are accepted too. */
 export const JOB_PERMISSIONS = {
   viewAll: 'Job.ViewAll',
-  /** The catalogue's `Job.Manage` covers cancel and replay; #61's contract names `Job.Replay` / `Job.Cancel`. */
-  replay: ['Job.Replay', 'Job.Manage'],
-  cancel: ['Job.Cancel', 'Job.Manage'],
+  /** Retrying failed work is `Job.Replay` alone (ADR-015 D5.7); cancelling is the owner or `Job.Manage`. */
+  replay: ['Job.Replay'],
+  cancel: ['Job.Manage'],
 } as const;
 
 export interface Caller {

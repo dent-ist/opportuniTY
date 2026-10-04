@@ -80,15 +80,15 @@ describe('job model (E06-T07)', () => {
     expect(isSettled(jobSummary({ status: 'failed' }))).toBe(true);
   });
 
-  it('allows retry with Job.Replay or Job.Manage, and cancel to the owner or with permission', () => {
+  it('allows retry with Job.Replay only, and cancel to the owner or with Job.Manage', () => {
     expect(canRetry(caller('u-1'))).toBe(false);
     expect(canRetry(caller('u-1', ['Job.Replay']))).toBe(true);
-    expect(canRetry(caller('u-1', ['Job.Manage']))).toBe(true);
+    expect(canRetry(caller('u-1', ['Job.Manage']))).toBe(false);
     expect(canViewAll(caller('u-1', ['Job.ViewAll']))).toBe(true);
     const job = jobSummary();
     expect(canCancel(job, caller('u-1'))).toBe(true);
     expect(canCancel(job, caller('u-2'))).toBe(false);
-    expect(canCancel(job, caller('u-2', ['Job.Cancel']))).toBe(true);
+    expect(canCancel(job, caller('u-2', ['Job.Manage']))).toBe(true);
     expect(canCancel(jobSummary({ status: 'completed' }), caller('u-1', ['Job.Manage']))).toBe(
       false,
     );

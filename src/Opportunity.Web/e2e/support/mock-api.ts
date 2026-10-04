@@ -192,6 +192,7 @@ export const ALL_PERMISSIONS = [
   'PrivilegeLog.Generate',
   'Job.ViewAll',
   'Job.Manage',
+  'Job.Replay',
   'Audit.Read',
   'Audit.ReadSearchText',
   'Workspace.ManageUsers',

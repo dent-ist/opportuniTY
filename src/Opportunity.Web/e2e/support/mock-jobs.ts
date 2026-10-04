@@ -149,7 +149,7 @@ function seed(): MockJob[] {
     {
       ...base,
       jobId: 'job-idx-2',
-      type: 'index',
+      type: 'reindex',
       name: 'Search index rebuild',
       status: 'running',
       createdBy: SAM,
