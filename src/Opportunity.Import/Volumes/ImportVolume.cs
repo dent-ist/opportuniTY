@@ -12,81 +12,82 @@ public sealed class ImportVolumeOptions
     public string? VolumeShareRoot { get; init; }
 }
 
+public enum VolumeFileStatus
+{
+    /// <summary>A regular file inside the volume; <see cref="VolumeFile.FullPath"/> is its link-free real path.</summary>
+    Found,
+
+    /// <summary>The path is acceptable but names nothing readable (absent, a directory, a dangling link).</summary>
+    Missing,
+
+    /// <summary>The path is refused: traversal, an absolute form, or a symbolic link that leads outside the volume.</summary>
+    Rejected,
+}
+
+/// <param name="RelativePath">The parsed volume-relative path (<c>/</c> separators), when the path parsed.</param>
+/// <param name="FullPath">The file to open, only when <see cref="Status"/> is <see cref="VolumeFileStatus.Found"/>.</param>
+/// <param name="Reason">Why the file is missing or rejected; safe to show in the import report.</param>
+public sealed record VolumeFile(VolumeFileStatus Status, string? RelativePath, string? FullPath, string? Reason);
+
 /// <summary>
-/// The import-root jail (ADR-015 D15.1, threat T-43) for load-file paths: a volume root inside the configured share,
-/// and volume-relative paths resolved inside it. <c>\</c> and <c>/</c> both separate; a leading <c>.\</c> is dropped
-/// and a configured prefix (e.g. <c>\\server\export\</c>) is stripped first. Rejected: <c>..</c> segments, rooted,
-/// drive-letter and UNC paths, alternate data streams (<c>:</c>), control characters, and any existing path component
-/// that is a symbolic link or junction (not followed, even when it points inside the root).
+/// A load-file volume on the import share: the folder that relative native, text and image paths resolve against.
+/// <see cref="Resolve"/> parses the path lexically (<see cref="VolumePath"/>), then walks it one component at a time from
+/// the volume's real path, following symbolic links itself, and accepts only a regular file whose real path lies inside
+/// the volume. The returned path contains no links, so opening it cannot be redirected by a link checked earlier.
+/// Volumes produced on Windows often differ in letter case from their DAT paths; a component that does not exist
+/// exactly is matched case-insensitively when exactly one entry matches.
 /// </summary>
-/// <remarks>
-/// E08-T05 (OPT images) and E08-T04 (natives, text) both resolve volume-relative paths; this is the single place that
-/// turns a load-file string into a file path, kept free of import logic so both can share it.
-/// </remarks>
 public sealed class ImportVolume
 {
-    private ImportVolume(string root) => Root = root;
+    private const int MaxLinkHops = 40;
 
-    /// <summary>The volume root as a full path, without a trailing separator.</summary>
+    private static readonly StringComparison PathComparison =
+        OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+    private ImportVolume(string realRoot) => Root = realRoot;
+
+    /// <summary>The volume folder's real path (links resolved).</summary>
     public string Root { get; }
 
     /// <summary>
-    /// The volume root for an import: <paramref name="volumeRoot"/> (relative to the share, or absolute inside it; empty
-    /// is the share itself), which must be an existing directory reached without symbolic links.
+    /// Opens <paramref name="volumeRoot"/> (relative, may be null) under the import share <paramref name="shareRoot"/>
+    /// (operator-configured, absolute). The volume must be an existing folder inside the share.
     /// </summary>
-    public static bool TryOpen(ImportVolumeOptions options, string? volumeRoot, out ImportVolume? volume, out string? error)
+    private static bool TryOpenCore(string? shareRoot, string? volumeRoot, out ImportVolume? volume, out string? error)
     {
-        ArgumentNullException.ThrowIfNull(options);
         volume = null;
-        if (string.IsNullOrWhiteSpace(options.VolumeShareRoot) || !Path.IsPathFullyQualified(options.VolumeShareRoot))
+        if (string.IsNullOrWhiteSpace(shareRoot) || !Path.IsPathFullyQualified(shareRoot))
         {
-            error = "No import volume share is configured (Import:VolumeShareRoot), so image files cannot be read.";
+            error = "No import share is configured for this installation (Import:VolumeShareRoot), so native and text files cannot be read.";
             return false;
         }
 
-        var share = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.VolumeShareRoot));
-        if (!Directory.Exists(share))
+        var fullShare = Path.GetFullPath(shareRoot);
+        if (!Directory.Exists(fullShare) || Walk(Path.GetPathRoot(fullShare)!, Split(fullShare), null) is not { Path: { } share } || !Directory.Exists(share))
         {
-            error = "The import volume share does not exist on the import worker.";
+            error = "The import share is not available on this worker.";
             return false;
         }
 
         var root = share;
         if (!string.IsNullOrWhiteSpace(volumeRoot))
         {
-            var candidate = volumeRoot.Trim();
-            if (Path.IsPathFullyQualified(candidate))
+            if (!VolumePath.TryParse(volumeRoot, null, out var segments, out var parseError))
             {
-                var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate));
-                if (!IsInside(share, full, allowEqual: true))
-                {
-                    error = "The volume root is outside the import volume share.";
-                    return false;
-                }
-
-                candidate = Path.GetRelativePath(share, full);
-                if (candidate == ".")
-                {
-                    candidate = string.Empty;
-                }
+                error = "The volume folder is not a valid path inside the import share: " + parseError;
+                return false;
             }
 
-            if (candidate.Length > 0)
+            var walked = Walk(share, segments, share);
+            if (walked.Path is null || !Directory.Exists(walked.Path))
             {
-                if (!TryResolveUnder(share, candidate, null, out var resolved, out error))
-                {
-                    error = "The volume root was rejected: " + error;
-                    return false;
-                }
-
-                root = resolved!;
+                error = walked.Rejected
+                    ? "The volume folder leads outside the import share."
+                    : $"The volume folder '{VolumePath.Display(segments)}' does not exist in the import share.";
+                return false;
             }
-        }
 
-        if (!Directory.Exists(root))
-        {
-            error = "The volume root does not exist in the import volume share.";
-            return false;
+            root = walked.Path;
         }
 
         volume = new ImportVolume(root);
@@ -94,100 +95,169 @@ public sealed class ImportVolume
         return true;
     }
 
-    /// <summary>Resolves a load-file path against the volume root; false with the reason when it is rejected.</summary>
-    public bool TryResolve(string loadFilePath, string? stripPrefix, out string? fullPath, out string? error) =>
-        TryResolveUnder(Root, loadFilePath, stripPrefix, out fullPath, out error);
-
-    internal static bool TryResolveUnder(string root, string loadFilePath, string? stripPrefix, out string? fullPath, out string? error)
+    /// <summary>The volume of an import: <paramref name="volumeRoot"/> inside the configured share.</summary>
+    public static bool TryOpen(ImportVolumeOptions options, string? volumeRoot, out ImportVolume? volume, out string? error)
     {
-        fullPath = null;
-        var path = (loadFilePath ?? string.Empty).Trim();
-        if (stripPrefix is { Length: > 0 } prefix)
+        ArgumentNullException.ThrowIfNull(options);
+        return TryOpenCore(options.VolumeShareRoot, volumeRoot, out volume, out error);
+    }
+
+    /// <summary>
+    /// The E08-T05 shape: false with the reason when the path is refused; true with the file to open otherwise, which
+    /// may not exist (the caller reports a missing file).
+    /// </summary>
+    public bool TryResolve(string loadFilePath, string? stripPrefix, out string? fullPath, out string? error)
+    {
+        var file = Resolve(loadFilePath, stripPrefix);
+        error = file.Reason;
+        fullPath = file.Status switch
         {
-            var normalizedPrefix = prefix.Trim().Replace('\\', '/');
-            var normalizedPath = path.Replace('\\', '/');
-            if (normalizedPrefix.Length > 0 && normalizedPath.StartsWith(normalizedPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                path = path[normalizedPrefix.Length..];
-            }
+            VolumeFileStatus.Found => file.FullPath,
+            VolumeFileStatus.Missing => Path.Combine([Root, .. file.RelativePath!.Split('/')]),
+            _ => null,
+        };
+        return file.Status != VolumeFileStatus.Rejected;
+    }
+
+    /// <summary>Resolves a load-file path; never throws for a bad or hostile path.</summary>
+    public VolumeFile Resolve(string? loadFilePath, string? stripPrefix = null)
+    {
+        if (!VolumePath.TryParse(loadFilePath, stripPrefix, out var segments, out var error))
+        {
+            return new VolumeFile(VolumeFileStatus.Rejected, null, null, error);
         }
 
-        if (path.Length == 0)
+        var relative = VolumePath.Display(segments);
+        WalkResult walked;
+        try
         {
-            error = "The path is empty.";
-            return false;
+            walked = Walk(Root, segments, Root);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or PathTooLongException or IOException)
+        {
+            return new VolumeFile(VolumeFileStatus.Missing, relative, null, $"'{relative}' cannot be read: {ex.GetType().Name}.");
         }
 
-        if (path.Length > 4_000 || path.Any(char.IsControl))
+        if (walked.Rejected)
         {
-            error = "The path is too long or contains control characters.";
-            return false;
+            return new VolumeFile(VolumeFileStatus.Rejected, relative, null, $"'{relative}' leads outside the volume through a symbolic link.");
         }
 
-        var slashed = path.Replace('\\', '/');
-        if (slashed.StartsWith('/') || (slashed.Length >= 2 && slashed[1] == ':' && char.IsAsciiLetter(slashed[0])))
+        if (walked.Path is not { } path || !File.Exists(path))
         {
-            error = "Absolute, drive-letter and UNC paths are not allowed; paths are relative to the volume root.";
-            return false;
+            return new VolumeFile(VolumeFileStatus.Missing, relative, null, $"'{relative}' is not in the volume.");
         }
 
-        var segments = new List<string>();
-        foreach (var segment in slashed.Split('/'))
+        return new VolumeFile(VolumeFileStatus.Found, relative, path, null);
+    }
+
+    private readonly record struct WalkResult(string? Path, bool Rejected);
+
+    /// <summary>
+    /// Component-wise resolution from <paramref name="start"/> (itself a real path): links are expanded in place and
+    /// <c>..</c> from link targets pops the real path, so the result is the true real path. With
+    /// <paramref name="containment"/>, a result outside it is rejected (intermediate steps may pass outside, e.g. an
+    /// absolute link that points back in). Null path: something does not exist.
+    /// </summary>
+    private static WalkResult Walk(string start, IReadOnlyList<string> segments, string? containment)
+    {
+        var pending = new Stack<string>(segments.Reverse());
+        var current = start;
+        var hops = 0;
+        while (pending.TryPop(out var segment))
         {
             if (segment.Length == 0 || segment == ".")
             {
                 continue;
             }
 
-            if (segment.Trim() == ".." || segment.Contains(':', StringComparison.Ordinal))
+            if (segment == "..")
             {
-                error = "The path leaves the volume root ('..') or names a drive or stream (':').";
-                return false;
+                current = Path.GetDirectoryName(current) ?? current;
+                continue;
             }
 
-            segments.Add(segment);
-        }
-
-        if (segments.Count == 0)
-        {
-            error = "The path names no file.";
-            return false;
-        }
-
-        var current = root;
-        foreach (var segment in segments)
-        {
-            current = Path.Combine(current, segment);
-            FileSystemInfo info = new FileInfo(current);
-            if (!info.Exists)
+            var candidate = Path.Join(current, segment);
+            if (!Exists(candidate))
             {
-                info = new DirectoryInfo(current);
+                if (CaseInsensitiveMatch(current, segment) is not { } match)
+                {
+                    return new WalkResult(null, false);
+                }
+
+                candidate = match;
             }
 
-            // A link is rejected even when it resolves inside the root: the jail never follows links.
-            if (info.Exists && (info.LinkTarget is not null || info.Attributes.HasFlag(FileAttributes.ReparsePoint)))
+            var link = new FileInfo(candidate).LinkTarget;
+            if (link is null)
             {
-                error = "The path goes through a symbolic link, which is not followed.";
-                return false;
+                current = candidate;
+                continue;
+            }
+
+            if (++hops > MaxLinkHops)
+            {
+                return new WalkResult(null, true);
+            }
+
+            foreach (var part in Split(link).Reverse())
+            {
+                pending.Push(part);
+            }
+
+            if (Path.IsPathRooted(link))
+            {
+                current = Path.GetPathRoot(link)!;
             }
         }
 
-        var full = Path.GetFullPath(current);
-        if (!IsInside(root, full, allowEqual: false))
+        if (containment is not null && !IsWithin(containment, current))
         {
-            error = "The path leaves the volume root.";
-            return false;
+            return new WalkResult(null, true);
         }
 
-        fullPath = full;
-        error = null;
-        return true;
+        return new WalkResult(current, false);
     }
 
-    private static bool IsInside(string root, string full, bool allowEqual)
+    private static bool Exists(string path)
     {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return (allowEqual && string.Equals(root, full, comparison))
-            || full.StartsWith(root + Path.DirectorySeparatorChar, comparison);
+        var info = new FileInfo(path);
+        return info.Exists || Directory.Exists(path) || info.LinkTarget is not null;
+    }
+
+    private static string? CaseInsensitiveMatch(string directory, string name)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return null;
+        }
+
+        string? found = null;
+        foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
+        {
+            if (string.Equals(Path.GetFileName(entry), name, StringComparison.OrdinalIgnoreCase))
+            {
+                if (found is not null)
+                {
+                    return null; // ambiguous
+                }
+
+                found = entry;
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>The components of <paramref name="path"/> after its root, if any.</summary>
+    private static string[] Split(string path) =>
+        path[(Path.GetPathRoot(path)?.Length ?? 0)..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+
+    private static bool IsWithin(string root, string path)
+    {
+        var r = root.TrimEnd(Path.DirectorySeparatorChar);
+        return path.Equals(r, PathComparison)
+            || (path.StartsWith(r, PathComparison) && path.Length > r.Length && path[r.Length] == Path.DirectorySeparatorChar)
+            || (r.Length == 0 && path.StartsWith(Path.DirectorySeparatorChar));
     }
 }

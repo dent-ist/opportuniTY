@@ -1,4 +1,4 @@
--- V0024: family reconstruction from BegAttach/EndAttach, ParentID and GroupIdentifier (E09-T01, #84).
+-- V0023: family reconstruction from BegAttach/EndAttach, ParentID and GroupIdentifier (E09-T01, #84).
 -- Binding: ADR-009 §2 (three family modes, precedence pointer > group > range, R7 FamilyId = top-level parent, R8
 -- FamilySequence and immediate ParentDocumentId, R10 conflicts flagged never silent, R11 version bump + reindex,
 -- R25 FamilyDate), ADR-005 P1-P10, ADR-015 D7 (RLS).

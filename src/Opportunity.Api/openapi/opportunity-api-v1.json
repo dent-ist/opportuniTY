@@ -5584,6 +5584,12 @@
           }
         }
       },
+      "MissingFilePolicy": {
+        "enum": [
+          "flag",
+          "error"
+        ]
+      },
       "NewFieldPreview": {
         "required": [
           "name",
@@ -5714,6 +5720,12 @@
               "null",
               "string"
             ]
+          },
+          "textInLoadFile": {
+            "type": "boolean"
+          },
+          "missingFiles": {
+            "$ref": "#/components/schemas/MissingFilePolicy"
           }
         }
       },

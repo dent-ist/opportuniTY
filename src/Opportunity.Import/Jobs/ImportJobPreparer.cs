@@ -35,6 +35,12 @@ public sealed class ImportJobOptions
     /// <summary>How often the import worker looks for imports to prepare.</summary>
     public TimeSpan PreparationPollInterval { get; init; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>Characters of extracted text the projection indexes (Q-29); longer texts are flagged Text Truncated.</summary>
+    public int IndexedTextCap { get; init; } = 10_000_000;
+
+    /// <summary>Volume files of one chunk read and stored in parallel.</summary>
+    public int FileConcurrency { get; init; } = 4;
+
     public string WorkerId { get; init; } = string.Create(
         CultureInfo.InvariantCulture, $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}");
 }
@@ -71,6 +77,8 @@ public sealed partial class ImportJobPreparer(
     ImportVolumeOptions? volumes = null)
 {
     public const string ImageVolumeUnavailable = "image-volume-unavailable";
+    /// <summary>Failure code: the mapping links natives or text files but the volume cannot be read (E08-T04).</summary>
+    public const string VolumeUnavailable = "import-volume-unavailable";
 
     public async Task<ImportPreparationOutcome> PrepareAsync(Guid workspaceId, Guid importBatchId, CancellationToken cancellationToken = default)
     {
@@ -206,6 +214,8 @@ public sealed partial class ImportJobPreparer(
             }
 
             var chunks = new List<ImportChunkRange>();
+            var volumeColumns = ImportArtifactLinker.VolumeColumns(mapping);
+            var volumeChecked = false;
             var keys = new List<ImportKey>(options.KeyBatchSize);
             var batesKeys = new List<ImportKey>(matchByBates ? options.KeyBatchSize : 0);
             var missingChoices = new Dictionary<string, (TargetBinding Target, HashSet<string> Names)>(StringComparer.Ordinal);
@@ -229,6 +239,16 @@ public sealed partial class ImportJobPreparer(
                 if (record.IsRejected)
                 {
                     continue;
+                }
+
+                // E08-T04: the first row that names a native or text file checks that the volume can be read.
+                if (!volumeChecked && ImportArtifactLinker.LinksFile(volumeColumns, record.Values))
+                {
+                    volumeChecked = true;
+                    if (ImportArtifactLinker.VolumeProblem(mapping, volumes ?? new ImportVolumeOptions()) is { } volumeProblem)
+                    {
+                        return ScanResult.Fail(VolumeUnavailable, volumeProblem);
+                    }
                 }
 
                 var mapped = mapping.Map(record.RowNumber, record.Values);

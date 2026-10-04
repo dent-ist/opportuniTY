@@ -43,8 +43,11 @@ internal sealed class ImportHarness : IAsyncDisposable
 {
     public const char Dc4 = '\u0014';
 
-    private ImportHarness(CoreSchemaDatabase db, string storeRoot, ImportJobOptions options)
+    private readonly bool _ownsDatabase;
+
+    private ImportHarness(CoreSchemaDatabase db, string storeRoot, ImportJobOptions options, bool ownsDatabase = true)
     {
+        _ownsDatabase = ownsDatabase;
         Db = db;
         StoreRoot = storeRoot;
         Options = options;
@@ -73,19 +76,31 @@ internal sealed class ImportHarness : IAsyncDisposable
 
     public InMemoryAuditEventWriter RejectionAudit { get; } = new();
 
-    /// <summary>The import worker's volume share (E08-T05): where OPT image paths are resolved.</summary>
+    /// <summary>The import worker's volume share: where native and text (E08-T04) and OPT image (E08-T05) paths resolve.</summary>
     public ImportVolumeOptions Volumes { get; set; } = new();
 
     public static readonly Guid User = Guid.CreateVersion7();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    public static async Task<ImportHarness> CreateAsync(MigrationPostgresFixture postgres, int rowsPerChunk = 500)
+    public static async Task<ImportHarness> CreateAsync(MigrationPostgresFixture postgres, int rowsPerChunk = 500, string? volumeRoot = null, int? textCap = null)
     {
         var db = await CoreSchemaDatabase.CreateAsync(postgres);
+        return Over(db, rowsPerChunk, volumeRoot, textCap, ownsDatabase: true);
+    }
+
+    /// <summary>The pipeline over a database another harness owns (and disposes).</summary>
+    public static ImportHarness Over(CoreSchemaDatabase db, int rowsPerChunk = 500, string? volumeRoot = null, int? textCap = null, bool ownsDatabase = false)
+    {
         var root = Path.Combine(Path.GetTempPath(), "opp-import-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        return new ImportHarness(db, root, new ImportJobOptions { RowsPerChunk = rowsPerChunk, KeyBatchSize = 7 });
+        var options = new ImportJobOptions
+        {
+            RowsPerChunk = rowsPerChunk,
+            KeyBatchSize = 7,
+            IndexedTextCap = textCap ?? new ImportJobOptions().IndexedTextCap,
+        };
+        return new ImportHarness(db, root, options, ownsDatabase) { Volumes = new ImportVolumeOptions { VolumeShareRoot = volumeRoot } };
     }
 
     public async Task<Guid> WorkspaceAsync(bool caseSensitive = false)
@@ -98,7 +113,7 @@ internal sealed class ImportHarness : IAsyncDisposable
     public ImportJobPreparer Preparer() =>
         new(Batches, Jobs, Db.Fields, Workspaces, Store, Options, NullLogger<ImportJobPreparer>.Instance, Volumes);
 
-    public ImportChunkExecutor Executor() => new(Batches, Db.Fields, Workspaces, Store, Volumes);
+    public ImportChunkExecutor Executor() => new(Batches, Db.Fields, Workspaces, Store, Options, Volumes);
 
     /// <summary>A Concordance DAT (þ qualifier, DC4 separator, CRLF rows).</summary>
     public static string Dat(params string[][] rows) =>
@@ -300,7 +315,11 @@ internal sealed class ImportHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await Db.DisposeAsync();
+        if (_ownsDatabase)
+        {
+            await Db.DisposeAsync();
+        }
+
         if (Directory.Exists(StoreRoot))
         {
             Directory.Delete(StoreRoot, recursive: true);

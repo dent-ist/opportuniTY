@@ -51,6 +51,13 @@ public interface IImportBatchStore
     Task<ImportChunkRange?> GetChunkRangeAsync(Guid workspaceId, Guid importBatchId, long rowFrom, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The current documents with these normalized control numbers (any not listed does not exist). An import chunk asks
+    /// before it stores an overlaid document's files, whose keys live under that document (ADR-011 §1.5).
+    /// </summary>
+    Task<IReadOnlyDictionary<string, Guid>> FindDocumentIdsAsync(
+        Guid workspaceId, IReadOnlyCollection<string> controlNumberNorms, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// One import chunk in one transaction (§12, §21): append/overlay by control number, members, row issues, counters,
     /// one IndexChunkTask and fence F3. <paramref name="chunk"/> must be a leased <c>ImportRows</c> chunk of the
     /// batch's job. When F3 refuses, nothing is written and the chunk is released (or cancelled).
@@ -315,6 +322,11 @@ public sealed record ImportRow
     /// document break) instead of a DAT row.
     /// </summary>
     public long? OptRowNo { get; init; }
+    /// <summary>
+    /// Files already in object storage for <see cref="Document"/> (E08-T04). The chunk registers them with the document
+    /// and points <see cref="Document.NativeObjectId"/> / <see cref="Document.TextObjectId"/> at the native and text.
+    /// </summary>
+    public IReadOnlyList<ImportObject> Objects { get; init; } = [];
 
     public bool HasErrors => Document is null || Issues.Any(i => i.Severity == ImportIssueSeverity.Error);
 }

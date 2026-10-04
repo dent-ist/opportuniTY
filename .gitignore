@@ -32,3 +32,6 @@ artifacts/
 /audit/
 gitleaks.sarif
 deploy/docker-compose/compose.override.yaml
+
+# Developer import share mounted into the worker (E08-T04); holds copies of load-file volumes
+deploy/docker-compose/import-share/
