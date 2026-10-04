@@ -1,0 +1,100 @@
+<p class="step__intro">
+  Upload the load file. Natives, extracted text and page images are not uploaded: they are read from
+  the volume folder in the server's import share.
+</p>
+
+<div class="step__grid">
+  <div class="step__file">
+    <label class="step__label" for="import-dat"
+      >Load file (DAT or CSV) <span aria-hidden="true">*</span></label
+    >
+    <input
+      id="import-dat"
+      type="file"
+      accept=".dat,.csv,.txt"
+      aria-describedby="import-dat-hint"
+      (change)="onDat($event)"
+    />
+    <p class="step__hint" id="import-dat-hint">
+      @if (store.datFile(); as dat) {
+        {{ dat.name }} · {{ size(dat) }}
+      } @else {
+        No file chosen.
+      }
+    </p>
+  </div>
+
+  <div class="step__file">
+    <label class="step__label" for="import-opt">Image load file (OPT, optional)</label>
+    <input
+      id="import-opt"
+      type="file"
+      accept=".opt,.txt"
+      aria-describedby="import-opt-hint"
+      (change)="onOpt($event)"
+    />
+    <p class="step__hint" id="import-opt-hint">
+      @if (store.optFile(); as opt) {
+        {{ opt.name }} · {{ size(opt) }}
+      } @else {
+        Without an OPT, the documents get no page images.
+      }
+    </p>
+  </div>
+</div>
+
+<div class="step__grid">
+  <opp-text-field
+    label="Volume folder in the import share"
+    placeholder="matter-a/VOL001"
+    hint="Relative paths in the load file are read from this folder. Leave empty for the share itself."
+    [value]="store.paths().volumeRoot ?? ''"
+    [error]="store.volumeRootError() ?? undefined"
+    (valueChange)="setVolumeRoot($event)"
+  />
+  <opp-text-field
+    label="Import name"
+    [placeholder]="store.defaultName()"
+    [hint]="
+      store.defaultName()
+        ? 'Default: ' + store.defaultName() + '. The name finds this load again later.'
+        : 'Defaults to the load file name and today’s date.'
+    "
+    [(value)]="store.name"
+  />
+  <opp-select
+    label="Import profile"
+    placeholder="None: detect the format and auto-map"
+    hint="A saved profile fills in the format, mapping, mode and path settings."
+    [options]="profileOptions()"
+    [value]="store.profileId()"
+    (valueChange)="onProfile($event)"
+  />
+</div>
+
+<fieldset class="step__group">
+  <legend>Import mode</legend>
+  <div class="step__radios">
+    @for (m of modes; track m) {
+      <label class="step__radio">
+        <input
+          type="radio"
+          name="import-mode"
+          [value]="m"
+          [checked]="store.mode() === m"
+          [disabled]="m !== 'append' && !store.canOverlay"
+          (change)="store.setMode(m)"
+        />
+        <span class="step__radio-text">
+          <span>{{ modeLabels[m] }}</span>
+          <span class="step__radio-hint">{{ modeHints[m] }}</span>
+        </span>
+      </label>
+    }
+  </div>
+  @if (!store.canOverlay) {
+    <p class="step__hint">
+      Your role can load new documents only; overlays need overlay permission.
+    </p>
+  }
+</fieldset>

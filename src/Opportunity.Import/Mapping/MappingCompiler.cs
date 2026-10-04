@@ -1,3 +1,4 @@
+using Opportunity.Application.Import;
 using Opportunity.Contracts.Import;
 using Opportunity.Core.Fields;
 using Opportunity.Import.Volumes;
@@ -24,6 +25,9 @@ public sealed record MappingOptions
 public static class MappingCompiler
 {
     public const int MaxTargetsPerColumn = 4;
+
+    /// <summary>Trailing column of a re-loadable error file (<c>DatErrorFileWriter.ErrorColumn</c>); never loaded.</summary>
+    public const string ImportErrorColumn = "ImportError";
 
     private enum Rank
     {
@@ -114,6 +118,13 @@ public static class MappingCompiler
             BindTimeColumn(column, column.Parsing!.TimeColumn!, byName, issues);
         }
 
+        // The trailing column of a re-loadable error file (E08-T06) is never loaded, so a fixed error file loads unchanged.
+        foreach (var column in columns.Where(c => c.Status == ColumnStatus.Unmapped && !profileRows.ContainsKey(c)
+                     && string.Equals(c.Column.Trim(), ImportErrorColumn, StringComparison.OrdinalIgnoreCase)))
+        {
+            column.Status = ColumnStatus.Ignored;
+        }
+
         // 2. Auto-map.
         if (options.AutoMap)
         {
@@ -177,6 +188,11 @@ public static class MappingCompiler
             issues.Add(Error("invalid-prefix", "The control number prefix must be at most 50 characters without control characters."));
         }
 
+        if (profile.StopAfterErrors is < 1)
+        {
+            issues.Add(Error("invalid-stop-after-errors", "'Stop after N errors' must be at least 1 (or not set, to load the whole file)."));
+        }
+
         var paths = profile.Paths ?? new PathSettings();
         if (paths.VolumeRoot is { } volumeRoot && !string.IsNullOrWhiteSpace(volumeRoot) && !VolumePath.TryParse(volumeRoot, null, out _, out var volumeError))
         {
@@ -191,6 +207,23 @@ public static class MappingCompiler
         if (!Enum.IsDefined(paths.MissingFiles))
         {
             issues.Add(Error("invalid-missing-file-policy", "Unknown missing-file handling."));
+        }
+
+        var overlay = profile.Overlay ?? new OverlaySettings();
+        if (!Enum.IsDefined(profile.Mode))
+        {
+            issues.Add(Error("invalid-mode", "Unknown import mode. Use append, overlay or appendOverlay."));
+        }
+
+        if (!Enum.IsDefined(overlay.MultiValue))
+        {
+            issues.Add(Error("invalid-multi-value", "Unknown multi-value overlay option. Use replace or merge."));
+        }
+
+        if (!IsControlNumberKey(overlay))
+        {
+            issues.Add(Error(ImportKeyRules.KeyNotUnique,
+                $"'{overlay.KeyField ?? overlay.KeyFieldId?.ToString(System.Globalization.CultureInfo.InvariantCulture)}' cannot be the overlay key: only fields declared unique can, and today that is Control Number."));
         }
     }
 
@@ -268,7 +301,7 @@ public static class MappingCompiler
 
         if (field.Storage == FieldStorage.Coding || field.IsSecurityAffecting)
         {
-            if (!profile.Overlay.AllowCodingFieldOverlay)
+            if (!profile.Overlay.CodingFieldsAllowed)
             {
                 issues.Add(Error("coding-field",
                     $"{field.Name} is a coding or privilege field; it can only be loaded when an administrator allows coding-field overlay (Q-31).", column));
@@ -589,17 +622,24 @@ public static class MappingCompiler
             issues.Add(Warning("time-column-unused", $"Column '{column.Column}' names a time column but maps to no date field.", column.Column));
         }
 
-        var keyField = profile.Overlay.KeyFieldId ?? SystemFields.ControlNumber;
-        var hasKey = active.Any(c => c.Targets.Any(t => t.Usable && t.FieldId == keyField));
+        // The overlay key is Control Number (E08-T07): rows are matched by it, so it is mapped in every mode.
         var hasControl = active.Any(c => c.Targets.Any(t => t.Usable && t.IsControlNumber));
-        if (!hasControl && (profile.Mode != ImportMode.Overlay || !hasKey))
+        if (!hasControl)
         {
-            issues.Add(Error("control-number-unmapped", "No column is mapped to Control Number; every document needs one."));
+            issues.Add(profile.Mode == ImportMode.Append
+                ? Error("control-number-unmapped", "No column is mapped to Control Number; every document needs one.")
+                : Error("overlay-key-unmapped", "Overlay needs the overlay key field (Control Number) to be mapped."));
         }
-        else if (profile.Mode != ImportMode.Append && !hasKey)
-        {
-            issues.Add(Error("overlay-key-unmapped", "Overlay needs the overlay key field to be mapped."));
-        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="overlay"/> names Control Number as its key (by name, with or without the space, or by
+    /// id): the only field declared unique today, so the only overlay key (E08-T07).
+    /// </summary>
+    public static bool IsControlNumberKey(OverlaySettings overlay)
+    {
+        ArgumentNullException.ThrowIfNull(overlay);
+        return ImportKeyRules.IsControlNumberKey(overlay.KeyField, overlay.KeyFieldId);
     }
 
     private static void BuildSettings(ColumnBinding column, ImportProfileDefinition profile, MappingOptions options, List<MappingIssue> issues)

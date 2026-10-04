@@ -2239,6 +2239,98 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/imports/preflight": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Pre-flight an import: check the load file, mapping, rows, workspace collisions and file paths without loading anything.",
+        "description": "Same multipart body as starting an import. 200 with error/warning counts and the first 200 issues; all issues download as CSV from …/imports/preflight/{preflightId}/issues for 48 hours (creator only).",
+        "operationId": "PreflightImport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportStartForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreflightResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/imports/{importId}": {
       "get": {
         "tags": [
@@ -3583,6 +3675,263 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/imports/{importId}/report": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "The import summary report: rows, natives/text, images/pages, families, elapsed and issue counts (frozen when the import finishes).",
+        "operationId": "GetImportReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "importId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReportResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/imports/{importId}/report.csv": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "The import summary report as CSV (UTF-8 with BOM): one Section,Metric,Value line per figure.",
+        "operationId": "DownloadImportReportCsv",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "importId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/imports/{importId}/error-file": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "The re-loadable error file: the DAT header plus ImportError, then every row not loaded, byte for byte in the source's delimiters and encoding.",
+        "description": "Fix the rows and load the file again unchanged: the ImportError column is never loaded. 409 for an OPT-only load (no DAT).",
+        "operationId": "DownloadImportErrorFile",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "importId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/imports/preflight/{preflightId}/issues": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Every issue of a pre-flight as CSV (UTF-8 with BOM), in row order; kept 48 hours, for the user who ran it only.",
+        "operationId": "DownloadImportPreflightIssues",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "preflightId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -6145,6 +6494,133 @@
           "appendOverlay"
         ]
       },
+      "ImportPreflightIssue": {
+        "required": [
+          "row",
+          "controlNumber",
+          "column",
+          "code",
+          "severity",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "row": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "column": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ImportRowIssueSeverity"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ImportPreflightIssueCount": {
+        "required": [
+          "code",
+          "severity",
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ImportRowIssueSeverity"
+          },
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ImportPreflightResource": {
+        "required": [
+          "preflightId",
+          "rowsRead",
+          "errorCount",
+          "warningCount",
+          "blocking",
+          "issueCounts",
+          "issues",
+          "mode"
+        ],
+        "type": "object",
+        "properties": {
+          "preflightId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rowsRead": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "errorCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "warningCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "issueCounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportPreflightIssueCount"
+            }
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportPreflightIssue"
+            }
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImportMode"
+          }
+        }
+      },
       "ImportProfileDefinition": {
         "type": "object",
         "properties": {
@@ -6185,6 +6661,15 @@
           },
           "relationships": {
             "$ref": "#/components/schemas/RelationshipSettings"
+          },
+          "stopAfterErrors": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           },
           "columns": {
             "type": "array",
@@ -6403,6 +6888,273 @@
           }
         }
       },
+      "ImportReportFamilies": {
+        "required": [
+          "built",
+          "orphans"
+        ],
+        "type": "object",
+        "properties": {
+          "built": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "orphans": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ImportReportFiles": {
+        "required": [
+          "linked",
+          "missing"
+        ],
+        "type": "object",
+        "properties": {
+          "linked": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "missing": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "truncated": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64",
+            "default": 0
+          }
+        }
+      },
+      "ImportReportImages": {
+        "required": [
+          "documentsLinked",
+          "documentsWithoutImages",
+          "pagesLinked",
+          "pagesMissing"
+        ],
+        "type": "object",
+        "properties": {
+          "documentsLinked": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsWithoutImages": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pagesLinked": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pagesMissing": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ImportReportResource": {
+        "required": [
+          "importId",
+          "name",
+          "mode",
+          "sourceFileName",
+          "status",
+          "final",
+          "startedAt",
+          "completedAt",
+          "elapsedSeconds",
+          "rows",
+          "natives",
+          "text",
+          "images",
+          "families",
+          "fieldsCreated",
+          "choicesCreated",
+          "errorFileRows",
+          "issueCounts"
+        ],
+        "type": "object",
+        "properties": {
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImportMode"
+          },
+          "sourceFileName": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobResourceStatus"
+          },
+          "final": {
+            "type": "boolean"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "elapsedSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "rows": {
+            "$ref": "#/components/schemas/ImportReportRows"
+          },
+          "natives": {
+            "$ref": "#/components/schemas/ImportReportFiles"
+          },
+          "text": {
+            "$ref": "#/components/schemas/ImportReportFiles"
+          },
+          "images": {
+            "$ref": "#/components/schemas/ImportReportImages"
+          },
+          "families": {
+            "$ref": "#/components/schemas/ImportReportFamilies"
+          },
+          "fieldsCreated": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "choicesCreated": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "errorFileRows": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "issueCounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportPreflightIssueCount"
+            }
+          }
+        }
+      },
+      "ImportReportRows": {
+        "required": [
+          "read",
+          "imported",
+          "overlaid",
+          "skipped",
+          "errored",
+          "withWarnings"
+        ],
+        "type": "object",
+        "properties": {
+          "read": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "imported": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "overlaid": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "skipped": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "errored": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "withWarnings": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "ImportResource": {
         "required": [
           "importId",
@@ -6488,6 +7240,16 @@
           "imagesOnly": {
             "type": "boolean",
             "default": false
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ImportReportResource"
+              }
+            ]
           }
         }
       },
@@ -7247,9 +8009,30 @@
           }
         }
       },
+      "OverlayMultiValue": {
+        "enum": [
+          "replace",
+          "merge"
+        ]
+      },
       "OverlaySettings": {
         "type": "object",
         "properties": {
+          "keyField": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "blankValuesOverwrite": {
+            "type": "boolean"
+          },
+          "multiValue": {
+            "$ref": "#/components/schemas/OverlayMultiValue"
+          },
+          "allowCodingFields": {
+            "type": "boolean"
+          },
           "keyFieldId": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [

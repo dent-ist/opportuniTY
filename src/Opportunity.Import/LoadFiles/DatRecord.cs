@@ -62,5 +62,8 @@ public sealed class DatRecord
     /// <summary>Value of the key column (<see cref="DatReaderOptions.KeyColumn"/>), when present.</summary>
     public string? ControlNumber { get; }
 
+    /// <summary>The record's bytes as in the file (no terminator); only with <see cref="DatReaderOptions.CaptureRawRecords"/>.</summary>
+    public ReadOnlyMemory<byte> RawRecord { get; internal init; }
+
     public string? this[string column] => Header.IndexOf(column) is var i and >= 0 && i < Values.Count ? Values[i] : null;
 }

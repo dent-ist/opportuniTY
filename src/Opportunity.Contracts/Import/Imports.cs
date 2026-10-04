@@ -32,6 +32,7 @@ public sealed record ImportStartRequest
 /// <summary>
 /// An import (one load of a DAT, with or without an OPT, or of an OPT alone) with its report in the import report vocabulary (read / imported / overlaid / skipped /
 /// errored) and the job that runs it. <see cref="ImportId"/> is the import batch every loaded document belongs to.
+/// <c>summary</c> is the full import report (E08-T06), returned by <c>GET …/imports/{id}</c> (null in the list).
 /// </summary>
 public sealed record ImportResource(
     Guid ImportId,
@@ -48,7 +49,8 @@ public sealed record ImportResource(
     DateTimeOffset CreatedAt,
     DateTimeOffset? CompletedAt,
     string? OptFileName = null,
-    bool ImagesOnly = false);
+    bool ImagesOnly = false,
+    ImportReportResource? Summary = null);
 
 /// <summary>The load file an issue refers to.</summary>
 public enum ImportIssueFile

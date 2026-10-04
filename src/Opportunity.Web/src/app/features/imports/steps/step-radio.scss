@@ -1,0 +1,45 @@
+// Radio cards of the import wizard (mode, overlay options).
+
+.step__radio {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 var(--opp-space-2);
+  align-items: start;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  cursor: pointer;
+}
+
+.step__radio:has(input:checked) {
+  border-color: var(--opp-color-accent);
+  background: var(--opp-color-selected);
+}
+
+.step__radio:has(input:disabled) {
+  cursor: default;
+  color: var(--opp-color-text-muted);
+}
+
+.step__radio input {
+  margin: var(--opp-space-1) 0 0;
+  inline-size: 1rem;
+  block-size: 1rem;
+  accent-color: var(--opp-color-accent);
+}
+
+.step__radio-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.step__radio-hint {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.step__radios {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--opp-space-2);
+}

@@ -112,6 +112,10 @@ public sealed class ProtectedContentGatewayTests
             "/api/v1/workspaces/{workspaceId}/documents/{documentId}/pages/{pageNumber}/thumbnail",
             "/api/v1/workspaces/{workspaceId}/exports/{exportId}/files/{fileId}/content",
             "/api/v1/workspaces/{workspaceId}/exports/{exportId}/package",
+            "/api/v1/workspaces/{workspaceId}/imports/{importId}/report",
+            "/api/v1/workspaces/{workspaceId}/imports/{importId}/report.csv",
+            "/api/v1/workspaces/{workspaceId}/imports/{importId}/error-file",
+            "/api/v1/workspaces/{workspaceId}/imports/preflight/{preflightId}/issues",
         ]);
     }
 

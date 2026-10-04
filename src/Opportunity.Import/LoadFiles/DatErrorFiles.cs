@@ -60,6 +60,28 @@ public sealed class DatErrorFileWriter(Stream output, bool leaveOpen = false) : 
         RowsWritten++;
     }
 
+    /// <summary>
+    /// Writes one failed row with its error text (the import's own row errors, E08-T06). Call after
+    /// <see cref="Start"/>; an empty <paramref name="rawRecord"/> (a row too long to buffer) is only counted.
+    /// </summary>
+    public void WriteRecord(ReadOnlySpan<byte> rawRecord, string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        if (_encoding == null)
+        {
+            throw new InvalidOperationException("Start the error file before writing rows.");
+        }
+
+        if (rawRecord.IsEmpty)
+        {
+            UnreproducibleRows++;
+            return;
+        }
+
+        WriteRow(rawRecord, error);
+        RowsWritten++;
+    }
+
     public void Complete(DatReadStatistics statistics) => output.Flush();
 
     public void Dispose()
@@ -88,6 +110,7 @@ public sealed class DatErrorFileWriter(Stream output, bool leaveOpen = false) : 
     private string Qualify(string value)
     {
         DelimiterProfile p = _profile!;
+        value = new string([.. value.Select(c => char.IsControl(c) || c == p.Newline ? ' ' : c)]);
         if (p.Quote is not { } q)
         {
             return value.Replace(p.Column, ' ');

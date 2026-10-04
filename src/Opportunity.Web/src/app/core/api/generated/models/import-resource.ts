@@ -3,6 +3,7 @@
 
 import { ImportMode } from '../models/import-mode';
 import { ImportReport } from '../models/import-report';
+import { ImportReportResource } from '../models/import-report-resource';
 import { JobResource } from '../models/job-resource';
 export interface ImportResource {
   codingOverlayFieldIds: Array<number | string>;
@@ -19,5 +20,6 @@ export interface ImportResource {
   sourceFileName: string;
   sourceSha256: string;
   sourceSize: number | string;
+  summary?: null | ImportReportResource;
   workspaceId: string;
 }

@@ -1,0 +1,63 @@
+// Tables of the import wizard (preview, mapping grid, validation issues).
+
+.step__table-wrap {
+  max-block-size: 28rem;
+  overflow: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.step__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-sm);
+}
+
+.step__table caption {
+  padding: var(--opp-space-2) var(--opp-space-3);
+  text-align: start;
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.step__table th,
+.step__table td {
+  height: var(--opp-row-height);
+  padding: var(--opp-space-1) var(--opp-cell-padding-x);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.step__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--opp-color-surface-sunken);
+  font-weight: var(--opp-font-weight-semibold);
+  white-space: nowrap;
+}
+
+.step__table td.step__nowrap,
+.step__nowrap {
+  white-space: nowrap;
+}
+
+.step__cell-clip {
+  display: block;
+  max-inline-size: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step__muted {
+  color: var(--opp-color-text-muted);
+}
+
+.step__mono {
+  font-family: var(--opp-font-family-mono);
+}
+
+.step__row--unmapped td {
+  background: var(--opp-color-surface-sunken);
+}

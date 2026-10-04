@@ -153,15 +153,17 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
     /// </summary>
     internal static async Task<ImportCodingOutcome> ApplyImportValuesAsync(
         WorkspaceTransaction tx, Guid jobId, Guid actorId, string idempotencyKeyPrefix,
-        IReadOnlyList<(Guid DocumentId, IReadOnlyList<ImportCodingValue> Values)> documents, CancellationToken cancellationToken)
+        IReadOnlyList<(Guid DocumentId, IReadOnlyList<ImportCodingValue> Values)> documents, CancellationToken cancellationToken,
+        IRestrictionClassBinding? restrictions = null)
     {
         var changed = new HashSet<Guid>();
         var fields = new SortedSet<int>();
         var events = 0;
         var security = false;
+        var restrictionChanges = new List<RestrictionClassChange>();
         var groups = documents
             .Where(d => d.Values.Count > 0)
-            .GroupBy(d => string.Join('|', d.Values.OrderBy(v => v.FieldId).Select(v => $"{v.FieldId}={v.Value.ToJsonString()}")), StringComparer.Ordinal)
+            .GroupBy(d => string.Join('|', d.Values.OrderBy(v => v.FieldId).Select(v => $"{v.FieldId}{(v.Merge ? "+" : "=")}{v.Value?.ToJsonString()}")), StringComparer.Ordinal)
             .OrderBy(g => g.Key, StringComparer.Ordinal)
             .ToList();
         for (var i = 0; i < groups.Count; i++)
@@ -177,7 +179,10 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                     Actor = new CodingActor(actorId, CodingActorType.SystemRule),
                     JobId = jobId,
                     Documents = [.. batch.Documents.Select(d => new CodingTarget(d.DocumentId))],
-                    Operations = [.. values.Select(v => CodingFieldOperation.Set(v.FieldId, v.Value.DeepClone()))],
+                    // Multi-value merge adds the load file's choices; a null value (blank values overwrite) clears.
+                    Operations = [.. values.Select(v => v.Merge && v.Value is not null
+                        ? CodingFieldOperation.AddChoices(v.FieldId, [.. FieldValues.ChoiceIds(v.Value)])
+                        : CodingFieldOperation.Set(v.FieldId, v.Value?.DeepClone()))],
                 };
                 var errors = ValidateShape(request);
                 if (errors.Count > 0)
@@ -185,7 +190,8 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                     throw new ArgumentException("Invalid import coding write: " + string.Join("; ", errors.Select(e => e.Message)));
                 }
 
-                var (result, plan) = await ApplyInTransactionAsync(tx, request, null, cancellationToken).ConfigureAwait(false);
+                // §24 rule 1: a security-affecting overlay recomputes the restriction classes in the chunk's transaction.
+                var (result, plan) = await ApplyInTransactionAsync(tx, request, restrictions, cancellationToken).ConfigureAwait(false);
                 if (result.Outcome != CodingWriteOutcome.Applied)
                 {
                     throw new ArgumentException($"Import coding write {result.Outcome}: " + string.Join("; ", result.Errors.Select(e => e.Message)));
@@ -195,10 +201,11 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                 fields.UnionWith(values.Select(v => v.FieldId));
                 events += result.EventsWritten;
                 security |= plan.TouchesSecurity;
+                restrictionChanges.AddRange(plan.RestrictionChanges);
             }
         }
 
-        return new ImportCodingOutcome(changed, fields, events, security);
+        return new ImportCodingOutcome(changed, fields, events, security) { RestrictionChanges = restrictionChanges };
     }
 
     public async Task<IReadOnlyList<DocumentCoding>> GetCurrentAsync(
@@ -1093,7 +1100,11 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
 
     /// <param name="ChangedDocuments">Documents whose coding (and DocumentVersion) changed.</param>
     internal sealed record ImportCodingOutcome(
-        IReadOnlySet<Guid> ChangedDocuments, IReadOnlyCollection<int> FieldIds, int EventsWritten, bool TouchesSecurityAffectingField);
+        IReadOnlySet<Guid> ChangedDocuments, IReadOnlyCollection<int> FieldIds, int EventsWritten, bool TouchesSecurityAffectingField)
+    {
+        /// <summary>Restriction classes the overlay's security-affecting values added or removed (§24 rule 1).</summary>
+        public IReadOnlyList<RestrictionClassChange> RestrictionChanges { get; init; } = [];
+    }
 
     private sealed record PlannedEvent(Guid DocumentId, int FieldId, CodingEventKind Kind, JsonNode? Prior, JsonNode? New, long Version);
 

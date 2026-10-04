@@ -278,8 +278,12 @@ public sealed record ImportRowIssue(ImportIssueSeverity Severity, string Code, s
     public const int MaxMessageLength = 2_000;
 }
 
-/// <summary>A coding/privilege value an administrator enabled for overlay (Q-31); canonical ADR-003 JSON.</summary>
-public sealed record ImportCodingValue(int FieldId, JsonNode Value);
+/// <summary>
+/// A coding/privilege value an administrator enabled for overlay (Q-31); canonical ADR-003 JSON. A null value clears
+/// the field (blank values overwrite, E08-T07); <paramref name="Merge"/> adds a multiple-choice value's choices to the
+/// document's instead of replacing them.
+/// </summary>
+public sealed record ImportCodingValue(int FieldId, JsonNode? Value, bool Merge = false);
 
 /// <summary>One mapped data row of a chunk.</summary>
 public sealed record ImportRow
@@ -302,6 +306,18 @@ public sealed record ImportRow
     public IReadOnlySet<string> SuppliedColumns { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
     public IReadOnlyList<ImportCodingValue> Coding { get; init; } = [];
+
+    /// <summary>
+    /// Overlay only: metadata keys (<c>f{FieldId}</c>) the row blanks while blank values overwrite (E08-T07); they are
+    /// removed from the document. A new document simply lacks them.
+    /// </summary>
+    public IReadOnlySet<string> ClearedMetadataKeys { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Overlay only: multiple-choice metadata keys whose values are merged with the document's (multi-value merge,
+    /// E08-T07) instead of replacing them.
+    /// </summary>
+    public IReadOnlySet<string> MergedMetadataKeys { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>The upstream duplicate group the row names (E09-T02); the chunk records it with its documents.</summary>
     public DuplicateGroupKey? DuplicateGroup { get; init; }

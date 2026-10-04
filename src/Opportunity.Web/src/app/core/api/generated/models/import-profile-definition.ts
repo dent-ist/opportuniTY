@@ -21,5 +21,6 @@ export interface ImportProfileDefinition {
   paths?: PathSettings;
   relationships?: RelationshipSettings;
   schemaVersion?: number | string;
+  stopAfterErrors?: number | string | null;
   unmappedColumns?: UnmappedColumnPolicy;
 }
