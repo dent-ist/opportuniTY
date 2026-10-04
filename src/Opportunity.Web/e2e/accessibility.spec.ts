@@ -149,9 +149,14 @@ for (const theme of THEMES) {
       await openPage(page, '/w/ws-1/documents');
       const keyword = page.getByRole('textbox', { name: 'Keyword' });
       await keyword.fill('agreement');
+      // A new result puts the cursor back on its first row: move only once it is on screen.
+      const searched = page.waitForResponse(
+        (r) => r.request().method() === 'POST' && /\/searches$/.test(new URL(r.url()).pathname),
+      );
       await keyword.press('Enter');
-      await page.waitForLoadState('networkidle');
+      await searched;
       const grid = page.getByRole('grid', { name: 'Documents' });
+      await expect(grid).not.toHaveAttribute('aria-busy', 'true');
       await grid.focus();
       for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
       await expect

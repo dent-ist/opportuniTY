@@ -298,6 +298,8 @@ export class ViewerText {
   }
 
   protected stepFind(delta: 1 | -1): void {
+    // Enter right after typing comes before the highlights caught up with the new find text.
+    this.updateHighlights();
     const ranges = this.findRanges.ranges;
     if (!ranges.length) {
       if (this.query().trim()) this.announcer.announce(this.findLabel());

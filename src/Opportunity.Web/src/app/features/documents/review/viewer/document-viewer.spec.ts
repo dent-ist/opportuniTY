@@ -263,6 +263,19 @@ describe('Document viewer (E16-T04)', () => {
     expect(announced()).toContain('Match 1 of 1');
   });
 
+  it('steps to the first match when Enter follows the typing at once', async () => {
+    await setup();
+    api.chunks[6] = chunksOf(6, 'The agreement ends. Pricing follows.', 1000);
+    await show({ hit: hit(6), state: 'ready', content: loaded(6, documentResource(6)) });
+
+    const find = root.querySelector<HTMLInputElement>('input[aria-label="Find in document"]')!;
+    find.value = 'pricing';
+    find.dispatchEvent(new Event('input'));
+    find.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await settle();
+    expect(root.querySelector('#viewer-find-count')?.textContent).toBe('1 of 1');
+  });
+
   it('highlights the search hit terms and steps through them (hook for Highlight Sets, E16-T12)', async () => {
     await setup();
     api.chunks[6] = chunksOf(6, 'The agreement ends. Agreement terms. Agreements differ.', 1000);
