@@ -21,13 +21,14 @@ preparation with `import-volume-unavailable` when the share is not configured or
 
 1. `VolumePath` (lexical): `\` and `/` separators, leading `.\`, empty and `.` segments ignored. An absolute path is
    accepted only when `paths.stripPrefix` removes its leading part (`\\fileserver\exports\VOL001`, `D:\Prod\VOL001`;
-   case-insensitive, either separator, at a segment boundary). Rejected: `..` (and any all-dots segment), a leading
+   case-insensitive, either separator, at a segment boundary). Rejected: `..` (and any segment of only dots and spaces), a leading
    separator (root, UNC, `\\?\`, `\\.\`), `:` anywhere (drive letters, alternate data streams, URLs), wildcard and
    control characters, segments over 255 or paths over 4,096 characters.
-2. `ImportVolume` (file system): walks the path one component at a time from the volume's real path, expanding
-   symbolic links itself, and accepts only a regular file whose real path is inside the volume. Links that stay inside
-   are followed; links that leave it are rejected; loops and dangling links are missing. The returned path contains no
-   links. A component that does not exist exactly is matched case-insensitively when exactly one entry matches
+2. `ImportVolume` (file system): walks the path one component at a time from the volume's real path and accepts only
+   a regular file inside the volume. Symbolic links are never followed below the import share: a link anywhere on the
+   path (volume folder or file path, pointing inside or outside) rejects it, so nothing a load file names can be
+   redirected. Only the operator-configured share path itself may contain links. An absolute volume folder is accepted
+   only inside the share. A component that does not exist exactly is matched case-insensitively when exactly one entry matches
    (volumes produced on Windows).
 
 ## Outcomes per row
@@ -36,7 +37,7 @@ preparation with `import-volume-unavailable` when the share is not configured or
 |---|---|---|
 | Blank link | `NativeMissing` / `TextMissing` set (new documents), no issue | same |
 | File not in the volume | flag set, warning `native-missing` / `text-missing` | row error, not loaded |
-| Path rejected (traversal, absolute, link outside) | row error `native-path-rejected` / `text-path-rejected` | same |
+| Path rejected (traversal, absolute, any symbolic link) | row error `native-path-rejected` / `text-path-rejected` | same |
 | DAT MD5 / SHA-1 / SHA-256 differs from the native | warning `hash-mismatch-md5` / `-sha1` / `-sha256`; computed value stored | same |
 | Text with invalid byte sequences | `TextEncodingWarning`, warning `text-encoding` | same |
 

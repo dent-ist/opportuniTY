@@ -57,7 +57,7 @@ public static class VolumePath
                 continue;
             }
 
-            if (segment.Trim('.').Length == 0)
+            if (segment.Trim(' ', '.').Length == 0)
             {
                 error = "The path leaves the volume ('..').";
                 return false;

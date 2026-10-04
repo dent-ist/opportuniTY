@@ -32,8 +32,9 @@ public sealed record VolumeFile(VolumeFileStatus Status, string? RelativePath, s
 /// <summary>
 /// A load-file volume on the import share: the folder that relative native, text and image paths resolve against.
 /// <see cref="Resolve"/> parses the path lexically (<see cref="VolumePath"/>), then walks it one component at a time from
-/// the volume's real path, following symbolic links itself, and accepts only a regular file whose real path lies inside
-/// the volume. The returned path contains no links, so opening it cannot be redirected by a link checked earlier.
+/// the volume's real path and accepts only a regular file inside the volume. Symbolic links are never followed below the
+/// import share (the volume folder and every file path from a load file): a link anywhere on the path rejects it, so
+/// nothing a load file names can be redirected. Only the operator-configured share path itself may contain links.
 /// Volumes produced on Windows often differ in letter case from their DAT paths; a component that does not exist
 /// exactly is matched case-insensitively when exactly one entry matches.
 /// </summary>
@@ -63,13 +64,30 @@ public sealed class ImportVolume
         }
 
         var fullShare = Path.GetFullPath(shareRoot);
-        if (!Directory.Exists(fullShare) || Walk(Path.GetPathRoot(fullShare)!, Split(fullShare), null) is not { Path: { } share } || !Directory.Exists(share))
+        if (!Directory.Exists(fullShare) || Walk(Path.GetPathRoot(fullShare)!, Split(fullShare), null, followLinks: true) is not { Path: { } share } || !Directory.Exists(share))
         {
             error = "The import share is not available on this worker.";
             return false;
         }
 
         var root = share;
+        if (!string.IsNullOrWhiteSpace(volumeRoot) && Path.IsPathFullyQualified(volumeRoot.Trim()))
+        {
+            // An absolute volume folder is accepted only inside the share, and is then walked like a relative one.
+            var absolute = Path.GetFullPath(volumeRoot.Trim());
+            if (!IsWithin(fullShare, absolute) && !IsWithin(share, absolute))
+            {
+                error = "The volume folder leads outside the import share.";
+                return false;
+            }
+
+            volumeRoot = Path.GetRelativePath(IsWithin(share, absolute) ? share : fullShare, absolute);
+            if (volumeRoot == ".")
+            {
+                volumeRoot = null;
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(volumeRoot))
         {
             if (!VolumePath.TryParse(volumeRoot, null, out var segments, out var parseError))
@@ -78,7 +96,7 @@ public sealed class ImportVolume
                 return false;
             }
 
-            var walked = Walk(share, segments, share);
+            var walked = Walk(share, segments, share, followLinks: false);
             if (walked.Path is null || !Directory.Exists(walked.Path))
             {
                 error = walked.Rejected
@@ -131,7 +149,7 @@ public sealed class ImportVolume
         WalkResult walked;
         try
         {
-            walked = Walk(Root, segments, Root);
+            walked = Walk(Root, segments, Root, followLinks: false);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or PathTooLongException or IOException)
         {
@@ -140,7 +158,7 @@ public sealed class ImportVolume
 
         if (walked.Rejected)
         {
-            return new VolumeFile(VolumeFileStatus.Rejected, relative, null, $"'{relative}' leads outside the volume through a symbolic link.");
+            return new VolumeFile(VolumeFileStatus.Rejected, relative, null, $"'{relative}' is or passes through a symbolic link, which is never followed in a volume.");
         }
 
         if (walked.Path is not { } path || !File.Exists(path))
@@ -157,9 +175,10 @@ public sealed class ImportVolume
     /// Component-wise resolution from <paramref name="start"/> (itself a real path): links are expanded in place and
     /// <c>..</c> from link targets pops the real path, so the result is the true real path. With
     /// <paramref name="containment"/>, a result outside it is rejected (intermediate steps may pass outside, e.g. an
-    /// absolute link that points back in). Null path: something does not exist.
+    /// absolute link that points back in). Null path: something does not exist. Without <paramref name="followLinks"/>
+    /// any link on the path rejects it.
     /// </summary>
-    private static WalkResult Walk(string start, IReadOnlyList<string> segments, string? containment)
+    private static WalkResult Walk(string start, IReadOnlyList<string> segments, string? containment, bool followLinks)
     {
         var pending = new Stack<string>(segments.Reverse());
         var current = start;
@@ -193,6 +212,11 @@ public sealed class ImportVolume
             {
                 current = candidate;
                 continue;
+            }
+
+            if (!followLinks)
+            {
+                return new WalkResult(null, true);
             }
 
             if (++hops > MaxLinkHops)

@@ -5,9 +5,8 @@ using Opportunity.Import.Volumes;
 namespace Opportunity.UnitTests.Import.Volumes;
 
 /// <summary>
-/// E08-T04: resolving load-file paths inside a volume on disk — symbolic links that stay inside are followed, links that
-/// leave the volume (or the import share) are rejected, letter case is forgiven, and a fuzz test over hostile paths
-/// never yields a file outside the volume.
+/// E08-T04/T05: resolving load-file paths inside a volume on disk: symbolic links are never followed (inside or out),
+/// letter case is forgiven, and a fuzz test over hostile paths never yields a file outside the volume or a link.
 /// </summary>
 public sealed class ImportVolumeTests : IDisposable
 {
@@ -107,13 +106,15 @@ public sealed class ImportVolumeTests : IDisposable
     [InlineData("link-chain.pdf", "NATIVES/0001/ABC0001.pdf")]
     [InlineData(@"DIR-IN\0001\ABC0001.pdf", "NATIVES/0001/ABC0001.pdf")]
     [InlineData(@"DIR-ESCAPE-BACK\T001\ABC0001.txt", "TEXT/T001/ABC0001.txt")]
-    public void Symbolic_links_inside_the_volume_are_followed_to_a_link_free_path(string raw, string target)
+    public void Symbolic_links_are_rejected_even_when_they_stay_inside_the_volume(string raw, string target)
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Symbolic links need elevated rights on Windows.");
+        File.Exists(Path.Combine(Volume().Root, target.Replace('/', Path.DirectorySeparatorChar))).Should().BeTrue("the link's target exists");
         var file = Volume().Resolve(raw);
 
-        file.Status.Should().Be(VolumeFileStatus.Found, file.Reason);
-        file.FullPath.Should().Be(Path.Combine(Volume().Root, target.Replace('/', Path.DirectorySeparatorChar)));
+        file.Status.Should().Be(VolumeFileStatus.Rejected);
+        file.FullPath.Should().BeNull();
+        file.Reason.Should().Contain("symbolic link");
     }
 
     [Theory]
@@ -162,6 +163,7 @@ public sealed class ImportVolumeTests : IDisposable
         [
             "..", ".", "", "NATIVES", "0001", "ABC0001.pdf", "TEXT", "T001", "ABC0001.txt", "link-out.txt", "link-in.pdf", "DIR-OUT", "DIR-IN",
             "DIR-ESCAPE-BACK", "loop-a", "secret.txt", "outside", "share", "matter", "VOL001", "other", "neighbour.txt", "C:", "\\\\", "~",
+            "NATIVES/0001/ABC0001.pdf", @"TEXT\T001\ABC0001.txt",
         ];
         string[] separators = ["\\", "/", "//", ""];
         var volume = Volume();
