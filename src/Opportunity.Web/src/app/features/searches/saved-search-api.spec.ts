@@ -61,14 +61,13 @@ describe('HttpSavedSearchApi (wave-9 saved-search contract)', () => {
       .on('PUT', `${WS}/saved-search-folders/f-1`, {
         body: { folderId: 'f-1', name: 'Renamed', parentFolderId: null, version: '3' },
       })
-      .on('GET', `${WS}/members`, {
+      .on('GET', `${WS}/saved-searches/share-candidates`, {
         body: {
           items: [
-            { kind: 'user', userId: 'u-2', displayName: 'Jamie Lee', groupName: null },
-            { kind: 'user', userId: 'u-2', displayName: 'Jamie Lee', groupName: null },
-            { kind: 'group', userId: null, displayName: null, groupName: 'Review Team' },
+            { kind: 'user', id: 'u-2', displayName: 'Jamie Lee' },
+            { kind: 'user', id: 'u-2', displayName: 'Jamie Lee' },
+            { kind: 'group', id: 'Review Team', displayName: 'Review Team' },
           ],
-          nextCursor: null,
         },
       });
     TestBed.configureTestingModule({

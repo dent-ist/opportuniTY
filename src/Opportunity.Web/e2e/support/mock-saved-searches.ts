@@ -3,7 +3,7 @@ import type { Route } from '@playwright/test';
 /**
  * Saved searches for the e2e mock API (E16-T11), in the shapes of the wave-9 shared contract "Saved searches" (#71):
  * folders, the cursor-paged list of visible searches, get/create/update/delete with If-Match, clone and sharing, and
- * the sharing candidates (`GET …/members`) and frozen sets (`GET …/snapshots`). `POST …/searches` with a
+ * the sharing candidates (`GET …/saved-searches/share-candidates`) and frozen sets (`GET …/snapshots`). `POST …/searches` with a
  * `savedSearchId` records the run (see mock-api.ts).
  */
 
@@ -43,7 +43,7 @@ interface Saved {
 const ME = { userId: 'user-1', displayName: 'Alex Reviewer' };
 const COLLEAGUE = { userId: 'user-2', displayName: 'Jamie Lee' };
 
-/** Users and groups of the workspace (`GET …/members` items). */
+/** Users and groups of the workspace (the source of the share candidates). */
 const MEMBERS = [
   { kind: 'user', userId: 'user-1', displayName: 'Alex Reviewer', groupName: null },
   { kind: 'user', userId: 'user-2', displayName: 'Jamie Lee', groupName: null },
@@ -134,11 +134,14 @@ export class SavedSearchesMock {
         body: JSON.stringify({ title: 'Not found', status: 404 }),
       });
 
-    if (ws === 'members' && method === 'GET') {
+    if (ws === 'saved-searches/share-candidates' && method === 'GET') {
+      // Everyone the caller may share with: members and groups, never the caller.
       return json(200, {
-        items: MEMBERS,
-        nextCursor: null,
-        total: { value: MEMBERS.length, relation: 'eq' },
+        items: MEMBERS.filter((m) => m.userId !== ME.userId).map((m) =>
+          m.kind === 'group'
+            ? { kind: 'group', id: m.groupName, displayName: m.groupName }
+            : { kind: 'user', id: m.userId, displayName: m.displayName },
+        ),
       });
     }
     if (ws === 'snapshots' && method === 'GET') {

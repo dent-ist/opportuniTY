@@ -114,7 +114,7 @@ export class ShareDialog {
         const error = toApiError(e);
         this.candidatesError.set(
           error.status === 403
-            ? 'Your role cannot list the workspace’s users and groups. You can still stop sharing; ask a Workspace Admin to add people.'
+            ? 'Your role cannot share searches. You can still stop sharing; ask a Workspace Admin to share it.'
             : 'The workspace’s users and groups could not be loaded. You can still stop sharing.',
         );
       },

@@ -3,14 +3,14 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom, map } from 'rxjs';
 import { ApiConfiguration } from '../../core/api/generated/api-configuration';
 import { listSnapshots } from '../../core/api/generated/fn/snapshots/list-snapshots';
-import { listWorkspaceMembers } from '../../core/api/generated/fn/workspaces/list-workspace-members';
+import { listSavedSearchShareCandidates } from '../../core/api/generated/fn/saved-searches/list-saved-search-share-candidates';
 import type { SnapshotResource } from '../../core/api/generated/models';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
 
 // Saved searches (E07-T09 backend #71, E16-T11 UI) as a port. The routes are written by hand against the wave-9
 // shared contract "Saved searches" until they are in the OpenAPI document; the e2e mock API
 // (e2e/support/mock-saved-searches.ts) serves the same shapes. Frozen sets (`GET …/snapshots`) and the sharing
-// candidates (`GET …/members`) use the generated client. Provided by the pages that use it, so it is
+// candidates (`GET …/saved-searches/share-candidates`) use the generated client. Provided by the pages that use it, so it is
 // workspace-scoped and replaceable in tests.
 
 export type SavedSearchScope = 'private' | 'shared';
@@ -140,7 +140,7 @@ export abstract class SavedSearchApi {
     savedSearchId: string,
     sharedWith: readonly Pick<SharePrincipal, 'kind' | 'id'>[],
   ): Promise<SavedSearch>;
-  /** Users and groups a search can be shared with (`GET …/members`). */
+  /** Users and groups a search can be shared with (`GET …/saved-searches/share-candidates`, SavedSearch.Share). */
   abstract shareCandidates(): Promise<readonly SharePrincipal[]>;
   /** `GET …/snapshots`: frozen sets, newest first (the caller's own; everyone's with Job.ViewAll). */
   abstract frozenSets(): Promise<readonly FrozenSetSummary[]>;
@@ -276,22 +276,15 @@ export class HttpSavedSearchApi extends SavedSearchApi {
 
   async shareCandidates(): Promise<readonly SharePrincipal[]> {
     const page = await firstValueFrom(
-      listWorkspaceMembers(this.http, this.rootUrl, {
+      listSavedSearchShareCandidates(this.http, this.rootUrl, {
         workspaceId: this.context.workspaceId,
         limit: 500,
       }),
     );
     const seen = new Map<string, SharePrincipal>();
-    for (const m of page.body.items) {
-      const principal: SharePrincipal | null =
-        m.kind === 'group'
-          ? m.groupName
-            ? { kind: 'group', id: m.groupName, displayName: m.groupName }
-            : null
-          : m.userId
-            ? { kind: 'user', id: m.userId, displayName: m.displayName ?? m.userId }
-            : null;
-      if (principal) seen.set(`${principal.kind}:${principal.id}`, principal);
+    for (const c of page.body.items) {
+      const kind = c.kind === 'group' ? 'group' : 'user';
+      seen.set(`${kind}:${c.id}`, { kind, id: c.id, displayName: c.displayName ?? c.id });
     }
     return [...seen.values()].sort(
       (a, b) => a.kind.localeCompare(b.kind) || a.displayName.localeCompare(b.displayName),
