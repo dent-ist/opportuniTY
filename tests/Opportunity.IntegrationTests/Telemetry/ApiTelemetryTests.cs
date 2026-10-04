@@ -33,6 +33,8 @@ public sealed class TelemetryApiFactory(string? connectionString = null, bool re
     {
         builder.UseSetting("Telemetry:Enabled", "true");
         builder.UseSetting("Telemetry:RecordSqlStatements", recordSqlStatements ? "true" : "false");
+        // No background snapshot loop: its PostgreSQL traffic would pool connections the span assertions expect to open.
+        builder.UseSetting("Snapshots:BackgroundEnabled", "false");
         if (connectionString is not null)
         {
             builder.UseSetting($"ConnectionStrings:{PostgresReadiness.ConnectionStringName}", connectionString);

@@ -187,6 +187,12 @@ internal sealed class SearchHarness : IAsyncDisposable
         await Db.DisposeAsync();
     }
 
+    /// <summary>A DI scope like one HTTP request (search service, PDP).</summary>
+    public AsyncServiceScope CreateScope() => _services.CreateAsyncScope();
+
+    /// <summary>The HTTP client of the OpenSearch container (bulk loads in tests).</summary>
+    public HttpClient OpenSearchHttp => _http;
+
     private async Task<SearchOutcome> InScopeAsync(Func<ISearchService, Task<SearchOutcome>> call)
     {
         // One DI scope per call, like one HTTP request: the PDP caches principal state per scope only.
