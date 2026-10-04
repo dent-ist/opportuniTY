@@ -250,3 +250,77 @@ test('works the document list with the keyboard: rows, selection and open (E16-T
     page.getByText('Review mode is not available yet (ACM0000001).').first(),
   ).toBeVisible();
 });
+
+test('filters the document list from the filter row with the keyboard only (#191)', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const filters = page.getByRole('button', { name: 'Filters' });
+  await tabTo(page, filters);
+  await page.keyboard.press('Enter');
+  await expect(filters).toHaveAttribute('aria-pressed', 'true');
+
+  // Tab reaches the row (one stop for all of its controls); the arrow keys move between filters.
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  const controlNumber = grid.getByRole('textbox', { name: 'Filter Control Number' });
+  await tabTo(page, controlNumber);
+  await page.keyboard.press('ArrowRight');
+  await expect(grid.getByRole('button', { name: 'Control Number filter options' })).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  const date = grid.getByRole('button', { name: /^Filter Document Date/ });
+  await expect(date).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  const fileName = grid.getByRole('textbox', { name: 'Filter File Name' });
+  await expect(fileName).toBeFocused();
+
+  const searched = (query: string) =>
+    page.waitForRequest(
+      (r) =>
+        r.method() === 'POST' &&
+        r.url().endsWith('/api/v1/workspaces/ws-1/searches') &&
+        (r.postDataJSON() as { query: string }).query === query,
+    );
+  let request = searched('filename:*Quarterly*');
+  await page.keyboard.type('Quarterly');
+  await page.keyboard.press('Enter');
+  await request;
+  await expect(page.locator('.grid__count')).toContainText('12 documents');
+  await expect(page.getByRole('group', { name: 'Active filters' })).toContainText('File Name');
+  await expect(fileName).toBeFocused();
+
+  // A date range in the filter dialog; Enter applies and focus returns to the filter.
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowLeft');
+  await expect(date).toBeFocused();
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Document Date filter' });
+  await expect(dialog).toBeVisible();
+  const from = dialog.getByLabel('From');
+  await tabTo(page, from, 10);
+  await from.fill('2024-01-01');
+  request = searched('filename:*Quarterly* AND date:[2024-01-01 TO *]');
+  await page.keyboard.press('Enter');
+  await request;
+  await expect(dialog).toBeHidden();
+  await expect(date).toBeFocused();
+  await expect(date).toHaveAccessibleName('Filter Document Date: from 2024-01-01');
+
+  // Escape clears the focused filter; with the last one gone the full list is back.
+  request = searched('filename:*Quarterly*');
+  await page.keyboard.press('Escape');
+  await request;
+  await page.keyboard.press('ArrowRight');
+  await expect(fileName).toBeFocused();
+  request = searched('');
+  await page.keyboard.press('Escape');
+  await request;
+  await expect(fileName).toHaveValue('');
+  await expect(page.locator('.grid__count')).toContainText('250 documents');
+  await expect(page.getByRole('group', { name: 'Active filters' })).toBeHidden();
+
+  // The command hides the row again and puts focus back on the list.
+  await page.keyboard.press('Alt+Shift+KeyU');
+  await expect(fileName).toBeHidden();
+  await expect(grid).toBeFocused();
+  await expect(filters).toHaveAttribute('aria-pressed', 'false');
+});

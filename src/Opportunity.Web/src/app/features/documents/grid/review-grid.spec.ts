@@ -8,6 +8,8 @@ import { FakeApi, FakeResponse, provideFakeApi } from '../../../core/api/fake-ap
 import type { FieldResource, SearchRequest } from '../../../core/api/generated/models';
 import { provideOpportunityHttp } from '../../../core/api/http';
 import { CommandRegistry } from '../../../core/commands';
+import { DocumentsPage } from '../documents-page';
+import { FILTER_DEBOUNCE_MS } from './grid-filter';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { ToastService } from '../../../ui';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
@@ -30,19 +32,22 @@ function field(queryName: string, displayName: string, extra: Partial<FieldResou
     isSecurityAffecting: false,
     datePrecision: null,
     reducedCapabilities: false,
-    capabilities: { sortable: true },
+    capabilities: { sortable: true, filterable: true, leadingWildcard: false },
     ...extra,
   };
 }
 
 const CATALOGUE = [
   field('controlnumber', 'Control Number'),
-  field('date', 'Document Date'),
-  field('filename', 'File Name'),
+  field('date', 'Document Date', { type: 'date' }),
+  field('filename', 'File Name', {
+    type: 'text',
+    capabilities: { sortable: true, filterable: true, leadingWildcard: true } as never,
+  }),
   field('filetype', 'File Type', { capabilities: { sortable: false } as never }),
   field('extension', 'File Extension', { isHidden: true }),
-  field('filesize', 'File Size'),
-  field('pagecount', 'Page Count'),
+  field('filesize', 'File Size', { type: 'integer' }),
+  field('pagecount', 'Page Count', { type: 'integer' }),
 ];
 
 describe('Review grid (Documents list)', () => {
@@ -401,5 +406,283 @@ describe('Review grid (Documents list)', () => {
     button('Try again').click();
     await settle();
     expect(rows().length).toBeGreaterThan(0);
+  });
+
+  describe('filter row (#191)', () => {
+    const filterRow = () => grid().querySelector<HTMLElement>('.grid__row--filters');
+    const control = (label: string) =>
+      root().querySelector<HTMLElement>(`[aria-label^="Filter ${label}"]`)!;
+    const stops = () => [...filterRow()!.querySelectorAll<HTMLElement>('[data-filter-stop]')];
+    const type = (input: HTMLElement, value: string) => {
+      (input as HTMLInputElement).value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const keyword = (query: string) =>
+      (
+        harness
+          .routeDebugElement!.query((d) => d.name === 'opp-review-grid')
+          .injector.get(DocumentsPage) as unknown as { search: { set(v: unknown): void } }
+      ).search.set({ query });
+
+    it('has a control suited to each filterable visible column, toggled by the toolbar button and remembered', async () => {
+      await setup();
+      expect(filterRow()).toBeNull();
+      const toggle = button('Filters');
+      expect(toggle.getAttribute('aria-pressed')).toBe('false');
+      toggle.click();
+      await settle();
+      expect(toggle.getAttribute('aria-pressed')).toBe('true');
+      expect(localStorage.getItem('opp.pref.grid.filterRow')).toBe('true');
+      expect(filterRow()!.getAttribute('aria-rowindex')).toBe('2');
+      expect(rows()[0].getAttribute('aria-rowindex')).toBe('3');
+      expect(grid().getAttribute('aria-rowcount')).toBe('252');
+      const cells = [...filterRow()!.querySelectorAll('[role="gridcell"]')].map((cell) => {
+        const el = cell.querySelector('input, select, button.filter__trigger');
+        return el
+          ? `${el.tagName.toLowerCase()} ${el.getAttribute('placeholder') ?? ''}`.trim()
+          : '';
+      });
+      // Checkbox, Control Number (keyword), family, Date, File Name (contains), File Type (not filterable),
+      // File Size, Page Count.
+      expect(cells).toEqual([
+        '',
+        'input Starts with',
+        '',
+        'button',
+        'input Contains',
+        '',
+        'button',
+        'button',
+      ]);
+      expect(control('Document Date').getAttribute('aria-label')).toBe('Filter Document Date: Any');
+      await expectNoAxeViolations(root());
+
+      toggle.click();
+      await settle();
+      expect(filterRow()).toBeNull();
+    }, 30_000);
+
+    it('ANDs filters with the keyword query, keeps the sort, starts again from page 1, and Clear all restores the list', async () => {
+      await setup();
+      button('Filters').click();
+      keyword('merger OR acquisition');
+      await settle();
+      [...grid().querySelectorAll<HTMLElement>('[role="columnheader"]')]
+        .find((h) => h.textContent?.includes('File Name'))!
+        .click();
+      await settle();
+      button('Next').click();
+      await settle();
+
+      const name = control('File Name');
+      type(name, 'RE: (v2)');
+      await settle();
+      const before = searches().length;
+      await settle(FILTER_DEBOUNCE_MS + 50);
+      expect(searches()).toHaveLength(before + 1);
+      expect(searches().at(-1)).toEqual({
+        query: '(merger OR acquisition) AND filename:*RE\\:\\ \\(v2\\)*',
+        sort: [{ field: 'fileName', direction: 'asc' }],
+        countExact: null,
+        pageSize: 100,
+        highlight: false,
+      });
+      expect(text()).toContain('Page 1 of 3');
+
+      type(control('Control Number'), 'ACM1');
+      name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      control('Control Number').dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+      );
+      await settle();
+      expect(searches().at(-1)?.query).toBe(
+        '(merger OR acquisition) AND filename:*RE\\:\\ \\(v2\\)* AND controlnumber:ACM1*',
+      );
+      const summary = root().querySelector('opp-filter-summary')!;
+      expect(summary.textContent).toMatch(/^Filters:.*Clear all$/);
+      expect(
+        [...summary.querySelectorAll('.chip')].map((c) => c.getAttribute('aria-label')),
+      ).toEqual([
+        'Remove filter: File Name contains “RE: (v2)”',
+        'Remove filter: Control Number starts with “ACM1”',
+      ]);
+
+      // A chip removes its filter even with the row closed.
+      button('Filters').click();
+      await settle();
+      summary
+        .querySelector<HTMLButtonElement>('[aria-label^="Remove filter: Control Number"]')!
+        .click();
+      await settle();
+      expect(searches().at(-1)?.query).toBe(
+        '(merger OR acquisition) AND filename:*RE\\:\\ \\(v2\\)*',
+      );
+      button('Clear all').click();
+      await settle();
+      expect(searches().at(-1)?.query).toBe('merger OR acquisition');
+      expect(root().querySelector('opp-filter-summary')).toBeNull();
+      expect(document.activeElement).toBe(button('Filters'));
+    });
+
+    it('edits ranges, choices and presence in a dialog', async () => {
+      await setup();
+      button('Filters').click();
+      await settle();
+      control('File Size').click();
+      await settle();
+      const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(dialog().getAttribute('aria-labelledby')).toBeTruthy();
+      const inputs = () => [...dialog().querySelectorAll<HTMLInputElement>('input[type="text"]')];
+      type(inputs()[0], '1 MB');
+      type(inputs()[1], '10 KB');
+      await settle();
+      const apply = () =>
+        [...dialog().querySelectorAll<HTMLButtonElement>('button')].find(
+          (b) => b.textContent?.trim() === 'Apply',
+        )!;
+      apply().click();
+      await settle();
+      expect(dialog().textContent).toContain('"From" is after "To".');
+      type(inputs()[1], '');
+      apply().click();
+      await settle();
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(searches().at(-1)?.query).toBe('filesize:[1048576 TO *]');
+      expect(control('File Size').getAttribute('aria-label')).toBe('Filter File Size: from 1 MB');
+
+      control('Document Date').click();
+      await settle();
+      dialog().querySelectorAll<HTMLInputElement>('input[type="radio"]')[2].click();
+      await settle();
+      apply().click();
+      await settle();
+      expect(searches().at(-1)?.query).toBe('filesize:[1048576 TO *] AND NOT date:*');
+    });
+
+    it('moves between filters with the arrow keys, clears the focused one with Escape, and leaves grid keys alone', async () => {
+      await setup();
+      button('Filters').click();
+      await settle();
+      const all = stops();
+      // One Tab stop for the row.
+      expect(all.map((s) => s.tabIndex)).toEqual([0, -1, -1, -1, -1, -1, -1]);
+      all[0].focus();
+      const press = (key: string, init: KeyboardEventInit = {}) =>
+        document.activeElement!.dispatchEvent(
+          new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+        );
+      press('ArrowRight');
+      expect(document.activeElement).toBe(all[1]);
+      press('ArrowRight');
+      expect(document.activeElement).toBe(all[2]);
+      expect(stops().map((s) => s.tabIndex)).toEqual([-1, -1, 0, -1, -1, -1, -1]);
+      press('End');
+      expect(document.activeElement).toBe(all[6]);
+      press('Home');
+      expect(document.activeElement).toBe(all[0]);
+
+      type(all[0], 'AC');
+      (all[0] as HTMLInputElement).setSelectionRange(1, 1);
+      press('ArrowRight'); // inside the text: the caret moves, not the focus
+      expect(document.activeElement).toBe(all[0]);
+      press(' ', { code: 'Space' });
+      press('Enter', { code: 'Enter' });
+      await settle();
+      expect(text()).toContain('Selected: 0');
+      expect(searches().at(-1)?.query).toBe('controlnumber:AC*');
+      press('Escape');
+      await settle();
+      expect((all[0] as HTMLInputElement).value).toBe('');
+      expect(searches().at(-1)?.query).toBe('');
+      // The grid's own keys only act on the grid.
+      expect(active()).toBe(`grid-ws-1-r0-c1`);
+    });
+
+    it('shows the server message under the filter it is about and keeps the grid', async () => {
+      await setup({
+        search: (req) => {
+          const query = (req.body as SearchRequest).query ?? '';
+          const at = query.indexOf('date:');
+          return at < 0
+            ? { body: fakePage(result, 1) }
+            : {
+                status: 400,
+                body: {
+                  type: 'urn:opportunity:problem:invalid-query',
+                  title: 'Bad Request',
+                  status: 400,
+                  code: 'invalid-query',
+                  queryErrors: [
+                    {
+                      code: 'UNKNOWN_FIELD',
+                      message: "Unknown field 'date'.",
+                      span: { start: at, end: at + 4 },
+                    },
+                  ],
+                },
+              };
+        },
+      });
+      button('Filters').click();
+      await settle();
+      (
+        harness.routeDebugElement!.query((d) => d.name === 'opp-review-grid')!
+          .componentInstance as { setFilter(q: string, v: unknown): void }
+      ).setFilter('date', { op: 'has' });
+      await settle();
+      const date = root().querySelector('opp-grid-filter[data-filter-field="date"]')!;
+      expect(date.querySelector('.filter__error')?.textContent).toContain("Unknown field 'date'.");
+      expect(control('Document Date').getAttribute('aria-invalid')).toBe('true');
+      expect(grid()).not.toBeNull();
+      expect(text()).toContain('A filter cannot be applied');
+      // With the row closed the message moves to the summary line.
+      button('Filters').click();
+      await settle();
+      expect(root().querySelector('.summary__error')?.textContent).toContain(
+        "Document Date: Unknown field 'date'.",
+      );
+    });
+
+    it('keeps the selection only for documents still in the filtered results', async () => {
+      let filtered = false;
+      await setup({
+        search: (req) => {
+          const query = (req.body as SearchRequest).query ?? '';
+          if (!query) return { body: fakePage(result, 1) };
+          filtered = true;
+          // The filtered result: documents 2 and 4 only (one page).
+          const page = fakePage({ total: 2, pageSize: 100 }, 1);
+          return {
+            body: {
+              ...page,
+              items: [fakePage(result, 1).items[1], fakePage(result, 1).items[3]],
+            },
+          };
+        },
+      });
+      grid().focus();
+      for (let i = 0; i < 3; i++) {
+        grid().dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: ' ',
+            code: 'Space',
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        key('ArrowDown');
+      }
+      await settle();
+      expect(text()).toContain('Selected: 3');
+      button('Filters').click();
+      await settle();
+      type(control('Control Number'), 'ACM');
+      control('Control Number').dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+      );
+      await settle();
+      expect(filtered).toBe(true);
+      expect(text()).toContain('Selected: 1');
+    });
   });
 });

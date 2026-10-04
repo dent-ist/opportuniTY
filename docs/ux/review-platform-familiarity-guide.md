@@ -332,6 +332,7 @@ Our own map. It follows the spirit of reviewer conventions (keyboard-only code �
 | | Jump to coding field n (layout order) | `Alt+Shift+C`, then `1`–`9` | same | — |
 | | Toggle choice n in focused choice field | `1`–`9` | same | — |
 | | Focus keyword search | `Alt+Shift+K` | `⌥⇧K` | `/` |
+| | Show or hide the list's filter row (focus moves into it) | `Alt+Shift+U` | `⌥⇧U` | — |
 | | Focus Related Items | `Alt+Shift+I` | `⌥⇧I` | — |
 | Selection | Toggle row checkbox | `Space` (list focused) | same | — |
 | | Extend selection | `Shift+↑/↓` | same | — |

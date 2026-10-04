@@ -1,0 +1,87 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.filter__box {
+  display: flex;
+  min-inline-size: 0;
+}
+
+.filter__control {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: var(--opp-target-min);
+  padding: 0 var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font: inherit;
+  font-weight: var(--opp-font-weight-regular);
+}
+
+.filter__input::placeholder,
+.filter__input.is-presence,
+.filter__trigger:not(.is-set) {
+  color: var(--opp-color-text-muted);
+}
+
+.filter__input.is-presence {
+  font-style: italic;
+}
+
+.filter__box .filter__input {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.filter__more {
+  min-block-size: var(--opp-target-min);
+  inline-size: var(--opp-target-min);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-inline-start: 0;
+  border-radius: 0 var(--opp-radius-sm) var(--opp-radius-sm) 0;
+}
+
+.filter__trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  cursor: pointer;
+  text-align: start;
+}
+
+// A set filter is marked by its text and a heavier accent edge, not by colour alone.
+.filter__trigger.is-set {
+  border-color: var(--opp-color-accent);
+  box-shadow: inset 0 -2px 0 var(--opp-color-accent);
+}
+
+.filter__summary {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.filter__control[aria-invalid='true'] {
+  border-color: var(--opp-color-danger-border);
+}
+
+.filter__error {
+  display: flex;
+  gap: var(--opp-space-1);
+  margin: 0;
+  color: var(--opp-color-danger-text);
+  font-size: var(--opp-font-size-xs);
+  font-weight: var(--opp-font-weight-medium);
+  white-space: normal;
+}
+
+opp-icon {
+  flex: none;
+}

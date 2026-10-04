@@ -70,6 +70,22 @@ for (const theme of THEMES) {
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
+    test('document list filter row open, with active filters and the filter dialog', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      await page.getByRole('button', { name: 'Filters' }).click();
+      const fileName = page.getByRole('textbox', { name: 'Filter File Name' });
+      await fileName.fill('Quarterly');
+      await fileName.press('Enter');
+      await expect(page.getByRole('group', { name: 'Active filters' })).toBeVisible();
+      await expect(page.locator('.grid__count')).toContainText('12 documents');
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('button', { name: /^Filter Document Date/ }).click();
+      await expect(page.getByRole('dialog', { name: 'Document Date filter' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
     for (const popup of POPUPS) {
       test(`${popup.name} open`, async ({ page }, testInfo) => {
         await openPage(page, popup.path);

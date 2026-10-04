@@ -93,6 +93,7 @@ This matrix is an analysis of the documented browser, OS and screen-reader keys.
 | Next / previous region | `Alt+Shift+G` / `Alt+Shift+B` | `⌥⇧G` / `⌥⇧B` | Everywhere | `Alt+Shift+B`: Chrome and Edge focus the bookmarks bar | Passed through | Page first (`B`) |
 | Focus coding pane (then 1–9 = field n) | `Alt+Shift+C` | `⌥⇧C` | Review | Free | Passed through | Free |
 | Focus keyword search | `Alt+Shift+K`; `/` | `⌥⇧K`; `/` | Everywhere (handled on Documents) | `/`: Firefox Quick Find (not in text fields) | `/`: browse mode | Free; `/` is page first in Firefox, optional |
+| Show or hide the filter row | `Alt+Shift+U` | `⌥⇧U` | Everywhere (handled on Documents) | Free (`Alt+Shift+T` was avoided: Chrome focuses its toolbar) | Passed through | Free |
 | Focus related items | `Alt+Shift+I` | `⌥⇧I` | Review | `Alt+Shift+I`: Chrome and Edge open the feedback form | Passed through | Page first |
 | Select / clear focused row | `Space` | `Space` | Document list | Scroll (all) | Focus mode in the grid | Scoped override |
 | Select all on page | `Ctrl+A` | `⌘A` | Document list | Select all text (all) | Passed through | Scoped override |
