@@ -33,6 +33,12 @@ public sealed class OpportunityAuthenticationOptions
     public MfaOptions Mfa { get; set; } = new();
 
     internal string PublicOriginString => PublicOrigin!.GetLeftPart(UriPartial.Authority);
+
+    /// <summary>
+    /// A plain-http public origin on the loopback host: the developer profile (http://localhost). Browsers treat it as a
+    /// secure context and accept Secure / __Host- cookies there; the validator allows http for loopback hosts only.
+    /// </summary>
+    internal bool IsLoopbackHttpOrigin => PublicOrigin is { Scheme: "http", IsLoopback: true };
 }
 
 public sealed class OidcProviderOptions
@@ -119,6 +125,12 @@ internal sealed class OpportunityAuthenticationOptionsValidator : IValidateOptio
         if (options.PublicOrigin is { } origin && (!origin.IsAbsoluteUri || origin.AbsolutePath != "/" || origin.Query.Length > 0))
         {
             failures.Add("Authentication:PublicOrigin must be an origin such as https://review.example.com (no path).");
+        }
+
+        if (options.PublicOrigin is { IsAbsoluteUri: true } publicOrigin
+            && (publicOrigin.Scheme is not ("https" or "http") || (publicOrigin.Scheme == "http" && !publicOrigin.IsLoopback)))
+        {
+            failures.Add("Authentication:PublicOrigin must use https; plain http is allowed only for localhost (developer profile).");
         }
 
         if (options.Oidc.Authority is { IsAbsoluteUri: false })

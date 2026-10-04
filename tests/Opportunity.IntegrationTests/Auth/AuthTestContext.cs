@@ -39,9 +39,9 @@ public sealed class AuthTestContext : IAsyncDisposable
         return await browser.GetAsync(callback);
     }
 
-    public async Task<(TestBrowser Browser, HttpResponseMessage Callback)> SignedInBrowserAsync(FakeIdpUser user)
+    public async Task<(TestBrowser Browser, HttpResponseMessage Callback)> SignedInBrowserAsync(FakeIdpUser user, string origin = TestBrowser.Origin)
     {
-        var browser = Factory.CreateBrowser();
+        var browser = Factory.CreateBrowser(origin);
         var callback = await SignInAsync(browser, user);
         callback.StatusCode.Should().Be(HttpStatusCode.Redirect);
         browser.Cookies.Should().ContainKey("__Host-opp-session");

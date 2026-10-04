@@ -173,6 +173,26 @@ public sealed class SessionAuthenticationTests(IdentityPostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Developer_profile_over_plain_http_localhost_issues_and_checks_antiforgery_tokens()
+    {
+        // The compose developer profile serves the app at http://localhost:8080; browsers treat localhost as a secure
+        // context and accept the Secure / __Host- cookies, so the API must issue and check them there too.
+        const string Http = "http://localhost";
+        await using var ctx = await AuthTestContext.CreateAsync(postgres, builder => builder.UseSetting("Authentication:PublicOrigin", Http));
+        var (browser, _) = await ctx.SignedInBrowserAsync(Alice(), Http);
+        using var _browser = browser;
+
+        var me = await browser.GetAsync("/api/v1/me");
+        me.StatusCode.Should().Be(HttpStatusCode.OK);
+        TestBrowser.SetCookies(me).Single(c => c.Name == XsrfCookie).Secure.Should().BeTrue();
+        TestBrowser.SetCookies(me).Single(c => c.Name == "__Host-opp-csrf").Secure.Should().BeTrue();
+
+        await (await browser.PostAsync("/api/v1/auth-probe", withXsrf: false, origin: Http))
+            .ShouldBeProblemAsync(HttpStatusCode.Forbidden, "csrf-validation-failed");
+        (await browser.PostAsync("/api/v1/auth-probe", origin: Http)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task Antiforgery_tokens_are_bound_to_the_user()
     {
         await using var ctx = await AuthTestContext.CreateAsync(postgres);

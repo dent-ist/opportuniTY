@@ -74,8 +74,11 @@ public static class Problems
     };
 }
 
-/// <summary>Turns unhandled exceptions into problem details without exposing messages or stack traces.</summary>
-internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetails) : IExceptionHandler
+/// <summary>
+/// Turns unhandled exceptions into problem details without exposing messages or stack traces. Server errors are
+/// logged here: since .NET 10 the exception handler middleware does not log exceptions an IExceptionHandler handled.
+/// </summary>
+internal sealed partial class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {
     public ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
@@ -84,6 +87,10 @@ internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetails)
             BadHttpRequestException bad => (bad.StatusCode, "The request could not be read."),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred."),
         };
+        if (status >= StatusCodes.Status500InternalServerError)
+        {
+            LogUnhandled(logger, exception, httpContext.Request.Method, httpContext.Request.Path, httpContext.TraceIdentifier);
+        }
 
         httpContext.Response.StatusCode = status;
         return problemDetails.TryWriteAsync(new ProblemDetailsContext
@@ -93,4 +100,7 @@ internal sealed class ApiExceptionHandler(IProblemDetailsService problemDetails)
             ProblemDetails = new ProblemDetails { Status = status, Detail = detail },
         });
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception for {Method} {Path} (trace {TraceIdentifier}).")]
+    private static partial void LogUnhandled(ILogger logger, Exception exception, string method, PathString path, string traceIdentifier);
 }

@@ -50,12 +50,12 @@ public sealed class AuthApiFactory(string connectionString, HttpMessageHandler? 
 
     public InMemoryAuditEventWriter Audit { get; } = new();
 
-    public TestBrowser CreateBrowser() =>
+    public TestBrowser CreateBrowser(string origin = TestBrowser.Origin) =>
         new(CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,
             HandleCookies = false,
-            BaseAddress = new Uri(TestBrowser.Origin),
+            BaseAddress = new Uri(origin),
         }));
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
