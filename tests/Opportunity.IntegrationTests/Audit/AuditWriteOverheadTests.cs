@@ -55,12 +55,14 @@ public sealed class AuditWriteOverheadTests(MigrationPostgresFixture postgres)
         // One application pool shared by all reviewers, as in an API replica; below the container's max_connections.
         await using var pool = NpgsqlDataSource.Create(new NpgsqlConnectionStringBuilder(db.AppConnectionString) { MaxPoolSize = 40 }.ConnectionString);
         await using var services = new ServiceCollection().AddMetrics().BuildServiceProvider();
-        var metrics = new OpportunityMetrics(services.GetRequiredService<IMeterFactory>());
+        var meterFactory = services.GetRequiredService<IMeterFactory>();
+        var metrics = new OpportunityMetrics(meterFactory);
         var recorded = new ConcurrentBag<double>();
         using var listener = new MeterListener();
         listener.InstrumentPublished = (instrument, l) =>
         {
-            if (instrument.Name == OpportunityMetricCatalog.AuditWriteDuration.Name)
+            // Only this test's meters: tests running in parallel record the same instrument through their own hosts.
+            if (instrument.Name == OpportunityMetricCatalog.AuditWriteDuration.Name && ReferenceEquals(instrument.Meter.Scope, meterFactory))
             {
                 l.EnableMeasurementEvents(instrument);
             }
