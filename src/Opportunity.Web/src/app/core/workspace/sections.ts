@@ -21,6 +21,11 @@ export const PERMISSIONS = {
   auditRead: 'Audit.Read',
 } as const;
 
+/** Installation-level permissions (`GET /api/v1/me` → `installationPermissions`), not tied to a workspace. */
+export const INSTALLATION_PERMISSIONS = {
+  manageWorkspaces: 'Installation.ManageWorkspaces',
+} as const;
+
 export interface WorkspaceSection {
   /** Route path under `/w/:workspaceId`. */
   readonly path: string;
@@ -57,6 +62,8 @@ export const ADMIN_AREAS: readonly WorkspaceSection[] = [
   { path: 'roles-security', label: 'Roles & Security', permission: PERMISSIONS.manageSecurity },
   { path: 'ethical-walls', label: 'Ethical Walls', permission: PERMISSIONS.manageSecurity },
   { path: 'settings', label: 'Workspace Settings', permission: PERMISSIONS.manageSecurity },
+  // The empty-state checklist a new workspace lands on (E04-T07); stays available to finish setting up.
+  { path: 'setup', label: 'Setup Checklist', permission: PERMISSIONS.manageSecurity },
   { path: 'audit', label: 'Audit', permission: PERMISSIONS.auditRead },
 ];
 

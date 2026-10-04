@@ -3,11 +3,13 @@ import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiConfiguration } from '../api/generated/api-configuration';
+import { createWorkspace } from '../api/generated/fn/workspaces/create-workspace';
 import { listWorkspaces } from '../api/generated/fn/workspaces/list-workspaces';
 import type {
   CursorPageOfWorkspaceSummary,
   WorkspaceResource,
   WorkspaceSummary,
+  WorkspaceWrite,
 } from '../api/generated/models';
 
 /**
@@ -17,10 +19,14 @@ import type {
  *   permissions; 404 when it does not exist **or** the caller has no access (no enumeration).
  * - `GET /api/v1/workspaces?limit=&cursor=` (`CursorPageOfWorkspaceSummary`) → cursor page of the workspaces the
  *   caller is a member of, by name. A workspace that would answer 404 is never listed.
+ * - `POST /api/v1/workspaces` (`WorkspaceWrite`) → 201 `WorkspaceResource`; needs `Installation.ManageWorkspaces` and an
+ *   MFA session (403 `step-up-required` with `stepUpUrl` otherwise). The creator becomes its Workspace Admin.
+ * - `PUT /api/v1/workspaces/{workspaceId}` (`WorkspaceWrite`, `If-Match` = version) → the updated `WorkspaceResource`;
+ *   needs `Workspace.ManageSecurity`.
  */
 export const WORKSPACES_URL = '/api/v1/workspaces';
 
-export type { WorkspaceSummary };
+export type { WorkspaceSummary, WorkspaceWrite };
 
 /** Effective permissions are the closed catalogue names (docs/security/permission-matrix.md). */
 export type Workspace = WorkspaceResource;
@@ -57,6 +63,12 @@ export class WorkspaceDirectory {
     return workspace;
   }
 
+  /** Reads the workspace from the API again (e.g. before editing its settings), replacing the cached copy. */
+  refresh(workspaceId: string): Promise<Workspace> {
+    if (this.last?.id === workspaceId) this.last = undefined;
+    return this.get(workspaceId);
+  }
+
   async list(cursor?: string | null, limit = 100): Promise<WorkspacePage> {
     const response = await firstValueFrom(
       listWorkspaces(this.http, this.rootUrl, { limit, cursor: cursor ?? undefined }),
@@ -68,6 +80,44 @@ export class WorkspaceDirectory {
       return next;
     });
     return page;
+  }
+
+  /** `POST /api/v1/workspaces`: creates a workspace; the caller becomes its Workspace Admin. */
+  async create(write: WorkspaceWrite): Promise<Workspace> {
+    const response = await firstValueFrom(
+      createWorkspace(this.http, this.rootUrl, { body: write }),
+    );
+    this.remember(response.body);
+    return response.body;
+  }
+
+  /** `PUT /api/v1/workspaces/{id}` with `If-Match` on the version that was read; 412 when someone changed it since. */
+  async update(workspace: Workspace, write: WorkspaceWrite): Promise<Workspace> {
+    const updated = await firstValueFrom(
+      this.http.put<Workspace>(workspaceUrl(workspace.workspaceId), write, {
+        headers: { 'If-Match': `"${workspace.version}"` },
+      }),
+    );
+    this.remember(updated);
+    return updated;
+  }
+
+  /** Makes `workspace` the cached copy (after a create or an update), so guards and the switcher see the new values. */
+  private remember(workspace: Workspace): void {
+    this.last = { id: workspace.workspaceId, workspace: Promise.resolve(workspace) };
+    this._known.update((known) => {
+      const next = new Map(known);
+      const { workspaceId, name, matterNumber, displayTimeZone, status, createdAt } = workspace;
+      next.set(workspaceId, {
+        workspaceId,
+        name,
+        matterNumber,
+        displayTimeZone,
+        status,
+        createdAt,
+      });
+      return next;
+    });
   }
 
   /** Forget cached workspaces (sign-out, session end). */

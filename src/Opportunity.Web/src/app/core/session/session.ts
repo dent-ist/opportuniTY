@@ -83,8 +83,27 @@ export class SessionService {
 
   /** Full-page navigation to the BFF login; `returnUrl` must be an in-app relative path. */
   login(returnUrl = this.currentPath()): void {
-    const safe = returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '/';
-    this.document.location.assign(`${this.config.loginUrl}?returnUrl=${encodeURIComponent(safe)}`);
+    this.document.location.assign(
+      `${this.config.loginUrl}?returnUrl=${encodeURIComponent(localPath(returnUrl))}`,
+    );
+  }
+
+  /**
+   * Signs in again with multi-factor authentication (step-up, ADR-015 D3.6) and comes back to `returnUrl`. Uses the
+   * `stepUpUrl` of a `step-up-required` problem when it is a same-origin path, the BFF login with `stepUp=true` otherwise.
+   */
+  stepUp(returnUrl = this.currentPath(), stepUpUrl?: string | null): void {
+    const base =
+      stepUpUrl && isLocalPath(stepUpUrl) ? stepUpUrl : `${this.config.loginUrl}?stepUp=true`;
+    const separator = base.includes('?') ? '&' : '?';
+    this.document.location.assign(
+      `${base}${separator}returnUrl=${encodeURIComponent(localPath(returnUrl))}`,
+    );
+  }
+
+  /** Whether the signed-in user holds an installation permission (`GET /api/v1/me`); display only. */
+  hasInstallationPermission(permission: string): boolean {
+    return this._principal()?.installationPermissions?.includes(permission) ?? false;
   }
 
   /**
@@ -108,6 +127,14 @@ export class SessionService {
     const { pathname, search, hash } = this.document.location;
     return `${pathname}${search}${hash}`;
   }
+}
+
+function isLocalPath(path: string): boolean {
+  return path.startsWith('/') && !path.startsWith('//') && !path.startsWith('/\\');
+}
+
+function localPath(path: string): string {
+  return isLocalPath(path) ? path : '/';
 }
 
 /** Where the app lands after signing out when the IdP has no end-session endpoint. */

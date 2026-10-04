@@ -1,0 +1,141 @@
+<h1 class="wsa__title">Workspace Settings</h1>
+
+@if (loading()) {
+  <opp-loading-state label="Loading workspace settings…" />
+} @else if (loadError(); as error) {
+  <opp-error-state [error]="error" (retry)="load()" />
+} @else if (workspace(); as ws) {
+  <section class="wsa__card" aria-labelledby="settings-general">
+    <h2 id="settings-general" class="wsa__card-title">General</h2>
+    <form novalidate class="wsa__form" (submit)="save($event)">
+      <opp-workspace-fields
+        [draft]="draft()"
+        (draftChange)="update($event)"
+        [errors]="errors()"
+        [disabled]="saving()"
+      />
+      @if (saveError(); as error) {
+        <div class="wsa__notice wsa__notice--danger" role="alert">
+          <opp-icon name="error" />
+          <div>
+            @if (conflict()) {
+              <p class="wsa__notice-title">Changed by someone else</p>
+              <p>
+                These settings were changed after you opened them. Reload to see the latest values,
+                then reapply your change.
+              </p>
+              <button type="button" oppButton="secondary" (click)="load()">Reload settings</button>
+            } @else {
+              <p class="wsa__notice-title">The settings were not saved</p>
+              <p>{{ error.problem.detail ?? error.message }}</p>
+              @if (error.traceId) {
+                <p class="wsa__fine">
+                  Reference: <code>{{ error.traceId }}</code>
+                </p>
+              }
+            }
+          </div>
+        </div>
+      }
+      <div class="wsa__actions">
+        <button type="submit" oppButton="primary" [busy]="saving()" [disabled]="!dirty()">
+          Save changes
+        </button>
+        <button type="button" oppButton="ghost" [disabled]="!dirty() || saving()" (click)="reset()">
+          Discard changes
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <section class="wsa__card" aria-labelledby="settings-details">
+    <h2 id="settings-details" class="wsa__card-title">Workspace details</h2>
+    <dl class="wsa__facts">
+      <div>
+        <dt>Status</dt>
+        <dd>
+          @if (ws.status === 'active') {
+            <opp-badge tone="success" icon="success">Active</opp-badge>
+          } @else {
+            <opp-badge tone="neutral" icon="lock">Closed</opp-badge>
+          }
+        </dd>
+      </div>
+      <div>
+        <dt>Workspace ID</dt>
+        <dd>
+          <code class="wsa__code">{{ ws.workspaceId }}</code>
+        </dd>
+      </div>
+      <div>
+        <dt>Created</dt>
+        <dd>{{ date(ws.createdAt) }}</dd>
+      </div>
+      @if (ws.updatedAt) {
+        <div>
+          <dt>Last changed</dt>
+          <dd>{{ date(ws.updatedAt) }}</dd>
+        </div>
+      }
+      <div>
+        <dt>Storage profile</dt>
+        <dd>{{ ws.storageProfile ?? 'Default' }}</dd>
+      </div>
+    </dl>
+    <p class="wsa__fine">Read only. The storage profile is chosen when the workspace is created.</p>
+  </section>
+
+  <section class="wsa__card" aria-labelledby="settings-search">
+    <h2 id="settings-search" class="wsa__card-title">Search index</h2>
+    @if (ws.searchPlacement; as placement) {
+      <dl class="wsa__facts">
+        <div>
+          <dt>Index placement</dt>
+          <dd>{{ placementKind[placement.kind] }}</dd>
+        </div>
+        <div>
+          <dt>State</dt>
+          <dd>{{ placementState[placement.state] }}</dd>
+        </div>
+        <div>
+          <dt>Projection generation</dt>
+          <dd>{{ num(placement.projectionGeneration) }}</dd>
+        </div>
+      </dl>
+    } @else {
+      <p>
+        Not placed yet. The workspace is placed on a search index with its first indexed document.
+      </p>
+    }
+    <p class="wsa__fine">
+      Read only. Placement and projection generation are managed by the installation's search
+      administration.
+    </p>
+  </section>
+
+  @if (canSeeSetup) {
+    <section class="wsa__card" aria-labelledby="settings-setup">
+      <h2 id="settings-setup" class="wsa__card-title">Setup</h2>
+      <p>
+        <a [routerLink]="['/w', workspaceId, 'admin', 'setup']">Open the setup checklist</a>
+        <span class="wsa__muted"> to see which setup steps this workspace still needs.</span>
+      </p>
+    </section>
+  }
+
+  <section class="wsa__card wsa__card--danger" aria-labelledby="settings-delete">
+    <h2 id="settings-delete" class="wsa__card-title">Delete workspace</h2>
+    <p id="delete-explanation">{{ deletionText() }}</p>
+    <div>
+      <button
+        type="button"
+        oppButton="danger"
+        aria-describedby="delete-explanation"
+        [disabled]="!canOpenDeletion()"
+        (click)="openDeletion()"
+      >
+        Delete workspace…
+      </button>
+    </div>
+  </section>
+}

@@ -1,3 +1,5 @@
+using System.Security.Claims;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -16,6 +18,23 @@ public static class InstallationPermissions
 {
     /// <summary>Create workspaces (E04-T05); deletion approval is <c>Installation.ApproveDeletion</c> (E20).</summary>
     public const string ManageWorkspaces = "Installation.ManageWorkspaces";
+
+    /// <summary>All installation permissions of the Installation Admin role.</summary>
+    public static IReadOnlyList<string> All { get; } = [ManageWorkspaces];
+
+    /// <summary>True when <paramref name="user"/> holds the Installation Admin role (a member of one of the configured groups).</summary>
+    public static bool IsInstallationAdmin(ClaimsPrincipal user, InstallationAuthorizationOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(options);
+        return user.Identity?.IsAuthenticated == true
+            && user.FindAll(Authentication.OpportunityClaimTypes.Group)
+                .Any(g => g.Value.Length > 0 && options.InstallationAdminGroups.Contains(g.Value, StringComparer.Ordinal));
+    }
+
+    /// <summary>The installation permissions <paramref name="user"/> holds, for display (<c>GET /api/v1/me</c>).</summary>
+    public static IReadOnlyList<string> Granted(ClaimsPrincipal user, InstallationAuthorizationOptions options) =>
+        IsInstallationAdmin(user, options) ? All : [];
 }
 
 /// <summary>
@@ -64,8 +83,7 @@ internal sealed class InstallationPermissionHandler(
             return;
         }
 
-        var admins = options.CurrentValue.InstallationAdminGroups;
-        if (context.User.FindAll(Authentication.OpportunityClaimTypes.Group).Any(g => g.Value.Length > 0 && admins.Contains(g.Value, StringComparer.Ordinal)))
+        if (InstallationPermissions.IsInstallationAdmin(context.User, options.CurrentValue))
         {
             context.Succeed(requirement);
             return;

@@ -135,6 +135,22 @@ public sealed class WorkspaceManagementApiTests(MigrationPostgresFixture postgre
     }
 
     [Fact]
+    public async Task The_current_user_lists_the_installation_permissions_the_app_offers_actions_for()
+    {
+        await using var db = await AuthorizationDatabase.CreateAsync(postgres);
+        var admin = await db.CreateUserAsync();
+        var plain = await db.CreateUserAsync();
+        await using var factory = Factory(db);
+        using var client = factory.CreateClient();
+
+        using var adminMe = await JsonAsync(await SendAsync(client, HttpMethod.Get, "/api/v1/me", admin, AdminGroup));
+        adminMe.RootElement.GetProperty("installationPermissions").EnumerateArray().Select(p => p.GetString())
+            .Should().Equal("Installation.ManageWorkspaces");
+        using var plainMe = await JsonAsync(await SendAsync(client, HttpMethod.Get, "/api/v1/me", plain, "cn=review"));
+        plainMe.RootElement.GetProperty("installationPermissions").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
     public async Task Settings_updates_need_the_permission_and_the_current_etag_and_are_audited()
     {
         await using var db = await AuthorizationDatabase.CreateAsync(postgres);

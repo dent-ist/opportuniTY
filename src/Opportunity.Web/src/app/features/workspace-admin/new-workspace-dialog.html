@@ -1,0 +1,53 @@
+<form novalidate (submit)="submit($event)">
+  <opp-dialog-layout title="New workspace">
+    <div class="wsa__dialog-body">
+      @if (needsMfa()) {
+        <div class="wsa__notice wsa__notice--warning" role="status">
+          <opp-icon name="lock" />
+          <div>
+            <p class="wsa__notice-title">Multi-factor sign-in required</p>
+            <p>
+              Creating a workspace needs a session signed in with multi-factor authentication. Sign
+              in again with MFA; you come back to this dialog afterwards.
+            </p>
+          </div>
+        </div>
+      } @else {
+        <p class="wsa__lead">
+          A workspace holds one matter: its documents, fields, searches and productions. You become
+          its Workspace Admin, and a setup checklist guides the next steps.
+        </p>
+        <opp-workspace-fields
+          [draft]="draft()"
+          (draftChange)="update($event)"
+          [errors]="errors()"
+          [disabled]="saving()"
+        />
+        @if (failure(); as f) {
+          <div class="wsa__notice wsa__notice--danger" role="alert">
+            <opp-icon name="error" />
+            <div>
+              <p class="wsa__notice-title">{{ f.title }}</p>
+              <p>{{ f.detail }}</p>
+              @if (f.reference) {
+                <p class="wsa__fine">
+                  Reference: <code>{{ f.reference }}</code>
+                </p>
+              }
+            </div>
+          </div>
+        }
+      }
+    </div>
+    <ng-container dialogActions>
+      <button type="button" oppButton="ghost" (click)="ref.close()">Cancel</button>
+      @if (needsMfa()) {
+        <button type="button" oppButton="primary" (click)="signInWithMfa()">
+          Sign in with MFA
+        </button>
+      } @else {
+        <button type="submit" oppButton="primary" [busy]="saving()">Create workspace</button>
+      }
+    </ng-container>
+  </opp-dialog-layout>
+</form>

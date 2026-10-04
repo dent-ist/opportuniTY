@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 
 using Opportunity.Application.Identity;
 using Opportunity.Contracts.Api;
+using Opportunity.Security.Authorization;
 using Opportunity.Security.Http;
 
 namespace Opportunity.Security.Authentication;
@@ -69,7 +70,7 @@ public static class AuthenticationEndpoints
             .WithSummary("OIDC back-channel logout receiver, called by the identity provider with a signed logout_token.")
             .Accepts<BackChannelLogoutForm>("application/x-www-form-urlencoded");
 
-        v1.MapGet("/me", (HttpContext context, IOptions<OpportunityAuthenticationOptions> options) =>
+        v1.MapGet("/me", (HttpContext context, IOptions<OpportunityAuthenticationOptions> options, IOptionsMonitor<InstallationAuthorizationOptions> installation) =>
             {
                 var user = context.User;
                 var session = context.GetUserSession();
@@ -80,7 +81,8 @@ public static class AuthenticationEndpoints
                     Email: user.FindFirst(OpportunityClaimTypes.Email)?.Value,
                     Groups: [.. user.FindAll(OpportunityClaimTypes.Group).Select(c => c.Value)],
                     Mfa: user.HasMfa(settings.Mfa.ToPolicy()),
-                    SessionExpiresAt: session is null ? null : SessionLifetime.ExpiresAt(session, settings.Session.ToTimeouts())));
+                    SessionExpiresAt: session is null ? null : SessionLifetime.ExpiresAt(session, settings.Session.ToTimeouts()),
+                    InstallationPermissions: InstallationPermissions.Granted(user, installation.CurrentValue)));
             })
             .RequireAuthorization()
             .WithName("GetCurrentUser")

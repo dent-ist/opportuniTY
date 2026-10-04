@@ -5,6 +5,7 @@ const PATHS = {
   close: 'M6 6l12 12M18 6L6 18',
   check: 'M5 12.5l4.5 4.5L19 7.5',
   minus: 'M6 12h12',
+  plus: 'M12 5.5v13M5.5 12h13',
   'chevron-left': 'M14.5 6l-6 6 6 6',
   'chevron-right': 'M9.5 6l6 6-6 6',
   'chevron-down': 'M6 9.5l6 6 6-6',

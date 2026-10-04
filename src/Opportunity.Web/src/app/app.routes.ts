@@ -22,6 +22,16 @@ import { WorkspaceShell } from './shell/workspace-shell';
 
 const sectionPage = () => import('./shell/pages/section-page').then((m) => m.SectionPage);
 
+/** Admin areas that have shipped; the others show the section placeholder (E04-T07). */
+const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
+  settings: () =>
+    import('./features/workspace-admin/workspace-settings-page').then(
+      (m) => m.WorkspaceSettingsPage,
+    ),
+  setup: () =>
+    import('./features/workspace-admin/workspace-setup-page').then((m) => m.WorkspaceSetupPage),
+};
+
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */
 export const workspaceChildren: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'documents' },
@@ -85,7 +95,7 @@ export const workspaceChildren: Routes = [
         title: a.label,
         canActivate: [requirePermission(a.permission)],
         data: { section: a.label },
-        loadComponent: sectionPage,
+        loadComponent: ADMIN_PAGES[a.path] ?? sectionPage,
       })),
     ],
   },

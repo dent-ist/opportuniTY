@@ -19,11 +19,18 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/imports/imp-1',
   '/w/ws-1/admin/fields',
   '/w/ws-1/admin/audit',
+  '/w/ws-1/admin/settings',
+  '/w/ws-1/admin/setup',
 ];
 
 /** Popups are rendered only while open, so each is opened and checked separately. */
 const POPUPS = [
   { name: 'user menu', path: '/workspaces', trigger: { role: 'button', name: /User menu/ } },
+  {
+    name: 'New workspace dialog',
+    path: '/workspaces',
+    trigger: { role: 'button', name: /New workspace/ },
+  },
   {
     name: 'workspace switcher',
     path: '/w/ws-1/documents',

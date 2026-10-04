@@ -7906,7 +7906,8 @@
           "email",
           "groups",
           "mfa",
-          "sessionExpiresAt"
+          "sessionExpiresAt",
+          "installationPermissions"
         ],
         "type": "object",
         "properties": {
@@ -7933,6 +7934,12 @@
           },
           "sessionExpiresAt": {
             "format": "date-time"
+          },
+          "installationPermissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
