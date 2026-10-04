@@ -192,3 +192,39 @@ test('rebinds a shortcut and turns single keys off by keyboard; both follow the 
   await page.keyboard.press('Alt+Shift+KeyJ');
   await expect(keyword).toBeFocused();
 });
+
+test('suggests the workspace custom fields and choices; recent searches follow the user to a new session', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const keyword = page.getByRole('textbox', { name: 'Keyword' });
+  await keyword.focus();
+  await page.keyboard.type('resp');
+  const suggestions = page.getByRole('listbox', { name: 'Suggestions' });
+  await expect(suggestions.getByRole('option', { name: /responsiveness/ })).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(keyword).toHaveValue('responsiveness:');
+  await expect(suggestions.getByRole('option', { name: /Not Responsive/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  const recorded = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith('/api/v1/workspaces/ws-1/query-history'),
+  );
+  await page.keyboard.type('"Responsive"');
+  await page.keyboard.press('Enter');
+  await recorded;
+
+  // Signed in again elsewhere: nothing in browser storage; the history comes from the server.
+  const stored = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
+  expect(stored).not.toContain('responsiveness');
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await openPage(page, '/w/ws-1/documents');
+  await keyword.focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  const recent = page.getByRole('listbox', { name: 'Recent searches' });
+  await expect(recent.getByRole('option', { name: /responsiveness:"Responsive"/ })).toBeVisible();
+});
