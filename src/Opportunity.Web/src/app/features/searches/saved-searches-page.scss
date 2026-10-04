@@ -1,0 +1,159 @@
+// Searches › Saved Searches: folder tree beside the list.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 96rem;
+  padding: var(--opp-space-5);
+}
+
+.ss__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.ss__heading-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+}
+
+.ss__title {
+  font-size: var(--opp-font-size-2xl);
+}
+
+.ss__subtitle {
+  font-size: var(--opp-font-size-lg);
+}
+
+.ss__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+.ss__muted {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-regular);
+}
+
+.ss__small {
+  display: block;
+  font-size: var(--opp-font-size-xs);
+}
+
+.ss__layout {
+  display: grid;
+  grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--opp-space-4);
+}
+
+@media (max-width: 60rem) {
+  .ss__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ss__folders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  background: var(--opp-color-surface);
+}
+
+.ss__folder-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-block-start: var(--opp-space-2);
+  border-block-start: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.ss__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  min-width: 0;
+}
+
+.ss__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.ss__filter {
+  width: min(20rem, 100%);
+}
+
+.ss__table-wrap {
+  overflow-x: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.ss__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ss__table th,
+.ss__table td {
+  height: var(--opp-row-height);
+  padding: var(--opp-space-1) var(--opp-cell-padding-x);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.ss__table thead th {
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+  white-space: nowrap;
+}
+
+.ss__table tbody tr:hover {
+  background: var(--opp-color-hover);
+}
+
+.ss__name {
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.ss__table .ss__num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.ss__nowrap {
+  white-space: nowrap;
+}
+
+.ss__sharing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+}
+
+.ss__row-actions {
+  width: 1%;
+  text-align: end;
+}

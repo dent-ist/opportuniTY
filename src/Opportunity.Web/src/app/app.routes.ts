@@ -50,7 +50,12 @@ export const workspaceChildren: Routes = [
         title: a.label,
         canActivate: [requirePermission(a.permission)],
         data: { section: a.label },
-        loadComponent: sectionPage,
+        // Saved Searches (E16-T11); Search Terms Reports follow with their own ticket.
+        loadComponent:
+          a.path === 'saved'
+            ? () =>
+                import('./features/searches/saved-searches-page').then((m) => m.SavedSearchesPage)
+            : sectionPage,
       })),
     ],
   },

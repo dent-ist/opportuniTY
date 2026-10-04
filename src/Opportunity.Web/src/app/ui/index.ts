@@ -14,3 +14,4 @@ export * from './toast/announcer';
 export * from './toast/toast';
 export * from './menu/menu';
 export * from './tooltip/tooltip';
+export * from './tree/tree';

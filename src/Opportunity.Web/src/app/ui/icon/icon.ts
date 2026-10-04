@@ -50,6 +50,17 @@ const PATHS = {
   settings: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 4.5v5M9 14.5v5',
   'sidebar-collapse': 'M4 4.5h16v15H4zM9 4.5v15M15.5 9.5L13 12l2.5 2.5',
   'sidebar-expand': 'M4 4.5h16v15H4zM9 4.5v15M13 9.5l2.5 2.5-2.5 2.5',
+  // Saved searches: folders, actions, live and frozen sets.
+  folder: 'M3.5 6.5V19h17V8.5h-8.5l-2-2z',
+  more: 'M5.5 12h.5M12 12h.5M18.5 12h.5',
+  pencil: 'M4.5 19.5l1-4.5L15.5 5l3.5 3.5-10 10zM13 7.5l3.5 3.5',
+  trash: 'M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10.5 10.5v6M13.5 10.5v6',
+  share:
+    'M7 13.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM17 8a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM17 21a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM9.2 9.8l5.6-3.1M9.2 12.2l5.6 4.6',
+  move: 'M3.5 6.5V19h17V8.5h-8.5l-2-2zM9 13.5h6.5M13 11l2.5 2.5L13 16',
+  play: 'M8 5.5v13l10.5-6.5z',
+  snapshot: 'M4 7.5h16v12H4zM8 7.5l1.5-3h5l1.5 3M12 16.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+  save: 'M5 4.5h11.5L19.5 7.5v12H5zM8 4.5v5h7v-5M8 19.5v-5.5h8v5.5',
 } as const;
 
 export type IconName = keyof typeof PATHS;

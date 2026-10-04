@@ -88,13 +88,18 @@ test('focuses the keyword search with Alt+Shift+K and /, cycles regions and open
   await expect(keyword).toBeFocused();
   await expect(keyword).toHaveValue('a/b');
 
-  // Region cycle: search panel → document list → search panel.
+  // Region cycle: search panel → document list → saved searches → search panel.
   const search = page.getByRole('region', { name: 'Search' });
   const list = page.getByRole('region', { name: 'Document list' });
+  const saved = page.getByRole('complementary', { name: 'Saved Searches' });
   await page.keyboard.press('Alt+Shift+KeyG');
   await expect(list).toBeFocused();
   await page.keyboard.press('Alt+Shift+KeyG');
+  await expect(saved).toBeFocused();
+  await page.keyboard.press('Alt+Shift+KeyG');
   await expect(search).toBeFocused();
+  await page.keyboard.press('Alt+Shift+KeyB');
+  await expect(saved).toBeFocused();
   await page.keyboard.press('Alt+Shift+KeyB');
   await expect(list).toBeFocused();
 

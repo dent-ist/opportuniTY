@@ -98,6 +98,8 @@ const PAGES = [
   { path: '/w/ws-1/jobs/job-exp-3', interact: { role: 'button', name: /^Jobs, / } },
   { path: '/w/ws-1/admin/settings', interact: { role: 'button', name: /User menu/ } },
   { path: '/w/ws-1/admin/setup', interact: { role: 'button', name: /User menu/ } },
+  { path: '/w/ws-1/searches/saved', interact: { role: 'button', name: /User menu/ } },
+  { path: '/w/ws-1/documents?savedSearch=ss-1', interact: { role: 'button', name: /User menu/ } },
 ] as const;
 
 for (const { path, interact } of PAGES) {
