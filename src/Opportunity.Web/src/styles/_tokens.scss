@@ -15,6 +15,16 @@
   --opp-color-text: #1a1e23;
   --opp-color-text-muted: #525b66;
   --opp-color-text-inverse: #ffffff;
+  // Backdrop behind the raster logo mark: the mark is navy, so it stays white in every theme.
+  --opp-color-brand-mark-backdrop: #ffffff;
+  // Workspace sidebar (brand guide: deep navy with a cyan active indicator).
+  --opp-color-sidebar-bg: #071f38;
+  --opp-color-sidebar-text: #c9d4e0;
+  --opp-color-sidebar-text-active: #ffffff;
+  --opp-color-sidebar-hover: #0e2c4b;
+  --opp-color-sidebar-active-bg: #0a3a57;
+  --opp-color-sidebar-indicator: #13b5d1;
+  --opp-color-sidebar-border: #12355a;
   --opp-color-border: #d3d8de;
   --opp-color-border-strong: #747e8b;
   --opp-color-accent: #0a6569;
@@ -66,6 +76,16 @@
   --opp-color-text: #e5e8ec;
   --opp-color-text-muted: #a2abb6;
   --opp-color-text-inverse: #121519;
+  // Backdrop behind the raster logo mark: the mark is navy, so it stays white in every theme.
+  --opp-color-brand-mark-backdrop: #ffffff;
+  // Workspace sidebar (brand guide: deep navy with a cyan active indicator).
+  --opp-color-sidebar-bg: #071a2e;
+  --opp-color-sidebar-text: #c9d4e0;
+  --opp-color-sidebar-text-active: #ffffff;
+  --opp-color-sidebar-hover: #0e2a46;
+  --opp-color-sidebar-active-bg: #0a3651;
+  --opp-color-sidebar-indicator: #13b5d1;
+  --opp-color-sidebar-border: #1c3b5c;
   --opp-color-border: #343b45;
   --opp-color-border-strong: #7b8693;
   --opp-color-accent: #5bbcbf;
@@ -117,6 +137,16 @@
   --opp-color-text: #000000;
   --opp-color-text-muted: #262626;
   --opp-color-text-inverse: #ffffff;
+  // Backdrop behind the raster logo mark: the mark is navy, so it stays white in every theme.
+  --opp-color-brand-mark-backdrop: #ffffff;
+  // Workspace sidebar: maximum contrast.
+  --opp-color-sidebar-bg: #000000;
+  --opp-color-sidebar-text: #ffffff;
+  --opp-color-sidebar-text-active: #ffffff;
+  --opp-color-sidebar-hover: #1f1f1f;
+  --opp-color-sidebar-active-bg: #000000;
+  --opp-color-sidebar-indicator: #ffff00;
+  --opp-color-sidebar-border: #ffffff;
   --opp-color-border: #000000;
   --opp-color-border-strong: #000000;
   --opp-color-accent: #003a8c;

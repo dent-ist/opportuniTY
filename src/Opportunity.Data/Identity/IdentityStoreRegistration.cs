@@ -18,6 +18,7 @@ public static class IdentityStoreRegistration
         services.TryAddSingleton<ISessionStore, PostgresSessionStore>();
         services.TryAddSingleton<IDataProtectionKeyStore, PostgresDataProtectionKeyStore>();
         services.TryAddSingleton<IWorkspaceAuthenticationPolicy, PostgresWorkspaceAuthenticationPolicy>();
+        services.TryAddSingleton<IUserPreferenceStore, PostgresUserPreferenceStore>();
         return services;
     }
 

@@ -33,6 +33,38 @@ public static class SystemFields
     public const int NativeMissing = 24;
     public const int ImagesIncomplete = 25;
 
+    // Relationship columns (ADR-009 §3-§4): set from upstream identifiers and the dedupe/thread writers, never mapped.
+    public const int DuplicateGroup = 26;
+    public const int DuplicatePrimary = 27;
+    public const int EmailThreadGroup = 28;
+
+    // Upstream dedupe and threading values (ADR-009 R13, R19): Metadata-storage system fields, imported verbatim and
+    // never recomputed. Their search slots are reserved at the top of each kind's budget (see ReservedSlots).
+    public const int AllCustodians = 29;
+    public const int DuplicateCustodians = 30;
+    public const int AllPaths = 31;
+    public const int DuplicatePaths = 32;
+    public const int ConversationIndex = 33;
+    public const int ConversationTopic = 34;
+    public const int InclusiveEmail = 35;
+    public const int ThreadSortOrder = 36;
+
+    /// <summary>
+    /// Fixed search slots of the Metadata-storage system fields: the same in every workspace, taken from the top of the
+    /// kind's budget so lowest-free allocation of custom fields (ADR-007 R4) is unaffected.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<int, string> ReservedSlots = new Dictionary<int, string>
+    {
+        [AllCustodians] = "kw.s300",
+        [DuplicateCustodians] = "kw.s299",
+        [ConversationIndex] = "kw.s298",
+        [ThreadSortOrder] = "kw.s297",
+        [AllPaths] = "idt.s050",
+        [DuplicatePaths] = "idt.s049",
+        [ConversationTopic] = "txt.s100",
+        [InclusiveEmail] = "bool.s100",
+    };
+
     private const FieldCapabilities Exists = FieldCapabilities.Exists;
     private const FieldCapabilities Natural = FieldCapabilities.Sortable | FieldCapabilities.Filterable
         | FieldCapabilities.Rangeable | FieldCapabilities.Wildcard | Exists;
@@ -73,7 +105,34 @@ public static class SystemFields
         Column(workspaceId, TextMissing, "Text Missing", FieldType.Boolean, "text_missing", Flag),
         Column(workspaceId, NativeMissing, "Native Missing", FieldType.Boolean, "native_missing", Flag),
         Column(workspaceId, ImagesIncomplete, "Images Incomplete", FieldType.Boolean, "images_incomplete", Flag),
+        Column(workspaceId, DuplicateGroup, "Duplicate Group", FieldType.Keyword, "duplicate_group_id", Keyword),
+        Column(workspaceId, DuplicatePrimary, "Duplicate Primary", FieldType.Boolean, "is_duplicate_primary", Flag),
+        Column(workspaceId, EmailThreadGroup, "Email Thread Group", FieldType.Keyword, "email_thread_id", Keyword),
+        Metadata(workspaceId, AllCustodians, "All Custodians", FieldType.Keyword, multi: true),
+        Metadata(workspaceId, DuplicateCustodians, "Duplicate Custodians", FieldType.Keyword, multi: true),
+        Metadata(workspaceId, AllPaths, "All Paths", FieldType.Text, multi: true, Fields.TextAnalysis.Identifier),
+        Metadata(workspaceId, DuplicatePaths, "Duplicate Paths", FieldType.Text, multi: true, Fields.TextAnalysis.Identifier),
+        Metadata(workspaceId, ConversationIndex, "Conversation Index", FieldType.Keyword),
+        Metadata(workspaceId, ConversationTopic, "Conversation Topic", FieldType.Text, analysis: Fields.TextAnalysis.Prose),
+        Metadata(workspaceId, InclusiveEmail, "Inclusive Email", FieldType.Boolean),
+        Metadata(workspaceId, ThreadSortOrder, "Thread Sort Order", FieldType.Keyword),
     ];
+
+    private static FieldDefinition Metadata(
+        Guid workspaceId, int id, string name, FieldType type, bool multi = false, TextAnalysis? analysis = null) => new()
+        {
+            WorkspaceId = workspaceId,
+            FieldId = id,
+            Name = name,
+            Type = type,
+            Storage = FieldStorage.Metadata,
+            IsSystem = true,
+            IsMultiValue = multi,
+            TextAnalysis = analysis,
+            IsSearchable = true,
+            SearchSlot = ReservedSlots[id],
+            Capabilities = FieldRules.CapabilitiesForSlot(ReservedSlots[id]),
+        };
 
     private static FieldDefinition Column(
         Guid workspaceId, int id, string name, FieldType type, string column, FieldCapabilities capabilities,

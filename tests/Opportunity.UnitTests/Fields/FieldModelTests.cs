@@ -182,10 +182,11 @@ public class FieldModelTests
     }
 
     [Fact]
-    public void System_fields_use_reserved_ids_and_column_storage()
+    public void System_fields_use_reserved_ids_and_column_storage_except_upstream_metadata()
     {
         var fields = SystemFields.Create(Guid.NewGuid());
-        fields.Should().OnlyContain(f => f.IsSystem && f.FieldId >= 1 && f.FieldId < 1000 && f.Storage == FieldStorage.Column);
+        fields.Should().OnlyContain(f => f.IsSystem && f.FieldId >= 1 && f.FieldId < 1000);
+        fields.Where(f => f.Storage != FieldStorage.Column).Select(f => f.FieldId).Should().BeEquivalentTo(SystemFields.ReservedSlots.Keys);
         fields.Select(f => f.FieldId).Should().OnlyHaveUniqueItems();
         fields.Should().OnlyContain(f => FieldRules.ValidateDefinition(f).Count == 0);
     }

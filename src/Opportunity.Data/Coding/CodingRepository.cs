@@ -8,6 +8,7 @@ using NpgsqlTypes;
 
 using Opportunity.Application.Audit;
 using Opportunity.Application.Coding;
+using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.SearchWork;
 using Opportunity.Core.Coding;
@@ -119,6 +120,61 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         }
 
         return new CodingChunkResult(result, commit, null);
+    }
+
+    /// <summary>
+    /// Q-31 coding-field values of an import chunk, inside the chunk's transaction: one state-based write per distinct set
+    /// of values (actor <see cref="CodingActorType.SystemRule"/> on behalf of the job), so every change gets its
+    /// CodingEvent and DocumentVersion bump. Values must be canonical; an invalid one throws (the chunk fails).
+    /// </summary>
+    internal static async Task<ImportCodingOutcome> ApplyImportValuesAsync(
+        WorkspaceTransaction tx, Guid jobId, Guid actorId, string idempotencyKeyPrefix,
+        IReadOnlyList<(Guid DocumentId, IReadOnlyList<ImportCodingValue> Values)> documents, CancellationToken cancellationToken)
+    {
+        var changed = new HashSet<Guid>();
+        var fields = new SortedSet<int>();
+        var events = 0;
+        var security = false;
+        var groups = documents
+            .Where(d => d.Values.Count > 0)
+            .GroupBy(d => string.Join('|', d.Values.OrderBy(v => v.FieldId).Select(v => $"{v.FieldId}={v.Value.ToJsonString()}")), StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .ToList();
+        for (var i = 0; i < groups.Count; i++)
+        {
+            var group = groups[i].ToList();
+            var values = group[0].Values;
+            foreach (var batch in group.Chunk(CodingWriteRequest.MaxDocuments).Select((b, n) => (Documents: b, Index: n)))
+            {
+                var request = new CodingWriteRequest
+                {
+                    WorkspaceId = tx.WorkspaceId,
+                    IdempotencyKey = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{idempotencyKeyPrefix}:{i}:{batch.Index}"),
+                    Actor = new CodingActor(actorId, CodingActorType.SystemRule),
+                    JobId = jobId,
+                    Documents = [.. batch.Documents.Select(d => new CodingTarget(d.DocumentId))],
+                    Operations = [.. values.Select(v => CodingFieldOperation.Set(v.FieldId, v.Value.DeepClone()))],
+                };
+                var errors = ValidateShape(request);
+                if (errors.Count > 0)
+                {
+                    throw new ArgumentException("Invalid import coding write: " + string.Join("; ", errors.Select(e => e.Message)));
+                }
+
+                var (result, plan) = await ApplyInTransactionAsync(tx, request, cancellationToken).ConfigureAwait(false);
+                if (result.Outcome != CodingWriteOutcome.Applied)
+                {
+                    throw new ArgumentException($"Import coding write {result.Outcome}: " + string.Join("; ", result.Errors.Select(e => e.Message)));
+                }
+
+                changed.UnionWith(plan.BumpedDocuments);
+                fields.UnionWith(values.Select(v => v.FieldId));
+                events += result.EventsWritten;
+                security |= plan.TouchesSecurity;
+            }
+        }
+
+        return new ImportCodingOutcome(changed, fields, events, security);
     }
 
     public async Task<IReadOnlyList<DocumentCoding>> GetCurrentAsync(
@@ -835,6 +891,50 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         await batch.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Current non-null coding values of live definitions per document, read inside the caller's transaction (the
+    /// projection source reader's snapshot, ADR-001 §3).
+    /// </summary>
+    internal static async Task<Dictionary<Guid, Dictionary<int, JsonNode>>> ReadCurrentValuesAsync(
+        WorkspaceTransaction tx, Guid workspaceId, Guid[] documentIds, CancellationToken cancellationToken)
+    {
+        var coding = new Dictionary<Guid, Dictionary<int, JsonNode>>();
+        await using var command = tx.Command(
+            """
+            SELECT f.document_id, f.field_id, fd.field_type, f.value::text,
+                   (SELECT array_agg(c.choice_id ORDER BY c.choice_id) FROM opportunity.document_coding_choice c
+                    WHERE c.workspace_id = f.workspace_id AND c.document_id = f.document_id AND c.field_id = f.field_id)
+            FROM opportunity.document_coding_field f
+            JOIN opportunity.field_definition fd
+              ON fd.workspace_id = f.workspace_id AND fd.field_id = f.field_id AND NOT fd.is_deleted
+            WHERE f.workspace_id = @ws AND f.document_id = ANY(@ids)
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("ids", documentIds);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var value = ReadValue(
+                (FieldType)reader.GetInt16(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetFieldValue<int[]>(4));
+            if (value is null)
+            {
+                continue;
+            }
+
+            var documentId = reader.GetGuid(0);
+            if (!coding.TryGetValue(documentId, out var fields))
+            {
+                coding[documentId] = fields = [];
+            }
+
+            fields[reader.GetInt32(1)] = value;
+        }
+
+        return coding;
+    }
+
     private static JsonNode? ReadValue(FieldType type, string? json, int[]? choiceIds) => type switch
     {
         FieldType.MultiChoice => FieldValues.ChoiceArray(choiceIds ?? []),
@@ -888,6 +988,10 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
             _ => throw new InvalidOperationException("Unknown operation."),
         };
     }
+
+    /// <param name="ChangedDocuments">Documents whose coding (and DocumentVersion) changed.</param>
+    internal sealed record ImportCodingOutcome(
+        IReadOnlySet<Guid> ChangedDocuments, IReadOnlyCollection<int> FieldIds, int EventsWritten, bool TouchesSecurityAffectingField);
 
     private sealed record PlannedEvent(Guid DocumentId, int FieldId, CodingEventKind Kind, JsonNode? Prior, JsonNode? New, long Version);
 

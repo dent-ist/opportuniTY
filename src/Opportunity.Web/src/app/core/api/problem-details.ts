@@ -82,9 +82,17 @@ export function toApiError(error: unknown): ApiError {
       body = undefined;
     }
   }
+  // A 2xx/3xx "error" means the body could not be read as the expected JSON (e.g. an HTML page because /api is
+  // not routed to the API); its status text ("OK") must never become the message.
   const problem: ProblemDetails = isProblem(body)
     ? body
-    : { title: error.statusText || `HTTP ${error.status}`, status: error.status };
+    : error.status < 400
+      ? {
+          title: 'Unexpected response from the server',
+          status: error.status,
+          code: CLIENT_PROBLEM.unexpected,
+        }
+      : { title: error.statusText || `HTTP ${error.status}`, status: error.status };
   return new ApiError(error.status, problem, retryAfterSeconds);
 }
 
@@ -109,6 +117,14 @@ export function describeError(error: ApiError): UserFacingError {
         ...base,
         title: 'Cannot reach the server',
         detail: 'Check your connection and try again.',
+        retryable: true,
+      };
+    case CLIENT_PROBLEM.unexpected:
+      return {
+        ...base,
+        title: 'Unexpected response from the server',
+        detail:
+          'The server answered with something the app could not read. Reload the page; if it keeps happening, the API may not be reachable at /api (check the reverse proxy).',
         retryable: true,
       };
     case 'validation':

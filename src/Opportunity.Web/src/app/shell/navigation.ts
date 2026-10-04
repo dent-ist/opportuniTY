@@ -11,6 +11,7 @@ import {
   TitleStrategy,
 } from '@angular/router';
 import { ApiError, toApiError } from '../core/api/problem-details';
+import { PreferenceStorage } from '../core/preferences/preference-storage';
 import { SessionService } from '../core/session/session';
 import { Workspace, WorkspaceDirectory } from '../core/workspace/workspace-api';
 import { WORKSPACE_DATA } from '../core/workspace/workspace-context';
@@ -108,6 +109,7 @@ export const authGuard: CanActivateFn = async (_route, state) => {
   const session = inject(SessionService);
   const router = inject(Router);
   const errors = inject(ShellErrors);
+  const preferences = inject(PreferenceStorage);
   let status = session.status();
   if (status === 'unknown') {
     try {
@@ -119,7 +121,11 @@ export const authGuard: CanActivateFn = async (_route, state) => {
       });
     }
   }
-  if (status === 'authenticated') return true;
+  if (status === 'authenticated') {
+    // The user's profile (bindings, theme, panes) arrives in the background; cached values apply meanwhile.
+    void preferences.load();
+    return true;
+  }
   if (status === 'expired') return false;
   return router.createUrlTree([SHELL_PATHS.signIn], { queryParams: { returnUrl: state.url } });
 };

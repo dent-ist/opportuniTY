@@ -59,6 +59,7 @@ Tier rules:
 - **Q-12 page post-filter cost** (re-checking each results page against PostgreSQL) is always enabled in gated runs and is reported separately per page.
 - **Material advantage** = ≥ 20% p95 improvement on gated classes, or ≥ 1.5× bulk throughput, consistent across all repetitions (Q-04).
 - Runs with > 0.5% dropped k6 iterations, or load-generator CPU ≥ 70%, are invalid.
+- **Absolute latency assertions in L3/L4 tests** (e.g. E06-T04 outbox insert → publish p95 < 100 ms) are enforced only when `OPPORTUNITY_STRICT_LATENCY=1` (benchmark tiers, idle machine). On shared CI runners the same test asserts the mechanism instead (e.g. NOTIFY-driven wake-up far below the polling interval), per Q-44.
 
 ## 5. Gate and blocker traceability
 

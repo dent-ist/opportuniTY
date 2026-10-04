@@ -24,11 +24,50 @@ public static class AuditTaxonomy
         public const string Denied = "Denied";
     }
 
+    /// <summary>Protected-content access through the gateway (E05-T04, ADR-013 §5).</summary>
+    public static class Document
+    {
+        public const string Category = "Document";
+
+        /// <summary>One gateway grant (or denied attempt): rendition, purpose (Display, Prefetch), object ID.</summary>
+        public const string Retrieved = "Retrieved";
+
+        /// <summary>The viewer displayed the document; references the <see cref="Retrieved"/> event.</summary>
+        public const string Viewed = "Viewed";
+
+        public const string NativeDownloaded = "NativeDownloaded";
+        public const string Printed = "Printed";
+        public const string TextDownloaded = "TextDownloaded";
+    }
+
     public static class Coding
     {
         public const string Category = "Coding";
         public const string Changed = "Changed";
         public const string BulkChunkApplied = "BulkChunkApplied";
+
+        /// <summary>An administrator enabled coding/privilege fields for overlay by one import (Q-31).</summary>
+        public const string OverlayEnabled = "OverlayEnabled";
+    }
+
+    public static class Import
+    {
+        public const string Category = "Import";
+        public const string Started = "Started";
+        public const string Completed = "Completed";
+    }
+
+    public static class Security
+    {
+        public const string Category = "Security";
+        public const string RoleAssigned = "RoleAssigned";
+    }
+
+    public static class Workspace
+    {
+        public const string Category = "Workspace";
+        public const string Created = "Created";
+        public const string SettingsChanged = "SettingsChanged";
     }
 
     public static class Job

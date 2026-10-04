@@ -7,28 +7,56 @@ import {
   computed,
   effect,
   inject,
+  linkedSignal,
   untracked,
 } from '@angular/core';
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, map, skip } from 'rxjs';
+import { CommandRegistry, cycleRegion } from '../core/commands';
+import { PreferenceStorage } from '../core/preferences/preference-storage';
 import { SessionService } from '../core/session/session';
 import { WorkspaceDirectory } from '../core/workspace/workspace-api';
 import { ActiveWorkspace } from '../core/workspace/workspace-context';
-import { ADMIN_AREAS, WORKSPACE_SECTIONS, allowedSections } from '../core/workspace/sections';
-import { Button, DialogService, Icon, MENU } from '../ui';
+import {
+  ADMIN_AREAS,
+  SEARCH_AREAS,
+  WORKSPACE_SECTIONS,
+  allowedSections,
+  type WorkspaceSection,
+} from '../core/workspace/sections';
+import { Button, DialogService, Icon, type IconName } from '../ui';
 import { Brand } from './brand';
 import { SHELL_PATHS } from './navigation';
 import { SessionEndedDialog } from './session-ended-dialog';
+import { ShortcutDialogs } from './shortcuts/shortcut-dialogs';
 import { SkipLink } from './skip-link';
 import { UserMenu } from './user-menu';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
+interface Subnav {
+  readonly label: string;
+  readonly base: string;
+  readonly areas: readonly WorkspaceSection[];
+}
+
+/** Sidebar icon per workspace section (original icons, `ui/icon`). */
+const SECTION_ICONS: Readonly<Record<string, IconName>> = {
+  documents: 'documents',
+  searches: 'search',
+  productions: 'production',
+  imports: 'import',
+  exports: 'export',
+  jobs: 'jobs',
+};
+
 /**
- * Authenticated layout (familiarity guide §2.2): skip link, banner with the product mark, workspace
- * switcher, RBAC-filtered section tabs and the user menu; then the main region. Focus moves to the new
- * page's heading after each navigation (ADR-018 §3.4). When the session ends, the routed content (and
- * with it every workspace-scoped store) is destroyed and the user is asked to sign in again.
+ * Authenticated layout (familiarity guide §2.2, Q-64): skip link, banner with the product mark, workspace
+ * switcher and the user menu; a collapsible left sidebar with the RBAC-filtered workspace sections; the main
+ * region, which shows a section's own tabs (e.g. Admin's areas) at its top. Focus moves to the new page's
+ * heading after each navigation (ADR-018 §3.4). When the session ends, the routed content (and with it every
+ * workspace-scoped store) is destroyed and the user is asked to sign in again.
  */
 @Component({
   selector: 'opp-app-shell',
@@ -42,7 +70,6 @@ import { WorkspaceSwitcher } from './workspace-switcher';
     SkipLink,
     UserMenu,
     WorkspaceSwitcher,
-    ...MENU,
   ],
   templateUrl: './app-shell.html',
   styleUrl: './app-shell.scss',
@@ -67,6 +94,30 @@ export class AppShell {
   );
   protected readonly sessionEnded = computed(() => this.session.status() === 'expired');
 
+  private readonly preferences = inject(PreferenceStorage);
+  /** The user's choice: collapsed to icons; follows the user profile like the other UI preferences. */
+  private readonly collapsedPreference = linkedSignal(
+    () => this.preferences.read<{ sidebarCollapsed?: boolean }>('shell')?.sidebarCollapsed === true,
+  );
+  /** Narrow viewports always show the icons-only sidebar so the content keeps its width. */
+  private readonly narrow = toSignal(
+    inject(BreakpointObserver)
+      .observe('(max-width: 48rem)')
+      .pipe(map((state) => state.matches)),
+    { initialValue: false },
+  );
+  protected readonly collapsed = computed(() => this.collapsedPreference() || this.narrow());
+
+  protected iconFor(path: string): IconName {
+    return SECTION_ICONS[path] ?? 'documents';
+  }
+
+  protected toggleCollapsed(): void {
+    const next = !this.collapsedPreference();
+    this.collapsedPreference.set(next);
+    this.preferences.write('shell', { sidebarCollapsed: next });
+  }
+
   private readonly url = toSignal(
     this.router.events.pipe(
       filter((e) => e instanceof NavigationEnd),
@@ -75,8 +126,19 @@ export class AppShell {
     { initialValue: this.router.url },
   );
   protected readonly inAdmin = computed(() => /^\/w\/[^/]+\/admin(\/|$)/.test(this.url()));
+  private readonly searchAreas = computed(() =>
+    allowedSections(SEARCH_AREAS, this.workspace()?.permissions ?? []),
+  );
+  /** Tabs across the top of the main region for a section with sub-pages (Q-64). */
+  protected readonly subnav = computed((): Subnav | null => {
+    if (this.inAdmin()) return { label: 'Admin', base: 'admin', areas: this.adminAreas() };
+    if (/^\/w\/[^/]+\/searches(\/|$)/.test(this.url()))
+      return { label: 'Searches', base: 'searches', areas: this.searchAreas() };
+    return null;
+  });
 
   constructor() {
+    this.registerShellCommands();
     effect(() => {
       if (this.sessionEnded()) untracked(() => this.onSessionEnded());
     });
@@ -87,6 +149,19 @@ export class AppShell {
         takeUntilDestroyed(),
       )
       .subscribe(() => afterNextRender(() => this.focusPageHeading(), { injector: this.injector }));
+  }
+
+  /** Keyboard commands that work on every page (familiarity guide §4); features register their own. */
+  private registerShellCommands(): void {
+    const commands = inject(CommandRegistry);
+    const shortcuts = inject(ShortcutDialogs);
+    commands.start();
+    commands.handle('help.shortcuts', () => void shortcuts.help());
+    const hasRegions = () => this.document.querySelector('[data-command-region]') !== null;
+    commands.handle('region.next', () => cycleRegion(this.document, 1), { enabled: hasRegions });
+    commands.handle('region.previous', () => cycleRegion(this.document, -1), {
+      enabled: hasRegions,
+    });
   }
 
   protected signIn(): void {

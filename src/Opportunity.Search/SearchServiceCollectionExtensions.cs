@@ -1,9 +1,16 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Opportunity.Application.Bootstrap;
+using Opportunity.Application.Search;
 using Opportunity.Application.Search.Indexing;
+using Opportunity.Application.Search.Projection;
+using Opportunity.Application.Storage;
+using Opportunity.Core.QueryLanguage;
 using Opportunity.Search.Indexing;
+using Opportunity.Search.Projection;
+using Opportunity.Search.Querying;
 
 namespace Opportunity.Search;
 
@@ -24,10 +31,50 @@ public static class SearchServiceCollectionExtensions
     public static IServiceCollection AddOpenSearchIndexManagement(this IServiceCollection services, OpenSearchOptions options)
     {
         AddOpenSearchCore(services, options);
-        services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<IndexManager>();
-        services.TryAddSingleton<IIndexManager>(sp => sp.GetRequiredService<IndexManager>());
-        services.TryAddSingleton<IWorkspaceSearchPlacement>(sp => sp.GetRequiredService<IndexManager>());
+        AddIndexManagement(services);
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the logical search service (<see cref="ISearchService"/>, scoped like the PDP it calls) with index
+    /// management and the first-slice <see cref="ISearchQueryTranslator"/>. Settings are bound from configuration
+    /// (<c>OpenSearch</c>, <c>ConnectionStrings:OpenSearch</c>) and validated on first use, unless an
+    /// <see cref="OpenSearchOptions"/> instance is registered first. Needs <see cref="IIndexPlacementStore"/>,
+    /// <see cref="ISearchSessionStore"/>, the PDP and an audit writer.
+    /// </summary>
+    public static IServiceCollection AddOpenSearchSearchService(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.TryAddSingleton(sp =>
+        {
+            var options = OpenSearchOptions.Bind(sp.GetRequiredService<IConfiguration>());
+            options.Validate();
+            return options;
+        });
+        AddOpenSearchServices(services, null);
+        AddIndexManagement(services);
+        services.TryAddSingleton<ISearchQueryTranslator, BasicSearchQueryTranslator>();
+        services.TryAddSingleton(sp => sp.GetService<QueryValidator>()?.Limits ?? QueryLimits.Default);
+        services.TryAddScoped<ISearchService, SearchService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the projection pipeline (E07-T02): <see cref="IProjectionService"/> for index workers, the interim
+    /// Candidate A <see cref="IProjectionBuilder"/> (replace that registration to swap the coding representation,
+    /// ADR-004b) and the object-storage text loader. Needs <see cref="IProjectionSourceReader"/> and
+    /// <see cref="IObjectStore"/> registrations.
+    /// </summary>
+    public static IServiceCollection AddSearchProjection(this IServiceCollection services, ProjectionOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        options ??= new ProjectionOptions();
+        options.Validate();
+        services.TryAddSingleton(options);
+        services.TryAddSingleton<IProjectionBuilder, CandidateAProjectionBuilder>();
+        services.TryAddSingleton<IProjectionTextLoader>(sp => new ObjectStoreProjectionTextLoader(
+            sp.GetRequiredService<IObjectStore>(), sp.GetRequiredService<ProjectionOptions>()));
+        services.TryAddSingleton<IProjectionService, ProjectionService>();
         return services;
     }
 
@@ -38,10 +85,23 @@ public static class SearchServiceCollectionExtensions
         options.Validate();
 
         services.TryAddSingleton(options);
+        return AddOpenSearchServices(services, mappings);
+    }
+
+    private static IServiceCollection AddOpenSearchServices(IServiceCollection services, ProjectionMappings? mappings)
+    {
         services.TryAddSingleton(mappings ?? ProjectionMappings.Embedded);
         services.TryAddSingleton(sp => new OpenSearchConnection(sp.GetRequiredService<OpenSearchOptions>()));
         services.TryAddSingleton(sp => new IndexNames(sp.GetRequiredService<OpenSearchOptions>().IndexPrefix));
         services.TryAddSingleton<IndexTemplates>();
         return services;
+    }
+
+    private static void AddIndexManagement(IServiceCollection services)
+    {
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IndexManager>();
+        services.TryAddSingleton<IIndexManager>(sp => sp.GetRequiredService<IndexManager>());
+        services.TryAddSingleton<IWorkspaceSearchPlacement>(sp => sp.GetRequiredService<IndexManager>());
     }
 }

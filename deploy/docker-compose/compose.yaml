@@ -252,7 +252,7 @@ services:
       <<: *app-environment
       # OIDC with the BFF session (ADR-015 D3/D4). Sign in at http://localhost:API_PORT/bff/login: the session
       # cookie is __Host- prefixed and Secure, which browsers accept over plain HTTP only for localhost.
-      Authentication__PublicOrigin: ${OPPORTUNITY_PUBLIC_ORIGIN:-http://localhost:8081}
+      Authentication__PublicOrigin: ${OPPORTUNITY_PUBLIC_ORIGIN:-http://localhost:8080}
       Authentication__Oidc__Authority: http://localhost:${KEYCLOAK_PORT:-8180}/realms/opportunity
       Authentication__Oidc__MetadataAddress: http://keycloak:8080/realms/opportunity/.well-known/openid-configuration
       Authentication__Oidc__ClientId: opportunity-web
@@ -291,6 +291,9 @@ services:
       target: web
       args:
         APK_UPGRADE: ${WEB_APK_UPGRADE:-1}
+    # The SPA forwards /api and /bff to the api service: one origin for the app and its BFF session (ADR-015 D4).
+    volumes:
+      - ./web/api-proxy.conf:/etc/nginx/api-proxy.d/api-proxy.conf:ro
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
     healthcheck:
@@ -338,6 +341,7 @@ services:
       - --web.enable-otlp-receiver
     volumes:
       - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./observability/alerts.yaml:/etc/prometheus/alerts.yaml:ro
       - prometheus-data:/prometheus
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"

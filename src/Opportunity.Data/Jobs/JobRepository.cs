@@ -23,7 +23,17 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
 
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(job.MaxAttemptsPerChunk, nameof(job));
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, job.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var creation = await CreateInTransactionAsync(tx, job, cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return creation;
+    }
 
+    /// <summary>
+    /// <see cref="CreateAsync"/> inside the caller's transaction, for stores that create a job together with the rows it
+    /// works on (an import batch). The caller has validated <paramref name="job"/> and commits.
+    /// </summary>
+    internal static async Task<JobCreation> CreateInTransactionAsync(WorkspaceTransaction tx, NewJob job, CancellationToken cancellationToken)
+    {
         bool created;
         Guid jobId;
         await using (var insert = tx.Command(
@@ -69,7 +79,6 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
             await JobSql.AuditAsync(tx, info!, AuditTaxonomy.Job.Created, info!.InitiatedBy, cancellationToken).ConfigureAwait(false);
         }
 
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new JobCreation(info!, created);
     }
 

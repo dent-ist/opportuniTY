@@ -10,4 +10,5 @@ export type StructuralTarget =
   | 'duplicateGroupId'
   | 'dedupeHash'
   | 'emailThreadId'
+  | 'emailHash'
   | null;

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 using Opportunity.Contracts.Api;
@@ -56,7 +57,7 @@ public static class EntityTags
 /// Bind with <c>[AsParameters]</c>. Cursor encoding and its (user, workspace) binding come with the first paged
 /// resource (E07).
 /// </summary>
-public readonly record struct PageQuery(int? Limit, string? Cursor)
+public readonly record struct PageQuery([FromQuery(Name = "limit")] int? Limit, [FromQuery(Name = "cursor")] string? Cursor)
 {
     public int EffectiveLimit => Limit ?? Pagination.DefaultLimit;
 

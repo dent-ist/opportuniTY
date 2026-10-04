@@ -64,6 +64,33 @@ public sealed class SearchWorkMaintenance(NpgsqlDataSource dataSource) : ISearch
         return backlog;
     }
 
+    public async Task<IReadOnlyList<OutboxLaneBacklog>> GetOutboxLaneBacklogAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            """
+            SELECT lane, count(*), min(committed_at) FILTER (WHERE status IN (1, 2, 5))
+            FROM opportunity.search_outbox
+            WHERE workspace_id = @ws AND status <> 4
+            GROUP BY lane
+            ORDER BY lane
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        var lanes = new List<OutboxLaneBacklog>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                lanes.Add(new OutboxLaneBacklog(
+                    SearchWorkSql.Lane(reader.GetInt16(0)), reader.GetInt64(1),
+                    reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return lanes;
+    }
+
     public async Task<IReadOnlyList<Guid>> GetWorkspacesAsync(CancellationToken cancellationToken = default)
     {
         // The workspace registry is installation-level (ADR-015 D7.1): readable without a workspace context.

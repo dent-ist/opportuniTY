@@ -30,26 +30,28 @@ public sealed record SearchWorkRelayResult(int OutboxPublished, int OutboxUnconf
 /// One relay pass of the transactional outbox for one workspace (ADR-001 §6.1): claim a batch, publish every row with a
 /// broker confirm, then mark the confirmed rows Dispatched. A crash between confirm and mark leaves the claim to expire
 /// and the row is published again: delivery is at-least-once, which payload-free, version-guarded indexing makes
-/// harmless. No ordering is provided or needed (ADR-001 §5.1). The dispatcher host (E06-T04) decides when and for which
-/// workspaces this runs (LISTEN/NOTIFY wake-up, polling fallback, N instances).
+/// harmless. No ordering is provided or needed (ADR-001 §5.1). The dispatcher host (<c>OutboxDispatcher</c>, E06-T04)
+/// decides when and for which workspaces this runs (LISTEN/NOTIFY wake-up, polling fallback, N instances).
 /// </summary>
 public sealed class SearchWorkRelay(
-    ISearchOutboxRepository outbox, IIndexChunkTaskRepository tasks, IMessagePublisher publisher, SearchWorkRelayOptions options)
+    ISearchOutboxRepository outbox, IIndexChunkTaskRepository tasks, IMessagePublisher publisher, SearchWorkRelayOptions options,
+    DispatchMetrics? metrics = null)
 {
     public async Task<SearchWorkRelayResult> RelayOnceAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {
-        var (outboxPublished, outboxFailed) = await RelayOutboxAsync(workspaceId, cancellationToken).ConfigureAwait(false);
-        var (tasksPublished, tasksFailed) = await RelayTasksAsync(workspaceId, cancellationToken).ConfigureAwait(false);
-        return new SearchWorkRelayResult(outboxPublished, outboxFailed, tasksPublished, tasksFailed);
+        var rows = await RelayOutboxAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+        var chunkTasks = await RelayTasksAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+        return new SearchWorkRelayResult(rows.Published, rows.Unconfirmed, chunkTasks.Published, chunkTasks.Unconfirmed);
     }
 
-    private async Task<(int Published, int Unconfirmed)> RelayOutboxAsync(Guid workspaceId, CancellationToken cancellationToken)
+    /// <summary>One batch of SearchOutbox rows, security lane first (the claim orders by lane, then generation).</summary>
+    public async Task<DispatchPassResult> RelayOutboxAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {
         var claimed = await outbox.ClaimAsync(workspaceId, options.Owner, options.BatchSize, options.ClaimDuration, cancellationToken)
             .ConfigureAwait(false);
         if (claimed.Count == 0)
         {
-            return (0, 0);
+            return DispatchPassResult.None;
         }
 
         var outcomes = await Task.WhenAll(claimed.Select(row => TryPublishAsync(new OutgoingMessage<SearchOutboxMessage>(
@@ -57,7 +59,7 @@ public sealed class SearchWorkRelay(
             new SearchOutboxMessage { OutboxId = row.OutboxId, DocumentId = row.DocumentId, DocumentVersion = row.DocumentVersion },
             new MessageCorrelation($"search-outbox:{row.OutboxId}", WorkspaceId: row.WorkspaceId),
             ChunkIdempotencyKey.ForOutbox(row.WorkspaceId, row.OutboxId))
-        { Attempt = row.AttemptCount }, cancellationToken))).ConfigureAwait(false);
+        { Attempt = row.AttemptCount }, row.Lane, row.CommittedAt, cancellationToken))).ConfigureAwait(false);
 
         var confirmed = claimed.Where((_, i) => outcomes[i] is null).ToList();
         var unconfirmed = claimed.Where((_, i) => outcomes[i] is not null).ToList();
@@ -72,16 +74,17 @@ public sealed class SearchWorkRelay(
             await outbox.ReleaseAsync(workspaceId, options.Owner, unconfirmed, error, cancellationToken).ConfigureAwait(false);
         }
 
-        return (confirmed.Count, unconfirmed.Count);
+        return new DispatchPassResult(confirmed.Count, unconfirmed.Count, claimed.Count >= options.BatchSize);
     }
 
-    private async Task<(int Published, int Unconfirmed)> RelayTasksAsync(Guid workspaceId, CancellationToken cancellationToken)
+    /// <summary>One batch of IndexChunkTasks, security-bulk lane (L2) before bulk (L3).</summary>
+    public async Task<DispatchPassResult> RelayTasksAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {
         var claimed = await tasks.ClaimForDispatchAsync(workspaceId, options.Owner, options.BatchSize, options.ClaimDuration, cancellationToken)
             .ConfigureAwait(false);
         if (claimed.Count == 0)
         {
-            return (0, 0);
+            return DispatchPassResult.None;
         }
 
         var outcomes = await Task.WhenAll(claimed.Select(task => TryPublishAsync(new OutgoingMessage<IndexChunkTaskMessage>(
@@ -89,7 +92,7 @@ public sealed class SearchWorkRelay(
             new IndexChunkTaskMessage { TaskId = task.TaskId },
             new MessageCorrelation($"index-task:{task.TaskId}", WorkspaceId: task.WorkspaceId, JobId: task.JobId),
             task.IdempotencyKey)
-        { Attempt = task.AttemptCount }, cancellationToken))).ConfigureAwait(false);
+        { Attempt = task.AttemptCount }, task.Lane, task.CommittedAt, cancellationToken))).ConfigureAwait(false);
 
         var confirmed = claimed.Where((_, i) => outcomes[i] is null).Select(t => t.TaskId).ToList();
         var unconfirmed = claimed.Where((_, i) => outcomes[i] is not null).Select(t => t.TaskId).ToList();
@@ -104,20 +107,24 @@ public sealed class SearchWorkRelay(
                 .ConfigureAwait(false);
         }
 
-        return (confirmed.Count, unconfirmed.Count);
+        return new DispatchPassResult(confirmed.Count, unconfirmed.Count, claimed.Count >= options.BatchSize);
     }
 
     /// <summary>Null when the broker confirmed the message, otherwise the error to record.</summary>
-    private async Task<string?> TryPublishAsync<TPayload>(OutgoingMessage<TPayload> message, CancellationToken cancellationToken)
+    private async Task<string?> TryPublishAsync<TPayload>(
+        OutgoingMessage<TPayload> message, MessageLane lane, DateTimeOffset committedAt, CancellationToken cancellationToken)
         where TPayload : class
     {
         try
         {
             await publisher.PublishAsync(message, cancellationToken).ConfigureAwait(false);
+            metrics?.Latency(lane, committedAt);
+            metrics?.Published(message.Destination, confirmed: true);
             return null;
         }
         catch (MessagePublishException ex)
         {
+            metrics?.Published(message.Destination, confirmed: false);
             return ex.Message;
         }
     }

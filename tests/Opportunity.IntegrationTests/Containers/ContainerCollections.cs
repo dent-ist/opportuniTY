@@ -1,3 +1,4 @@
+using Opportunity.IntegrationTests.Migrations;
 using Opportunity.Testing.ObjectStore;
 using Opportunity.Testing.OpenSearch;
 using Opportunity.Testing.Postgres;
@@ -14,8 +15,9 @@ public sealed class PostgresCollectionDefinition : ICollectionFixture<PostgresFi
     public const string Name = "PostgreSQL";
 }
 
+/// <summary>Also starts a PostgreSQL container: the search service suites need authoritative security state (E07-T05).</summary>
 [CollectionDefinition(Name)]
-public sealed class OpenSearchCollectionDefinition : ICollectionFixture<OpenSearchFixture>
+public sealed class OpenSearchCollectionDefinition : ICollectionFixture<OpenSearchFixture>, ICollectionFixture<MigrationPostgresFixture>
 {
     public const string Name = "OpenSearch";
 }

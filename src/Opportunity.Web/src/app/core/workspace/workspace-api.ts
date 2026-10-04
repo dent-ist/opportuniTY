@@ -2,33 +2,30 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
-import type { WorkspaceResource } from '../api/generated/models';
+import { ApiConfiguration } from '../api/generated/api-configuration';
+import { listWorkspaces } from '../api/generated/fn/workspaces/list-workspaces';
+import type {
+  CursorPageOfWorkspaceSummary,
+  WorkspaceResource,
+  WorkspaceSummary,
+} from '../api/generated/models';
 
 /**
- * Workspace directory contract the shell relies on.
+ * Workspace directory contract the shell relies on (generated client, E04-T05).
  *
- * - `GET /api/v1/workspaces/{workspaceId}` (E05-T02, generated `WorkspaceResource`) → the workspace with the
- *   caller's effective permissions; 404 when it does not exist **or** the caller has no access (no enumeration).
- * - `GET /api/v1/workspaces?limit=&cursor=` → cursor page of the workspaces the caller is a member of. Not
- *   published yet (it needs a cross-workspace membership lookup, deferred from E05-T02), so `WorkspaceSummary`
- *   is still written by hand from ADR-019 conventions.
+ * - `GET /api/v1/workspaces/{workspaceId}` (`WorkspaceResource`) → the workspace with the caller's effective
+ *   permissions; 404 when it does not exist **or** the caller has no access (no enumeration).
+ * - `GET /api/v1/workspaces?limit=&cursor=` (`CursorPageOfWorkspaceSummary`) → cursor page of the workspaces the
+ *   caller is a member of, by name. A workspace that would answer 404 is never listed.
  */
 export const WORKSPACES_URL = '/api/v1/workspaces';
 
-export interface WorkspaceSummary {
-  workspaceId: string;
-  name: string;
-  matterNumber?: string | null;
-}
+export type { WorkspaceSummary };
 
 /** Effective permissions are the closed catalogue names (docs/security/permission-matrix.md). */
 export type Workspace = WorkspaceResource;
 
-export interface CursorPage<T> {
-  items: T[];
-  nextCursor: string | null;
-  total?: { value: number; relation: 'eq' | 'gte' };
-}
+export type WorkspacePage = CursorPageOfWorkspaceSummary;
 
 export function workspaceUrl(workspaceId: string): string {
   return `${WORKSPACES_URL}/${encodeURIComponent(workspaceId)}`;
@@ -41,6 +38,7 @@ export function workspaceUrl(workspaceId: string): string {
 @Injectable({ providedIn: 'root' })
 export class WorkspaceDirectory {
   private readonly http = inject(HttpClient);
+  private readonly rootUrl = inject(ApiConfiguration).rootUrl;
   private last?: { id: string; workspace: Promise<Workspace> };
   private readonly _known = signal<ReadonlyMap<string, WorkspaceSummary>>(new Map());
 
@@ -59,12 +57,11 @@ export class WorkspaceDirectory {
     return workspace;
   }
 
-  async list(cursor?: string | null, limit = 100): Promise<CursorPage<WorkspaceSummary>> {
-    const params: Record<string, string | number> = { limit };
-    if (cursor) params['cursor'] = cursor;
-    const page = await firstValueFrom(
-      this.http.get<CursorPage<WorkspaceSummary>>(WORKSPACES_URL, { params }),
+  async list(cursor?: string | null, limit = 100): Promise<WorkspacePage> {
+    const response = await firstValueFrom(
+      listWorkspaces(this.http, this.rootUrl, { limit, cursor: cursor ?? undefined }),
     );
+    const page = response.body;
     this._known.update((known) => {
       const next = new Map(known);
       for (const ws of page.items) next.set(ws.workspaceId, ws);

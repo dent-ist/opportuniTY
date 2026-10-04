@@ -37,9 +37,14 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             await counter.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        // Re-running adds system fields introduced since the workspace was created. One whose name a custom field
+        // already uses (e.g. an "All Custodians" created by an earlier import) is left out: the custom field keeps working.
         foreach (var field in SystemFields.Create(workspaceId))
         {
-            await InsertFieldAsync(tx, field, onConflictDoNothing: true, cancellationToken).ConfigureAwait(false);
+            if (!await NameTakenAsync(tx, workspaceId, field.Name, field.FieldId, cancellationToken).ConfigureAwait(false))
+            {
+                await InsertFieldAsync(tx, field, onConflictDoNothing: true, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         await using (var layout = tx.Command(
@@ -755,7 +760,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             }
         }
 
-        for (var n = 1; n <= FieldRules.SlotBudgets[kind]; n++)
+        for (var n = 1; n <= FieldRules.SlotBudgetsFor(field.Storage)[kind]; n++)
         {
             var slot = FieldRules.Slot(kind, n);
             if (!used.Contains(slot))

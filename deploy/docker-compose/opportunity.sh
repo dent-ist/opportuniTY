@@ -157,7 +157,7 @@ cmd_up() {
   local web api
   web="$(env_value WEB_PORT)"; api="$(env_value API_PORT)"
   echo
-  echo "Web:  http://127.0.0.1:${web:-8080}/"
+  echo "Web:  http://localhost:${web:-8080}/  (sign in here; use localhost, not 127.0.0.1)"
   echo "API:  http://127.0.0.1:${api:-8081}/health/ready"
   echo "RabbitMQ management: http://127.0.0.1:$(env_value RABBITMQ_MANAGEMENT_PORT | grep . || echo 15672)/"
   if [[ ",${COMPOSE_PROFILES:-$(env_value COMPOSE_PROFILES)}," == *,observability,* ]]; then

@@ -37,6 +37,7 @@ internal static class DocumentColumns
         Projected("sha1", NpgsqlDbType.Bytea, d => d.Sha1),
         Projected("sha256", NpgsqlDbType.Bytea, d => d.Sha256),
         Projected("upstream_dedupe_hash", NpgsqlDbType.Text, d => d.UpstreamDedupeHash),
+        Projected("upstream_dedupe_hash_kind", NpgsqlDbType.Smallint, d => (short?)d.UpstreamDedupeHashKind),
         Projected("file_name", NpgsqlDbType.Text, d => d.FileName),
         Projected("file_extension", NpgsqlDbType.Text, d => d.FileExtension),
         Projected("file_type", NpgsqlDbType.Text, d => d.FileType),

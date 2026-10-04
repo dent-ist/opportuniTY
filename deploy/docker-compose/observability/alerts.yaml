@@ -1,0 +1,13 @@
+# Prometheus alert rules (ADR-017 §6; E19-T05 owns the full set and tunes thresholds). Loaded by prometheus.yaml.
+groups:
+  - name: opportunity-outbox
+    rules:
+      # E06-T04: the oldest SearchOutbox row not yet dispatched (Pending, Claimed or Failed), max over dispatcher instances.
+      - alert: OutboxOldestAgeHigh
+        expr: max by (opportunity_lane) (opportunity_outbox_oldest_age_seconds) > 60
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Search outbox lane {{ $labels.opportunity_lane }} is not being dispatched"
+          description: "The oldest undispatched SearchOutbox row is {{ $value | humanizeDuration }} old (> 60 s). Check RabbitMQ and the dispatcher worker."

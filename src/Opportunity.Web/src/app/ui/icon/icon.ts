@@ -23,6 +23,16 @@ const PATHS = {
   help: 'M12 21a9 9 0 100-18 9 9 0 000 18zM9.5 9.5a2.5 2.5 0 114 2c-1 .6-1.5 1.2-1.5 2.5M12 17v.5',
   unfold: 'M8 9l4-4 4 4M8 15l4 4 4-4',
   fold: 'M8 4.5l4 4 4-4M8 19.5l4-4 4 4',
+  // Workspace navigation (sidebar).
+  documents: 'M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 12h6M9.5 15.5h6',
+  report: 'M5 20V11M10 20V5M15 20v-6M20 20V8',
+  production: 'M4 8l8-4.5L20 8v8l-8 4.5L4 16zM4 8l8 4.5L20 8M12 12.5v8',
+  import: 'M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M4 16.5V20h16v-3.5',
+  export: 'M12 14.5v-11M7.5 8L12 3.5 16.5 8M4 16.5V20h16v-3.5',
+  jobs: 'M8.5 6H20M8.5 12H20M8.5 18H20M4 6h.5M4 12h.5M4 18h.5',
+  settings: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 4.5v5M9 14.5v5',
+  'sidebar-collapse': 'M4 4.5h16v15H4zM9 4.5v15M15.5 9.5L13 12l2.5 2.5',
+  'sidebar-expand': 'M4 4.5h16v15H4zM9 4.5v15M13 9.5l2.5 2.5-2.5 2.5',
 } as const;
 
 export type IconName = keyof typeof PATHS;

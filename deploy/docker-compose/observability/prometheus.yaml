@@ -13,6 +13,9 @@ otlp:
     - service.version
     - deployment.environment.name
 
+rule_files:
+  - alerts.yaml
+
 storage:
   tsdb:
     out_of_order_time_window: 30m

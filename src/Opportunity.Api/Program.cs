@@ -1,8 +1,11 @@
 using System.Reflection;
 
+using Opportunity.Api.Content;
 using Opportunity.Api.Conventions;
+using Opportunity.Api.Fields;
 using Opportunity.Api.Import;
 using Opportunity.Api.Jobs;
+using Opportunity.Api.Preferences;
 using Opportunity.Api.Search;
 using Opportunity.Api.Workspaces;
 using Opportunity.Data.Audit;
@@ -28,11 +31,16 @@ if (Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider")
 builder.AddOpportunityHostDefaults();
 builder.Services.AddApiConventions();
 builder.Services.AddQueryValidation();
+builder.Services.AddSearchEndpoints();
 builder.Services.AddJobEndpoints();
-builder.Services.AddWorkspaceEndpoints();
+builder.Services.AddWorkspaceEndpoints(builder.Configuration);
 builder.Services.AddPostgresIdentityStores();
 builder.Services.AddPostgresSecurityState();
 builder.Services.AddImportMappingEndpoints();
+builder.Services.AddImportEndpoints(builder.Configuration);
+builder.Services.AddProtectedContentGateway(builder.Configuration);
+builder.Services.AddFieldEndpoints();
+builder.Services.AddUserPreferenceEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();

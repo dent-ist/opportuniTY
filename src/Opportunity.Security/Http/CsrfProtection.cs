@@ -53,7 +53,7 @@ internal sealed class CsrfProtectionMiddleware(
         {
             if (!context.Request.Cookies.ContainsKey(SessionCookies.XsrfToken))
             {
-                var tokens = antiforgery.GetAndStoreTokens(context);
+                var tokens = AsSecureContext(context, () => antiforgery.GetAndStoreTokens(context));
                 context.Response.Cookies.Append(SessionCookies.XsrfToken, tokens.RequestToken!, new CookieOptions
                 {
                     HttpOnly = false,
@@ -81,7 +81,7 @@ internal sealed class CsrfProtectionMiddleware(
             return;
         }
 
-        if (!await antiforgery.IsRequestValidAsync(context).ConfigureAwait(false))
+        if (!await AsSecureContextAsync(context, () => antiforgery.IsRequestValidAsync(context)).ConfigureAwait(false))
         {
             await RejectAsync(context, $"A valid anti-forgery token is required in the {SessionCookies.AntiforgeryHeader} header.").ConfigureAwait(false);
             return;
@@ -89,6 +89,53 @@ internal sealed class CsrfProtectionMiddleware(
 
         await next(context).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Antiforgery refuses to issue or check its Secure cookie on a non-https request. On the developer profile
+    /// (public origin http://localhost, which browsers treat as a secure context) the request is presented as https for
+    /// the duration of the antiforgery call only; any other deployment is https end to end or behind a TLS proxy.
+    /// </summary>
+    private T AsSecureContext<T>(HttpContext context, Func<T> action)
+    {
+        var request = context.Request;
+        if (request.IsHttps || !options.Value.IsLoopbackHttpOrigin || !IsLoopbackHost(request.Host))
+        {
+            return action();
+        }
+
+        request.Scheme = "https";
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            request.Scheme = "http";
+        }
+    }
+
+    private async Task<T> AsSecureContextAsync<T>(HttpContext context, Func<Task<T>> action)
+    {
+        var request = context.Request;
+        if (request.IsHttps || !options.Value.IsLoopbackHttpOrigin || !IsLoopbackHost(request.Host))
+        {
+            return await action().ConfigureAwait(false);
+        }
+
+        request.Scheme = "https";
+        try
+        {
+            return await action().ConfigureAwait(false);
+        }
+        finally
+        {
+            request.Scheme = "http";
+        }
+    }
+
+    private static bool IsLoopbackHost(HostString host) =>
+        string.Equals(host.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+        || (System.Net.IPAddress.TryParse(host.Host, out var address) && System.Net.IPAddress.IsLoopback(address));
 
     private async Task RejectAsync(HttpContext context, string detail)
     {

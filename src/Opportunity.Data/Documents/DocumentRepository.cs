@@ -85,8 +85,25 @@ public sealed class DocumentRepository(NpgsqlDataSource dataSource) : IDocumentR
             throw new ArgumentException("Every document must belong to the given workspace.", nameof(documents));
         }
 
-        var columns = DocumentColumns.NameList(DocumentColumns.All);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await InsertManyAsync(tx, documents, cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Bulk insert inside the caller's transaction (an import chunk writes documents, their relationships and its search
+    /// work in one transaction). Every document must belong to the transaction's workspace.
+    /// </summary>
+    internal static async Task InsertManyAsync(WorkspaceTransaction tx, IReadOnlyCollection<Document> documents, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(tx);
+        ArgumentNullException.ThrowIfNull(documents);
+        if (documents.Any(d => d.WorkspaceId != tx.WorkspaceId))
+        {
+            throw new ArgumentException("Every document must belong to the transaction's workspace.", nameof(documents));
+        }
+
+        var columns = DocumentColumns.NameList(DocumentColumns.All);
 
         // RLS forbids COPY FROM into the target for a non-owner role, so stage in a temp table and INSERT ... SELECT,
         // which RLS checks (ADR-015 D7.4.2). The stage has the column types but none of the constraints.
@@ -125,13 +142,84 @@ public sealed class DocumentRepository(NpgsqlDataSource dataSource) : IDocumentR
                 SELECT {columns.Replace(NormColumn, NormalizedNorm, StringComparison.Ordinal)} FROM {StageTable};
             INSERT INTO opportunity.document_projection_state (workspace_id, document_id)
                 SELECT workspace_id, document_id FROM {StageTable};
+            DROP TABLE {StageTable};
             """))
         {
             insert.CommandTimeout = 0;
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
 
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+    /// <summary>
+    /// Import-chunk variant of <see cref="InsertManyAsync"/> inside the caller's transaction: a document whose normalized
+    /// control number already exists (a concurrent load) is skipped instead of failing the chunk. Returns the ids of the
+    /// documents inserted, each at DocumentVersion 1.
+    /// </summary>
+    internal static async Task<HashSet<Guid>> InsertNewAsync(
+        WorkspaceTransaction tx, IReadOnlyCollection<Document> documents, CancellationToken cancellationToken)
+    {
+        var inserted = new HashSet<Guid>();
+        if (documents.Count == 0)
+        {
+            return inserted;
+        }
+
+        const string stage = "import_document_stage";
+        var columns = DocumentColumns.NameList(DocumentColumns.All);
+        await using (var create = tx.Command(
+            $"CREATE TEMP TABLE {stage} ON COMMIT DROP AS SELECT {columns} FROM opportunity.document WITH NO DATA"))
+        {
+            await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var importer = await tx.Connection.BeginBinaryImportAsync(
+            $"COPY {stage} ({columns}) FROM STDIN (FORMAT BINARY)", cancellationToken).ConfigureAwait(false))
+        {
+            foreach (var document in documents)
+            {
+                await importer.StartRowAsync(cancellationToken).ConfigureAwait(false);
+                foreach (var column in DocumentColumns.All)
+                {
+                    var value = column.Get(document);
+                    if (value is null)
+                    {
+                        await importer.WriteNullAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await importer.WriteAsync(value, column.Type, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+
+            await importer.CompleteAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var insert = tx.Command(
+            $"""
+            WITH d AS (
+                INSERT INTO opportunity.document ({columns})
+                SELECT {columns.Replace(NormColumn, NormalizedNorm, StringComparison.Ordinal)} FROM {stage}
+                ON CONFLICT (workspace_id, control_number_norm) DO NOTHING
+                RETURNING workspace_id, document_id)
+            INSERT INTO opportunity.document_projection_state (workspace_id, document_id)
+            SELECT workspace_id, document_id FROM d
+            RETURNING document_id
+            """))
+        {
+            await using var reader = await insert.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                inserted.Add(reader.GetGuid(0));
+            }
+        }
+
+        await using (var drop = tx.Command($"DROP TABLE {stage}"))
+        {
+            await drop.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return inserted;
     }
 
     public async Task<DocumentWriteResult> UpdateAsync(

@@ -4,47 +4,6 @@
   @if (workspace(); as ws) {
     <span class="shell__divider" aria-hidden="true"></span>
     <opp-workspace-switcher [workspace]="ws" />
-    <nav class="shell__nav" aria-label="Workspace sections">
-      <ul class="shell__tabs">
-        @for (section of sections(); track section.path) {
-          <li>
-            <a
-              class="shell__tab"
-              [routerLink]="['/w', ws.workspaceId, section.path]"
-              routerLinkActive="is-active"
-              ariaCurrentWhenActive="page"
-              >{{ section.label }}</a
-            >
-          </li>
-        }
-        @if (adminAreas().length) {
-          <li>
-            <button
-              type="button"
-              class="shell__tab"
-              [class.is-active]="inAdmin()"
-              [cdkMenuTriggerFor]="adminMenu"
-            >
-              Admin <opp-icon name="chevron-down" />
-            </button>
-          </li>
-        }
-      </ul>
-    </nav>
-    <ng-template #adminMenu>
-      <div cdkMenu class="opp-menu" aria-label="Admin">
-        @for (area of adminAreas(); track area.path) {
-          <a
-            cdkMenuItem
-            class="opp-menu__item"
-            [routerLink]="['/w', ws.workspaceId, 'admin', area.path]"
-            routerLinkActive
-            ariaCurrentWhenActive="page"
-            >{{ area.label }}</a
-          >
-        }
-      </div>
-    </ng-template>
   } @else {
     <nav class="shell__nav" aria-label="Installation">
       <ul class="shell__tabs">
@@ -62,14 +21,89 @@
   }
   <opp-user-menu class="shell__user" />
 </header>
-<main id="main" class="shell__main" tabindex="-1">
-  @if (sessionEnded()) {
-    <div class="shell__ended">
-      <h1 class="shell__ended-title">Your session has ended</h1>
-      <p>Sign in again to continue.</p>
-      <button type="button" oppButton="primary" (click)="signIn()">Sign in again</button>
-    </div>
-  } @else {
-    <router-outlet />
+<div class="shell__body">
+  @if (workspace(); as ws) {
+    <nav
+      id="workspace-sections"
+      class="shell__sidebar"
+      [class.is-collapsed]="collapsed()"
+      aria-label="Workspace sections"
+    >
+      <ul class="shell__side-list">
+        @for (section of sections(); track section.path) {
+          <li>
+            <a
+              class="shell__side-link"
+              [routerLink]="['/w', ws.workspaceId, section.path]"
+              routerLinkActive="is-active"
+              ariaCurrentWhenActive="page"
+              [attr.title]="collapsed() ? section.label : null"
+            >
+              <opp-icon [name]="iconFor(section.path)" />
+              <span class="shell__side-label">{{ section.label }}</span>
+            </a>
+          </li>
+        }
+        @if (adminAreas().length) {
+          <li>
+            <a
+              class="shell__side-link"
+              [class.is-active]="inAdmin()"
+              [attr.aria-current]="inAdmin() ? 'true' : null"
+              [routerLink]="['/w', ws.workspaceId, 'admin', adminAreas()[0].path]"
+              [attr.title]="collapsed() ? 'Admin' : null"
+            >
+              <opp-icon name="settings" />
+              <span class="shell__side-label">Admin</span>
+            </a>
+          </li>
+        }
+      </ul>
+      <button
+        type="button"
+        class="shell__collapse"
+        aria-controls="workspace-sections"
+        [attr.aria-expanded]="!collapsed()"
+        [attr.title]="collapsed() ? 'Expand navigation' : null"
+        (click)="toggleCollapsed()"
+      >
+        <opp-icon [name]="collapsed() ? 'sidebar-expand' : 'sidebar-collapse'" />
+        <span class="shell__side-label">{{
+          collapsed() ? 'Expand navigation' : 'Collapse navigation'
+        }}</span>
+      </button>
+    </nav>
   }
-</main>
+  <main id="main" class="shell__main" tabindex="-1">
+    @if (workspace(); as ws) {
+      @if (subnav(); as sub) {
+        @if (sub.areas.length) {
+          <nav class="shell__subnav" [attr.aria-label]="sub.label">
+            <ul class="shell__tabs">
+              @for (area of sub.areas; track area.path) {
+                <li>
+                  <a
+                    class="shell__tab"
+                    [routerLink]="['/w', ws.workspaceId, sub.base, area.path]"
+                    routerLinkActive="is-active"
+                    ariaCurrentWhenActive="page"
+                    >{{ area.label }}</a
+                  >
+                </li>
+              }
+            </ul>
+          </nav>
+        }
+      }
+    }
+    @if (sessionEnded()) {
+      <div class="shell__ended">
+        <h1 class="shell__ended-title">Your session has ended</h1>
+        <p>Sign in again to continue.</p>
+        <button type="button" oppButton="primary" (click)="signIn()">Sign in again</button>
+      </div>
+    } @else {
+      <router-outlet />
+    }
+  </main>
+</div>

@@ -83,6 +83,13 @@ public enum DenialAudit
     /// (Q-12), whose per-hit drops ADR-015 D8.4 keeps out of the audit trail.
     /// </summary>
     Summary,
+
+    /// <summary>
+    /// No <c>AuthZ.Denied</c> event: the caller records the denial (with the true reason) in its own, more specific
+    /// action event, e.g. <c>Document.Retrieved</c> with outcome Denied (ADR-013 §4: one event per attempted action;
+    /// <c>AuthZ.Denied</c> only when no more specific action applies). Used by the content gateway.
+    /// </summary>
+    Caller,
 }
 
 /// <summary>

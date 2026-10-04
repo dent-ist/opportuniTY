@@ -381,8 +381,10 @@ jobs:
           ./opportunity.sh compose --profile observability config --quiet
           docker run --rm -v "$PWD/observability/otel-collector.yaml:/c.yaml:ro" \
             "otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR}@${OTEL_COLLECTOR_DIGEST}" validate --config=/c.yaml
-          docker run --rm -v "$PWD/observability/prometheus.yaml:/p.yaml:ro" --entrypoint promtool \
-            "prom/prometheus:${PROMETHEUS}@${PROMETHEUS_DIGEST}" check config /p.yaml
+          # Same layout as the compose service, so rule_files resolve; check config also validates the rules.
+          docker run --rm -v "$PWD/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro" \
+            -v "$PWD/observability/alerts.yaml:/etc/prometheus/alerts.yaml:ro" --entrypoint promtool \
+            "prom/prometheus:${PROMETHEUS}@${PROMETHEUS_DIGEST}" check config /etc/prometheus/prometheus.yaml
           python3 -m json.tool observability/grafana/dashboards/opportunity-overview.json >/dev/null
       - name: Preflight, build and start; waits until every service is healthy
         run: ./opportunity.sh up

@@ -25,7 +25,7 @@ public sealed class FieldCatalogTests(MigrationPostgresFixture postgres)
 
         var catalog = await db.Fields.GetCatalogAsync(ws, cancellationToken: Ct);
         catalog.Fields.Should().HaveCount(SystemFields.Create(ws).Count);
-        catalog.Fields.Should().OnlyContain(f => f.IsSystem && f.FieldId < 1000 && f.Storage == FieldStorage.Column && f.ColumnName != null);
+        catalog.Fields.Should().OnlyContain(f => f.IsSystem && f.FieldId < 1000 && (f.Storage == FieldStorage.Column) == (f.ColumnName != null));
         catalog.Find(SystemFields.ControlNumber)!.Capabilities.Should().HaveFlag(FieldCapabilities.Sortable);
 
         var layouts = await db.Fields.GetLayoutsAsync(ws, cancellationToken: Ct);

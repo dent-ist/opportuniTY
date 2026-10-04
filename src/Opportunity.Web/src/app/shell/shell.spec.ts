@@ -87,12 +87,25 @@ describe('Application shell', () => {
       api.on('GET', `/api/v1/workspaces/${ws.workspaceId}`, { body: ws });
     api.on('GET', '/api/v1/workspaces', {
       body: {
-        items: [acme, beta].map(({ workspaceId, name, matterNumber }): WorkspaceSummary => ({
-          workspaceId,
-          name,
-          matterNumber,
-        })),
+        items: [acme, beta].map(
+          ({
+            workspaceId,
+            name,
+            matterNumber,
+            displayTimeZone,
+            status,
+            createdAt,
+          }): WorkspaceSummary => ({
+            workspaceId,
+            name,
+            matterNumber,
+            displayTimeZone,
+            status,
+            createdAt,
+          }),
+        ),
         nextCursor: null,
+        total: { value: 2, relation: 'eq' },
       },
     });
     api.on('GET', '/api/v1/workspaces/ws-1/documents', { body: { items: [] } });
@@ -174,12 +187,14 @@ describe('Application shell', () => {
     setup();
     const harness = await open('/w/ws-1/documents');
     const tabs = () =>
-      [...harness.routeNativeElement!.querySelectorAll('nav .shell__tab')].map((t) =>
-        t.textContent!.trim(),
-      );
+      [
+        ...harness.routeNativeElement!.querySelectorAll(
+          'nav[aria-label="Workspace sections"] .shell__side-link',
+        ),
+      ].map((t) => t.textContent!.trim());
     expect(tabs()).toEqual([
       'Documents',
-      'Search Terms Reports',
+      'Searches',
       'Productions',
       'Imports',
       'Exports',
@@ -194,6 +209,55 @@ describe('Application shell', () => {
     expect(
       harness.routeNativeElement!.querySelector('opp-workspace-switcher button')?.textContent,
     ).toContain('Beta Holdings');
+  });
+
+  it("shows a section's own tabs (Admin areas) at the top of the main region", async () => {
+    setup();
+    const harness = await open('/w/ws-1/admin/choices');
+    const main = harness.routeNativeElement!.querySelector('main')!;
+    const sub = main.querySelector('nav[aria-label="Admin"]')!;
+    expect([...sub.querySelectorAll('.shell__tab')].map((t) => t.textContent!.trim())).toContain(
+      'Fields',
+    );
+    expect(sub.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('Choices');
+    const sidebar = harness.routeNativeElement!.querySelector(
+      'nav[aria-label="Workspace sections"]',
+    )!;
+    expect(sidebar.querySelector('[aria-current="true"]')?.textContent?.trim()).toBe('Admin');
+
+    await go(harness, '/w/ws-1/documents');
+    expect(harness.routeNativeElement!.querySelector('nav[aria-label="Admin"]')).toBeNull();
+  });
+
+  it('shows the Searches tabs (saved searches and search terms reports) at the top', async () => {
+    setup();
+    const harness = await open('/w/ws-1/searches');
+    const sub = harness.routeNativeElement!.querySelector('main nav[aria-label="Searches"]')!;
+    expect([...sub.querySelectorAll('.shell__tab')].map((t) => t.textContent!.trim())).toEqual([
+      'Saved Searches',
+      'Search Terms Reports',
+    ]);
+    expect(sub.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('Saved Searches');
+    expect(harness.routeNativeElement!.querySelector('main nav[aria-label="Admin"]')).toBeNull();
+  });
+
+  it('collapses the sidebar to icons and keeps the section names for assistive technology', async () => {
+    setup();
+    const harness = await open('/w/ws-1/documents');
+    const sidebar = () =>
+      harness.routeNativeElement!.querySelector<HTMLElement>(
+        'nav[aria-label="Workspace sections"]',
+      )!;
+    const toggle = sidebar().querySelector<HTMLButtonElement>('.shell__collapse')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    toggle.click();
+    harness.detectChanges();
+    expect(sidebar().classList).toContain('is-collapsed');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.textContent?.trim()).toBe('Expand navigation');
+    const documents = sidebar().querySelector('.shell__side-link')!;
+    expect(documents.textContent?.trim()).toBe('Documents');
+    expect(documents.getAttribute('title')).toBe('Documents');
   });
 
   it('shows one "Not available" page for a missing workspace, a forbidden one and a forbidden section', async () => {
@@ -312,8 +376,12 @@ describe('Application shell', () => {
     harness.routeNativeElement!.querySelector<HTMLButtonElement>('opp-user-menu button')!.click();
     harness.detectChanges();
     const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items.map((i) => i.textContent?.trim())).toEqual(['About opportuniTY', 'Sign out']);
-    items[1].click();
+    expect(items.map((i) => i.textContent?.trim())).toEqual([
+      'Keyboard shortcuts…',
+      'About opportuniTY',
+      'Sign out',
+    ]);
+    items[2].click();
     expect(logout).toHaveBeenCalled();
   });
 
