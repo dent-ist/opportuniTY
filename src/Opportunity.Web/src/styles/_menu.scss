@@ -67,6 +67,38 @@
   font-size: var(--opp-font-size-xs);
 }
 
+// Two-line items (the job tray: name, then status and progress).
+.opp-menu--wide {
+  min-width: 20rem;
+}
+
+.opp-menu__item--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding-block: var(--opp-space-1);
+}
+
+.opp-menu__title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opp-menu__subtext {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.opp-menu__empty {
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
 .opp-menu__separator {
   height: 0;
   margin-block: var(--opp-space-1);

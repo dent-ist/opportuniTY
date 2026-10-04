@@ -1,0 +1,158 @@
+<div class="jobs__header">
+  <h1 class="jobs__title">Jobs</h1>
+  <opp-live-note />
+</div>
+
+<form
+  class="jobs__filters"
+  role="search"
+  aria-label="Filter jobs"
+  (submit)="$event.preventDefault()"
+>
+  <opp-select
+    label="Type"
+    placeholder="All types"
+    [options]="typeOptions"
+    [value]="filter().type"
+    (valueChange)="setFilter({ type: $event })"
+  />
+  <opp-select
+    label="Status"
+    placeholder="All statuses"
+    [options]="statusOptions"
+    [value]="filter().status"
+    (valueChange)="setFilter({ status: $event })"
+  />
+  @if (viewAll) {
+    <opp-select
+      label="Started by"
+      [options]="creatorOptions"
+      [value]="creatorValue()"
+      (valueChange)="setFilter({ createdBy: $event })"
+    />
+  }
+  <opp-text-field
+    label="Started from"
+    type="date"
+    [value]="filter().from"
+    (valueChange)="setFilter({ from: $event })"
+  />
+  <opp-text-field
+    label="Started to"
+    type="date"
+    [value]="filter().to"
+    (valueChange)="setFilter({ to: $event })"
+  />
+  @if (filtered()) {
+    <div class="jobs__filter-actions">
+      <button type="button" oppButton="ghost" (click)="clearFilters()">Clear filters</button>
+    </div>
+  }
+</form>
+
+@if (loading() && rows().length === 0) {
+  <opp-loading-state label="Loading jobs…" />
+} @else if (error() && rows().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else if (rows().length === 0) {
+  <opp-empty-state
+    [title]="filtered() ? 'No jobs match these filters' : 'No jobs yet'"
+    [message]="
+      filtered()
+        ? 'Change or clear the filters to see more jobs.'
+        : 'Imports, Mass Edits, exports and productions run as jobs and are listed here.'
+    "
+  />
+} @else {
+  <div
+    class="jobs__table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Jobs"
+    [attr.aria-busy]="loading() || null"
+  >
+    <table class="jobs__table">
+      <caption class="opp-visually-hidden">
+        {{
+          filter().createdBy === 'all' ? 'Jobs in this workspace' : 'Your jobs'
+        }}, newest first
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Type</th>
+          <th scope="col">Status</th>
+          <th scope="col">Saved</th>
+          <th scope="col">Searchable</th>
+          <th scope="col" class="jobs__num">Errors</th>
+          @if (filter().createdBy === 'all') {
+            <th scope="col">Started by</th>
+          }
+          <th scope="col">Started</th>
+          <th scope="col"><span class="opp-visually-hidden">Related page</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (job of rows(); track job.jobId) {
+          <tr>
+            <th scope="row" class="jobs__name">
+              <a [routerLink]="job.jobId">{{ job.name }}</a>
+            </th>
+            <td class="jobs__nowrap">{{ typeName(job) }}</td>
+            <td><opp-status-pill [status]="pill(job)" /></td>
+            <td class="jobs__bar">
+              <opp-progress
+                [label]="'Saved: ' + job.name"
+                [value]="savedValue(job)"
+                [valueText]="savedText(job)"
+              />
+            </td>
+            <td class="jobs__bar">
+              @switch (job.searchable.state) {
+                @case ('current') {
+                  <opp-badge tone="success" icon="success">Searchable</opp-badge>
+                }
+                @case ('notApplicable') {
+                  <span class="jobs__muted">Not needed</span>
+                }
+                @case ('catchingUp') {
+                  <opp-progress
+                    [label]="'Searchable: ' + job.name"
+                    [value]="searchableValue(job)"
+                    [valueText]="searchableText(job)"
+                  />
+                }
+                @default {
+                  <span class="jobs__muted">{{ searchableState(job) }}</span>
+                }
+              }
+            </td>
+            <td class="jobs__num">{{ num(job.errorCount) }}</td>
+            @if (filter().createdBy === 'all') {
+              <td class="jobs__nowrap">{{ job.createdBy.displayName }}</td>
+            }
+            <td class="jobs__nowrap">{{ date(job.createdAt) }}</td>
+            <td class="jobs__nowrap">
+              @if (ownPage(job); as link) {
+                <a [routerLink]="link">
+                  Open {{ typeName(job).toLowerCase() }}
+                  <span class="opp-visually-hidden">{{ job.name }}</span>
+                </a>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (error() && rows().length) {
+    <opp-error-state [error]="error()!" (retry)="loadMore()" />
+  }
+  @if (nextCursor()) {
+    <div>
+      <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+        Load more jobs
+      </button>
+    </div>
+  }
+}

@@ -316,6 +316,18 @@ export class ImportsMock {
 
   constructor(private readonly options: ImportMockOptions = {}) {}
 
+  /** `GET …/jobs/{jobId}` of an import's job (the M1 `JobResource` shape plus the import's name and page). */
+  job(jobId: string): Record<string, unknown> | undefined {
+    const id = jobId.replace(/^job-/, '');
+    const item = this.imports.get(id);
+    if (!item) return undefined;
+    return {
+      ...importResource(id, item.name, item.mode, item.polls, 2).job,
+      name: item.name,
+      link: `imports/${id}`,
+    };
+  }
+
   /** Answers an import route, or returns undefined. */
   handle(route: Route, method: string, path: string): Promise<void> | undefined {
     const m =

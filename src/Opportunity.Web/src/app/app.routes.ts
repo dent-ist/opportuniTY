@@ -67,8 +67,26 @@ export const workspaceChildren: Routes = [
       },
     ],
   },
+  {
+    // The workspace's jobs and one job's progress, failures, retry and cancel (E06-T07).
+    path: 'jobs',
+    canActivate: [requirePermission(PERMISSIONS.documentView)],
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        title: 'Jobs',
+        loadComponent: () => import('./features/jobs/jobs-page').then((m) => m.JobsPage),
+      },
+      {
+        path: ':jobId',
+        title: 'Job',
+        loadComponent: () => import('./features/jobs/job-detail').then((m) => m.JobDetail),
+      },
+    ],
+  },
   ...WORKSPACE_SECTIONS.filter(
-    (s) => s.path !== 'documents' && s.path !== 'searches' && s.path !== 'imports',
+    (s) => !['documents', 'searches', 'imports', 'jobs'].includes(s.path),
   ).map((s): Route => ({
     path: s.path,
     title: s.label,

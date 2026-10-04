@@ -486,7 +486,7 @@ describe('Imports section (E08-T08)', () => {
       `${WS}/imports/imp-9/error-file`,
     );
     expect(links.find((a) => a.textContent?.includes('View in Jobs'))?.getAttribute('href')).toBe(
-      '/w/ws-1/jobs?job=job-imp-9',
+      '/w/ws-1/jobs/job-imp-9',
     );
     expect(
       links.find((a) => a.textContent?.includes('Re-import corrected'))?.getAttribute('href'),

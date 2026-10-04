@@ -2,6 +2,7 @@ import type { Page, Route } from '@playwright/test';
 import { CODING_FIELDS, CodingMock } from './mock-coding';
 import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
 import { ImportsMock } from './mock-imports';
+import { JobsMock } from './mock-jobs';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -31,6 +32,8 @@ export interface MockApiOptions {
   largeTextDocument?: number;
   /** The import pre-flight reports a blocking error (E08-T08). */
   preflightBlocking?: boolean;
+  /** Serve the live job stream (`GET …/job-events`); false answers 404, so pages poll (E06-T07). Default true. */
+  jobEvents?: boolean;
 }
 
 /** A request the mock answered, with its JSON body and Idempotency-Key. */
@@ -67,6 +70,8 @@ export interface MockControl {
   readonly bulkCoding: MockRequest[];
   /** Imports (E08-T08): previews, pre-flights and started imports received. */
   readonly imports: ImportsMock;
+  /** Job operations (E06-T07): the jobs, server-side changes (`jobs.update`), cancels and retries received. */
+  readonly jobs: JobsMock;
 }
 
 /**
@@ -319,8 +324,15 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const frozen = new Map<string, number>();
   const jobs = new Map<string, { snapshotId: string; polls: number }>();
   const imports = new ImportsMock({ preflightBlocking: options.preflightBlocking });
+  const jobsMock = new JobsMock({
+    userId: principal.userId,
+    viewAll: permissions.includes('Job.ViewAll'),
+    stream: options.jobEvents ?? true,
+    lookup: (id) => imports.job(id),
+  });
   const control: MockControl = {
     imports,
+    jobs: jobsMock,
     unhandled,
     audit,
     coding,
@@ -505,6 +517,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       job.polls++;
       return json(route, body);
     }
+    // Job operations and the live job stream (E06-T07): ./mock-jobs.ts.
+    const jobRoute = signedIn ? jobsMock.handle(route, method, path, url) : undefined;
+    if (jobRoute) return jobRoute;
     if (signedIn && path === '/api/v1/workspaces')
       return json(route, {
         items: WORKSPACES,

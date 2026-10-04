@@ -136,7 +136,8 @@ test('runs the import wizard end to end with the keyboard only (E08-T08)', async
 
   await tabTo(page, page.getByRole('link', { name: 'View in Jobs' }));
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/w\/ws-1\/jobs\?job=job-imp-2$/);
+  await expect(page).toHaveURL(/\/w\/ws-1\/jobs\/job-imp-2$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/VOL001\.dat/);
 });
 
 test.describe('a load file with errors', () => {
