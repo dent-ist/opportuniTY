@@ -446,7 +446,10 @@ export function catalogOf(items: readonly FieldResource[]): CodingCatalog {
   };
 }
 
-/** One `set` change; choice names become choice ids (an unknown name is sent as is, so the API reports it). */
+/**
+ * One `set` change; choice names become choice ids, sent as JSON numbers as the API's canonical values require
+ * (ADR-003 §3). An unknown name is sent as is, so the API reports it.
+ */
 export function toChange(
   catalog: CodingCatalog,
   queryName: string,
@@ -454,7 +457,10 @@ export function toChange(
 ): CodingChangeRequest {
   const field = catalog.byName.get(queryName.toLowerCase());
   if (!field) throw new Error(`Unknown coding field: ${queryName}`);
-  const choiceId = (name: string) => [...field.choices].find(([, n]) => n === name)?.[0] ?? name;
+  const choiceId = (name: string): number | string => {
+    const id = [...field.choices].find(([, n]) => n === name)?.[0];
+    return id === undefined ? name : Number(id);
+  };
   let sent: unknown = value;
   if (field.choices.size > 0 && value !== null) {
     sent = Array.isArray(value) ? value.map((v) => choiceId(String(v))) : choiceId(String(value));

@@ -477,7 +477,8 @@ export class ReviewGrid implements CursorSource {
         sort: sort ? [sort] : null,
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
-        highlight: false,
+        // The hits' snippets carry the search terms Review mode highlights in the extracted text (#130).
+        highlight: true,
       });
     } catch (e) {
       if (seq !== this.seq) return;

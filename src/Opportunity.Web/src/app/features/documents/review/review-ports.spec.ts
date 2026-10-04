@@ -104,18 +104,20 @@ describe('coding API adapter (E10-T01 ↔ Review mode)', () => {
     expect(toCoding(new HttpResponse({ body: failed }), catalog).indexState).toBe('failed');
   });
 
-  it('writes query names and choice names as field ids and choice ids', () => {
+  it('writes query names and choice names as field ids and numeric choice ids (ADR-003 §3)', () => {
     expect(toChange(catalog, 'Responsiveness', 'Responsive')).toEqual({
       fieldId: '1000',
       operation: 'set',
-      value: '1',
+      value: 1,
     });
     expect(toChange(catalog, 'issues', ['Termination'])).toEqual({
       fieldId: '1001',
       operation: 'set',
-      value: ['8'],
+      value: [8],
     });
-    expect(toChange(catalog, 'issues', 'Pricing').value).toEqual(['7']);
+    expect(toChange(catalog, 'issues', 'Pricing').value).toEqual([7]);
+    // An unknown choice name goes as is, so the API reports it.
+    expect(toChange(catalog, 'responsiveness', 'Nope').value).toBe('Nope');
     expect(toChange(catalog, 'notes', 'text').value).toBe('text');
     expect(toChange(catalog, 'responsiveness', null).value).toBeNull();
     expect(() => toChange(catalog, 'unknown', 'x')).toThrow(/Unknown coding field/);
@@ -251,7 +253,7 @@ describe('coding API adapter (E10-T01 ↔ Review mode)', () => {
       expect(put.headers.get('If-Match')).toBe('"7"');
       expect(put.headers.get('Idempotency-Key')).toBe('key-1');
       expect(put.body).toEqual({
-        changes: [{ fieldId: '1000', operation: 'set', value: '1' }],
+        changes: [{ fieldId: '1000', operation: 'set', value: 1 }],
         layoutId: 'l-first',
       });
     }

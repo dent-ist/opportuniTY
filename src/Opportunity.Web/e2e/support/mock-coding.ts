@@ -319,19 +319,23 @@ export class CodingMock {
         }),
       });
     }
+    // Like the API (ADR-003 canonical values), choice ids must be JSON numbers.
+    const isChoiceField = (change: { fieldId: string | number }) =>
+      !!CODING_FIELDS.find((f) => f.fieldId === Number(change.fieldId))?.choices;
+    const invalid = body.changes.find(
+      (c) =>
+        isChoiceField(c) &&
+        c.value !== null &&
+        (Array.isArray(c.value) ? c.value : [c.value]).some((v) => typeof v !== 'number'),
+    );
+    if (invalid) {
+      return problem(route, 400, 'validation', `Expected choice ids for field ${invalid.fieldId}.`);
+    }
     const at = new Date().toISOString();
     doc.version++;
     for (const change of body.changes) {
       const id = Number(change.fieldId);
-      const def = CODING_FIELDS.find((f) => f.fieldId === id);
-      // The adapter sends choice ids as strings; the store keeps numbers like the API.
-      const value = def?.choices
-        ? Array.isArray(change.value)
-          ? change.value.map(Number)
-          : change.value === null
-            ? null
-            : Number(change.value)
-        : change.value;
+      const value = change.value as Value;
       doc.values.set(id, value);
       doc.changedAt.set(id, at);
     }

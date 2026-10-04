@@ -148,7 +148,7 @@ describe('Review grid (Documents list)', () => {
   it('lists every document in an ARIA grid with counts, freshness and columns from the field catalogue', async () => {
     await setup();
     expect(searches()).toEqual([
-      { query: '', sort: null, countExact: null, pageSize: 100, highlight: false },
+      { query: '', sort: null, countExact: null, pageSize: 100, highlight: true },
     ]);
     expect(grid().getAttribute('aria-rowcount')).toBe('251');
     expect(grid().getAttribute('aria-colcount')).toBe('8');
@@ -513,7 +513,7 @@ describe('Review grid (Documents list)', () => {
         sort: [{ field: 'fileName', direction: 'asc' }],
         countExact: null,
         pageSize: 100,
-        highlight: false,
+        highlight: true,
       });
       expect(text()).toContain('Page 1 of 3');
 

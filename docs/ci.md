@@ -70,7 +70,25 @@ npm run e2e
 | Page performance (`e2e/performance.spec.ts`) | With the CPU slowed ×2: LCP > 2.5 s, CLS > 0.1, total blocking time > 300 ms or interaction latency (Event Timing) > 200 ms on the Workspaces, Documents and an admin page. The numbers go to the job summary. This is a smoke check of UI latency, not a benchmark |
 | Every browser test | Uncaught errors, console errors and CSP violations. The test server (`e2e/support/serve.mjs`) sends the production headers from `deploy/docker/web/security-headers.conf` and serves the build as nginx does. It also fails on calls to API endpoints that the mock (`e2e/support/mock-api.ts`) does not know |
 
-The tests run against the production build with `/api` and `/bff` mocked in the page, so they need neither the Compose stack nor a backend. The L8 vertical-slice E2E against the developer Compose profile (test strategy) builds on the same fixtures. The grid frame-budget test (≥ 50 fps while scrolling 10k loaded rows) is a `test.fixme` in `performance.spec.ts` until the review grid (`E16-T02`) exists. The axe-core engine is the `axe-core` devDependency that the unit specs already use, evaluated in the page through the DevTools protocol. This replaces `@axe-core/playwright` (ADR-018 §15.2): the CSP stays on and no further dependency is needed. The WCAG 2.2 AA conformance checklist is [docs/accessibility/wcag-2.2-aa-checklist.md](accessibility/wcag-2.2-aa-checklist.md).
+The tests run against the production build with `/api` and `/bff` mocked in the page, so they need neither the Compose stack nor a backend. The L8 vertical-slice E2E against the developer Compose profile (test strategy) is a separate suite, see [Vertical-slice E2E](#vertical-slice-e2e-e03-t03). The grid frame-budget test (≥ 50 fps while scrolling 10k loaded rows) is a `test.fixme` in `performance.spec.ts` until the review grid (`E16-T02`) exists. The axe-core engine is the `axe-core` devDependency that the unit specs already use, evaluated in the page through the DevTools protocol. This replaces `@axe-core/playwright` (ADR-018 §15.2): the CSP stays on and no further dependency is needed. The WCAG 2.2 AA conformance checklist is [docs/accessibility/wcag-2.2-aa-checklist.md](accessibility/wcag-2.2-aa-checklist.md).
+
+## Vertical-slice E2E (E03-T03)
+
+[`.github/workflows/e2e-slice.yml`](../.github/workflows/e2e-slice.yml) runs the baseline §32 path in a browser against the **real** developer Compose profile: nightly, on pull requests that touch `src/Opportunity.Web` or `src/Opportunity.Api`, and on manual dispatch. It is a separate workflow and Playwright config ([`src/Opportunity.Web/e2e-slice`](../src/Opportunity.Web/e2e-slice)), so the mocked gates above stay fast. The job boots the profile like `Compose developer profile` (images built from `deploy/docker`), runs `./opportunity.sh seed` (demo workspace, demo coding fields and layout), then `npm run e2e:slice`, headless, with a 20-minute budget:
+
+| Project | What it does |
+|---|---|
+| `setup` (`seed.setup.ts`) | Signs in as `admin.dev` and `reviewer.dev` through the app's Sign in page and Keycloak. Generates a 1K synthetic load-file volume with extracted text and natives (`tools/Opportunity.DataGenerator --volumes`, profile `e2e-slice/corpus-profile.json`) into the import share, imports it through `POST …/imports` with a per-run control-number prefix, waits until the import is indexed and every planted term is found as often as the generator's ground truth says |
+| `slice` (`slice.spec.ts`) | With the mouse: search → Review mode on the Extracted Text with the search hits → code and Save & Next (reviewer) → search the new coding (`responsiveness:Responsive`) once searchable → select all results and Mass Edit the frozen set (admin) → verify by search → export the frozen set (`POST …/snapshots` for Export, `POST …/exports`, wait for the job) and download the DAT, the manifest and the package through the protected-content gateway |
+| `slice` (`keyboard.spec.ts`) | The same path with the keyboard only (E15-T04): Keycloak sign-in, workspace list, Alt+Shift+K search, the grid, the coding shortcuts and Ctrl+Enter, Alt+Shift+A / Alt+Shift+E Mass Edit, with a visible focus indicator on every Tab stop |
+| `cleanup` | Removes the generated corpus from the import share |
+
+Every query is scoped to the run's prefix (`controlnumber:E2E…-*`), so the suite can run again on a stack that holds earlier runs. No retries (flake policy). On failure the job uploads `e2e-slice-failures`: Playwright traces, videos and a HAR per failed test, and the JUnit report, and dumps the service logs.
+
+```bash
+cd deploy/docker-compose && ./opportunity.sh up && ./opportunity.sh seed
+cd ../../src/Opportunity.Web && npm run e2e:slice   # E2E_SLICE_BASE_URL if the web is not on http://localhost:8080
+```
 
 ## Security and supply-chain gates
 

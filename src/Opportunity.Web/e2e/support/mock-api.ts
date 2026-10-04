@@ -377,12 +377,17 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       }
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches$/.test(path) && method === 'POST') {
-      const body = route.request().postDataJSON() as { pageSize?: number; query?: string };
+      const body = route.request().postDataJSON() as {
+        pageSize?: number;
+        query?: string;
+        highlight?: boolean | null;
+      };
       pageSize = Number(body?.pageSize ?? 100);
       // A fielded query (the filter row) narrows the list, so filtering is visible end to end.
       total = body?.query?.includes(':') ? Math.min(documents, 12) : documents;
       expired = false;
-      lastQuery = String(body?.query ?? '');
+      // Like the API, snippets come only with highlighting (on by default); the search keeps the setting for its pages.
+      lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
       return json(route, searchPage(matching(), pageSize, 1, lastQuery));
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches\/[^/]+\/pages$/.test(path)) {
