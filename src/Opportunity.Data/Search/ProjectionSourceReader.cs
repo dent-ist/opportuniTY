@@ -22,7 +22,7 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
 {
     public const int MaxDocumentsPerRead = 5_000;
 
-    private const string DocumentSql =
+    internal const string DocumentSql =
         """
         SELECT s.document_id, s.document_version, s.is_deleted,
                d.control_number, d.control_number_norm, d.control_number_sort_key, d.beg_bates, d.end_bates,
@@ -108,7 +108,7 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
         return new ProjectionSourceBatch(workspaceId, catalog, sources);
     }
 
-    private static Document ReadDocument(NpgsqlDataReader r, Guid workspaceId) => new()
+    internal static Document ReadDocument(NpgsqlDataReader r, Guid workspaceId) => new()
     {
         WorkspaceId = workspaceId,
         DocumentId = r.GetGuid(0),

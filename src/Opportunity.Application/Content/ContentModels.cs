@@ -17,6 +17,12 @@ public enum ContentRendition
 
     /// <summary>A page thumbnail of the active page set.</summary>
     Thumbnail,
+
+    /// <summary>The document's field values (JSON; read from PostgreSQL, never from object storage).</summary>
+    Metadata,
+
+    /// <summary>The page list of the active page set (JSON; ADR-012 page model).</summary>
+    PageList,
 }
 
 /// <summary>Why the content is fetched; decides the permission and the audit action (ADR-013 §5).</summary>
@@ -67,13 +73,18 @@ public readonly record struct ContentRangeRequest(long? Start, long? End)
 /// <summary>One gateway request: a document, a rendition (and page) and a purpose.</summary>
 /// <param name="PageNumber">1-based page of the active page set, for <see cref="ContentRendition.PageImage"/> and <see cref="ContentRendition.Thumbnail"/>.</param>
 /// <param name="Range">Streamed delivery only; ignored when a presigned URL is issued.</param>
+/// <param name="TextChunk">
+/// <see cref="ContentRendition.Text"/> only: the 0-based chunk of <see cref="TextChunks.ChunkBytes"/> bytes to read
+/// (the access service resolves its byte range; <paramref name="Range"/> is then ignored).
+/// </param>
 public sealed record ContentRequest(
     Guid WorkspaceId,
     Guid DocumentId,
     ContentRendition Rendition,
     ContentPurpose Purpose,
     int? PageNumber = null,
-    ContentRangeRequest? Range = null);
+    ContentRangeRequest? Range = null,
+    int? TextChunk = null);
 
 /// <summary>
 /// Where a document's rendition is stored, read from the PostgreSQL object registry (ADR-011 §2.3). The logical key
@@ -88,7 +99,16 @@ public sealed record ContentLocation(
     bool Quarantined);
 
 /// <summary>The document facts the gateway needs, or a null <see cref="Location"/> when the rendition does not exist.</summary>
-public sealed record DocumentContent(string ControlNumber, string? FileExtension, ContentLocation? Location);
+/// <param name="TextTruncated">Only the first part of the text is searchable (Q-29); the stored text is complete.</param>
+/// <param name="TextMissing">The load file or processing reported no extracted text.</param>
+/// <param name="TextEncodingWarning">The text was decoded with replacement characters at import.</param>
+public sealed record DocumentContent(
+    string ControlNumber,
+    string? FileExtension,
+    ContentLocation? Location,
+    bool TextTruncated = false,
+    bool TextMissing = false,
+    bool TextEncodingWarning = false);
 
 /// <summary>
 /// Reads document content locations from PostgreSQL inside the workspace's RLS context (implemented by
@@ -134,7 +154,19 @@ public sealed record ContentGrant(
     string? DownloadFileName,
     bool BreakGlass);
 
-public sealed record ContentAccessResult(ContentAccessOutcome Outcome, AuthorizationDecision Decision, ContentGrant? Grant, long? Length = null)
+/// <param name="Document">The catalog facts of a visible document (granted or unavailable); null when denied.</param>
+/// <param name="Reason">Why the content is <see cref="ContentAccessOutcome.Unavailable"/> (a <c>DocumentAccessService.Reasons</c> code).</param>
+public sealed record ContentAccessResult(
+    ContentAccessOutcome Outcome,
+    AuthorizationDecision Decision,
+    ContentGrant? Grant,
+    long? Length = null,
+    DocumentContent? Document = null,
+    string? Reason = null)
 {
     public static ContentAccessResult Denied(AuthorizationDecision decision) => new(ContentAccessOutcome.Denied, decision, null);
 }
+
+/// <summary>The outcome of <see cref="IDocumentAccessService.ReadAsync{T}"/>: a value with its audit event, or the denial.</summary>
+public sealed record DocumentReadResult<T>(AuthorizationDecision Decision, T? Value, Guid? AuditEventId)
+    where T : class;

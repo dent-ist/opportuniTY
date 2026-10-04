@@ -43,6 +43,15 @@ public interface IDocumentAccessService
         SecurityPrincipal principal, ContentRequest request, ObjectDeliveryMode deliveryMode, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same contract for a JSON view of a document that lives in PostgreSQL (<see cref="ContentRendition.Metadata"/>,
+    /// <see cref="ContentRendition.PageList"/>): PDP check → <paramref name="load"/> → durable <c>Document.Retrieved</c>
+    /// event → value. A null load result means the document vanished and is reported like a hidden one.
+    /// </summary>
+    Task<DocumentReadResult<T>> ReadAsync<T>(
+        SecurityPrincipal principal, ContentRequest request, Func<CancellationToken, Task<T?>> load, CancellationToken cancellationToken = default)
+        where T : class;
+
+    /// <summary>
     /// The viewer displayed the document as the active document (<c>Document.Viewed</c>, ADR-013 §5); re-checks
     /// <c>Document.View</c>. Prefetch alone never produces this event.
     /// </summary>
@@ -78,7 +87,8 @@ public sealed class DocumentAccessService(
     {
         (ContentRendition.Native, ContentPurpose.Download) => DocumentOperation.DownloadNative,
         (ContentRendition.PageImage, ContentPurpose.Print) => DocumentOperation.Print,
-        (ContentRendition.Text or ContentRendition.PageImage or ContentRendition.Thumbnail, ContentPurpose.Display or ContentPurpose.Prefetch)
+        (ContentRendition.Text or ContentRendition.PageImage or ContentRendition.Thumbnail or ContentRendition.Metadata or ContentRendition.PageList,
+            ContentPurpose.Display or ContentPurpose.Prefetch)
             => DocumentOperation.View,
         _ => throw new ArgumentException($"{rendition} cannot be fetched for {purpose}.", nameof(purpose)),
     };
@@ -97,18 +107,18 @@ public sealed class DocumentAccessService(
     {
         ArgumentNullException.ThrowIfNull(principal);
         ArgumentNullException.ThrowIfNull(request);
-        var operation = OperationFor(request.Rendition, request.Purpose);
-        var permission = PermissionFor(operation);
-        var details = new Dictionary<string, string?>
+        if (request.Rendition is ContentRendition.Metadata or ContentRendition.PageList)
         {
-            ["rendition"] = request.Rendition.ToString(),
-            ["purpose"] = request.Purpose.ToString(),
-            ["permission"] = permission.Name(),
-        };
-        if (request.PageNumber is { } page)
-        {
-            details["page"] = page.ToString(CultureInfo.InvariantCulture);
+            throw new ArgumentException($"{request.Rendition} is read with {nameof(ReadAsync)}.", nameof(request));
         }
+
+        if (request.TextChunk is not null && request.Rendition != ContentRendition.Text)
+        {
+            throw new ArgumentException("Only text is read in chunks.", nameof(request));
+        }
+
+        var permission = PermissionFor(OperationFor(request.Rendition, request.Purpose));
+        var details = Details(request, permission);
 
         // 1. Authoritative decision (PG, this request). The denial is audited below as the specific Document.* action.
         var decision = await DecideAsync(principal, request, permission, cancellationToken).ConfigureAwait(false);
@@ -131,7 +141,7 @@ public sealed class DocumentAccessService(
 
         if (content.Location is not { } location)
         {
-            return await UnavailableAsync(principal, request, decision, Reasons.RenditionUnavailable, details, cancellationToken).ConfigureAwait(false);
+            return await UnavailableAsync(principal, request, decision, Reasons.RenditionUnavailable, details, content, cancellationToken).ConfigureAwait(false);
         }
 
         details["objectId"] = location.ObjectId.ToString();
@@ -143,7 +153,7 @@ public sealed class DocumentAccessService(
             details["quarantined"] = "true";
             if (request.Rendition != ContentRendition.Native)
             {
-                return await UnavailableAsync(principal, request, decision, Reasons.Quarantined, details, cancellationToken).ConfigureAwait(false);
+                return await UnavailableAsync(principal, request, decision, Reasons.Quarantined, details, content, cancellationToken).ConfigureAwait(false);
             }
 
             var quarantine = await DecideAsync(principal, request, Permission.DocumentViewQuarantined, cancellationToken).ConfigureAwait(false);
@@ -160,7 +170,7 @@ public sealed class DocumentAccessService(
         if (!ObjectKey.TryParse(location.LogicalKey, out var key) || key.WorkspaceId != request.WorkspaceId
             || key.DocumentId != request.DocumentId || !AreaMatches(request.Rendition, key.Area) || location.Sha256.Length != 32)
         {
-            return await UnavailableAsync(principal, request, decision, Reasons.ObjectKeyMismatch, details, cancellationToken).ConfigureAwait(false);
+            return await UnavailableAsync(principal, request, decision, Reasons.ObjectKeyMismatch, details, content, cancellationToken).ConfigureAwait(false);
         }
 
         var delivery = deliveryMode == ObjectDeliveryMode.Presign && request.Rendition == ContentRendition.Native && PresignPolicy.MayPresignGet(key)
@@ -169,7 +179,21 @@ public sealed class DocumentAccessService(
         details["deliveryMode"] = delivery.ToString();
 
         ByteRange? range = null;
-        if (delivery == ObjectDeliveryMode.Stream && request.Range is { } requested)
+        if (request.TextChunk is { } chunk)
+        {
+            if (!TextChunks.TryGetReadRange(location.Length, chunk, out range))
+            {
+                await WriteAsync(principal, request, decision, AuditOutcome.Failure, Reasons.RangeNotSatisfiable, details, cancellationToken)
+                    .ConfigureAwait(false);
+                return new ContentAccessResult(ContentAccessOutcome.RangeNotSatisfiable, decision, null, location.Length, content);
+            }
+
+            if (range is { } r)
+            {
+                details["range"] = $"bytes={r.Offset.ToString(CultureInfo.InvariantCulture)}-{r.LastByte!.Value.ToString(CultureInfo.InvariantCulture)}";
+            }
+        }
+        else if (delivery == ObjectDeliveryMode.Stream && request.Range is { } requested)
         {
             details["range"] = requested.ToString();
             range = requested.Resolve(location.Length);
@@ -197,7 +221,41 @@ public sealed class DocumentAccessService(
                 range,
                 fileName,
                 decision.BreakGlass),
-            location.Length);
+            location.Length,
+            content);
+    }
+
+    public async Task<DocumentReadResult<T>> ReadAsync<T>(
+        SecurityPrincipal principal, ContentRequest request, Func<CancellationToken, Task<T?>> load, CancellationToken cancellationToken = default)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(load);
+        if (request.Rendition is not (ContentRendition.Metadata or ContentRendition.PageList))
+        {
+            throw new ArgumentException($"{request.Rendition} is delivered with {nameof(OpenAsync)}.", nameof(request));
+        }
+
+        var permission = PermissionFor(OperationFor(request.Rendition, request.Purpose));
+        var details = Details(request, permission);
+        var decision = await DecideAsync(principal, request, permission, cancellationToken).ConfigureAwait(false);
+        if (!decision.IsAllowed)
+        {
+            await WriteAsync(principal, request, decision, AuditOutcome.Denied, decision.Reason, details, cancellationToken).ConfigureAwait(false);
+            return new DocumentReadResult<T>(decision, null, null);
+        }
+
+        var value = await load(cancellationToken).ConfigureAwait(false);
+        if (value is null)
+        {
+            var gone = AuthorizationDecision.NotFound(AuthorizationReasons.DocumentNotFound);
+            await WriteAsync(principal, request, gone, AuditOutcome.Denied, gone.Reason, details, cancellationToken).ConfigureAwait(false);
+            return new DocumentReadResult<T>(gone, null, null);
+        }
+
+        var eventId = await WriteAsync(principal, request, decision, AuditOutcome.Success, null, details, cancellationToken).ConfigureAwait(false);
+        return new DocumentReadResult<T>(decision, value, eventId);
     }
 
     public async Task<AuthorizationDecision> RecordViewedAsync(
@@ -229,6 +287,27 @@ public sealed class DocumentAccessService(
             ? $"{content.ControlNumber}.{extension.ToLowerInvariant()}"
             : content.ControlNumber;
         return ContentDispositionHeader.Sanitize(name);
+    }
+
+    private static Dictionary<string, string?> Details(ContentRequest request, Permission permission)
+    {
+        var details = new Dictionary<string, string?>
+        {
+            ["rendition"] = request.Rendition.ToString(),
+            ["purpose"] = request.Purpose.ToString(),
+            ["permission"] = permission.Name(),
+        };
+        if (request.PageNumber is { } page)
+        {
+            details["page"] = page.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (request.TextChunk is { } chunk)
+        {
+            details["chunk"] = chunk.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return details;
     }
 
     private static bool AreaMatches(ContentRendition rendition, ObjectArea area) => rendition switch
@@ -267,10 +346,11 @@ public sealed class DocumentAccessService(
         AuthorizationDecision decision,
         string reason,
         Dictionary<string, string?> details,
+        DocumentContent content,
         CancellationToken cancellationToken)
     {
         await WriteAsync(principal, request, decision, AuditOutcome.Failure, reason, details, cancellationToken).ConfigureAwait(false);
-        return new ContentAccessResult(ContentAccessOutcome.Unavailable, decision, null);
+        return new ContentAccessResult(ContentAccessOutcome.Unavailable, decision, null, Document: content, Reason: reason);
     }
 
     private async Task<Guid> WriteAsync(

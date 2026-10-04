@@ -89,12 +89,20 @@ public sealed class ProtectedContentGatewayTests
                 {
                     offenders.Add($"{route}: gateway endpoint outside a workspace");
                 }
+
+                if (endpoint.Metadata.GetMetadata<DocumentPermissionMetadata>() is not { Permissions.Count: > 0 })
+                {
+                    offenders.Add($"{route}: gateway endpoint without a declared document permission");
+                }
             }
         }
 
         offenders.Should().BeEmpty();
         gateway.Should().Contain(
         [
+            "/api/v1/workspaces/{workspaceId}/documents/{documentId}",
+            "/api/v1/workspaces/{workspaceId}/documents/{documentId}/pages",
+            "/api/v1/workspaces/{workspaceId}/documents/{documentId}/text/chunks/{chunkIndex}",
             "/api/v1/workspaces/{workspaceId}/documents/{documentId}/native",
             "/api/v1/workspaces/{workspaceId}/documents/{documentId}/text",
             "/api/v1/workspaces/{workspaceId}/documents/{documentId}/pages/{pageNumber}/image",

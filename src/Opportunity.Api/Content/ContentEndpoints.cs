@@ -1,9 +1,13 @@
+using System.Globalization;
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Opportunity.Api.Conventions;
 using Opportunity.Application.Content;
+using Opportunity.Application.Fields;
 using Opportunity.Contracts.Api;
+using Opportunity.Core.Security;
 using Opportunity.Data.Documents;
 using Opportunity.Hosting.Options;
 using Opportunity.Security.Authorization;
@@ -12,10 +16,41 @@ using Opportunity.Storage;
 namespace Opportunity.Api.Content;
 
 /// <summary>
-/// Document content routes of the protected-content gateway (E05-T04). PEP-1 checks workspace membership only; the
-/// gateway decides the document-level permission itself (view, print and native download are distinct permissions,
-/// Q-18) so that every attempt, allowed or denied, is audited as one <c>Document.*</c> event with the document ID,
-/// rendition and outcome. A malformed, unknown, deleted, restricted or walled document gets the same 404.
+/// The document-level permission a gateway endpoint enforces per document (Q-18). PEP-1 checks workspace membership
+/// only, so that the gateway can decide the permission itself and audit every attempt, allowed or denied, as one
+/// specific <c>Document.*</c> event instead of a generic <c>AuthZ.Denied</c> (ADR-013 §4).
+/// </summary>
+/// <param name="Permissions">The permission(s), in order: the default one first, then purpose-specific ones (print).</param>
+public sealed record DocumentPermissionMetadata(IReadOnlyList<Permission> Permissions);
+
+public static class DocumentPermissionConventions
+{
+    /// <summary>Membership at PEP-1, then <paramref name="permissions"/> per document in the gateway (PDP, audited).</summary>
+    public static TBuilder RequireDocumentPermission<TBuilder>(this TBuilder builder, params Permission[] permissions)
+        where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(permissions);
+        ArgumentOutOfRangeException.ThrowIfZero(permissions.Length);
+        foreach (var permission in permissions)
+        {
+            _ = PermissionCatalog.Get(permission);
+        }
+
+        builder.RequireWorkspaceMember();
+        builder.Add(endpoint => endpoint.Metadata.Add(new DocumentPermissionMetadata([.. permissions])));
+        return builder;
+    }
+}
+
+/// <summary>
+/// Document routes of the protected-content gateway (E05-T04, E11-T01): the viewer's metadata, page list, chunked text,
+/// page images and thumbnails (<c>Document.View</c>), print images (<c>Document.Print</c>) and the native download
+/// (<c>Document.DownloadNative</c>). Each endpoint declares its document permission; the gateway decides it per
+/// document against PostgreSQL (restriction classes, walls, break-glass) so that every attempt, allowed or denied, is
+/// audited as one <c>Document.*</c> event with the document ID, rendition, purpose and outcome before any content is
+/// returned. A malformed, unknown, deleted, restricted or walled document gets the same 404. Responses are
+/// <c>no-store</c>, <c>nosniff</c> and carry the retrieval's audit event ID for the <c>Document.Viewed</c> beacon.
 /// </summary>
 public sealed class ContentEndpoints : IApiEndpointModule
 {
@@ -28,10 +63,48 @@ public sealed class ContentEndpoints : IApiEndpointModule
         ArgumentNullException.ThrowIfNull(routes);
         var documents = routes.Workspace.MapGroup("/documents/{documentId}")
             .WithTags(Tag)
-            .RequireWorkspaceMember()
             .WithMetadata(ProtectedContentEndpointMetadata.Instance);
 
+        // Mapped on the workspace group so the route pattern has no trailing slash.
+        routes.Workspace.MapGet("/documents/{documentId}", GetDocumentAsync)
+            .WithTags(Tag)
+            .WithMetadata(ProtectedContentEndpointMetadata.Instance)
+            .RequireDocumentPermission(Permission.DocumentView)
+            .WithName("GetDocument")
+            .WithSummary("The document's fields with display hints and its artifacts (Document.View).")
+            .WithDescription(
+                "Every field the caller may see (system, imported and coding fields) with its canonical value, a display "
+                + "value (instants in the workspace display time zone) and the raw imported string; plus whether text, "
+                + "page images and a native exist. purpose: display (default) or prefetch.")
+            .Produces<DocumentResource>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        documents.MapGet("/pages", ListPagesAsync)
+            .RequireDocumentPermission(Permission.DocumentView)
+            .WithName("ListDocumentPages")
+            .WithSummary("The pages of the document's active page set (Document.View).")
+            .WithDescription(
+                "Page geometry (points), rotation and which review image and thumbnail can be fetched, in page order. "
+                + "limit: 1-500 (default 500). purpose: display (default) or prefetch.")
+            .Produces<CursorPage<DocumentPageResource>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        documents.MapGet("/text/chunks/{chunkIndex}", GetTextChunkAsync)
+            .RequireDocumentPermission(Permission.DocumentView)
+            .WithName("GetDocumentTextChunk")
+            .WithSummary("One fixed-size chunk of the extracted text (Document.View).")
+            .WithDescription(
+                "Chunk n covers the characters that start in bytes [n * chunkSizeBytes, (n + 1) * chunkSizeBytes) of the "
+                + "stored UTF-8 text, so chunks never split a character and concatenate to the whole text. A document "
+                + "without text answers chunk 0 with missing: true. purpose: display (default) or prefetch.")
+            .Produces<DocumentTextChunkResource>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         documents.MapGet("/native", DownloadNativeAsync)
+            .RequireDocumentPermission(Permission.DocumentDownloadNative)
             .WithName("DownloadDocumentNative")
             .WithSummary("Download the native file (Document.DownloadNative).")
             .WithDescription(
@@ -45,6 +118,7 @@ public sealed class ContentEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status416RangeNotSatisfiable);
 
         documents.MapGet("/text", GetTextAsync)
+            .RequireDocumentPermission(Permission.DocumentView)
             .WithName("GetDocumentText")
             .WithSummary("The document's extracted text (Document.View).")
             .WithDescription("purpose: display (default) or prefetch. Prefetch is audited as such and never counts as viewed.")
@@ -55,6 +129,7 @@ public sealed class ContentEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status416RangeNotSatisfiable);
 
         documents.MapGet("/pages/{pageNumber}/image", GetPageImageAsync)
+            .RequireDocumentPermission(Permission.DocumentView, Permission.DocumentPrint)
             .WithName("GetDocumentPageImage")
             .WithSummary("A review image of a page of the active page set (Document.View; Document.Print with purpose=print).")
             .WithDescription("purpose: display (default), prefetch or print.")
@@ -64,6 +139,7 @@ public sealed class ContentEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         documents.MapGet("/pages/{pageNumber}/thumbnail", GetThumbnailAsync)
+            .RequireDocumentPermission(Permission.DocumentView)
             .WithName("GetDocumentPageThumbnail")
             .WithSummary("A thumbnail of a page of the active page set (Document.View).")
             .WithDescription("purpose: display (default) or prefetch.")
@@ -72,11 +148,142 @@ public sealed class ContentEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         documents.MapPost("/views", RecordViewAsync)
+            .RequireDocumentPermission(Permission.DocumentView)
             .WithName("RecordDocumentView")
             .WithSummary("Record that the viewer displayed the document (Document.Viewed).")
             .WithDescription("Re-checks Document.View. Send the X-Opportunity-Retrieval-Id of the response that was displayed.")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);
+    }
+
+    internal static Task<IResult> GetDocumentAsync(
+        string workspaceId,
+        string documentId,
+        string? purpose,
+        HttpContext context,
+        ProtectedContentGateway gateway,
+        IDocumentViewerCatalog viewer,
+        IFieldAccessFilter fieldAccess,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (ParsePurpose(purpose, allowPrint: false) is not { } p)
+        {
+            return Task.FromResult<IResult>(InvalidPurpose());
+        }
+
+        if (context.GetWorkspaceAccess() is not { } workspace || !TryParseId(documentId, out var id))
+        {
+            return Task.FromResult(ProtectedContentGateway.DocumentNotFound());
+        }
+
+        return gateway.ReadAsync(
+            context,
+            workspace,
+            new ContentRequest(workspace.WorkspaceId, id, ContentRendition.Metadata, p),
+            async ct =>
+            {
+                if (await viewer.GetDocumentAsync(workspace.WorkspaceId, id, ct).ConfigureAwait(false) is not { } record)
+                {
+                    return null;
+                }
+
+                var restricted = await fieldAccess.RestrictedFieldIdsAsync(workspace.WorkspaceId, workspace.Principal, record.Catalog, ct)
+                    .ConfigureAwait(false);
+                return DocumentResources.ToResource(record, restricted);
+            },
+            resource => TypedResults.Ok(resource),
+            cancellationToken);
+    }
+
+    internal static Task<IResult> ListPagesAsync(
+        string workspaceId,
+        string documentId,
+        string? purpose,
+        string? cursor,
+        int? limit,
+        HttpContext context,
+        ProtectedContentGateway gateway,
+        IDocumentViewerCatalog viewer,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (ParsePurpose(purpose, allowPrint: false) is not { } p)
+        {
+            return Task.FromResult<IResult>(InvalidPurpose());
+        }
+
+        var size = limit ?? Pagination.MaxLimit;
+        if (size is < 1 or > Pagination.MaxLimit)
+        {
+            return Task.FromResult<IResult>(Problems.Validation(new Dictionary<string, string[]>
+            {
+                ["limit"] = [$"Must be between 1 and {Pagination.MaxLimit}."],
+            }));
+        }
+
+        if (context.GetWorkspaceAccess() is not { } workspace || !TryParseId(documentId, out var id))
+        {
+            return Task.FromResult(ProtectedContentGateway.DocumentNotFound());
+        }
+
+        var after = 0;
+        if (cursor is not null
+            && (PageCursor.Decode(cursor, workspace.Principal.UserId, workspace.WorkspaceId, 2) is not [var cursorDocument, var position]
+                || cursorDocument != id.ToString("N")
+                || !int.TryParse(position, NumberStyles.None, CultureInfo.InvariantCulture, out after)))
+        {
+            return Task.FromResult<IResult>(PageCursor.Invalid());
+        }
+
+        return gateway.ReadAsync(
+            context,
+            workspace,
+            new ContentRequest(workspace.WorkspaceId, id, ContentRendition.PageList, p),
+            ct => viewer.GetPagesAsync(workspace.WorkspaceId, id, after, size, ct),
+            list =>
+            {
+                var items = list.Pages.Select(DocumentResources.ToResource).ToList();
+                var total = list.ActivePageSet?.PageCount ?? 0;
+                var next = items.Count == size && items[^1].PageNumber < total
+                    ? PageCursor.Encode(workspace.Principal.UserId, workspace.WorkspaceId, id.ToString("N"),
+                        items[^1].PageNumber.ToString(CultureInfo.InvariantCulture))
+                    : null;
+                return TypedResults.Ok(new CursorPage<DocumentPageResource>(items, next, new TotalCount(total, TotalRelation.Eq)));
+            },
+            cancellationToken);
+    }
+
+    internal static Task<IResult> GetTextChunkAsync(
+        string workspaceId,
+        string documentId,
+        string chunkIndex,
+        string? purpose,
+        HttpContext context,
+        ProtectedContentGateway gateway,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (ParsePurpose(purpose, allowPrint: false) is not { } p)
+        {
+            return Task.FromResult<IResult>(InvalidPurpose());
+        }
+
+        if (!int.TryParse(chunkIndex, NumberStyles.None, CultureInfo.InvariantCulture, out var chunk))
+        {
+            return Task.FromResult<IResult>(Problems.Validation(new Dictionary<string, string[]>
+            {
+                ["chunkIndex"] = ["Must be a non-negative integer."],
+            }));
+        }
+
+        if (context.GetWorkspaceAccess() is not { } workspace || !TryParseId(documentId, out var id))
+        {
+            return Task.FromResult(ProtectedContentGateway.DocumentNotFound());
+        }
+
+        var request = new ContentRequest(workspace.WorkspaceId, id, ContentRendition.Text, p, TextChunk: chunk);
+        return gateway.DeliverTextChunkAsync(context, workspace, request, cancellationToken);
     }
 
     internal static Task<IResult> DownloadNativeAsync(
@@ -179,6 +386,7 @@ public static class ContentEndpointRegistration
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IDocumentContentCatalog, DocumentContentCatalog>();
+        services.TryAddSingleton<IDocumentViewerCatalog, DocumentViewerCatalog>();
         services.TryAddScoped<IDocumentAccessService, DocumentAccessService>();
         services.TryAddScoped<ProtectedContentGateway>();
         services.AddSingleton<IApiEndpointModule, ContentEndpoints>();
