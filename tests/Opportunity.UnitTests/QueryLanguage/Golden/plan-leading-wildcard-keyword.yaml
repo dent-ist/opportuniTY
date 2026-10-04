@@ -1,0 +1,29 @@
+description: "R7: keyword fields without LeadingWildcard need a literal prefix"
+query: "custodian:*mith"
+printed: "custodian:*mith"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 15
+      },
+      "name": "custodian",
+      "child": {
+        "kind": "wildcard",
+        "span": {
+          "start": 10,
+          "end": 15
+        },
+        "pattern": "*mith"
+      }
+    }
+  }
+planError:
+  code: LEADING_WILDCARD
+  span: [10, 15]
+  expected: []
+  message: "A wildcard on 'custodian' needs at least 1 literal character(s) before the first * or ?."

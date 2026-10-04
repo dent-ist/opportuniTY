@@ -5,7 +5,10 @@ using System.Text.Json.Nodes;
 
 using AwesomeAssertions;
 
+using Opportunity.Core.Fields;
 using Opportunity.Core.QueryLanguage;
+using Opportunity.Search.Querying;
+using Opportunity.UnitTests.Search;
 
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -15,7 +18,8 @@ namespace Opportunity.UnitTests.QueryLanguage;
 /// <summary>
 /// ADR-008 R18–R19 golden-file contract tests: one case per <c>QueryLanguage/Golden/*.yaml</c>, holding the query and
 /// the expected canonical AST JSON, canonical text and warnings, or the expected error code, span and expected tokens.
-/// The planner (E07-T07) adds the expected <c>dsl</c> to the same files. Files change only through an explicit update
+/// The planner (E07-T07) adds the expected user-clause <c>dsl</c> (or <c>planError</c>) for the <see cref="PlannerFixture"/>
+/// fields, optionally in a display <c>zone</c> and with <c>custodianExpansion</c>. Files change only through an explicit update
 /// run (<c>OPPORTUNITY_UPDATE_GOLDEN=1 dotnet test --project tests/Opportunity.UnitTests</c>), reviewed by the Search
 /// owner.
 /// </summary>
@@ -30,6 +34,8 @@ public class QueryGoldenTests
         .Build();
 
     private static readonly JsonSerializerOptions Relaxed = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private static readonly JsonSerializerOptions Indented = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, WriteIndented = true };
 
     public static TheoryData<string> Cases => new(System.IO.Directory.EnumerateFiles(Directory, "*.yaml").Select(Path.GetFileNameWithoutExtension).Order(StringComparer.Ordinal)!);
 
@@ -46,11 +52,12 @@ public class QueryGoldenTests
 
         names.Should().Contain(n => n.StartsWith("limit-", StringComparison.Ordinal));
         names.Should().Contain(n => n.StartsWith("error-", StringComparison.Ordinal));
+        names.Should().Contain(n => n.StartsWith("plan-", StringComparison.Ordinal));
     }
 
     [Theory]
     [MemberData(nameof(Cases))]
-    public void Golden_case(string name)
+    public async Task Golden_case(string name)
     {
         var path = Path.Combine(Directory, name + ".yaml");
         var golden = Yaml.Deserialize<GoldenCase>(File.ReadAllText(path));
@@ -58,6 +65,20 @@ public class QueryGoldenTests
 
         var result = QueryParser.Parse(golden.Query!);
         var actual = GoldenCase.From(golden.Description, golden.Query!, result);
+        actual.Zone = golden.Zone;
+        actual.CustodianExpansion = golden.CustodianExpansion;
+        if (result.Ast is { } parsed)
+        {
+            var translation = await PlannerFixture.Planner().TranslateAsync(
+                parsed,
+                new SearchTranslationContext(PlannerFixture.Workspace, 2, QueryLimits.Default,
+                    golden.Zone is { } zone ? TimeZoneInfo.FindSystemTimeZoneById(zone) : null,
+                    golden.CustodianExpansion ? new SearchFieldOptions(CustodianIncludesAllCustodians: true) : null),
+                TestContext.Current.CancellationToken);
+            actual.Dsl = translation.Query?.ToJsonString(Indented);
+            actual.PlanError = translation.Errors.Count > 0 ? GoldenDiagnostic.From(translation.Errors[0]) : null;
+            actual.QueryClass = translation.Success ? translation.QueryClass : null;
+        }
 
         if (Environment.GetEnvironmentVariable(UpdateVariable) == "1")
         {
@@ -72,6 +93,20 @@ public class QueryGoldenTests
             actual.Printed.Should().Be(golden.Printed, name);
             Describe(actual.Warnings).Should().Equal(Describe(golden.Warnings), name);
             QueryAstComparer.IgnoringSpans.Equals(QueryParser.Parse(actual.Printed!).Ast, result.Ast).Should().BeTrue($"{name}: canonical text must round-trip");
+            if (golden.PlanError is null)
+            {
+                actual.PlanError.Should().BeNull($"{name}: {actual.PlanError?.Code} {actual.PlanError?.Message}");
+                golden.Dsl.Should().NotBeNull($"{name} must record the planned DSL (run the update)");
+                JsonNode.DeepEquals(JsonNode.Parse(golden.Dsl!), JsonNode.Parse(actual.Dsl!)).Should().BeTrue($"{name}: DSL differs:\n{actual.Dsl}");
+                actual.QueryClass.Should().Be(golden.QueryClass, name);
+            }
+            else
+            {
+                actual.PlanError.Should().NotBeNull($"{name} expects plan error {golden.PlanError.Code}");
+                actual.PlanError!.Code.Should().Be(golden.PlanError.Code, name);
+                actual.PlanError.Span.Should().Equal(golden.PlanError.Span, name);
+                actual.PlanError.Expected.Should().Equal(golden.PlanError.Expected, name);
+            }
         }
         else
         {
@@ -113,6 +148,17 @@ public class QueryGoldenTests
 
         public GoldenDiagnostic? Error { get; set; }
 
+        /// <summary>IANA zone of date-only literals (ADR-008 R8); UTC when absent.</summary>
+        public string? Zone { get; set; }
+
+        public bool CustodianExpansion { get; set; }
+
+        public string? QueryClass { get; set; }
+
+        public string? Dsl { get; set; }
+
+        public GoldenDiagnostic? PlanError { get; set; }
+
         public static GoldenCase From(string? description, string query, QueryParseResult result) => new()
         {
             Description = description,
@@ -128,6 +174,15 @@ public class QueryGoldenTests
             var b = new StringBuilder();
             b.Append("description: ").AppendLine(Quote(Description ?? string.Empty));
             b.Append("query: ").AppendLine(Quote(Query!));
+            if (Zone is not null)
+            {
+                b.Append("zone: ").AppendLine(Quote(Zone));
+            }
+
+            if (CustodianExpansion)
+            {
+                b.AppendLine("custodianExpansion: true");
+            }
             if (Error is not null)
             {
                 b.AppendLine("error:");
@@ -153,16 +208,34 @@ public class QueryGoldenTests
                 }
             }
 
-            b.AppendLine("ast: |");
-            foreach (var line in Ast!.Split('\n'))
+            Block(b, "ast", Ast!);
+            if (PlanError is not null)
             {
-                b.Append("  ").AppendLine(line.TrimEnd('\r'));
+                b.AppendLine("planError:");
+                b.Append("  code: ").AppendLine(PlanError.Code);
+                b.Append("  span: [").Append(string.Join(", ", PlanError.Span)).AppendLine("]");
+                b.Append("  expected: [").Append(string.Join(", ", PlanError.Expected.Select(Quote))).AppendLine("]");
+                b.Append("  message: ").AppendLine(Quote(PlanError.Message ?? string.Empty));
+            }
+            else if (Dsl is not null)
+            {
+                b.Append("queryClass: ").AppendLine(QueryClass);
+                Block(b, "dsl", Dsl);
             }
 
             return b.ToString();
         }
 
         private static string Quote(string value) => JsonSerializer.Serialize(value, Relaxed);
+
+        private static void Block(StringBuilder b, string key, string json)
+        {
+            b.Append(key).AppendLine(": |");
+            foreach (var line in json.Split('\n'))
+            {
+                b.Append("  ").AppendLine(line.TrimEnd('\r'));
+            }
+        }
     }
 
     public sealed class GoldenDiagnostic

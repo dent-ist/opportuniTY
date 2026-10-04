@@ -1,0 +1,38 @@
+description: "A term without searchable characters is an error"
+query: "contract &"
+printed: "contract AND &"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 10
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 8
+          },
+          "text": "contract"
+        },
+        {
+          "kind": "term",
+          "span": {
+            "start": 9,
+            "end": 10
+          },
+          "text": "&"
+        }
+      ]
+    }
+  }
+planError:
+  code: NO_SEARCHABLE_TERMS
+  span: [9, 10]
+  expected: []
+  message: "This has no searchable words (only punctuation or symbols); quote or remove it."

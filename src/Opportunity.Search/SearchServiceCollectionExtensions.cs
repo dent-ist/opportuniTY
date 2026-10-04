@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Bootstrap;
+using Opportunity.Application.Fields;
 using Opportunity.Application.Search;
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Application.Search.Projection;
@@ -41,7 +43,9 @@ public static class SearchServiceCollectionExtensions
 
     /// <summary>
     /// Registers the logical search service (<see cref="ISearchService"/>, scoped like the PDP it calls) with index
-    /// management and the first-slice <see cref="ISearchQueryTranslator"/>. Settings are bound from configuration
+    /// management, the search planner (<see cref="ISearchQueryTranslator"/>, E07-T07) and the planner-backed
+    /// <see cref="IQueryBinder"/> of the validate endpoint. The planner binds against <see cref="IFieldCatalogRepository"/>
+    /// when one is registered (otherwise against the structural system fields only). Settings are bound from configuration
     /// (<c>OpenSearch</c>, <c>ConnectionStrings:OpenSearch</c>) and validated on first use, unless an
     /// <see cref="OpenSearchOptions"/> instance is registered first. Needs <see cref="IIndexPlacementStore"/>,
     /// <see cref="ISearchSessionStore"/>, the PDP and an audit writer.
@@ -57,8 +61,16 @@ public static class SearchServiceCollectionExtensions
         });
         AddOpenSearchServices(services, null);
         AddIndexManagement(services);
-        services.TryAddSingleton<ISearchQueryTranslator, BasicSearchQueryTranslator>();
+        services.TryAddSingleton<ISearchFieldCatalogSource>(sp => new SearchFieldCatalogSource(
+            sp.GetService<IFieldCatalogRepository>(), sp.GetRequiredService<OpenSearchOptions>(), sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<ISearchTextAnalyzer>(sp => new OpenSearchTextAnalyzer(
+            sp.GetRequiredService<OpenSearchConnection>(), sp.GetRequiredService<ProjectionMappings>()));
+        services.TryAddSingleton<ISearchQueryTranslator>(sp => new SearchQueryPlanner(
+            sp.GetRequiredService<ISearchFieldCatalogSource>(), sp.GetRequiredService<ISearchTextAnalyzer>()));
         services.TryAddSingleton(sp => sp.GetService<QueryValidator>()?.Limits ?? QueryLimits.Default);
+        services.TryAddSingleton<IQueryBinder>(sp => new SearchQueryBinder(
+            sp.GetRequiredService<ISearchQueryTranslator>(), sp.GetRequiredService<QueryLimits>(), sp.GetRequiredService<ProjectionMappings>(),
+            sp.GetRequiredService<ILogger<SearchQueryBinder>>()));
         services.TryAddScoped<ISearchService, SearchService>();
         return services;
     }

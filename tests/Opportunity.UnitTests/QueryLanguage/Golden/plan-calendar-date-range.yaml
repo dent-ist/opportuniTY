@@ -1,0 +1,42 @@
+description: "R8: Date-precision fields compare calendar dates without a zone; exclusive whole-month upper bound"
+query: "review_date:[2025-01 TO 2025-03}"
+zone: "Europe/Berlin"
+printed: "review_date:[2025-01 TO 2025-03}"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 32
+      },
+      "name": "review_date",
+      "child": {
+        "kind": "range",
+        "span": {
+          "start": 12,
+          "end": 32
+        },
+        "lower": {
+          "value": "2025-01",
+          "inclusive": true
+        },
+        "upper": {
+          "value": "2025-03",
+          "inclusive": false
+        }
+      }
+    }
+  }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "metadata.dt.s001": {
+        "gte": "2025-01-01T00:00:00.000Z",
+        "lt": "2025-03-01T00:00:00.000Z"
+      }
+    }
+  }

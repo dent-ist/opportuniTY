@@ -1,0 +1,30 @@
+description: "Exists on an overflow key"
+query: "overflow_tag:*"
+printed: "overflow_tag:*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 14
+      },
+      "name": "overflow_tag",
+      "child": {
+        "kind": "exists",
+        "span": {
+          "start": 13,
+          "end": 14
+        }
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "exists": {
+      "field": "metadataOverflow.f1007"
+    }
+  }

@@ -13,3 +13,8 @@ ast: |
       }
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "match_all": {}
+  }

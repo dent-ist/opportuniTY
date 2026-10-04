@@ -38,3 +38,31 @@ ast: |
       ]
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "bool": {
+            "must_not": [
+              {
+                "match": {
+                  "text": {
+                    "query": "a"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "match": {
+            "text": {
+              "query": "b"
+            }
+          }
+        }
+      ]
+    }
+  }

@@ -1,0 +1,64 @@
+description: "A field applies to every leaf of its group"
+query: "notes:(budget OR \"sales forecast\")"
+printed: "notes:(budget OR \"sales forecast\")"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 34
+      },
+      "name": "notes",
+      "child": {
+        "kind": "or",
+        "span": {
+          "start": 6,
+          "end": 34
+        },
+        "children": [
+          {
+            "kind": "term",
+            "span": {
+              "start": 7,
+              "end": 13
+            },
+            "text": "budget"
+          },
+          {
+            "kind": "phrase",
+            "span": {
+              "start": 17,
+              "end": 33
+            },
+            "text": "sales forecast"
+          }
+        ]
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "should": [
+        {
+          "match": {
+            "metadata.txt.s001": {
+              "query": "budget"
+            }
+          }
+        },
+        {
+          "match_phrase": {
+            "metadata.txt.s001": {
+              "query": "sales forecast"
+            }
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  }

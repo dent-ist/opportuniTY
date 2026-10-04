@@ -39,3 +39,32 @@ ast: |
       ]
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "text": {
+              "query": "(draft)"
+            }
+          }
+        },
+        {
+          "match_phrase": {
+            "text": {
+              "query": "AT&T"
+            }
+          }
+        },
+        {
+          "match_phrase": {
+            "text": {
+              "query": "a b"
+            }
+          }
+        }
+      ]
+    }
+  }

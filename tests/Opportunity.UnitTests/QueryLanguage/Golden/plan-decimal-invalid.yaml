@@ -1,0 +1,29 @@
+description: "R9: no locale decimal separators"
+query: "amount:1,5"
+printed: "amount:1,5"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 10
+      },
+      "name": "amount",
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 7,
+          "end": 10
+        },
+        "text": "1,5"
+      }
+    }
+  }
+planError:
+  code: INVALID_FIELD_VALUE
+  span: [7, 10]
+  expected: []
+  message: "'1,5' is not valid for field 'amount': expected a number (use . as the decimal separator)."

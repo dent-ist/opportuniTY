@@ -97,6 +97,58 @@ public sealed class SearchApiTests(OpenSearchFixture openSearch, MigrationPostgr
             .ShouldBeProblemAsync(HttpStatusCode.BadRequest, "validation");
     }
 
+    [Fact]
+    public async Task Planner_limits_and_binding_errors_are_400_with_positioned_messages()
+    {
+        await using var h = await SearchHarness.CreateAsync(openSearch, postgres);
+        var ws = await h.WorkspaceAsync();
+        var alice = await h.MemberAsync(ws);
+        await h.DocumentAsync(ws, "LIM-001", "anchor contract");
+
+        await using var factory = new ApiFactory().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:App", h.Db.Core.AppConnectionString);
+            builder.UseSetting("ConnectionStrings:OpenSearch", openSearch.BaseAddress.ToString());
+            builder.UseSetting("OpenSearch:IndexPrefix", h.Scope.Prefix);
+            builder.UseSetting("OpenSearch:Placement:CacheTtl", "00:00:00");
+            builder.UseSetting("Search:MaxQueryClauses", "3");
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ISecurityStateReader>();
+                services.AddSingleton<ISecurityStateReader>(h.Db.Reader);
+                services.AddSingleton<IAuditEventWriter>(new InMemoryAuditEventWriter());
+            });
+        });
+        using var client = factory.CreateClient();
+
+        foreach (var (query, code) in new[]
+        {
+            ("a OR b OR c OR d", "TOO_MANY_CLAUSES"),
+            ("*tract", "LEADING_WILDCARD"),
+            ("custodain:smith", "UNKNOWN_FIELD"),
+            ("(aaa* OR bbb* OR ccc* OR ddd* OR eee* OR fff* OR ggg* OR hhh* OR iii*) W/3 x", "TOO_MANY_WILDCARDS"),
+        })
+        {
+            using var response = await SendAsync(client, HttpMethod.Post, $"/api/v1/workspaces/{ws}/searches", alice,
+                JsonSerializer.Serialize(new { query }));
+            var errors = (await response.ShouldBeProblemAsync(HttpStatusCode.BadRequest, "invalid-query")).GetProperty("queryErrors");
+            var error = errors.EnumerateArray().Should().Contain(e => e.GetProperty("code").GetString() == code, query).Subject;
+            error.GetProperty("message").GetString().Should().NotBeNullOrWhiteSpace();
+            error.GetProperty("span").GetProperty("end").GetInt32().Should().BeGreaterThan(0);
+        }
+
+        // The query bar's validate endpoint binds against the workspace too.
+        using var validation = await SendAsync(client, HttpMethod.Post, $"/api/v1/workspaces/{ws}/query-validations", alice,
+            """{"query":"contract AND filetyp:email"}""");
+        validation.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var result = JsonDocument.Parse(await validation.Content.ReadAsStringAsync(Ct));
+        result.RootElement.GetProperty("valid").GetBoolean().Should().BeFalse();
+        var unknown = result.RootElement.GetProperty("errors")[0];
+        unknown.GetProperty("code").GetString().Should().Be("UNKNOWN_FIELD");
+        unknown.GetProperty("span").GetProperty("start").GetInt32().Should().Be(13);
+        unknown.GetProperty("expected").EnumerateArray().Select(e => e.GetString()).Should().Contain("filetype");
+    }
+
     private static async Task<HttpResponseMessage> SendAsync(HttpClient client, HttpMethod method, string url, Guid user, string? body = null)
     {
         using var request = new HttpRequestMessage(method, new Uri(url, UriKind.Relative));

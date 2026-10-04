@@ -14,3 +14,14 @@ ast: |
       "pattern": "wom?n"
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "wildcard": {
+      "text": {
+        "value": "wom?n",
+        "case_insensitive": true,
+        "rewrite": "constant_score"
+      }
+    }
+  }

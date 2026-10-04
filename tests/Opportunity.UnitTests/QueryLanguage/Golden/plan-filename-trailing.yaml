@@ -1,0 +1,35 @@
+description: "Fields with LeadingWildcard match the whole value"
+query: "filename:report*"
+printed: "filename:report*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 16
+      },
+      "name": "filename",
+      "child": {
+        "kind": "wildcard",
+        "span": {
+          "start": 9,
+          "end": 16
+        },
+        "pattern": "report*"
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "wildcard": {
+      "fileName.wc": {
+        "value": "report*",
+        "case_insensitive": true,
+        "rewrite": "constant_score"
+      }
+    }
+  }

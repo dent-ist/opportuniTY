@@ -1,0 +1,35 @@
+description: "R7: keyword trailing wildcard"
+query: "custodian:smi*"
+printed: "custodian:smi*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 14
+      },
+      "name": "custodian",
+      "child": {
+        "kind": "wildcard",
+        "span": {
+          "start": 10,
+          "end": 14
+        },
+        "pattern": "smi*"
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "wildcard": {
+      "metadata.kw.s001": {
+        "value": "smi*",
+        "case_insensitive": true,
+        "rewrite": "constant_score"
+      }
+    }
+  }

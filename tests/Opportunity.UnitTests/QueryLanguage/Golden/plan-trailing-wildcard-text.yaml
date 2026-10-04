@@ -1,0 +1,27 @@
+description: "R7: trailing wildcard on full text, constant_score, case-insensitive"
+query: "Contr*"
+printed: "Contr*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "wildcard",
+      "span": {
+        "start": 0,
+        "end": 6
+      },
+      "pattern": "Contr*"
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "wildcard": {
+      "text": {
+        "value": "contr*",
+        "case_insensitive": true,
+        "rewrite": "constant_score"
+      }
+    }
+  }

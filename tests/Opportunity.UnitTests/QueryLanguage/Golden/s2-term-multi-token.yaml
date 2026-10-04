@@ -31,3 +31,25 @@ ast: |
       ]
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "match_phrase": {
+            "text": {
+              "query": "e-mail"
+            }
+          }
+        },
+        {
+          "match_phrase": {
+            "text": {
+              "query": "john.smith"
+            }
+          }
+        }
+      ]
+    }
+  }

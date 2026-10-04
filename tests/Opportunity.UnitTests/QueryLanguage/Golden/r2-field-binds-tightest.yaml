@@ -29,3 +29,19 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "must_not": [
+        {
+          "term": {
+            "metadata.kw.s001": {
+              "value": "smith",
+              "case_insensitive": true
+            }
+          }
+        }
+      ]
+    }
+  }

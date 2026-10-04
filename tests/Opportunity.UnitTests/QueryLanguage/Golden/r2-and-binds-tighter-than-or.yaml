@@ -48,3 +48,39 @@ ast: |
       ]
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "should": [
+        {
+          "match": {
+            "text": {
+              "query": "a"
+            }
+          }
+        },
+        {
+          "bool": {
+            "must": [
+              {
+                "match": {
+                  "text": {
+                    "query": "b"
+                  }
+                }
+              },
+              {
+                "match": {
+                  "text": {
+                    "query": "c"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  }

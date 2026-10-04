@@ -39,6 +39,12 @@ public sealed class QueryLanguageOptions
     [Range(0, 100)]
     public int MinWildcardPrefix { get; set; } = QueryLimits.Default.MinWildcardPrefix;
 
+    [Range(1, 100_000)]
+    public int MaxQueryClauses { get; set; } = QueryLimits.Default.MaxClauses;
+
+    [Range(0, 1_000)]
+    public int MaxProximityWildcards { get; set; } = QueryLimits.Default.MaxProximityWildcards;
+
     public QueryLimits ToLimits() => new()
     {
         MaxLength = MaxQueryLength,
@@ -49,13 +55,15 @@ public sealed class QueryLanguageOptions
         MaxProximityDistance = MaxProximityDistance,
         MaxWildcardExpansion = MaxWildcardExpansion,
         MinWildcardPrefix = MinWildcardPrefix,
+        MaxClauses = MaxQueryClauses,
+        MaxProximityWildcards = MaxProximityWildcards,
     };
 }
 
 /// <summary>
 /// <c>POST /api/v1/workspaces/{workspaceId}/query-validations</c>: parses query text and returns the AST or positioned
-/// errors for the query bar (E07-T06, UI E16). Workspace-scoped so that binding (fields, choices, zone) can join later
-/// without a new route.
+/// errors for the query bar (E07-T06, UI E16), including the workspace binding errors of the planner (E07-T07:
+/// unknown fields, capabilities, values, limits).
 /// </summary>
 public sealed class QueryValidationEndpoints : IApiEndpointModule
 {
@@ -64,9 +72,9 @@ public sealed class QueryValidationEndpoints : IApiEndpointModule
     public void MapEndpoints(ApiRouteGroups routes)
     {
         ArgumentNullException.ThrowIfNull(routes);
-        routes.Workspace.MapPost(Path, (string workspaceId, QueryValidationRequest request, QueryValidator validator) =>
+        routes.Workspace.MapPost(Path, async (string workspaceId, QueryValidationRequest request, QueryValidator validator, HttpContext context,
+                CancellationToken cancellationToken) =>
             {
-                // Parsing is workspace-independent (ADR-008 R15); the route still carries the workspace authorization.
                 _ = workspaceId;
                 if (request.Query is null)
                 {
@@ -74,7 +82,20 @@ public sealed class QueryValidationEndpoints : IApiEndpointModule
                         new Dictionary<string, string[]> { ["query"] = ["The query text is required (it may be empty)."] });
                 }
 
-                return TypedResults.Ok(validator.Validate(request.Query));
+                // Parse (ADR-008 R15), then bind against the authorized workspace when the search planner is registered.
+                if (context.GetWorkspaceAccess() is not { } access)
+                {
+                    return Problems.NotFound();
+                }
+
+                var parsed = validator.Validate(request.Query);
+                if (!parsed.Valid || context.RequestServices.GetService<IQueryBinder>() is not { } binder)
+                {
+                    return TypedResults.Ok(parsed);
+                }
+
+                return TypedResults.Ok(await validator.ValidateAsync(request.Query, access.WorkspaceId, binder, cancellationToken)
+                    .ConfigureAwait(false));
             })
             .WithName("ValidateQuery")
             .WithSummary("Parse query-language text and return its AST, normalized form and positioned errors.")

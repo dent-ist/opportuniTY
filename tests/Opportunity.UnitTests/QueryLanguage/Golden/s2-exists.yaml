@@ -21,3 +21,10 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "exists": {
+      "field": "coding.ch.s003"
+    }
+  }

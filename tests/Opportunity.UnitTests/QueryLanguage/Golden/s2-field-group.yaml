@@ -39,3 +39,28 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "should": [
+        {
+          "term": {
+            "metadata.kw.s001": {
+              "value": "smith",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "term": {
+            "metadata.kw.s001": {
+              "value": "jones",
+              "case_insensitive": true
+            }
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  }
