@@ -335,11 +335,12 @@ internal static class JobSql
     /// <summary>
     /// Writes a <c>Job.*</c> audit event (ADR-013 §5) in the caller's transaction, so the job change and its event commit
     /// together. <paramref name="userId"/> is the acting user; without one the job engine acts on behalf of the
-    /// initiator. IDs, enums and counts only: status reasons can hold free text and are not copied (ADR-013 §7).
+    /// initiator, and with <paramref name="operatorName"/> the operations CLI acts for that operator. IDs, enums and counts only: status reasons can hold free text and are not copied (ADR-013 §7).
     /// </summary>
     public static async Task AuditAsync(
         WorkspaceTransaction tx, JobInfo job, string action, Guid? userId, CancellationToken cancellationToken,
-        AuditOutcome outcome = AuditOutcome.Success, string? reasonCode = null, IReadOnlyDictionary<string, string?>? details = null)
+        AuditOutcome outcome = AuditOutcome.Success, string? reasonCode = null, IReadOnlyDictionary<string, string?>? details = null,
+        string? operatorName = null)
     {
         string? display = null;
         if (userId is { } user)
@@ -362,9 +363,11 @@ internal static class JobSql
             Category = AuditTaxonomy.Job.Category,
             Action = action,
             ActorType = userId is null ? AuditActorType.Service : AuditActorType.User,
-            ActorId = userId?.ToString() ?? JobEngineActor,
-            ActorDisplay = userId is null ? "Job engine" : Truncate(display ?? userId.Value.ToString(), AuditEventRules.MaxActorDisplayLength),
-            OnBehalfOf = userId is null ? job.InitiatedBy : null,
+            ActorId = userId?.ToString() ?? (operatorName is null ? JobEngineActor : OperationsActor.CliServiceId),
+            ActorDisplay = userId is not null
+                ? Truncate(display ?? userId.Value.ToString(), AuditEventRules.MaxActorDisplayLength)
+                : operatorName is null ? "Job engine" : Truncate($"Operations CLI ({operatorName})", AuditEventRules.MaxActorDisplayLength),
+            OnBehalfOf = userId is null && operatorName is null ? job.InitiatedBy : null,
             ResourceType = "Job",
             ResourceId = job.JobId.ToString(),
             Outcome = outcome,
@@ -447,7 +450,7 @@ internal static class JobSql
     public static string? TruncateOrNull(string? value, int maxLength) =>
         value is null || value.Length <= maxLength ? value : value[..maxLength];
 
-    private static LockedJob ReadLockedJob(NpgsqlDataReader reader)
+    internal static LockedJob ReadLockedJob(NpgsqlDataReader reader)
     {
         var job = new JobInfo
         {

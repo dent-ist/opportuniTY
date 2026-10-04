@@ -77,6 +77,12 @@ public sealed class ProtectedContentGatewayTests
                 .Where(m => m.StatusCode is >= 200 and < 300)
                 .SelectMany(m => m.ContentTypes)
                 .ToList();
+            // Event streams carry JSON status events only (no document content); each is listed here by name.
+            if (JsonEventStreams.Contains(route) && contentTypes.All(t => IsJson(t) || t == "text/event-stream"))
+            {
+                continue;
+            }
+
             if (!isGateway && contentTypes.Any(t => !IsJson(t)))
             {
                 offenders.Add($"{route}: returns {string.Join(", ", contentTypes)} outside the protected-content gateway");
@@ -118,6 +124,9 @@ public sealed class ProtectedContentGatewayTests
             "/api/v1/workspaces/{workspaceId}/imports/preflight/{preflightId}/issues",
         ]);
     }
+
+    /// <summary>Server-sent event streams whose events are JSON job status (E06-T06), never protected content.</summary>
+    private static readonly HashSet<string> JsonEventStreams = ["/api/v1/workspaces/{workspaceId}/job-events"];
 
     private static bool IsJson(string contentType) =>
         contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase)

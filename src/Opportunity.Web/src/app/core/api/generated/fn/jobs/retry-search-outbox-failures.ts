@@ -7,31 +7,29 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { JobDetail } from '../../models/job-detail';
+import { SearchOutboxReplayResource } from '../../models/search-outbox-replay-resource';
 
-export interface GetJob$Params {
+export interface RetrySearchOutboxFailures$Params {
   workspaceId: string;
-  jobId: string;
 }
 
-export function getJob(
+export function retrySearchOutboxFailures(
   http: HttpClient,
   rootUrl: string,
-  params: GetJob$Params,
+  params: RetrySearchOutboxFailures$Params,
   context?: HttpContext,
-): Observable<StrictHttpResponse<JobDetail>> {
-  const rb = new RequestBuilder(rootUrl, getJob.PATH, 'get');
+): Observable<StrictHttpResponse<SearchOutboxReplayResource>> {
+  const rb = new RequestBuilder(rootUrl, retrySearchOutboxFailures.PATH, 'post');
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
-    rb.path('jobId', params.jobId, {});
   }
 
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<JobDetail>;
+      return r as StrictHttpResponse<SearchOutboxReplayResource>;
     }),
   );
 }
 
-getJob.PATH = '/api/v1/workspaces/{workspaceId}/jobs/{jobId}';
+retrySearchOutboxFailures.PATH = '/api/v1/workspaces/{workspaceId}/search-outbox/retry-failed';

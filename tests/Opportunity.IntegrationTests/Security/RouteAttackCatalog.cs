@@ -100,6 +100,18 @@ internal static class RouteAttackCatalog
         Case("GET", Ws + "/jobs/{jobId}", ProtectedOperation.Job,
             new RouteProbe("import job", HttpMethod.Get, (o, t) => $"{W(o)}/jobs/{t.ImportJobId}", HttpStatusCode.OK),
             new RouteProbe("bulk coding job", HttpMethod.Get, (o, t) => $"{W(o)}/jobs/{t.BulkCodingJobId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/jobs", ProtectedOperation.Job, WorkspaceOnly(HttpMethod.Get, "/jobs?createdBy=all&limit=500", HttpStatusCode.OK)),
+        Case("GET", Ws + "/jobs/{jobId}/failures", ProtectedOperation.Job,
+            new RouteProbe("import job", HttpMethod.Get, (o, t) => $"{W(o)}/jobs/{t.ImportJobId}/failures", HttpStatusCode.OK)),
+        Case("POST", Ws + "/jobs/{jobId}/cancel", ProtectedOperation.Job,
+            new RouteProbe("finished import job", HttpMethod.Post, (o, t) => $"{W(o)}/jobs/{t.ImportJobId}/cancel", HttpStatusCode.Conflict)),
+        Case("POST", Ws + "/jobs/{jobId}/retry-failed", ProtectedOperation.Job,
+            new RouteProbe("import job (nothing failed)", HttpMethod.Post, (o, t) => $"{W(o)}/jobs/{t.ImportJobId}/retry-failed", HttpStatusCode.Accepted)),
+        Case("GET", Ws + "/search-outbox/failures", ProtectedOperation.Job, WorkspaceOnly(HttpMethod.Get, "/search-outbox/failures", HttpStatusCode.OK)),
+        Case("POST", Ws + "/search-outbox/retry-failed", ProtectedOperation.Job,
+            WorkspaceOnly(HttpMethod.Post, "/search-outbox/retry-failed", HttpStatusCode.Accepted)),
+        // The suite runs the stream with a 1 s maximum duration (AttackWorld), so the probe reads a complete response.
+        Case("GET", Ws + "/job-events", ProtectedOperation.Job, WorkspaceOnly(HttpMethod.Get, "/job-events", HttpStatusCode.OK)),
 
         // Workspace administration and catalogues (the workspace is the only identifier).
         Case("GET", Ws, ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, string.Empty, HttpStatusCode.OK)),

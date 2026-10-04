@@ -52,7 +52,7 @@ internal sealed class JobDatabase : IAsyncDisposable
 
     /// <summary>Creates a Running job over one snapshot with <paramref name="chunkCount"/> chunks of 100 ordinals.</summary>
     public async Task<(Guid WorkspaceId, Guid JobId)> CreateRunningJobAsync(
-        int chunkCount, int maxAttempts = ChunkRetryPolicy.DefaultMaxAttempts, Guid? workspaceId = null)
+        int chunkCount, int maxAttempts = ChunkRetryPolicy.DefaultMaxAttempts, Guid? workspaceId = null, Guid? initiatedBy = null)
     {
         var ws = workspaceId ?? await Core.CreateWorkspaceAsync();
         var snapshot = Guid.CreateVersion7();
@@ -60,7 +60,7 @@ internal sealed class JobDatabase : IAsyncDisposable
         {
             WorkspaceId = ws,
             JobType = JobType.BulkCoding,
-            InitiatedBy = Guid.CreateVersion7(),
+            InitiatedBy = initiatedBy ?? Guid.CreateVersion7(),
             TargetSnapshotId = snapshot,
             MaxAttemptsPerChunk = maxAttempts,
         }, Ct);

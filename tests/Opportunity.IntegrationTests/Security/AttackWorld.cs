@@ -145,6 +145,7 @@ internal sealed class AttackWorld : IAsyncDisposable
             builder.UseSetting("ObjectStorage:Provider", "FileSystem");
             builder.UseSetting("ObjectStorage:FileSystem:RootPath", import.StoreRoot);
             builder.UseSetting("Snapshots:BackgroundEnabled", "false");
+            builder.UseSetting("Jobs:Events:MaxStreamDuration", "00:00:01");
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<ISecurityStateReader>();

@@ -7,20 +7,20 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { JobDetail } from '../../models/job-detail';
+import { JobReplayResource } from '../../models/job-replay-resource';
 
-export interface GetJob$Params {
+export interface RetryFailedJobWork$Params {
   workspaceId: string;
   jobId: string;
 }
 
-export function getJob(
+export function retryFailedJobWork(
   http: HttpClient,
   rootUrl: string,
-  params: GetJob$Params,
+  params: RetryFailedJobWork$Params,
   context?: HttpContext,
-): Observable<StrictHttpResponse<JobDetail>> {
-  const rb = new RequestBuilder(rootUrl, getJob.PATH, 'get');
+): Observable<StrictHttpResponse<JobReplayResource>> {
+  const rb = new RequestBuilder(rootUrl, retryFailedJobWork.PATH, 'post');
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
     rb.path('jobId', params.jobId, {});
@@ -29,9 +29,9 @@ export function getJob(
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<JobDetail>;
+      return r as StrictHttpResponse<JobReplayResource>;
     }),
   );
 }
 
-getJob.PATH = '/api/v1/workspaces/{workspaceId}/jobs/{jobId}';
+retryFailedJobWork.PATH = '/api/v1/workspaces/{workspaceId}/jobs/{jobId}/retry-failed';

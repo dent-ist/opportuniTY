@@ -186,6 +186,8 @@ public sealed partial class WorkspaceAuthorizationApiTests(MigrationPostgresFixt
         new ApiFactory().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:App", db.Core.AppConnectionString);
+            // The job-events stream ends quickly, so probing it as a member reads a complete response.
+            builder.UseSetting("Jobs:Events:MaxStreamDuration", "00:00:01");
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<ISecurityStateReader>();

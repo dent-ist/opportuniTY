@@ -1,0 +1,71 @@
+# Operations runbooks
+
+Runbooks for the job and search pipeline (E06-T06, #61). PostgreSQL owns job and search-work state (baseline §11,
+ADR-010 §7): every recovery here changes rows in PostgreSQL and lets the dispatcher publish again. RabbitMQ
+dead-letter queues (`*.dlq`) are kept for diagnostics only and are **never** re-published.
+
+| Runbook | Use it when |
+|---|---|
+| [Re-dispatch stuck work](re-dispatch-stuck-work.md) | work sits in Pending/Dispatched/Running without progress; outbox or index backlog grows |
+| [Replay failed work](replay-failed-work.md) | chunks, index tasks or SearchOutbox rows are `Failed`; a job ended *completed with errors*; DLQ depth > 0 |
+| [Alias reindex](alias-reindex.md) | the search projection must be rebuilt into a new index generation (mapping change, corruption) |
+| [Deletion verification](deletion-verification.md) | proving that a workspace's data is gone from PostgreSQL, OpenSearch and object storage |
+
+## Tools
+
+**Job monitor API** (workspace-scoped, `/api/v1/workspaces/{ws}`; permissions in
+[permission-matrix.md](../security/permission-matrix.md)):
+
+| Call | Permission |
+|---|---|
+| `GET /jobs?type=&status=&createdBy=me\|all&from=&to=&updatedSince=&cursor=&limit=` | member (own jobs; all with `Job.ViewAll`) |
+| `GET /jobs/{jobId}` — committed vs searchable progress, chunks by state, attempts, last error, ETA | own job or `Job.ViewAll` |
+| `GET /jobs/{jobId}/failures` — failed chunks and index tasks | own job or `Job.ViewAll` |
+| `POST /jobs/{jobId}/cancel` | own job or `Job.Manage` |
+| `POST /jobs/{jobId}/retry-failed` — replay, audited `Job.Replayed` | `Job.Replay` |
+| `GET /search-outbox/failures`, `POST /search-outbox/retry-failed` | `Job.ViewAll` / `Job.Replay` |
+| `GET /job-events` — server-sent events, heartbeat every 15 s | member (own jobs; all with `Job.ViewAll`) |
+
+**Operations CLI** in the worker image (same PostgreSQL operations as the API; runtime login, RLS applies; replays are
+audited as `service:ops-cli` with the operator's name):
+
+```sh
+cd deploy/docker-compose
+docker compose run --rm --no-deps worker jobs list       --workspace <ws> [--status failed,completedWithErrors] [--type import]
+docker compose run --rm --no-deps worker jobs show       --workspace <ws> --job <job>
+docker compose run --rm --no-deps worker jobs failures   --workspace <ws> [--job <job>]   # without --job: failed SearchOutbox rows
+docker compose run --rm --no-deps worker jobs replay     --workspace <ws> --job <job> --operator "<your name>"
+docker compose run --rm --no-deps worker jobs replay-outbox --workspace <ws> --operator "<your name>"
+docker compose run --rm --no-deps worker jobs backlog    --workspace <ws>
+docker compose run --rm --no-deps worker jobs redispatch --workspace <ws>
+```
+
+The dedicated dispatcher image (`Opportunity.Worker.Dispatcher`) accepts the same `jobs …` arguments. Exit codes: 0
+done, 1 not found, 2 usage.
+
+## Alerts and metrics → runbooks
+
+The full alert set (E19-T05, #161) does not exist yet. Today `deploy/docker-compose/observability/alerts.yaml` holds one
+rule; it carries a `runbook_url`, and a unit test (`AlertRunbookTests`) fails the build when an alert has no runbook or
+links to a missing one. New alerts must follow the same rule.
+
+| Alert / metric (ADR-017 catalog) | Runbook |
+|---|---|
+| **`OutboxOldestAgeHigh`** (`opportunity.outbox.oldest_age` > 60 s) | [re-dispatch-stuck-work.md#outboxoldestagehigh](re-dispatch-stuck-work.md#outboxoldestagehigh) |
+| `opportunity.outbox.pending`, `opportunity.outbox.publish_latency`, `opportunity.dispatcher.published` | [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
+| `opportunity.index.chunk_tasks`, `opportunity.index.chunk_task.oldest_age` | [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
+| `opportunity.queue.depth{state="ready"}`, `opportunity.queue.consumers`, `opportunity.worker.heartbeat.age` | [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
+| `opportunity.queue.depth` with `opportunity.queue.state` = `dlq` or `parking` | [replay-failed-work.md#dead-letter-queues](replay-failed-work.md#dead-letter-queues) |
+| `opportunity.index.chunk_task.attempts`, `opportunity.job.chunks` with `opportunity.outcome` = `failed` | [replay-failed-work.md](replay-failed-work.md) |
+| `opportunity.search.index_lag`, `opportunity.search.generation.committed` − `.indexed` (watermark stuck) | [replay-failed-work.md](replay-failed-work.md), then [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
+
+`opportunity.dlq.messages` belongs to the dead-letter recorder of ADR-010 §7.3 (DLQ copies into a PostgreSQL
+`DeadLetterRecord`), which is not built yet; until then the DLQ is inspected in the RabbitMQ management UI. ADR-010 §7.6
+also names alerts for *chunk Running > 15 min* and *oldest Pending age*; they arrive with E19-T05 and map
+to [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md).
+
+## Game day
+
+The ticket asks for the runbooks to be exercised in a recorded game day. That needs the running stack and an operator
+and has **not** been done yet; the integration tests exercise each procedure's PostgreSQL steps (`JobOperationsApiTests`,
+`IndexTaskReplayTests`). Record the game day here (date, scenario, runbook, outcome, follow-ups) when it happens.
