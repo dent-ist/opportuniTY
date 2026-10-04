@@ -15,6 +15,8 @@
   --opp-color-text: #1a1e23;
   --opp-color-text-muted: #525b66;
   --opp-color-text-inverse: #ffffff;
+  // Backdrop behind the raster logo mark: the mark is navy, so it stays white in every theme.
+  --opp-color-brand-mark-backdrop: #ffffff;
   --opp-color-border: #d3d8de;
   --opp-color-border-strong: #747e8b;
   --opp-color-accent: #0a6569;
@@ -66,6 +68,8 @@
   --opp-color-text: #e5e8ec;
   --opp-color-text-muted: #a2abb6;
   --opp-color-text-inverse: #121519;
+  // Backdrop behind the raster logo mark: the mark is navy, so it stays white in every theme.
+  --opp-color-brand-mark-backdrop: #ffffff;
   --opp-color-border: #343b45;
   --opp-color-border-strong: #7b8693;
   --opp-color-accent: #5bbcbf;
@@ -117,6 +121,8 @@
   --opp-color-text: #000000;
   --opp-color-text-muted: #262626;
   --opp-color-text-inverse: #ffffff;
+  // Backdrop behind the raster logo mark: the mark is navy, so it stays white in every theme.
+  --opp-color-brand-mark-backdrop: #ffffff;
   --opp-color-border: #000000;
   --opp-color-border-strong: #000000;
   --opp-color-accent: #003a8c;

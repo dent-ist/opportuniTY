@@ -9,22 +9,18 @@
   white-space: nowrap;
 }
 
+// The mark's navy needs a light backdrop on dark surfaces (dark, high-contrast or system-dark themes); on light
+// surfaces the white backdrop is invisible.
 .brand__mark {
-  width: 1.5rem;
-  height: 1.5rem;
-  fill: none;
-  stroke: var(--opp-color-accent);
-  stroke-width: 1.75;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  box-sizing: border-box;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  padding: 2px;
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-brand-mark-backdrop);
 }
 
 .brand__ty {
   color: var(--opp-color-accent-text);
-}
-
-@media (forced-colors: active) {
-  .brand__mark {
-    stroke: CanvasText;
-  }
 }
