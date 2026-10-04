@@ -91,6 +91,7 @@
       "frontchannelLogout": false,
       "consentRequired": false,
       "redirectUris": [
+        "http://localhost:8080/bff/callback",
         "http://localhost:8081/bff/callback",
         "http://localhost:4200/bff/callback",
         "https://localhost/bff/callback"
@@ -98,7 +99,7 @@
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:8081/##http://localhost:4200/##https://localhost/",
+        "post.logout.redirect.uris": "http://localhost:8080/##http://localhost:8081/##http://localhost:4200/##https://localhost/",
         "backchannel.logout.url": "http://api:8080/bff/backchannel-logout",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false",

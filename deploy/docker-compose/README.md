@@ -36,10 +36,11 @@ One machine, one of everything (architecture baseline §16/§29 developer regres
 
 ## Signing in (developer IdP)
 
-The API is an OIDC backend-for-frontend ([docs/security/authentication.md](../../docs/security/authentication.md)):
-open <http://localhost:8081/bff/login?returnUrl=/api/v1/me>, sign in at Keycloak and you land on `/api/v1/me` with a
-session. Use `localhost`, not `127.0.0.1`: the session cookie is `Secure` and `__Host-` prefixed, which browsers
-accept over plain HTTP only for `localhost`.
+Open the app at <http://localhost:8080/> and choose **Sign in**: you sign in at Keycloak and come back to your
+workspace list. The web container forwards `/api` and `/bff` to the API (`web/api-proxy.conf`), so the app, the API and
+the BFF session share one origin, as the BFF design requires
+([docs/security/authentication.md](../../docs/security/authentication.md)). Use `localhost`, not `127.0.0.1`: the
+session cookie is `Secure` and `__Host-` prefixed, which browsers accept over plain HTTP only for `localhost`.
 
 | User | Groups | Password |
 |---|---|---|
@@ -50,8 +51,8 @@ accept over plain HTTP only for `localhost`.
 | `auditor.dev` | `auditors` | `opportunity` |
 
 Keycloak's admin console is <http://localhost:8180/admin> (user `admin`, password `KEYCLOAK_ADMIN_PASSWORD` from
-`.env`); changes made there are lost when the container is re-created. The realm registers redirect URIs for the API
-on port 8081, `ng serve` on 4200 (set `OPPORTUNITY_PUBLIC_ORIGIN=http://localhost:4200` and proxy `/api` and `/bff`
+`.env`); changes made there are lost when the container is re-created. The realm registers redirect URIs for the app
+on port 8080 (and the API directly on 8081), `ng serve` on 4200 (set `OPPORTUNITY_PUBLIC_ORIGIN=http://localhost:4200` and proxy `/api` and `/bff`
 to the API) and `https://localhost`, and back-channel logout to `http://api:8080/bff/backchannel-logout`. These demo
 credentials are public: never expose this IdP beyond your machine.
 
@@ -118,7 +119,7 @@ Every host port is published on `127.0.0.1` only and can be changed in `.env` (`
 profile `GRAFANA_PORT`, `PROMETHEUS_PORT`, `JAEGER_UI_PORT`, `OTLP_GRPC_PORT`, `OTLP_HTTP_PORT`). Do not set
 `OPPORTUNITY_BIND=0.0.0.0` on a shared network: OpenSearch has no authentication in this profile.
 
-- Web UI: <http://127.0.0.1:8080/>
+- Web UI: <http://localhost:8080/> (sign in from here; use `localhost`, not `127.0.0.1`)
 - API readiness: <http://127.0.0.1:8081/health/ready> (`/health/live` for liveness)
 - RabbitMQ management: <http://127.0.0.1:15672/> (user `opportunity`, password `RABBITMQ_PASSWORD` from `.env`)
 - PostgreSQL: `psql -h 127.0.0.1 -U opportunity_owner opportunity` (password `OPPORTUNITY_DB_OWNER_PASSWORD`)
