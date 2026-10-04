@@ -6,16 +6,18 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { provideAppRouting } from '../../../app.config';
 import { CommandRegistry } from '../../../core/commands';
 import { FakeApi, provideFakeApi } from '../../../core/api/fake-api.testing';
-import type { QueryValidationRequest } from '../../../core/api/generated/models';
+import type { QueryValidationRequest, SearchRequest } from '../../../core/api/generated/models';
 import { provideOpportunityHttp } from '../../../core/api/http';
 import { SearchFieldSource } from '../../../core/search/search-fields';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
+import { fakePage } from '../grid/grid-fixtures.testing';
 import { goldenCases, goldenResult } from './golden.testing';
 import { QUERY_BAR_TIMING, QueryBarTiming } from './query-bar';
 import { TEST_FIELDS } from './search-fixtures.testing';
 
 const VALIDATE = '/api/v1/workspaces/ws-1/query-validations';
+const SEARCHES = '/api/v1/workspaces/ws-1/searches';
 const golden = new Map(goldenCases().map((c) => [c.query, goldenResult(c)]));
 /** An invalid result as the server builds it (rules of the golden error cases, at other offsets). */
 function invalid(
@@ -64,9 +66,10 @@ describe('Query bar (Documents search panel)', () => {
         body: {
           workspaceId: 'ws-1',
           name: 'Acme v. Widget',
-          permissions: [PERMISSIONS.documentView],
+          permissions: [PERMISSIONS.documentView, PERMISSIONS.searchExecute],
         },
       })
+      .on('POST', SEARCHES, { body: fakePage({ total: 3, pageSize: 100 }, 1) })
       .on('POST', VALIDATE, (req: HttpRequest<unknown>) => {
         const query = (req.body as QueryValidationRequest).query ?? '';
         return {
@@ -129,7 +132,11 @@ describe('Query bar (Documents search panel)', () => {
     await settle(5);
   }
 
-  const resultTitle = () => query('opp-empty-state h2')?.textContent?.trim();
+  /** Queries the document list ran: the page opens on every document (''), then one per search. */
+  const searched = () =>
+    api.requests
+      .filter((r) => r.method === 'POST' && r.url === SEARCHES)
+      .map((r) => (r.body as SearchRequest).query);
 
   it('renders an accessible keyword box in the Documents search panel', async () => {
     await setup();
@@ -155,7 +162,7 @@ describe('Query bar (Documents search panel)', () => {
 
     key('Enter');
     await settle(5);
-    expect(resultTitle()).toBe('No document list yet');
+    expect(searched()).toEqual(['']);
     expect(announce).toHaveBeenCalledWith(
       'Search not run. The phrase has no closing quote (at character 14).',
       'assertive',
@@ -170,7 +177,7 @@ describe('Query bar (Documents search panel)', () => {
     key('Enter');
     await settle(5);
     expect(api.requests.filter((r) => r.url === VALIDATE)).toHaveLength(1);
-    expect(resultTitle()).toBe('No document list yet');
+    expect(searched()).toEqual(['']);
     expect(query('.qb-t--point')).not.toBeNull(); // empty span at the end: missing operand
     expect(root().textContent).toContain(
       'a term is missing (at the end of the query). Expected: term, phrase, field:, (, NOT.',
@@ -237,7 +244,7 @@ describe('Query bar (Documents search panel)', () => {
       await search(example);
       expect(textbox().getAttribute('aria-invalid')).toBeNull();
       expect(query('.qb-t--error')).toBeNull();
-      expect(resultTitle()).toBe('Document list not available yet');
+      expect(searched()).toEqual(['', example]);
       for (const [kind, text] of expected) expect(texts(`.qb-t--${kind}`)).toContain(text);
       expect(query('.qb__mirror')?.textContent).toBe(`${example} `);
     });
@@ -283,7 +290,7 @@ describe('Query bar (Documents search panel)', () => {
     await settle();
     expect(textbox().value).toBe('contract AND responsiveness:"Not Responsive" ');
     expect(list()).toBeNull();
-    expect(resultTitle()).toBe('No document list yet'); // inserting is not searching
+    expect(searched()).toEqual(['']); // inserting is not searching
     await expectNoAxeViolations(root());
   });
 

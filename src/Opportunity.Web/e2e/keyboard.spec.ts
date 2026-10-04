@@ -192,3 +192,28 @@ test('rebinds a shortcut and turns single keys off by keyboard; both follow the 
   await page.keyboard.press('Alt+Shift+KeyJ');
   await expect(keyword).toBeFocused();
 });
+
+test('works the document list with the keyboard: rows, selection and open (E16-T02)', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await tabTo(page, grid);
+  const active = () =>
+    grid.evaluate((el) =>
+      document.getElementById(el.getAttribute('aria-activedescendant') ?? '')?.textContent?.trim(),
+    );
+  await expect.poll(active).toBe('ACM0000001');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(page.getByText('Selected: 2')).toBeVisible();
+  await page.keyboard.press('End');
+  await expect.poll(active).toBe('ACM0000100');
+  await page.keyboard.press('Control+Home');
+  await expect.poll(active).toBe('ACM0000001');
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByText('Review mode is not available yet (ACM0000001).').first(),
+  ).toBeVisible();
+});

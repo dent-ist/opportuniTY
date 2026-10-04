@@ -330,6 +330,13 @@ export interface FixedKey {
 
 export const FIXED_KEYS: readonly FixedKey[] = [
   { label: 'Toggle choice n in the focused choice field', keys: '1–9', scope: 'coding' },
+  { label: 'Move between rows and cells', keys: '↑ ↓ ← →', scope: 'grid' },
+  {
+    label: 'Move a screen up or down, to the first or last loaded row',
+    keys: 'PageUp / PageDown / Home / End',
+    scope: 'grid',
+  },
+  { label: 'Sort by the focused column header', keys: 'Enter', scope: 'grid' },
   { label: 'Extend the selection', keys: 'Shift+↑ / Shift+↓', scope: 'grid' },
   { label: 'Close a dialog or menu', keys: 'Esc', scope: 'global' },
 ];
