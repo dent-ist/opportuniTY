@@ -883,6 +883,58 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/coding-layouts": {
+      "get": {
+        "tags": [
+          "Fields"
+        ],
+        "summary": "The coding layouts you may use: sections, field order, required, read-only and conditional fields.",
+        "description": "The default layout first, then the layouts assigned to one of your roles (Workspace Admins see every layout), by name. Fields you may not see are omitted. Field names, types and choices come from GET …/fields.",
+        "operationId": "ListCodingLayouts",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfCodingLayoutResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/documents/{documentId}/coding": {
       "get": {
         "tags": [
@@ -1072,6 +1124,194 @@
           },
           "428": {
             "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/bulk-coding": {
+      "post": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "Apply coding operations to every document of a frozen set; 202 with the job.",
+        "description": "The set must be a Ready snapshot with purpose BulkCoding (POST …/snapshots). Runs in chunks: each chunk re-checks your access, skips documents whose requested field someone else changed after the set was frozen (Q-07) and documents you can no longer access, and is applied at most once. Security-affecting fields also need Coding.WritePrivilege. Follow the job at Location; outcomes per document at …/bulk-coding/{jobId}/report.",
+        "operationId": "SubmitBulkCoding",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkCodingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/bulk-coding/{jobId}/report": {
+      "get": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "Per-document outcomes of a bulk coding job, one outcome at a time, cursor-paged.",
+        "description": "outcome=applied (default) lists documents with at least one changed value, by document id; skippedChanged, skippedHidden and failed list the documents left unchanged, in processing order. total is the job's count for the outcome so far.",
+        "operationId": "GetBulkCodingReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfBulkCodingReportItemResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2811,6 +3051,549 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/exports": {
+      "post": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Export a frozen set to a load-file volume (Export.Create); 202 with the export and its job.",
+        "description": "The volume holds a DAT with the listed fields in order (and native/text path columns), natives, extracted text and page images with an OPT, a manifest with the SHA-256 of every file, and an exclusion report: every document is re-authorized for you when its chunk runs, and documents you can no longer access are left out (Q-15).",
+        "operationId": "CreateExport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Exports, newest first: your own, or everyone's with Job.ViewAll.",
+        "operationId": "ListExports",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfExportResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/exports/{exportId}": {
+      "get": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "One export with its settings, report (counts, manifest SHA-256) and job progress.",
+        "operationId": "GetExport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/exports/{exportId}/exclusions": {
+      "get": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Documents left out because you could no longer access them when their chunk ran (Q-15), in volume order.",
+        "operationId": "ListExportExclusions",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfExportExclusionResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/exports/{exportId}/files": {
+      "get": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "The delivered files of a completed export, in path order, with size and SHA-256 (Export.Download, your own exports).",
+        "operationId": "ListExportFiles",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfExportFileResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/exports/{exportId}/files/{fileId}/content": {
+      "get": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Download one file of a completed export (Export.Download, your own exports).",
+        "description": "Always an attachment of type application/octet-stream; a single byte range is supported.",
+        "operationId": "DownloadExportFile",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Partial Content",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Range Not Satisfiable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/exports/{exportId}/package": {
+      "get": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Download a completed export as one ZIP: manifest, exclusion report and the volume (Export.Download, your own exports).",
+        "description": "Streamed; entries are stored uncompressed under their package paths (ZIP64). Use the file downloads to resume.",
+        "operationId": "DownloadExportPackage",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me/preferences": {
       "get": {
         "tags": [
@@ -2952,6 +3735,94 @@
   },
   "components": {
     "schemas": {
+      "BulkCodingOperationKind": {
+        "enum": [
+          "set",
+          "addChoices",
+          "removeChoices",
+          "clear"
+        ]
+      },
+      "BulkCodingOperationRequest": {
+        "required": [
+          "fieldId",
+          "operation"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/BulkCodingOperationKind"
+          },
+          "value": { }
+        }
+      },
+      "BulkCodingOutcomeResource": {
+        "enum": [
+          "applied",
+          "skippedChanged",
+          "skippedHidden",
+          "failed"
+        ]
+      },
+      "BulkCodingReportItemResource": {
+        "required": [
+          "documentId",
+          "outcome",
+          "reasonCode",
+          "fieldIds"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/BulkCodingOutcomeResource"
+          },
+          "reasonCode": {
+            "type": "string"
+          },
+          "fieldIds": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "BulkCodingRequest": {
+        "required": [
+          "snapshotId",
+          "changes"
+        ],
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkCodingOperationRequest"
+            }
+          }
+        }
+      },
       "CellError": {
         "required": [
           "code",
@@ -3143,6 +4014,129 @@
           "failed"
         ]
       },
+      "CodingLayoutConditionResource": {
+        "required": [
+          "fieldId",
+          "choiceIds",
+          "booleanValue"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "choiceIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "booleanValue": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "CodingLayoutFieldResource": {
+        "required": [
+          "fieldId",
+          "isRequired",
+          "isReadOnly",
+          "visibleWhen"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isRequired": {
+            "type": "boolean"
+          },
+          "isReadOnly": {
+            "type": "boolean"
+          },
+          "visibleWhen": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CodingLayoutConditionResource"
+              }
+            ]
+          }
+        }
+      },
+      "CodingLayoutResource": {
+        "required": [
+          "layoutId",
+          "name",
+          "isDefault",
+          "sections"
+        ],
+        "type": "object",
+        "properties": {
+          "layoutId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingLayoutSectionResource"
+            }
+          }
+        }
+      },
+      "CodingLayoutSectionResource": {
+        "required": [
+          "sectionId",
+          "title",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "sectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingLayoutFieldResource"
+            }
+          }
+        }
+      },
       "CodingOperationResource": {
         "enum": [
           "set",
@@ -3332,6 +4326,77 @@
           "mergedIntoDate"
         ]
       },
+      "CreateExportRequest": {
+        "required": [
+          "snapshotId",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportFieldRequest"
+            }
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "delimiters": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "encoding": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "includeNatives": {
+            "type": "boolean",
+            "default": true
+          },
+          "includeText": {
+            "type": "boolean",
+            "default": true
+          },
+          "includeImages": {
+            "type": "boolean",
+            "default": true
+          },
+          "volume": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExportVolumeRequest"
+              }
+            ]
+          },
+          "pathSeparator": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "textEncoding": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CreateSnapshotRequest": {
         "required": [
           "purpose"
@@ -3372,6 +4437,56 @@
           }
         }
       },
+      "CursorPageOfBulkCodingReportItemResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkCodingReportItemResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfCodingLayoutResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingLayoutResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfDocumentPageResource": {
         "required": [
           "items",
@@ -3384,6 +4499,81 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DocumentPageResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfExportExclusionResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportExclusionResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfExportFileResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportFileResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfExportResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportResource"
             }
           },
           "nextCursor": {
@@ -4216,6 +5406,406 @@
               "string"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "ExportColumnResource": {
+        "enum": [
+          "familyId",
+          "parentId",
+          "nativePath",
+          "textPath",
+          null
+        ]
+      },
+      "ExportColumnSettingResource": {
+        "required": [
+          "fieldId",
+          "column",
+          "header"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "column": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExportColumnResource"
+              }
+            ]
+          },
+          "header": {
+            "type": "string"
+          }
+        }
+      },
+      "ExportExclusionResource": {
+        "required": [
+          "ordinal",
+          "documentId",
+          "controlNumber",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "ordinal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "ExportFieldRequest": {
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "column": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExportColumnResource"
+              }
+            ]
+          },
+          "header": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ExportFileResource": {
+        "required": [
+          "fileId",
+          "path",
+          "kind",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "path": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ExportFileResourceKind"
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        }
+      },
+      "ExportFileResourceKind": {
+        "enum": [
+          "native",
+          "text",
+          "image",
+          "dat",
+          "opt",
+          "manifest",
+          "report"
+        ]
+      },
+      "ExportReportResource": {
+        "required": [
+          "documentsExported",
+          "documentsExcluded",
+          "natives",
+          "texts",
+          "images",
+          "pages",
+          "files",
+          "totalBytes",
+          "manifestSha256"
+        ],
+        "type": "object",
+        "properties": {
+          "documentsExported": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsExcluded": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "natives": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "texts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "images": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pages": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "files": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "totalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "manifestSha256": {
+            "type": "string"
+          }
+        }
+      },
+      "ExportResource": {
+        "required": [
+          "exportId",
+          "workspaceId",
+          "name",
+          "snapshotId",
+          "status",
+          "statusReason",
+          "settings",
+          "report",
+          "job",
+          "createdBy",
+          "createdAt",
+          "completedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "exportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExportResourceStatus"
+          },
+          "statusReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ExportSettingsResource"
+          },
+          "report": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExportReportResource"
+              }
+            ]
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobResource"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ExportResourceStatus": {
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "ExportSettingsResource": {
+        "required": [
+          "fields",
+          "delimiters",
+          "encoding",
+          "textEncoding",
+          "includeNatives",
+          "includeText",
+          "includeImages",
+          "volumeName",
+          "maxFilesPerFolder",
+          "pathSeparator"
+        ],
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportColumnSettingResource"
+            }
+          },
+          "delimiters": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "textEncoding": {
+            "type": "string"
+          },
+          "includeNatives": {
+            "type": "boolean"
+          },
+          "includeText": {
+            "type": "boolean"
+          },
+          "includeImages": {
+            "type": "boolean"
+          },
+          "volumeName": {
+            "type": "string"
+          },
+          "maxFilesPerFolder": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pathSeparator": {
+            "type": "string"
+          }
+        }
+      },
+      "ExportVolumeRequest": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "start": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "padding": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "maxFilesPerFolder": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -6952,6 +8542,9 @@
     },
     {
       "name": "Import"
+    },
+    {
+      "name": "Exports"
     },
     {
       "name": "Preferences"

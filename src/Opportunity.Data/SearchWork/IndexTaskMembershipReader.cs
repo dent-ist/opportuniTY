@@ -13,7 +13,7 @@ namespace Opportunity.Data.SearchWork;
 /// <item><c>ExplicitIds</c>: the listed ids as they are; a missing row later becomes an unconditional delete;</item>
 /// <item><c>DocumentKeyRange</c>: every <c>document_projection_state</c> row in the key range at execution, tombstones
 /// included (they become deletes);</item>
-/// <item><c>SnapshotRange</c>: not resolvable until materialized snapshots exist (E10-T02).</item>
+/// <item><c>SnapshotRange</c>: the members of the materialized snapshot with ordinals in the range (ADR-002 §6 pages).</item>
 /// </list>
 /// </summary>
 public sealed class IndexTaskMembershipReader(NpgsqlDataSource dataSource) : IIndexTaskMembershipReader
@@ -64,9 +64,31 @@ public sealed class IndexTaskMembershipReader(NpgsqlDataSource dataSource) : IIn
                         command.Parameters.AddWithValue("to", membership.DocumentIdTo!.Value);
                     },
                     after, limit, cancellationToken).ConfigureAwait(false);
+            case ChunkMembershipKind.SnapshotRange:
+                // Members of the frozen pages that overlap the ordinal range; current PG state is projected, so members
+                // the chunk skipped or excluded are re-projected unchanged (a versioned no-op in the index).
+                return await QueryAsync(
+                    workspaceId,
+                    """
+                    SELECT DISTINCT m.document_id
+                    FROM opportunity.document_set_snapshot_page p
+                    CROSS JOIN LATERAL unnest(p.document_ids) WITH ORDINALITY AS m(document_id, n)
+                    WHERE p.workspace_id = @ws AND p.snapshot_id = @snapshot
+                      AND p.first_ordinal <= @to AND p.first_ordinal + p.member_count - 1 >= @from
+                      AND p.first_ordinal + m.n - 1 BETWEEN @from AND @to
+                      AND (@after::uuid IS NULL OR m.document_id > @after)
+                    ORDER BY m.document_id
+                    LIMIT @limit
+                    """,
+                    command =>
+                    {
+                        command.Parameters.AddWithValue("snapshot", membership.SnapshotId!.Value);
+                        command.Parameters.AddWithValue("from", membership.RangeFrom!.Value);
+                        command.Parameters.AddWithValue("to", membership.RangeTo!.Value);
+                    },
+                    after, limit, cancellationToken).ConfigureAwait(false);
             default:
-                throw new NotSupportedException(
-                    $"{membership.Kind} membership cannot be resolved yet: materialized snapshots arrive with E10-T02. Replay the task once they exist.");
+                throw new NotSupportedException($"{membership.Kind} membership cannot be resolved.");
         }
     }
 

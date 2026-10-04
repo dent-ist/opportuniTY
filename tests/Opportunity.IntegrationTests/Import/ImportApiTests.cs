@@ -115,6 +115,34 @@ public sealed class ImportApiTests(MigrationPostgresFixture postgres)
         (await h.CountAsync("SELECT count(*) FROM opportunity.job WHERE workspace_id = @ws", ws)).Should().Be(0);
     }
 
+    [Fact]
+    public async Task A_request_part_sent_as_a_json_file_part_is_honoured()
+    {
+        await using var h = await ImportHarness.CreateAsync(postgres);
+        var ws = await h.WorkspaceAsync();
+        await using var factory = new ApiFactory();
+        var app = factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("ConnectionStrings:App", h.Db.AppConnectionString);
+            b.ConfigureTestServices(s => s.Replace(ServiceDescriptor.Singleton(h.Store)));
+        });
+        using var client = app.CreateClient();
+
+        // Browser FormData sends a Blob, and many HTTP clients send JSON, as a file part. It used to be ignored, so the
+        // import ran with default settings instead of the caller's profile (found by the vertical-slice E2E suite).
+        var dat = ImportHarness.Utf8Bom(ImportHarness.Dat(Header, ["PART-1", "Smith", "2020-01-02"]));
+        using var response = await PostAsync(
+            client, ws, dat, new { name = "Sent as a part", profile = new { controlNumberPrefix = "P-" } }, "part-1", requestAsFile: true);
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync(Ct));
+        var started = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct)).RootElement;
+        started.GetProperty("name").GetString().Should().Be("Sent as a part");
+
+        var batch = (await h.Batches.GetAsync(ws, started.GetProperty("importId").GetGuid(), Ct))!;
+        await h.RunAsync(batch);
+        (await h.Db.ScalarAsync<long>("SELECT count(*) FROM opportunity.document WHERE workspace_id = @ws AND control_number = 'P-PART-1'", ("ws", ws)))
+            .Should().Be(1);
+    }
+
     private static readonly string[] NotesHeader = ["BEGDOC", "NOTES", "EXTRA"];
 
     /// <summary>NOTES reuses the existing field "Reviewer Notes" by name (a new-field target whose name exists creates nothing).</summary>
@@ -252,13 +280,22 @@ public sealed class ImportApiTests(MigrationPostgresFixture postgres)
             inner.GetVisibilityAsync(principal, workspaceId, cancellationToken);
     }
 
-    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, Guid ws, byte[] dat, object request, string key)
+    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, Guid ws, byte[] dat, object request, string key, bool requestAsFile = false)
     {
         using var form = new MultipartFormDataContent("import-test-boundary");
         var file = new ByteArrayContent(dat);
         file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         form.Add(file, "file", "VOL001.dat");
-        form.Add(new StringContent(JsonSerializer.Serialize(request, JsonSerializerOptions.Web), Encoding.UTF8), "request");
+        var json = new StringContent(JsonSerializer.Serialize(request, JsonSerializerOptions.Web), Encoding.UTF8, "application/json");
+        if (requestAsFile)
+        {
+            form.Add(json, "request", "request.json");
+        }
+        else
+        {
+            form.Add(json, "request");
+        }
+
         using var message = new HttpRequestMessage(HttpMethod.Post, new Uri($"/api/v1/workspaces/{ws}/imports", UriKind.Relative)) { Content = form };
         message.Headers.Add("Idempotency-Key", key);
         return await client.SendAsync(message, Ct);

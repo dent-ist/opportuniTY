@@ -36,6 +36,11 @@ public static class WorkerModuleCatalog
             services.AddIndexingWorker(configuration);
         }
 
+        if (type == WorkerTypes.Export)
+        {
+            services.AddExportWorker(configuration);
+        }
+
         if (type == WorkerTypes.Dispatcher)
         {
             AddDispatcher(services, configuration);
@@ -44,6 +49,11 @@ public static class WorkerModuleCatalog
         if (type == WorkerTypes.Indexing)
         {
             services.AddChunkIndexWorkerModule(configuration);
+        }
+
+        if (type == WorkerTypes.BulkCoding)
+        {
+            services.AddBulkCodingWorker(configuration);
         }
     }
 

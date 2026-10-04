@@ -50,9 +50,58 @@
         Count exactly
       </button>
     }
-    <p class="grid__selected">Selected: {{ selection().size }}</p>
-    <ng-content select="[gridActions]" />
+    <div class="grid__selection" role="group" aria-label="Selection">
+      <p class="grid__selected">Selected: {{ selectedText() }}</p>
+      <button type="button" oppButton="ghost" [cdkMenuTriggerFor]="selectMenu">
+        Select<opp-icon name="chevron-down" />
+      </button>
+      <ng-content select="[gridActions]" />
+    </div>
   </div>
+  @if (allResults(); as all) {
+    <div class="grid__notice grid__notice--selection">
+      <span
+        >All <strong>{{ all.countText }}</strong> results are selected: the whole search, not only
+        the rows shown.</span
+      >
+      <button type="button" oppButton="ghost" (click)="clearSelection()">Clear selection</button>
+    </div>
+  } @else if (offerAll()) {
+    <div class="grid__notice grid__notice--selection">
+      <span>All {{ selection().size }} documents on this page are selected.</span>
+      <button type="button" oppButton="ghost" (click)="selectAllResults()">
+        Select all {{ countText() }} results
+      </button>
+    </div>
+  }
+  <ng-template #selectMenu>
+    <div cdkMenu class="opp-menu" aria-label="Select">
+      <button
+        type="button"
+        cdkMenuItem
+        class="opp-menu__item"
+        (cdkMenuItemTriggered)="selectOnlyPage()"
+      >
+        This page
+      </button>
+      <button
+        type="button"
+        cdkMenuItem
+        class="opp-menu__item"
+        (cdkMenuItemTriggered)="selectAllResults()"
+      >
+        All {{ countText() }} results
+      </button>
+      <button
+        type="button"
+        cdkMenuItem
+        class="opp-menu__item"
+        (cdkMenuItemTriggered)="clearSelection()"
+      >
+        None
+      </button>
+    </div>
+  </ng-template>
   @if (notice(); as message) {
     <div class="grid__notice" role="status">
       <opp-icon name="refresh" />
@@ -184,7 +233,11 @@
                 [attr.aria-label]="'Select ' + hit.controlNumber"
                 [checked]="selected"
                 (mousedown)="$event.preventDefault()"
-                (click)="$event.stopPropagation(); onRowClick(index, COL_SELECT); toggleRow(index)"
+                (click)="
+                  $event.stopPropagation();
+                  onRowClick(index, COL_SELECT);
+                  toggleRow(index, $event.shiftKey)
+                "
               />
             </div>
             <div
@@ -194,6 +247,13 @@
               [class.is-active]="focusRow() === index && focusCol() === COL_CONTROL"
             >
               {{ hit.controlNumber }}
+              @if (pendingCoding?.isPending(hit.documentId)) {
+                <span class="grid__pending" title="Your coding is saved; search is catching up">
+                  <opp-icon name="refresh" /><span class="opp-visually-hidden"
+                    >Saved, indexing</span
+                  >
+                </span>
+              }
             </div>
             <div
               class="grid__cell grid__cell--family"

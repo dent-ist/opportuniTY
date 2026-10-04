@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 using Opportunity.Application.Coding;
+using Opportunity.Application.Messaging;
 using Opportunity.Core.Coding;
 using Opportunity.Core.SearchWork;
 using Opportunity.Hosting.Workers;
@@ -16,6 +17,7 @@ using Opportunity.IntegrationTests.Containers;
 using Opportunity.IntegrationTests.Messaging;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.IntegrationTests.SearchWork;
+using Opportunity.Messaging;
 using Opportunity.Search.Projection;
 using Opportunity.Search.Writing;
 using Opportunity.Testing.OpenSearch;
@@ -113,12 +115,33 @@ public sealed class InteractiveIndexWorkerBrokerTests(OpenSearchFixture openSear
         var deadline = DateTime.UtcNow + Patience;
         while ((await h.Db.OutboxStatusesAsync(w.Id))[SearchOutboxStatus.Applied] < w.Documents.Count)
         {
-            DateTime.UtcNow.Should().BeBefore(deadline, "every row must be applied after redelivery");
+            if (DateTime.UtcNow > deadline)
+            {
+                (await BrokerAndOutboxStateAsync(h, messaging, w.Id)).Should().BeEmpty("every row must be applied after redelivery");
+            }
+
             await Task.Delay(100, Ct);
         }
 
+        (await messaging.CountAsync(RabbitMqTopology.DeadLetterQueue(WorkQueues.IndexInteractive)))
+            .Should().Be(0, "a worker stopping mid-batch dead-letters nothing");
         (await h.Db.OutboxStatusesAsync(w.Id)).Where(s => s.Key != SearchOutboxStatus.Applied).Sum(s => s.Value).Should().Be(0);
         await InteractiveIndexWorkerTests.AssertIndexMatchesPostgresAsync(h, w.Id, w.Documents);
+    }
+
+    /// <summary>Diagnostics on timeout: unapplied rows (id:status:attempts) and the index lanes' ready and dead-lettered counts.</summary>
+    private static async Task<string> BrokerAndOutboxStateAsync(IndexWorkerHarness h, MessagingHarness messaging, Guid workspaceId)
+    {
+        var rows = await h.Db.Core.ScalarAsync<string?>(
+            "SELECT string_agg(outbox_id || ':' || status || ':' || attempt_count, ' ' ORDER BY outbox_id) FROM opportunity.search_outbox WHERE workspace_id = @ws AND status <> 4",
+            ("ws", workspaceId));
+        var queues = new List<string>();
+        foreach (var queue in new[] { WorkQueues.IndexSecurity, WorkQueues.IndexInteractive })
+        {
+            queues.Add($"{queue.Name}={await messaging.CountAsync(queue.Name)} dlq={await messaging.CountAsync(RabbitMqTopology.DeadLetterQueue(queue))}");
+        }
+
+        return rows is null ? string.Empty : $"unapplied {rows}; {string.Join("; ", queues)}";
     }
 
     private static TimeSpan Percentile(List<TimeSpan> samples, double p)

@@ -29,7 +29,8 @@ public delegate Task ReceivedMessageHandler(ReceivedMessage message, Cancellatio
 /// error once retries are exhausted (used only when the work row cannot be loaded; normal retries are PG state,
 /// ADR-010 §7.1);</item>
 /// <item>unknown message type or unsupported schema major → parking queue, never acked silently;</item>
-/// <item>shutdown while handling → requeue.</item>
+/// <item>shutdown while handling → requeue by closing the channel with the delivery unsettled, which does not count
+/// against the queue's delivery limit (a negative acknowledgement would).</item>
 /// </list>
 /// The envelope's <c>workspaceId</c> is only a hint (ADR-015 D9): handlers take authority from PostgreSQL.
 /// </summary>

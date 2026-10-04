@@ -1,4 +1,6 @@
 import type { Page, Route } from '@playwright/test';
+import { CODING_FIELDS, CodingMock } from './mock-coding';
+import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -14,15 +16,33 @@ export interface MockApiOptions {
   preferences?: Record<string, unknown>;
   /** Documents every search of the mock finds (the document list); default 250. */
   documents?: number;
-  /** Delay of the document content gateway (`GET …/documents/{id}/text`), to make prefetch measurable. */
+  /** Delay of the document content gateway (`GET …/documents/{id}/…`), to make prefetch measurable. */
   contentDelayMs?: number;
+  /** How long a coding save stays "indexing" before it is searchable (default 600 ms). */
+  indexDelayMs?: number;
+  /** Delay of `PUT …/coding`, to measure the coding acknowledgement. */
+  codingSaveDelayMs?: number;
+  /** Frozen sets answer 202 and become Ready on the first `GET …/snapshots/{id}` (a large set). */
+  snapshotsMaterialize?: boolean;
+  /** Frozen sets report documents selected while still indexing (ADR-002 §4). */
+  selectedWhileIndexing?: boolean;
+  /** Document number whose extracted text is 10 MB (E16-T04 performance). */
+  largeTextDocument?: number;
+}
+
+/** A request the mock answered, with its JSON body and Idempotency-Key. */
+export interface MockRequest {
+  body: Record<string, unknown>;
+  idempotencyKey: string | null;
 }
 
 /** One protected-content gateway audit record of the mock, as ADR-013 defines them. */
 export interface MockAuditEvent {
   action: 'Retrieved' | 'Viewed';
   documentId: string;
-  purpose?: 'display' | 'prefetch';
+  /** What was delivered (content API, E11-T01); absent for the first-chunk `GET …/text`. */
+  rendition?: Rendition;
+  purpose?: 'display' | 'prefetch' | 'download';
   retrievalId?: string | null;
 }
 
@@ -36,28 +56,19 @@ export interface MockControl {
   expireSearches(): void;
   /** Documents (1-based numbers) that no longer match any search, e.g. after a recode. */
   removeDocuments(...numbers: number[]): void;
+  /** The coding store: saves received, and another user's changes (`coding.codeAsOtherUser`). */
+  readonly coding: CodingMock;
+  /** `POST …/snapshots` requests (frozen sets). */
+  readonly snapshots: MockRequest[];
+  /** `POST …/bulk-coding` requests (Mass Edit jobs, the shape assumed for E10-T04). */
+  readonly bulkCoding: MockRequest[];
 }
 
-/** Extracted text of mock document `n`: a few paragraphs, so the viewer shows something realistic. */
-function documentText(n: number): string {
-  const cn = `ACM${String(n).padStart(7, '0')}`;
-  return [
-    `Document ${cn}`,
-    '',
-    `Subject: Quarterly terms ${n}`,
-    '',
-    'Please find the revised supply terms attached. The pricing schedule applies from the start of the next ' +
-      'quarter, and either party may end the agreement with thirty days of written notice.',
-    '',
-    'Regards,',
-    'A. Sender',
-  ].join('\n');
-}
 /**
  * A search result page of the document list (`SearchResultPage`) over document numbers `docs` (in order);
  * cursors encode the page number (`p<n>`).
  */
-function searchPage(docs: readonly number[], pageSize: number, number: number) {
+function searchPage(docs: readonly number[], pageSize: number, number: number, query = '') {
   const total = docs.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const exact = total <= 10_000;
@@ -79,7 +90,7 @@ function searchPage(docs: readonly number[], pageSize: number, number: number) {
       isFamilyParent: n % 4 === 3 && n < total,
       mimeType: attachment ? 'application/pdf' : 'application/vnd.ms-outlook',
       pageCount: (n % 7) + 1,
-      snippets: [],
+      snippets: snippetsFor(n, query),
     };
   });
   return {
@@ -187,40 +198,79 @@ const principal = {
   sessionExpiresAt: null,
 };
 
-const CAPABILITIES = {
-  sortable: true,
-  filterable: true,
-  rangeable: true,
-  aggregatable: true,
-  fullText: true,
-  wildcard: true,
-  leadingWildcard: false,
-  highlightable: true,
-  exists: true,
-};
+/** `GET /api/v1/workspaces/{id}/fields` items: the grid's structural fields and the coding fields (./mock-coding.ts). */
+export const FIELDS = [...SYSTEM_FIELDS, ...CODING_FIELDS];
 
-/** `GET /api/v1/workspaces/{id}/fields` items: the grid's structural fields and a custom field of the review template. */
-export const FIELDS = [
-  ...SYSTEM_FIELDS,
-  {
-    fieldId: 1000,
-    displayName: 'Responsiveness',
-    queryName: 'responsiveness',
-    type: 'singleChoice',
-    storage: 'coding',
-    multiValue: false,
-    isSystem: false,
-    isHidden: false,
-    isSecurityAffecting: false,
-    datePrecision: null,
-    capabilities: CAPABILITIES,
-    reducedCapabilities: false,
-    choices: [
-      { choiceId: 1, name: 'Responsive', isActive: true },
-      { choiceId: 2, name: 'Not Responsive', isActive: true },
-    ],
-  },
-];
+/** `SnapshotResource` of a frozen set of `count` documents (#90). */
+function snapshot(id: string, count: number, ready: boolean, whileIndexing: boolean) {
+  return {
+    snapshotId: id,
+    name: 'Mass Edit',
+    purpose: 'bulkCoding',
+    status: ready ? 'ready' : 'materializing',
+    statusReason: null,
+    source: {
+      kind: 'query',
+      query: null,
+      normalizedQuery: null,
+      snapshotId: null,
+      requestedCount: null,
+    },
+    documentCount: ready ? count : null,
+    inclusionCounts: {},
+    searchGeneration: ready ? 18432 : null,
+    projectionGeneration: ready ? 18432 : null,
+    selectedWhileIndexing: ready ? whileIndexing : null,
+    selectedAt: '2026-10-03T10:42:00Z',
+    materializationStrategy: 'Inline',
+    pageSize: 1000,
+    pageCount: ready ? Math.ceil(count / 1000) : null,
+    rootSha256: null,
+    createdBy: 'user-1',
+    createdAt: '2026-10-03T10:42:00Z',
+    materializedAt: ready ? '2026-10-03T10:42:01Z' : null,
+    expiresAt: null,
+    expiredAt: null,
+  };
+}
+
+/**
+ * `JobResource` of a Mass Edit over `count` documents after `polls` progress reads: half saved, then finished with
+ * two documents skipped (Q-07), then searchable.
+ */
+function bulkJob(id: string, snapshotId: string, count: number, polls: number) {
+  const saved = polls === 0 ? Math.floor(count / 2) : count;
+  const skipped = polls === 0 ? 0 : Math.min(2, count);
+  return {
+    jobId: id,
+    workspaceId: 'ws-1',
+    jobType: 'bulkCoding',
+    status: polls === 0 ? 'running' : 'completed',
+    statusReason: null,
+    initiatedBy: 'user-1',
+    targetSnapshotId: snapshotId,
+    createdAt: '2026-10-03T10:43:00Z',
+    startedAt: '2026-10-03T10:43:00Z',
+    finishedAt: polls === 0 ? null : '2026-10-03T10:43:05Z',
+    committed: {
+      chunksTotal: 1,
+      chunksCommitted: polls === 0 ? 0 : 1,
+      chunksPending: polls === 0 ? 1 : 0,
+      chunksFailed: 0,
+      chunksCancelled: 0,
+      itemsApplied: saved - skipped,
+      itemsUnchanged: 0,
+      itemsSkippedConcurrentEdit: skipped,
+      itemsFailed: 0,
+      itemsExcludedNoAccess: 0,
+    },
+    indexed: {
+      indexTasksTotal: 1,
+      indexTasksApplied: polls >= 2 ? 1 : 0,
+      state: polls >= 2 ? 'current' : 'indexing',
+    },
+  };
+}
 
 function problem(status: number, title: string) {
   return {
@@ -242,6 +292,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   let total = documents;
   const removed = new Set<number>();
   let expired = false;
+  let lastQuery = '';
   let retrievals = 0;
   const audit: MockAuditEvent[] = [];
   const matching = () =>
@@ -252,11 +303,24 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const history = new Map<string, { query: string; ranAt: string }[]>();
   const json = (route: Route, body: unknown) => route.fulfill({ json: body });
   const unhandled: string[] = [];
+  const coding = new CodingMock({
+    write: permissions.includes('Coding.Write'),
+    writePrivilege: permissions.includes('Coding.WritePrivilege'),
+    indexDelayMs: options.indexDelayMs ?? 600,
+    saveDelayMs: options.codingSaveDelayMs ?? 0,
+  });
+  const snapshots: MockRequest[] = [];
+  const bulkCoding: MockRequest[] = [];
+  const frozen = new Map<string, number>();
+  const jobs = new Map<string, { snapshotId: string; polls: number }>();
   const control: MockControl = {
     unhandled,
     audit,
+    coding,
     expireSearches: () => (expired = true),
     removeDocuments: (...numbers) => numbers.forEach((n) => removed.add(n)),
+    snapshots,
+    bulkCoding,
   };
 
   await page.route(/\/(api|bff)\//, (route) => {
@@ -313,12 +377,18 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       }
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches$/.test(path) && method === 'POST') {
-      const body = route.request().postDataJSON() as { pageSize?: number; query?: string };
+      const body = route.request().postDataJSON() as {
+        pageSize?: number;
+        query?: string;
+        highlight?: boolean | null;
+      };
       pageSize = Number(body?.pageSize ?? 100);
       // A fielded query (the filter row) narrows the list, so filtering is visible end to end.
       total = body?.query?.includes(':') ? Math.min(documents, 12) : documents;
       expired = false;
-      return json(route, searchPage(matching(), pageSize, 1));
+      // Like the API, snippets come only with highlighting (on by default); the search keeps the setting for its pages.
+      lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
+      return json(route, searchPage(matching(), pageSize, 1, lastQuery));
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches\/[^/]+\/pages$/.test(path)) {
       if (expired) return route.fulfill(problem(404, 'Not found'));
@@ -330,8 +400,26 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         : last
           ? Math.max(1, Math.ceil(docs.length / pageSize))
           : Number(url.searchParams.get('page') ?? 1);
-      return json(route, searchPage(docs, pageSize, n));
+      return json(route, searchPage(docs, pageSize, n, lastQuery));
     }
+    // Coding and coding layouts (E10-T01, E04-T03): ./mock-coding.ts.
+    const coded = signedIn ? coding.handle(route, method, path) : undefined;
+    if (coded) return coded;
+    // Document content API (E16-T04 viewer): metadata, text chunks, pages, page images, natives.
+    const served =
+      signedIn &&
+      serveContent(
+        route,
+        path,
+        url,
+        { contentDelayMs, largeTextDocument: options.largeTextDocument },
+        (d) => {
+          const retrievalId = `retrieval-${++retrievals}`;
+          audit.push({ action: 'Retrieved', ...d, retrievalId });
+          return retrievalId;
+        },
+      );
+    if (served) return served;
     // Protected-content gateway (E05-T04 / E11-T01): the first chunk of extracted text, audited per delivery
     // with its purpose; only the view beacon records `Viewed` (ADR-013).
     const content =
@@ -363,36 +451,49 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         audit.push({ action: 'Viewed', documentId, retrievalId: body?.retrievalId ?? null });
         return route.fulfill({ status: 204 });
       }
-      if (content[2] === 'coding' && method === 'GET') {
-        // E10-T01: current coding with the DocumentVersion as ETag.
-        const n = Number(content[1]);
-        return route.fulfill({
-          json: {
-            documentId,
-            documentVersion: '3',
-            projectedVersion: '3',
-            layoutId: null,
-            lastEditor: null,
-            indexingState: 'indexed',
-            // Responsiveness (field 1000) = Responsive (choice 1) on every third document.
-            fields:
-              n % 3 === 0
-                ? [
-                    {
-                      fieldId: 1000,
-                      value: 1,
-                      editable: true,
-                      isSecurityAffecting: false,
-                      changedAtVersion: '3',
-                      changedBy: null,
-                      changedAt: null,
-                    },
-                  ]
-                : [],
-          },
-          headers: { ETag: '"3"' },
-        });
-      }
+    }
+    // Frozen sets (#90) and Mass Edit jobs (E10-T04, assumed contract) with progress through the jobs API.
+    if (signedIn && method === 'POST' && /^\/api\/v1\/workspaces\/[^/]+\/snapshots$/.test(path)) {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      snapshots.push({
+        body,
+        idempotencyKey: route.request().headers()['idempotency-key'] ?? null,
+      });
+      const ids = body['documentIds'] as string[] | undefined;
+      const count = ids ? ids.length : matching().length;
+      const id = `snapshot-${snapshots.length}`;
+      frozen.set(id, count);
+      const ready = !options.snapshotsMaterialize;
+      return route.fulfill({
+        status: ready ? 201 : 202,
+        json: snapshot(id, count, ready, !!options.selectedWhileIndexing),
+      });
+    }
+    const snapshotRead = /^\/api\/v1\/workspaces\/[^/]+\/snapshots\/([^/]+)$/.exec(path);
+    if (signedIn && method === 'GET' && snapshotRead && frozen.has(snapshotRead[1])) {
+      const id = snapshotRead[1];
+      return json(route, snapshot(id, frozen.get(id)!, true, !!options.selectedWhileIndexing));
+    }
+    if (signedIn && method === 'POST' && /^\/api\/v1\/workspaces\/[^/]+\/bulk-coding$/.test(path)) {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      bulkCoding.push({
+        body,
+        idempotencyKey: route.request().headers()['idempotency-key'] ?? null,
+      });
+      const id = `job-${bulkCoding.length}`;
+      const snapshotId = String(body['snapshotId']);
+      jobs.set(id, { snapshotId, polls: 0 });
+      return route.fulfill({
+        status: 202,
+        json: bulkJob(id, snapshotId, frozen.get(snapshotId) ?? 0, 0),
+      });
+    }
+    const jobRead = /^\/api\/v1\/workspaces\/[^/]+\/jobs\/([^/]+)$/.exec(path);
+    if (signedIn && method === 'GET' && jobRead && jobs.has(jobRead[1])) {
+      const job = jobs.get(jobRead[1])!;
+      const body = bulkJob(jobRead[1], job.snapshotId, frozen.get(job.snapshotId) ?? 0, job.polls);
+      job.polls++;
+      return json(route, body);
     }
     if (signedIn && path === '/api/v1/workspaces')
       return json(route, {

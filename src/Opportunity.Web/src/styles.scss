@@ -6,6 +6,7 @@
 @use 'styles/overlay';
 @use 'styles/tabs';
 @use 'styles/menu';
+@use 'styles/tooltip';
 
 // Hides the CDK live-announcer region (and other `.cdk-visually-hidden` helpers) from sighted users.
 @include cdk.a11y-visually-hidden();

@@ -446,12 +446,20 @@ test('prefetches the next document through the gateway as prefetch, never as a v
   const viewer = page.getByRole('region', { name: 'Viewer' });
   await expect(viewer.getByLabel('Extracted text of ACM0000001')).toBeVisible();
 
-  // The view beacon and the prefetch both follow the display, in either order.
+  // The view beacon and the prefetch (metadata, then the first text chunk) both follow the display.
   const events = () =>
-    mock.audit.map((e) => `${e.action} ${e.documentId} ${e.purpose ?? e.retrievalId}`).sort();
+    mock.audit
+      .map((e) => `${e.action} ${e.documentId} ${e.rendition ?? ''} ${e.purpose ?? e.retrievalId}`)
+      .sort();
   await expect
     .poll(events)
-    .toEqual(['Retrieved doc-1 display', 'Retrieved doc-2 prefetch', 'Viewed doc-1 retrieval-1']);
+    .toEqual([
+      'Retrieved doc-1 metadata display',
+      'Retrieved doc-1 text display',
+      'Retrieved doc-2 metadata prefetch',
+      'Retrieved doc-2 text prefetch',
+      'Viewed doc-1  retrieval-2',
+    ]);
 
   // Displaying the prefetched document records its view against the prefetch delivery; doc-3 is prefetched.
   await page.keyboard.press('BracketRight');
@@ -459,11 +467,14 @@ test('prefetches the next document through the gateway as prefetch, never as a v
   await expect
     .poll(events)
     .toEqual([
-      'Retrieved doc-1 display',
-      'Retrieved doc-2 prefetch',
-      'Retrieved doc-3 prefetch',
-      'Viewed doc-1 retrieval-1',
-      'Viewed doc-2 retrieval-2',
+      'Retrieved doc-1 metadata display',
+      'Retrieved doc-1 text display',
+      'Retrieved doc-2 metadata prefetch',
+      'Retrieved doc-2 text prefetch',
+      'Retrieved doc-3 metadata prefetch',
+      'Retrieved doc-3 text prefetch',
+      'Viewed doc-1  retrieval-2',
+      'Viewed doc-2  retrieval-4',
     ]);
   expect(mock.audit.filter((e) => e.action === 'Viewed' && e.documentId === 'doc-3')).toEqual([]);
 });
@@ -501,4 +512,422 @@ test('keeps reviewing when the results refresh and offers Continue from next whe
   await page.keyboard.press('Enter');
   await expect(position).toHaveText('Doc 100 of 249');
   await expect(page.locator('.review__control')).toHaveText('ACM0000101');
+});
+
+// Viewer modes (E16-T04, familiarity guide §3.2 and §4): mode commands, page navigation, zoom and rotate, find in
+// document, the remembered mode, disabled modes with their reason, and the native download — keyboard only.
+test('switches viewer modes, pages, zooms, rotates, finds and downloads with the keyboard only (E16-T04)', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const keyword = page.getByRole('textbox', { name: 'Keyword' });
+  await tabTo(page, keyword);
+  await page.keyboard.type('agreement');
+  await page.keyboard.press('Enter');
+  await page.waitForLoadState('networkidle');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await tabTo(page, grid);
+  // Doc 4 is a PDF with page images: it opens in Image (Image → Extracted Text → Metadata).
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  await expect
+    .poll(() =>
+      grid.evaluate(
+        (el) =>
+          document.getElementById(el.getAttribute('aria-activedescendant') ?? '')?.textContent,
+      ),
+    )
+    .toContain('ACM0000004');
+  await page.keyboard.press('Enter');
+  const viewer = page.getByRole('region', { name: 'Viewer' });
+  const modes = viewer.getByRole('tablist', { name: 'Viewer mode' });
+  await expect(viewer).toBeFocused();
+  await expect(modes.getByRole('tab', { name: 'Image' })).toHaveAttribute('aria-selected', 'true');
+  const pageImage = viewer.getByRole('img', { name: 'Page 1 of ACM0000004' });
+  await expect(pageImage).toBeVisible();
+
+  // PageDown / PageUp, rotate (Alt+Shift+R), zoom (Ctrl+= / Ctrl+-) and fit (Ctrl+0) inside the viewer.
+  await page.keyboard.press('PageDown');
+  await expect(viewer.getByRole('img', { name: 'Page 2 of ACM0000004' })).toBeVisible();
+  await expect(viewer.getByRole('button', { name: 'Page 2' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await page.keyboard.press('PageUp');
+  await expect(pageImage).toBeVisible();
+  await page.keyboard.press('Alt+Shift+KeyR');
+  await expect(pageImage).toHaveCSS('transform', /matrix\(0, 1, -1, 0/);
+  const zoom = viewer.locator('.viewer-tools__value');
+  await page.keyboard.press('Control+Minus');
+  const zoomedOut = await zoom.textContent();
+  await page.keyboard.press('Control+Equal');
+  await expect(zoom).not.toHaveText(zoomedOut ?? '');
+  await page.keyboard.press('Control+Digit0');
+  await expect(viewer.getByRole('button', { name: 'Fit to width' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  // Go to page: the page box takes a number.
+  await tabTo(page, viewer.getByRole('textbox', { name: 'Go to page' }));
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('3');
+  await page.keyboard.press('Enter');
+  await expect(viewer.getByRole('img', { name: 'Page 3 of ACM0000004' })).toBeVisible();
+  // The thumbnails are one tab stop; arrows move between pages.
+  await tabTo(page, viewer.getByRole('button', { name: 'Page 3' }));
+  await page.keyboard.press('ArrowUp');
+  await expect(viewer.getByRole('button', { name: 'Page 2' })).toBeFocused();
+  await expect(viewer.getByRole('img', { name: 'Page 2 of ACM0000004' })).toBeVisible();
+
+  // Alt+Shift+1: Extracted Text, with the search hit highlighted; Ctrl+F finds in the document.
+  await page.keyboard.press('Alt+Shift+Digit1');
+  await expect(modes.getByRole('tab', { name: 'Extracted Text' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(viewer.getByText('1 search hit')).toBeVisible();
+  await page.keyboard.press('F3');
+  await expect(viewer.getByText('Hit 1 of 1')).toBeVisible();
+  await viewer.getByLabel('Extracted text of ACM0000004').focus();
+  await page.keyboard.press('Control+KeyF');
+  const find = viewer.getByRole('searchbox', { name: 'Find in document' });
+  await expect(find).toBeFocused();
+  await page.keyboard.type('pricing');
+  await page.keyboard.press('Enter');
+  await expect(viewer.locator('#viewer-find-count')).toHaveText('1 of 1');
+  await page.keyboard.press('Escape');
+  await expect(find).toHaveValue('');
+
+  // Alt+Shift+5: Metadata; the mode is remembered for the next document (a user preference).
+  const saved = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().endsWith('/api/v1/me/preferences/viewer.mode'),
+  );
+  await page.keyboard.press('Alt+Shift+Digit5');
+  expect((await saved).postDataJSON()).toEqual({ mode: 'metadata' });
+  await expect(viewer.getByRole('group', { name: 'Fields of ACM0000004' })).toBeVisible();
+  await page.keyboard.press('BracketRight');
+  await expect(viewer.getByRole('group', { name: 'Fields of ACM0000005' })).toBeVisible();
+
+  // The find box went with Extracted Text, so focus moved to the viewer pane. A disabled mode stays focusable
+  // and gives its reason; it cannot be selected.
+  await expect(viewer).toBeFocused();
+  await tabTo(page, modes.getByRole('tab', { name: 'Metadata' }));
+  await page.keyboard.press('ArrowLeft');
+  const production = modes.getByRole('tab', { name: 'Production' });
+  await expect(production).toBeFocused();
+  await expect(production).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByRole('tooltip')).toHaveText('Not produced');
+  await page.keyboard.press('Enter');
+  await expect(production).toHaveAttribute('aria-selected', 'false');
+
+  // Native: a file card and Download native through the gateway (never rendered in the browser).
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Enter');
+  await expect(modes.getByRole('tab', { name: 'Native' })).toHaveAttribute('aria-selected', 'true');
+  const download = page.waitForEvent('download');
+  await tabTo(page, viewer.getByRole('button', { name: 'Download native' }));
+  await page.keyboard.press('Enter');
+  // The browser fetches the attachment itself (outside the page's request routing), from the gateway route.
+  const file = await download;
+  expect(file.url()).toMatch(/\/api\/v1\/workspaces\/ws-1\/documents\/doc-5\/native$/);
+  expect(file.suggestedFilename()).toBe('ACM0000005.msg');
+  await expect(viewer.locator('iframe, object, embed')).toHaveCount(0);
+});
+
+test('names a document without extracted text and offers its other modes (E16-T04, #130)', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await tabTo(page, grid);
+  for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  const viewer = page.getByRole('region', { name: 'Viewer' });
+  await expect(viewer.getByText('No extracted text for this document.')).toBeVisible();
+  await expect(viewer.getByText('Showing Metadata.', { exact: false })).toBeVisible();
+  await expect(viewer).not.toContainText('cannot be shown');
+  await tabTo(page, viewer.getByRole('button', { name: 'Show Native' }));
+  await page.keyboard.press('Enter');
+  await expect(viewer.getByRole('tab', { name: 'Native' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
+// Mass Actions (E16-T06): selection across pages, Mass Edit, the frozen-target confirmation and the job.
+
+test('selects all results and mass edits them with the keyboard only; focus returns to the list (E16-T06)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await tabTo(page, grid);
+  const live = page.locator('.cdk-live-announcer-element');
+  await page.keyboard.press('Space');
+  await expect(page.getByText('Selected: 1', { exact: true })).toBeVisible();
+  await page.keyboard.press('Control+KeyA');
+  await expect(page.getByText('Selected: 100', { exact: true })).toBeVisible();
+  await expect(page.getByText('All 100 documents on this page are selected.')).toBeVisible();
+  await expect(live).toHaveText('100 documents selected.');
+  // All results: the whole search, not only the loaded page.
+  await page.keyboard.press('Alt+Shift+KeyA');
+  await expect(page.getByText('Selected: all 250 results')).toBeVisible();
+  await expect(live).toHaveText('All 250 results selected.');
+
+  await page.keyboard.press('Alt+Shift+KeyE');
+  const dialog = page.getByRole('dialog', { name: 'Mass Edit' });
+  await expect(dialog).toBeVisible();
+  await tabTo(page, dialog.getByRole('checkbox', { name: 'Change Responsiveness' }));
+  await page.keyboard.press('Space');
+  const value = dialog.getByRole('combobox', { name: 'Responsiveness value' });
+  await tabTo(page, value);
+  await page.keyboard.press('ArrowDown');
+  await expect(value).toHaveValue('1');
+  await tabTo(page, dialog.getByRole('checkbox', { name: 'Change Issues' }));
+  await page.keyboard.press('Space');
+  const pricing = dialog.getByRole('combobox', { name: 'Pricing' });
+  await tabTo(page, pricing);
+  await page.keyboard.press('ArrowDown');
+  await expect(pricing).toHaveValue('add');
+  await tabTo(page, dialog.getByRole('button', { name: 'Continue' }));
+  await page.keyboard.press('Enter');
+
+  // The frozen target: count, time and generation (admin here), the Q-07 rule; focus on the frozen set.
+  const heading = dialog.getByRole('heading', { name: 'Frozen set' });
+  await expect(heading).toBeFocused();
+  await expect(dialog).toContainText('250 documents');
+  await expect(dialog).toContainText(/Frozen at 10:42.* · generation 18,432/);
+  await expect(dialog).toContainText('The list showed 250 documents.');
+  await expect(dialog).toContainText(
+    'Documents whose changed fields are edited by someone else after this job starts will be skipped and listed.',
+  );
+  expect(mock.snapshots).toHaveLength(1);
+  expect(mock.snapshots[0].body).toEqual({ purpose: 'bulkCoding', query: '' });
+  expect(mock.snapshots[0].idempotencyKey).toBeTruthy();
+
+  await tabTo(page, dialog.getByRole('button', { name: 'Apply to 250 documents' }));
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByRole('heading', { name: 'Mass Edit finished' })).toBeVisible();
+  await expect(dialog.getByRole('definition').first()).toHaveText('248');
+  await expect(live).toHaveText('Mass Edit finished. Updated 248 · Skipped 2 · Failed 0');
+  expect(mock.bulkCoding[0].body).toEqual({
+    snapshotId: 'snapshot-1',
+    changes: [
+      { fieldId: '1000', operation: 'set', value: 1 },
+      { fieldId: '1001', operation: 'addChoices', value: [11] },
+    ],
+  });
+  expect(mock.bulkCoding[0].idempotencyKey).toBeTruthy();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(grid).toBeFocused();
+});
+
+test.describe('a large selection', () => {
+  test.use({ api: { documents: 12_000, snapshotsMaterialize: true, selectedWhileIndexing: true } });
+
+  test('asks for the count above 10,000 documents and warns about documents selected while indexing (E16-T06)', async ({
+    page,
+    mock,
+  }) => {
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    await page.keyboard.press('Alt+Shift+KeyA');
+    await expect(page.getByText('Selected: all ≥ 10,000 (approx.) results')).toBeVisible();
+    await page.keyboard.press('Alt+Shift+KeyE');
+    const dialog = page.getByRole('dialog', { name: 'Mass Edit' });
+    await tabTo(page, dialog.getByRole('checkbox', { name: 'Change Responsiveness' }));
+    await page.keyboard.press('Space');
+    await tabTo(page, dialog.getByRole('radio', { name: 'Set to' }));
+    await page.keyboard.press('ArrowDown'); // Clear the value
+    await expect(dialog.getByRole('radio', { name: 'Clear the value' })).toBeChecked();
+    await tabTo(page, dialog.getByRole('button', { name: 'Continue' }));
+    await page.keyboard.press('Enter');
+
+    const typed = dialog.getByRole('textbox', { name: 'Type 12000 to confirm' });
+    await expect(typed).toBeFocused();
+    await expect(dialog).toContainText('Required for more than 10,000 documents.');
+    await expect(dialog).toContainText(
+      'were selected while recent changes to them were still being indexed',
+    );
+    const apply = dialog.getByRole('button', { name: 'Apply to 12,000 documents' });
+    await expect(apply).toBeDisabled();
+    await page.keyboard.type('12,000');
+    await expect(apply).toBeEnabled();
+    await page.keyboard.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Mass Edit finished' })).toBeVisible();
+    expect(mock.bulkCoding[0].body['changes']).toEqual([{ fieldId: '1000', operation: 'clear' }]);
+  });
+});
+
+// Coding pane (E16-T05, familiarity guide §3.3–§4): code → Save & Next with the keyboard only.
+
+test('codes with the keyboard only: field jumps, access digits, required fields, Tab order and Save & Next (E16-T05)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  await page.getByRole('grid', { name: 'Documents' }).focus();
+  await page.keyboard.press('Enter');
+  const coding = page.getByRole('region', { name: 'Coding' });
+  const position = page.locator('.review__position');
+  await expect(position).toHaveText('Doc 1 of 250');
+  await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+
+  // Alt+Shift+C, then 5: the fifth field on screen (Key Document); 1 picks Yes.
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit5');
+  await expect(coding.getByRole('radio', { name: 'Yes', exact: true })).toBeFocused();
+  await page.keyboard.press('Digit1');
+  await expect(coding.getByRole('radio', { name: 'Yes', exact: true })).toBeChecked();
+  await expect(coding.getByText('Unsaved changes')).toBeVisible();
+
+  // Save & Next with the required Responsiveness empty: no save, no move, focus on the field with its message.
+  await page.keyboard.press('Control+Enter');
+  await expect(coding.getByText('Responsiveness is required.')).toBeVisible();
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).toBeFocused();
+  await expect(position).toHaveText('Doc 1 of 250');
+  expect(mock.coding.saves).toEqual([]);
+
+  // Digits code the focused choice field; Privilege Basis appears only for Withhold / Redact.
+  await page.keyboard.press('Digit1');
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).toBeChecked();
+  await expect(coding.getByRole('group', { name: /Privilege Basis/ })).toHaveCount(0);
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit2');
+  await page.keyboard.press('Digit2');
+  await expect(coding.getByRole('radio', { name: 'Withhold' })).toBeChecked();
+  await expect(coding.getByRole('group', { name: /Privilege Basis/ })).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(coding.getByRole('checkbox', { name: 'Attorney-Client' })).toBeFocused();
+  await page.keyboard.press('Digit2');
+  await expect(coding.getByRole('checkbox', { name: 'Work Product' })).toBeChecked();
+
+  // A comment, then Tab through the actions to Save & Next.
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit7');
+  const comments = coding.getByRole('textbox', { name: 'Reviewer Comments' });
+  await expect(comments).toBeFocused();
+  await page.keyboard.type('Pricing terms');
+  await tabTo(page, coding.getByRole('button', { name: 'Save & Next' }), 6);
+  await page.keyboard.press('Enter');
+  await expect(position).toHaveText('Doc 2 of 250');
+  expect(mock.coding.saves).toHaveLength(1);
+  const save = mock.coding.saves[0];
+  expect(save.documentId).toBe('doc-1');
+  expect(save.ifMatch).toBe('"3"');
+  expect(save.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+  expect(save.layoutId).toBe('layout-first-pass');
+  expect(save.changes).toEqual(
+    expect.arrayContaining([
+      { fieldId: '1000', operation: 'set', value: 1 },
+      { fieldId: '1002', operation: 'set', value: 22 },
+      { fieldId: '1003', operation: 'set', value: [32] },
+      { fieldId: '1006', operation: 'set', value: true },
+      { fieldId: '1007', operation: 'set', value: 'Pricing terms' },
+    ]),
+  );
+
+  // Ctrl+S saves and stays: "Saved · indexing", then searchable once the index caught up.
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).not.toBeChecked();
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit1');
+  await page.keyboard.press('Digit2');
+  await page.keyboard.press('Control+KeyS');
+  const status = coding.getByRole('status');
+  await expect(status).toContainText('Saved · indexing');
+  await expect(status).toContainText('Saved · searchable', { timeout: 10_000 });
+  await expect(position).toHaveText('Doc 2 of 250');
+
+  // Back on the first document its saved coding is shown.
+  await page.keyboard.press('Alt+Shift+Comma');
+  await expect(position).toHaveText('Doc 1 of 250');
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).toBeChecked();
+  await expect(comments).toHaveValue('Pricing terms');
+
+  // Ctrl+Enter from inside a field: the next document opens with focus back in the same field.
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit1');
+  await page.keyboard.press('Digit3');
+  await page.keyboard.press('Control+Enter');
+  await expect(position).toHaveText('Doc 2 of 250');
+  await expect(coding.getByRole('radio', { name: 'Not Responsive' })).toBeFocused();
+  expect(mock.coding.saves).toHaveLength(3);
+});
+
+test('a version conflict shows who changed what and when; Overwrite with mine saves on their version (E16-T05)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  await page.getByRole('grid', { name: 'Documents' }).focus();
+  await page.keyboard.press('Enter');
+  const coding = page.getByRole('region', { name: 'Coding' });
+  await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+
+  // Someone else codes the document after it was read.
+  mock.coding.codeAsOtherUser(1, 1000, 2, 'J. Smith');
+  await page.keyboard.press('Alt+Shift+KeyC');
+  await page.keyboard.press('Digit1');
+  await page.keyboard.press('Digit1');
+  await page.keyboard.press('Control+KeyS');
+  const alert = coding.getByRole('alert').filter({ hasText: 'Changed by J. Smith' });
+  await expect(alert).toContainText(/Changed by J\. Smith at \d{1,2}:\d{2}/);
+  await expect(alert).toBeFocused();
+  await expect(alert.getByRole('row', { name: /Responsiveness/ })).toContainText('Not Responsive');
+  expect(mock.coding.saves.map((s) => s.ifMatch)).toEqual(['"3"']);
+
+  await tabTo(page, alert.getByRole('button', { name: 'Overwrite with mine' }), 4);
+  await page.keyboard.press('Enter');
+  await expect(coding.getByRole('status')).toContainText('Saved');
+  await expect(alert).toHaveCount(0);
+  expect(mock.coding.saves.map((s) => s.ifMatch)).toEqual(['"3"', '"4"']);
+  expect(mock.coding.saves[1].idempotencyKey).not.toBe(mock.coding.saves[0].idempotencyKey);
+  await expect(coding.getByRole('radio', { name: 'Responsive', exact: true })).toBeChecked();
+});
+
+test.describe('without Coding.Write', () => {
+  test.use({ api: { permissions: ['Document.View', 'Search.Execute'] } });
+
+  test('the coding pane shows values without inputs and no save actions (E16-T05)', async ({
+    page,
+  }) => {
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    for (let i = 0; i < 2; i++) await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    const coding = page.getByRole('region', { name: 'Coding' });
+    const responsiveness = coding.locator('[data-coding-field="responsiveness"]');
+    await expect(responsiveness).toContainText('Responsiveness');
+    await expect(responsiveness.getByText('Responsive', { exact: true })).toBeVisible();
+    await expect(coding.getByRole('radio')).toHaveCount(0);
+    await expect(coding.getByRole('button', { name: 'Save & Next' })).toHaveCount(0);
+  });
+});
+
+test.describe('while a save is indexing', () => {
+  test.use({ api: { indexDelayMs: 2_500 } });
+
+  test('the list marks the reviewer’s own saved coding until it is searchable (E16-T05)', async ({
+    page,
+  }) => {
+    await openPage(page, '/w/ws-1/documents');
+    const grid = page.getByRole('grid', { name: 'Documents' });
+    await grid.focus();
+    await page.keyboard.press('Enter');
+    const coding = page.getByRole('region', { name: 'Coding' });
+    await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+    await page.keyboard.press('Alt+Shift+KeyC');
+    await page.keyboard.press('Digit1');
+    await page.keyboard.press('Digit2');
+    await page.keyboard.press('Control+KeyS');
+    await expect(coding.getByRole('status')).toContainText('Saved · indexing');
+
+    await page.keyboard.press('Alt+Shift+KeyL');
+    await expect(grid).toBeFocused();
+    const cell = grid.getByRole('gridcell', { name: /^ACM0000001/ });
+    await expect(cell).toContainText('Saved, indexing');
+    await expect(cell).not.toContainText('Saved, indexing', { timeout: 15_000 });
+  });
 });

@@ -1,0 +1,197 @@
+@switch (state()) {
+  @case ('loading') {
+    <opp-loading-state label="Loading page images…" />
+  }
+  @case ('error') {
+    <opp-error-state [error]="error()!" (retry)="retry()" />
+  }
+  @default {
+    @if (!pages().length) {
+      <opp-empty-state title="No pages" message="This document's page set has no pages." />
+    } @else {
+      <div class="viewer-tools">
+        <div class="viewer-tools__group" role="group" aria-label="Pages">
+          <button
+            type="button"
+            oppIconButton
+            [label]="thumbsOpen() ? 'Hide thumbnails' : 'Show thumbnails'"
+            [attr.aria-expanded]="thumbsOpen()"
+            aria-controls="viewer-thumbnails"
+            (click)="toggleThumbs()"
+          >
+            <opp-icon name="thumbnails" />
+          </button>
+          <button
+            type="button"
+            oppIconButton
+            label="Previous page"
+            aria-keyshortcuts="PageUp"
+            [disabled]="index() === 0"
+            (click)="stepPage(-1)"
+          >
+            <opp-icon name="chevron-left" />
+          </button>
+          <label class="image__goto">
+            <span class="opp-visually-hidden">Go to page</span>
+            <input
+              class="viewer-tools__input image__page-input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              [value]="pageNumber()"
+              (keydown.enter)="goToTyped($event)"
+              (change)="goToTyped($event)"
+            />
+          </label>
+          <span class="image__of">of {{ pages().length }}</span>
+          <button
+            type="button"
+            oppIconButton
+            label="Next page"
+            aria-keyshortcuts="PageDown"
+            [disabled]="index() === pages().length - 1"
+            (click)="stepPage(1)"
+          >
+            <opp-icon name="chevron-right" />
+          </button>
+        </div>
+        <div class="viewer-tools__group" role="group" aria-label="Zoom and rotate">
+          <button
+            type="button"
+            oppIconButton
+            label="Zoom out"
+            aria-keyshortcuts="Control+-"
+            [disabled]="zoom() <= 25"
+            (click)="zoomBy(-1)"
+          >
+            <opp-icon name="zoom-out" />
+          </button>
+          <span class="viewer-tools__value" aria-live="polite">{{ zoomText() }}</span>
+          <button
+            type="button"
+            oppIconButton
+            label="Zoom in"
+            aria-keyshortcuts="Control+="
+            [disabled]="zoom() >= 400"
+            (click)="zoomBy(1)"
+          >
+            <opp-icon name="zoom-in" />
+          </button>
+          <button
+            type="button"
+            oppIconButton
+            label="Fit to width"
+            aria-keyshortcuts="Control+0"
+            [attr.aria-pressed]="fit() === 'width'"
+            (click)="setFit('width')"
+          >
+            <opp-icon name="fit-width" />
+          </button>
+          <button
+            type="button"
+            oppIconButton
+            label="Fit page"
+            [attr.aria-pressed]="fit() === 'page'"
+            (click)="setFit('page')"
+          >
+            <opp-icon name="fit-page" />
+          </button>
+          <button
+            type="button"
+            oppIconButton
+            label="Rotate page"
+            aria-keyshortcuts="Alt+Shift+R"
+            (click)="rotate()"
+          >
+            <opp-icon name="rotate" />
+          </button>
+        </div>
+      </div>
+      @if (images().incomplete) {
+        <p class="viewer-banner viewer-banner--warning">
+          <opp-icon name="warning" />
+          <span>Some pages of this document have no image.</span>
+        </p>
+      }
+      <div class="image__body">
+        @if (thumbsOpen()) {
+          <ol
+            #thumbs
+            id="viewer-thumbnails"
+            class="image__thumbs"
+            aria-label="Page thumbnails"
+            (keydown)="onThumbKey($event)"
+          >
+            @for (p of pages(); track p.pageNumber; let i = $index) {
+              <li>
+                <button
+                  type="button"
+                  class="thumb"
+                  [attr.data-thumb]="p.pageNumber"
+                  [attr.data-index]="i"
+                  [attr.aria-current]="i === index() ? 'page' : null"
+                  [attr.aria-label]="pageLabel(p)"
+                  [tabIndex]="i === index() ? 0 : -1"
+                  (click)="goToIndex(i)"
+                >
+                  <span class="thumb__image">
+                    @if (thumbUrls()[+p.pageNumber]; as url) {
+                      <img [src]="url" alt="" />
+                    }
+                  </span>
+                  <span class="thumb__number" aria-hidden="true">{{ p.pageNumber }}</span>
+                </button>
+              </li>
+            }
+          </ol>
+        }
+        <div
+          #stage
+          class="image__stage"
+          role="group"
+          tabindex="0"
+          [attr.aria-label]="'Page ' + pageNumber() + ' of ' + controlNumber()"
+        >
+          @switch (image()) {
+            @case ('loading') {
+              <opp-loading-state [label]="'Loading page ' + pageNumber() + '…'" />
+            }
+            @case ('error') {
+              <div class="image__missing">
+                <p>Page {{ pageNumber() }} could not be loaded.</p>
+                <button type="button" oppButton="secondary" (click)="retryPage()">Try again</button>
+              </div>
+            }
+            @case (null) {
+              <p class="image__missing">
+                {{
+                  page()?.imageMissing
+                    ? 'The image file of page ' + pageNumber() + ' is missing.'
+                    : 'Page ' + pageNumber() + ' has no image.'
+                }}
+              </p>
+            }
+            @default {
+              @let img = $any(image());
+              <div
+                class="image__frame"
+                [style.width.px]="box().frameWidth"
+                [style.height.px]="box().frameHeight"
+              >
+                <img
+                  class="image__page"
+                  [attr.data-viewer-content]="documentId()"
+                  [src]="img.url"
+                  [alt]="'Page ' + pageNumber() + ' of ' + controlNumber()"
+                  [style.width.px]="box().imgWidth"
+                  [style.height.px]="box().imgHeight"
+                  [style.transform]="imageTransform()"
+                />
+              </div>
+            }
+          }
+        </div>
+      </div>
+    }
+  }
+}

@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Security\Opportunity.Security.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Search\Opportunity.Search.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Jobs\Opportunity.Jobs.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Production\Opportunity.Production.csproj" />
   </ItemGroup>
 
   <ItemGroup>

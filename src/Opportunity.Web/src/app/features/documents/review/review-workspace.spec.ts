@@ -1,4 +1,5 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { Location } from '@angular/common';
 import { HttpRequest } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -13,7 +14,8 @@ import { PreferenceStorage } from '../../../core/preferences/preference-storage'
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
 import { FakeResultOptions, fakePage, hit } from '../grid/grid-fixtures.testing';
-import { ReviewCoding } from './review-regions';
+import { ReviewCoding } from './coding/coding-pane';
+import { documentResource, textChunkResource } from './viewer/viewer-fixtures.testing';
 
 const WS = '/api/v1/workspaces/ws-1';
 const SEARCHES = `${WS}/searches`;
@@ -89,7 +91,11 @@ describe('Review mode (E16-T03)', () => {
       );
     for (let n = 1; n <= 260; n++) {
       api
-        .on('GET', `${WS}/documents/doc-${n}/text`, (req) => text(req, n))
+        .on('GET', `${WS}/documents/doc-${n}`, (req) => ({
+          body: documentResource(n),
+          headers: { 'X-Opportunity-Retrieval-Id': `m-${n}-${req.params.get('purpose')}` },
+        }))
+        .on('GET', `${WS}/documents/doc-${n}/text/chunks/0`, (req) => text(req, n))
         .on('POST', `${WS}/documents/doc-${n}/views`, { status: 204 })
         .on('GET', `${WS}/documents/doc-${n}/coding`, {
           body: {
@@ -116,12 +122,9 @@ describe('Review mode (E16-T03)', () => {
   }
 
   function text(req: HttpRequest<unknown>, n: number): FakeResponse {
-    const body = `Extracted text of document ${n}`;
     return {
-      status: 206,
-      body: new Blob([body]),
+      body: textChunkResource(`Extracted text of document ${n}`),
       headers: {
-        'Content-Range': `bytes 0-${body.length - 1}/${body.length}`,
         'X-Opportunity-Retrieval-Id': `r-${++retrievals}-${req.params.get('purpose')}`,
       },
     };
@@ -135,6 +138,12 @@ describe('Review mode (E16-T03)', () => {
   }
 
   const root = () => harness.routeNativeElement as HTMLElement;
+  const checkedChoice = () =>
+    region('Coding')
+      .querySelector('input:checked')
+      ?.closest('label')
+      ?.querySelector('.coding__option-label')
+      ?.textContent?.trim() ?? null;
   const grid = () => root().querySelector<HTMLElement>('[role="grid"]')!;
   const review = () => root().querySelector<HTMLElement>('opp-review-workspace');
   const region = (name: string) =>
@@ -145,8 +154,8 @@ describe('Review mode (E16-T03)', () => {
   const viewerText = () => review()!.querySelector('.viewer__text')?.textContent;
   const textRequests = () =>
     api.requests
-      .filter((r) => r.method === 'GET' && r.url.endsWith('/text'))
-      .map((r) => `${r.url.split('/').at(-2)}:${r.params.get('purpose')}`);
+      .filter((r) => r.method === 'GET' && r.url.endsWith('/text/chunks/0'))
+      .map((r) => `${r.url.split('/').at(-4)}:${r.params.get('purpose')}`);
   const views = () =>
     api.requests
       .filter((r) => r.method === 'POST' && r.url.endsWith('/views'))
@@ -181,7 +190,7 @@ describe('Review mode (E16-T03)', () => {
     expect(document.activeElement).toBe(region('Viewer'));
     expect(viewerText()).toBe('Extracted text of document 2');
     expect(region('Coding').textContent).toContain('Responsiveness');
-    expect(region('Coding').textContent).toContain('Not set');
+    expect(checkedChoice()).toBeNull();
     await expectNoAxeViolations(review()!);
   }, 30_000); // axe over the review layout is slow in jsdom on a loaded machine
 
@@ -201,7 +210,7 @@ describe('Review mode (E16-T03)', () => {
     expect(viewerText()).toBe('Extracted text of document 3');
     await settle();
     expect(bar()).toContain('Doc 3 of 250');
-    expect(region('Coding').textContent).toContain('Responsive');
+    expect(checkedChoice()).toBe('Responsive');
     expect(textRequests()).toEqual(['doc-2:display', 'doc-3:prefetch', 'doc-4:prefetch']);
     // The view of doc-3 refers to the prefetch delivery; doc-4 (prefetched only) has no view.
     expect(views()).toEqual(['doc-2:r-1-display', 'doc-3:r-2-prefetch']);
@@ -342,5 +351,61 @@ describe('Review mode (E16-T03)', () => {
     const active = grid().getAttribute('aria-activedescendant');
     expect(root().querySelector(`#${active}`)?.textContent?.trim()).toBe('ACM0000003');
     expect(root().textContent).toContain('Selected: 1');
+  });
+
+  /** Location, with the router following Back/Forward as in the app (the harness does not start that listener). */
+  function browserHistory(): Location {
+    TestBed.inject(Router).setUpLocationChangeListener();
+    return TestBed.inject(Location);
+  }
+
+  it('is a browser history entry: Back returns to the list, Forward reopens, "Back to list" drops the entry', async () => {
+    await setup();
+    const location = browserHistory();
+    await openRow(1);
+    expect(location.path()).toBe('/w/ws-1/documents?view=review');
+
+    location.back();
+    await settle();
+    expect(review()).toBeNull();
+    expect(location.path()).toBe('/w/ws-1/documents');
+    expect(document.activeElement).toBe(grid());
+
+    location.forward();
+    await settle();
+    expect(bar()).toContain('Doc 2 of 250');
+
+    button('Back to list').click();
+    await settle();
+    expect(review()).toBeNull();
+    expect(location.path()).toBe('/w/ws-1/documents');
+    location.back();
+    await settle();
+    expect(location.path()).not.toContain('view=review');
+  });
+
+  it('asks about unsaved coding on the browser Back button and stays in Review mode on Cancel', async () => {
+    await setup();
+    const location = browserHistory();
+    await openRow(0);
+    const coding = harness.fixture.debugElement.query(By.directive(ReviewCoding))
+      .componentInstance as ReviewCoding;
+    Object.assign(coding, { dirty: signal(true) });
+
+    location.back();
+    await settle();
+    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    [...dialog.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Cancel')!.click();
+    await settle();
+    expect(bar()).toContain('Doc 1 of 250');
+    expect(location.path()).toBe('/w/ws-1/documents?view=review');
+  });
+
+  it('shows the list when the page is loaded with the Review mode URL', async () => {
+    await setup();
+    await TestBed.inject(Router).navigateByUrl('/w/ws-1/documents?view=review');
+    await settle();
+    expect(review()).toBeNull();
+    expect(TestBed.inject(Location).path()).toBe('/w/ws-1/documents');
   });
 });

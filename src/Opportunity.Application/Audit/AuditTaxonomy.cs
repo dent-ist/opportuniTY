@@ -44,7 +44,14 @@ public static class AuditTaxonomy
     {
         public const string Category = "Coding";
         public const string Changed = "Changed";
+
+        /// <summary>A bulk coding job was submitted over a snapshot (E10-T04): one event per job, never per document.</summary>
+        public const string BulkSubmitted = "BulkSubmitted";
+
         public const string BulkChunkApplied = "BulkChunkApplied";
+
+        /// <summary>A bulk coding job finished its chunks (Completed or CompletedWithErrors) with its final counts.</summary>
+        public const string BulkCompleted = "BulkCompleted";
 
         /// <summary>An administrator enabled coding/privilege fields for overlay by one import (Q-31).</summary>
         public const string OverlayEnabled = "OverlayEnabled";
@@ -55,6 +62,22 @@ public static class AuditTaxonomy
         public const string Category = "Import";
         public const string Started = "Started";
         public const string Completed = "Completed";
+    }
+
+    /// <summary>Load-file exports of a frozen set (E12-T01, ADR-013 §5).</summary>
+    public static class Export
+    {
+        public const string Category = "Export";
+        public const string Created = "Created";
+        public const string Completed = "Completed";
+
+        /// <summary>Members a chunk left out after the Q-15 access re-check, with the precise reason per document.</summary>
+        public const string DocumentsExcluded = "DocumentsExcluded";
+
+        public const string Downloaded = "Downloaded";
+
+        /// <summary>The audit resource type of export events.</summary>
+        public const string ResourceType = "Export";
     }
 
     public static class Security

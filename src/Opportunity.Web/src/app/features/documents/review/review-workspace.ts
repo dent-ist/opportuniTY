@@ -21,16 +21,12 @@ import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { Announcer, Button, DialogService, Icon, IconButton, SplitPane } from '../../../ui';
-import { DocumentLoader } from './document-loader';
+import { DocumentLoader, LoadedDocument } from './document-loader';
 import { CursorDirection, MoveResult, ReviewCursor } from './review-cursor';
-import { CodingApi, DocumentContentApi, TextChunk } from './review-ports';
-import {
-  CodingState,
-  ReviewCoding,
-  ReviewRelated,
-  ReviewViewer,
-  ViewerDocument,
-} from './review-regions';
+import { ReviewCoding } from './coding/coding-pane';
+import { DocumentContentApi } from './review-ports';
+import { ReviewRelated } from './review-regions';
+import { DocumentViewer, ViewerDocument } from './viewer/document-viewer';
 import { UnsavedChangesDialog, UnsavedChoice } from './unsaved-changes-dialog';
 
 /** A message under the review bar; `refreshed` and the end notices clear on the next move. */
@@ -50,19 +46,19 @@ interface Notice {
  * - The review cursor walks the list the document was opened from, across cursor pages and refreshes (Q-33);
  *   it never wraps. Save & Next / Save & Previous save the coding pane's edits first; any other move with
  *   unsaved edits asks Save / Discard / Cancel.
- * - The next document's first text is prefetched through the gateway with `purpose=prefetch` (never audited as
- *   viewed); a view is recorded only once a document is on screen.
+ * - The next document (its metadata and the first content of its viewer mode) is prefetched through the gateway
+ *   with `purpose=prefetch` (never audited as viewed); a view is recorded only once a document is on screen.
  */
 @Component({
   selector: 'opp-review-workspace',
   imports: [
     Button,
     CommandRegionDirective,
+    DocumentViewer,
     Icon,
     IconButton,
     ReviewCoding,
     ReviewRelated,
-    ReviewViewer,
     SplitPane,
   ],
   templateUrl: './review-workspace.html',
@@ -72,14 +68,13 @@ interface Notice {
 })
 export class ReviewWorkspace {
   readonly cursor = input.required<ReviewCursor>();
-  /** The workspace's field catalogue (the coding pane shows its coding fields). */
+  /** The workspace's field catalogue (the coding pane reads its layouts and fields through `CodingApi`). */
   readonly fields = input<readonly FieldResource[] | null>(null);
   /** Back to the list (after any unsaved edits were saved or discarded). */
   readonly back = output<void>();
 
   private readonly loader = inject(DocumentLoader);
   private readonly content = inject(DocumentContentApi);
-  private readonly codingApi = inject(CodingApi);
   private readonly announcer = inject(Announcer);
   private readonly dialogs = inject(DialogService);
   private readonly prefs = inject(UiPreferences);
@@ -97,7 +92,6 @@ export class ReviewWorkspace {
   private readonly relatedToggle = viewChild.required<ElementRef<HTMLElement>>('relatedToggle');
 
   protected readonly viewer = signal<ViewerDocument | null>(null);
-  protected readonly coding = signal<CodingState>('loading');
   protected readonly notice = signal<Notice | null>(null);
   /** Bumped whenever another document is displayed; late responses for an older one are dropped. */
   private seq = 0;
@@ -130,7 +124,9 @@ export class ReviewWorkspace {
     });
     registry.handle('review.cancelEdits', () => this.editor()?.discard());
     registry.handle('review.backToList', () => void this.leave());
-    registry.handle('coding.focus', () => this.focusPane('coding'));
+    registry.handle('coding.focus', ({ digit }) =>
+      digit ? this.editor()?.focusField(digit) : this.focusPane('coding'),
+    );
     registry.handle('related.focus', () => this.focusPane('related'));
 
     effect(() => {
@@ -188,6 +184,11 @@ export class ReviewWorkspace {
     if (await this.confirmLeave()) this.back.emit();
   }
 
+  /** The browser's Back button: asks about unsaved edits like "Back to list"; true when Review mode may close. */
+  canLeave(): Promise<boolean> {
+    return this.confirmLeave();
+  }
+
   private async step(direction: CursorDirection): Promise<void> {
     const cursor = this.cursor();
     // Related items never move the cursor: Previous/Next carry on from the cursor document.
@@ -234,34 +235,29 @@ export class ReviewWorkspace {
     const seq = ++this.seq;
     const id = hit.documentId;
     const loaded = this.loader.loaded(id);
-    this.viewer.set({ hit, state: loaded ? 'ready' : 'loading', text: loaded ?? null });
+    this.viewer.set({ hit, state: loaded ? 'ready' : 'loading', content: loaded ?? null });
     if (loaded) {
       this.displayed(seq, loaded);
     } else {
       this.loader.display(id).then(
-        (chunk) => {
+        (content) => {
           if (seq !== this.seq) return;
-          this.viewer.set({ hit, state: 'ready', text: chunk });
-          this.displayed(seq, chunk);
+          this.viewer.set({ hit, state: 'ready', content });
+          this.displayed(seq, content);
         },
         () => {
-          if (seq === this.seq) this.viewer.set({ hit, state: 'unavailable', text: null });
+          if (seq === this.seq) this.viewer.set({ hit, state: 'unavailable', content: null });
         },
       );
     }
-    this.coding.set('loading');
-    this.codingApi.get(id).then(
-      (coding) => seq === this.seq && this.coding.set(coding),
-      () => seq === this.seq && this.coding.set('unavailable'),
-    );
   }
 
   /** Once the document is on screen, the view is recorded (`Document.Viewed`) with the delivery's retrieval id. */
-  private displayed(seq: number, chunk: TextChunk): void {
+  private displayed(seq: number, loaded: LoadedDocument): void {
     afterNextRender(
       () => {
         if (seq !== this.seq) return;
-        this.content.recordView(chunk.documentId, chunk.retrievalId).catch(() => undefined);
+        this.content.recordView(loaded.documentId, loaded.retrievalId).catch(() => undefined);
       },
       { injector: this.injector },
     );
@@ -286,6 +282,13 @@ export class ReviewWorkspace {
     const split = pane === 'coding' ? this.codingSplit() : this.relatedSplit();
     split.toggleCollapsed(false);
     const region = pane === 'coding' ? this.codingRegion() : this.relatedRegion();
-    afterNextRender(() => region.nativeElement.focus(), { injector: this.injector });
+    // Focus already inside the pane stays (Alt+Shift+C, then n may have moved it to field n meanwhile).
+    afterNextRender(
+      () => {
+        if (!region.nativeElement.contains(this.document.activeElement))
+          region.nativeElement.focus();
+      },
+      { injector: this.injector },
+    );
   }
 }

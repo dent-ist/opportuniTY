@@ -1,5 +1,5 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
 
 export interface AnnounceOptions {
   politeness?: 'polite' | 'assertive';
@@ -20,6 +20,11 @@ export class Announcer {
   private readonly live = inject(LiveAnnouncer);
   private readonly lastAt = new Map<string, number>();
   private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
+
+  constructor() {
+    // A throttled message still waiting when the app (or a test) is torn down is dropped.
+    inject(DestroyRef).onDestroy(() => this.pending.forEach(clearTimeout));
+  }
 
   announce(message: string, options: AnnounceOptions = {}): void {
     const politeness = options.politeness ?? 'polite';

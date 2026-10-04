@@ -44,6 +44,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
     public const string ImportsPath = "/imports";
 
     private const int MaxNameLength = 200;
+    private const int MaxRequestPartBytes = 1024 * 1024;
 
     public void MapEndpoints(ApiRouteGroups routes)
     {
@@ -137,7 +138,19 @@ public sealed class ImportEndpoints : IApiEndpointModule
             return Validation("file", "The DAT file is required (or an OPT alone, to re-load the pages of existing documents).");
         }
 
+        // The request part may also arrive as a JSON file part (a Blob in browser FormData, most HTTP clients' file
+        // parts); ignoring it would run the import with default settings instead of the caller's profile.
         var requestJson = form["request"].ToString();
+        if (requestJson.Length == 0 && form.Files.GetFile("request") is { } requestPart)
+        {
+            if (requestPart.Length > MaxRequestPartBytes)
+            {
+                return Validation("request", $"The request part has at most {MaxRequestPartBytes} bytes.");
+            }
+
+            using var reader = new StreamReader(requestPart.OpenReadStream(), Encoding.UTF8);
+            requestJson = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         if (file?.Length > options.Value.MaxDatBytes || opt?.Length > options.Value.MaxDatBytes)
         {

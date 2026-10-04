@@ -1,0 +1,112 @@
+<div class="mf__field-head">
+  <opp-checkbox
+    [checked]="edit().change"
+    [disabled]="field().locked"
+    [ariaLabel]="'Change ' + field().field.displayName"
+    (checkedChange)="patch.emit({ change: $event })"
+  >
+    <span class="mf__field-name">{{ field().field.displayName }}</span>
+  </opp-checkbox>
+  @if (field().field.isSecurityAffecting) {
+    <opp-badge tone="privileged" icon="lock">Affects access</opp-badge>
+  }
+</div>
+@if (field().locked) {
+  <p class="mf__note">Changing this field needs the privilege coding permission.</p>
+}
+@if (edit().change) {
+  <div class="mf__editor">
+    <fieldset class="mf__modes">
+      <legend class="opp-visually-hidden">{{ field().field.displayName }}: action</legend>
+      @for (m of modes(); track m.mode) {
+        <label class="mf__mode">
+          <input
+            type="radio"
+            [name]="name"
+            [value]="m.mode"
+            [checked]="edit().mode === m.mode"
+            (change)="patch.emit({ mode: m.mode })"
+          />
+          {{ m.label }}
+        </label>
+      }
+    </fieldset>
+    @if (edit().mode !== 'clear') {
+      @switch (field().field.type) {
+        @case ('singleChoice') {
+          <opp-select
+            [label]="field().field.displayName + ' value'"
+            placeholder="Choose…"
+            [options]="choiceOptions()"
+            [value]="edit().value"
+            [error]="problem()"
+            (valueChange)="patch.emit({ value: $event })"
+          />
+        }
+        @case ('boolean') {
+          <opp-select
+            [label]="field().field.displayName + ' value'"
+            placeholder="Choose…"
+            [options]="booleanOptions"
+            [value]="edit().value"
+            [error]="problem()"
+            (valueChange)="patch.emit({ value: $event })"
+          />
+        }
+        @case ('multiChoice') {
+          @if (edit().mode === 'replace') {
+            <fieldset class="mf__choices">
+              <legend class="opp-visually-hidden">
+                {{ field().field.displayName }}: replace all values with
+              </legend>
+              @for (c of field().choices; track c.id) {
+                <opp-checkbox
+                  [checked]="edit().replace.includes(c.id)"
+                  (checkedChange)="toggleReplace(c.id, $event)"
+                >
+                  {{ c.name }}
+                </opp-checkbox>
+              }
+            </fieldset>
+          } @else {
+            <div
+              class="mf__choice-table"
+              role="group"
+              [attr.aria-label]="field().field.displayName + ' choices'"
+            >
+              @for (c of field().choices; track c.id) {
+                <label class="mf__choice">
+                  <span>{{ c.name }}</span>
+                  <select
+                    [value]="edit().choices[c.id] ?? 'keep'"
+                    (change)="setChoice(c.id, $any($event.target).value)"
+                  >
+                    <option value="keep" [selected]="(edit().choices[c.id] ?? 'keep') === 'keep'">
+                      Leave unchanged
+                    </option>
+                    <option value="add" [selected]="edit().choices[c.id] === 'add'">Add</option>
+                    <option value="remove" [selected]="edit().choices[c.id] === 'remove'">
+                      Remove
+                    </option>
+                  </select>
+                </label>
+              }
+            </div>
+          }
+          @if (problem(); as message) {
+            <p class="mf__error"><opp-icon name="error" />{{ message }}</p>
+          }
+        }
+        @default {
+          <opp-text-field
+            [label]="field().field.displayName + ' value'"
+            [type]="inputType()"
+            [value]="edit().value"
+            [error]="problem()"
+            (valueChange)="patch.emit({ value: $event })"
+          />
+        }
+      }
+    }
+  </div>
+}

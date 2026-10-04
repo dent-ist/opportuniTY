@@ -25,8 +25,16 @@
   color: var(--opp-color-text-muted);
 }
 
-.grid__selected {
+.grid__selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
   margin-inline-start: auto;
+}
+
+.grid__selected {
+  font-variant-numeric: tabular-nums;
 }
 
 .grid__notice {
@@ -38,6 +46,10 @@
   border-radius: var(--opp-radius-md);
   background: var(--opp-color-info-bg);
   color: var(--opp-color-info-text);
+}
+
+.grid__notice--selection {
+  justify-content: center;
 }
 
 .grid__notice--error {
@@ -137,6 +149,11 @@
 
 .grid__cell--control {
   border-inline-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+// The reviewer's own coding is saved but not searchable yet (E16-T05).
+.grid__pending {
+  color: var(--opp-color-info-text);
 }
 
 // Pinned columns only while the grid scrolls sideways: sticky cells cost a compositing layer each.

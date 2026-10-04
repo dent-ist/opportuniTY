@@ -140,6 +140,39 @@ public sealed class SearchWorkDispatchTests(MigrationPostgresFixture postgres)
         publisher.Messages.Select(m => m.IdempotencyKey).Distinct().Should().HaveCount(1, "the key is stable across re-publish");
     }
 
+    /// <summary>ADR-001 §6.3: a Dispatched row whose message never got applied (lost or dead-lettered) is published again.</summary>
+    [Fact]
+    public async Task A_dispatched_outbox_row_never_applied_is_redispatched_after_the_timeout()
+    {
+        await using var db = await SearchWorkDatabase.CreateAsync(postgres);
+        var w = await db.WorkspaceAsync(documents: 2);
+        await db.Core.Coding.ApplyAsync(SearchWorkDatabase.SetResponsive(w, w.Documents[0], true), Ct);
+        await db.Core.Coding.ApplyAsync(SearchWorkDatabase.SetResponsive(w, w.Documents[1], true), Ct);
+        var publisher = new RecordingPublisher();
+        var relay = Relay(db, publisher, "dispatcher-1");
+        (await relay.RelayOnceAsync(w.Id, Ct)).OutboxPublished.Should().Be(2);
+        var lost = publisher.Messages[0];
+        var lostId = ((SearchOutboxMessage)lost.Payload).OutboxId;
+        var appliedDoc = ((SearchOutboxMessage)publisher.Messages[1].Payload).DocumentId;
+        await db.Outbox.MarkAppliedThroughAsync(w.Id, appliedDoc, long.MaxValue, Ct);
+
+        (await db.Maintenance.RecoverAsync(w.Id, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(10), Ct)).OutboxRedispatched
+            .Should().Be(0, "a recently dispatched row is still in flight");
+        await db.Core.ExecuteAsync(
+            "UPDATE opportunity.search_outbox SET dispatched_at = now() - interval '2 minutes' WHERE workspace_id = @ws", ("ws", w.Id));
+        (await db.Maintenance.RecoverAsync(w.Id, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(10), Ct)).OutboxRedispatched
+            .Should().Be(1, "only the unapplied row returns to Pending");
+        (await db.Outbox.GetAsync(w.Id, lostId, Ct))!.Status.Should().Be(SearchOutboxStatus.Pending);
+
+        (await relay.RelayOnceAsync(w.Id, Ct)).OutboxPublished.Should().Be(1);
+        var again = publisher.Messages[^1];
+        ((SearchOutboxMessage)again.Payload).OutboxId.Should().Be(lostId);
+        again.IdempotencyKey.Should().Be(lost.IdempotencyKey, "the key is stable across re-publish");
+        var row = (await db.Outbox.GetAsync(w.Id, lostId, Ct))!;
+        row.Status.Should().Be(SearchOutboxStatus.Dispatched);
+        row.AttemptCount.Should().Be(2);
+    }
+
     [Fact]
     public async Task The_index_worker_coalesces_every_row_of_a_document_up_to_the_version_it_wrote()
     {

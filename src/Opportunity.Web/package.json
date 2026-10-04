@@ -10,7 +10,8 @@
     "api:generate": "ng-openapi-gen -c ng-openapi-gen.json && prettier --write --log-level warn src/app/core/api/generated",
     "api:check": "npm run api:generate && git diff --exit-code -- src/app/core/api/generated && git status --porcelain -- src/app/core/api/generated | (! grep .)",
     "budget:bundle": "node scripts/check-bundle-budgets.mjs",
-    "e2e": "playwright test -c e2e/playwright.config.ts"
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e:slice": "playwright test -c e2e-slice/playwright.config.ts"
   },
   "private": true,
   "packageManager": "npm@11.19.0",

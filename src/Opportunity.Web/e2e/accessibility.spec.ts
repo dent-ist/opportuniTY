@@ -108,6 +108,125 @@ for (const theme of THEMES) {
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
+    test('mass edit: selection banner, Mass Actions menu, fields, frozen confirmation and progress', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      await page.getByRole('grid', { name: 'Documents' }).focus();
+      await page.keyboard.press('Control+KeyA');
+      await expect(page.getByRole('button', { name: 'Select all 250 results' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('button', { name: 'Select all 250 results' }).click();
+      await page.getByRole('button', { name: 'Mass Actions' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Mass Edit…' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('menuitem', { name: 'Mass Edit…' }).click();
+
+      const dialog = page.getByRole('dialog', { name: 'Mass Edit' });
+      await dialog.getByRole('checkbox', { name: 'Change Responsiveness' }).check();
+      await dialog.getByRole('checkbox', { name: 'Change Issues' }).check();
+      await dialog.getByRole('checkbox', { name: 'Change Privilege', exact: true }).check();
+      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await expect(dialog.getByText('Choose a value.').first()).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await dialog.getByRole('combobox', { name: 'Responsiveness value' }).selectOption('1');
+      await dialog.getByRole('combobox', { name: 'Termination' }).selectOption('remove');
+      await dialog.getByRole('combobox', { name: 'Privilege value' }).selectOption('21');
+      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await expect(dialog.getByRole('textbox', { name: 'Type 250 to confirm' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await dialog.getByRole('textbox', { name: 'Type 250 to confirm' }).fill('250');
+      await dialog.getByRole('button', { name: 'Apply to 250 documents' }).click();
+      await expect(dialog.getByRole('heading', { name: 'Mass Edit finished' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('viewer modes: image with thumbnails, text with hits and find, metadata tooltip, native, no-text notice', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      const keyword = page.getByRole('textbox', { name: 'Keyword' });
+      await keyword.fill('agreement');
+      await keyword.press('Enter');
+      await page.waitForLoadState('networkidle');
+      const grid = page.getByRole('grid', { name: 'Documents' });
+      await grid.focus();
+      for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+      await expect
+        .poll(() =>
+          grid.evaluate(
+            (el) =>
+              document.getElementById(el.getAttribute('aria-activedescendant') ?? '')?.textContent,
+          ),
+        )
+        .toContain('ACM0000004');
+      await page.keyboard.press('Enter');
+      const viewer = page.getByRole('region', { name: 'Viewer' });
+      // Image (doc 4), with a disabled mode's tooltip open.
+      await expect(viewer.getByRole('img', { name: 'Page 1 of ACM0000004' })).toBeVisible();
+      await viewer.getByRole('tab', { name: 'Production' }).hover();
+      await expect(page.getByRole('tooltip')).toHaveText('Not produced');
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      // Extracted Text with a search hit and a find match highlighted.
+      await viewer.getByRole('tab', { name: 'Extracted Text' }).click();
+      await viewer.getByRole('searchbox', { name: 'Find in document' }).fill('pricing');
+      await viewer.getByRole('button', { name: 'Next match' }).click();
+      await expect(viewer.locator('#viewer-find-count')).toHaveText('1 of 1');
+      await expect(viewer.getByText('1 search hit')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      // Metadata, with an imported-value tooltip open.
+      await viewer.getByRole('tab', { name: 'Metadata' }).click();
+      await viewer.locator('.metadata__value--raw').first().focus();
+      await expect(page.getByRole('tooltip')).toContainText('Imported value');
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await viewer.getByRole('tab', { name: 'Native' }).click();
+      await expect(viewer.getByRole('button', { name: 'Download native' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      // A document without text (doc 7): the fallback notice.
+      await viewer.getByRole('tab', { name: 'Extracted Text' }).click();
+      for (let i = 0; i < 3; i++) await page.keyboard.press('BracketRight');
+      await expect(viewer.getByText('No extracted text for this document.')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('coding pane: every field type, a blocked save and a version conflict (E16-T05)', async ({
+      page,
+      mock,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      await page.getByRole('grid', { name: 'Documents' }).focus();
+      await page.keyboard.press('Enter');
+      const coding = page.getByRole('region', { name: 'Coding' });
+      await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+      // A required field left empty blocks the save; Withhold shows Privilege Basis.
+      await coding.getByRole('radio', { name: 'Withhold' }).check();
+      await page.keyboard.press('Control+KeyS');
+      await expect(coding.getByText('Responsiveness is required.')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      // Someone else saved first.
+      mock.coding.codeAsOtherUser(1, 1000, 2, 'J. Smith');
+      await coding.getByRole('radio', { name: 'Responsive', exact: true }).check();
+      await page.keyboard.press('Control+KeyS');
+      await expect(coding.getByRole('alert').filter({ hasText: 'Changed by' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      // The other field types (dates, numbers, user, multi-value text) in the Review Details layout.
+      await coding.getByRole('button', { name: 'Reload current coding' }).click();
+      await coding.getByRole('combobox', { name: 'Layout' }).selectOption('Review Details');
+      await expect(coding.getByRole('textbox', { name: 'Pages Reviewed' })).toBeVisible();
+      await coding.getByRole('textbox', { name: 'Pages Reviewed' }).fill('many');
+      await page.keyboard.press('Control+KeyS');
+      await expect(coding.getByText('Pages Reviewed: enter a whole number')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
     for (const popup of POPUPS) {
       test(`${popup.name} open`, async ({ page }, testInfo) => {
         await openPage(page, popup.path);

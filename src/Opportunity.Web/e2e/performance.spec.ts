@@ -257,8 +257,13 @@ test.describe('review mode', () => {
     // Prefetches that completed, and any reported failed (such a document may be fetched for display instead).
     const prefetched = new Set<string>();
     const failed = new Set<string>();
-    const prefetchOf = (url: string) =>
-      /\/documents\/(doc-\d+)\/text\?purpose=prefetch/.exec(url)?.[1];
+    // A prefetch is complete with the opening mode's first content: text chunk 0, page 1's image, or (for a
+    // document with neither, n % 10 === 7 in the mock) its metadata.
+    const prefetchOf = (url: string) => {
+      const m =
+        /\/documents\/doc-(\d+)(\/text\/chunks\/0|\/pages\/1\/image)?\?purpose=prefetch/.exec(url);
+      return m && (m[2] || Number(m[1]) % 10 === 7) ? `doc-${m[1]}` : undefined;
+    };
     page.on('requestfinished', (r) => prefetchOf(r.url()) && prefetched.add(prefetchOf(r.url())!));
     page.on('requestfailed', (r) => {
       const id = prefetchOf(r.url());
@@ -285,7 +290,7 @@ test.describe('review mode', () => {
           });
           const shown = () =>
             document.querySelector(
-              `[data-viewer-document="${id}"][data-state="ready"] .viewer__text`,
+              `[data-viewer-document="${id}"][data-state="ready"] [data-viewer-content="${id}"]`,
             );
           const observer = new MutationObserver(() => {
             if (start < 0 || !shown()) return;
@@ -315,11 +320,157 @@ test.describe('review mode', () => {
       contentType: 'application/json',
     });
     // Every document after the first came from its prefetch (unless that request failed): no display request.
-    const displays = mock.audit.filter((e) => e.action === 'Retrieved' && e.purpose === 'display');
-    expect(displays[0]?.documentId).toBe('doc-1');
-    expect(displays.slice(1).filter((e) => !failed.has(e.documentId))).toEqual([]);
+    // Page images of an image document after its first page (page 2 is read ahead) are not part of the next-document
+    // load.
+    const displays = mock.audit.filter(
+      (e) =>
+        e.action === 'Retrieved' &&
+        e.purpose === 'display' &&
+        e.rendition !== 'image' &&
+        e.rendition !== 'thumbnail',
+    );
+    expect(new Set(displays.map((e) => e.documentId))).toEqual(new Set(['doc-1']));
+    expect(displays.filter((e) => e.documentId !== 'doc-1' && !failed.has(e.documentId))).toEqual(
+      [],
+    );
     // ADR-018 §14 target; shared runners record it and fail only on clear breakage (Q-44, as for the grid).
     const strict = process.env['OPPORTUNITY_STRICT_LATENCY'] === '1';
     expect(p95, 'next document visible, p95 (ms)').toBeLessThanOrEqual(strict ? 500 : 1_000);
+  });
+});
+
+// Viewer (E16-T04): a 10 MB extracted text shows its first screen within 1 s with no long task over 200 ms. The
+// text arrives in 256 KiB chunks; only the first is loaded for the first screen, and scrolling loads the next.
+test.describe('viewer', () => {
+  test.use({ api: { largeTextDocument: 1 } });
+
+  test('a 10 MB text document shows its first screen in ≤ 1 s with no long tasks > 200 ms (E16-T04)', async ({
+    page,
+    mock,
+  }, testInfo) => {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: budget.cpuSlowdown });
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    await page.evaluate(() => {
+      const w = window as unknown as { __firstScreen: Promise<{ ms: number; longest: number }> };
+      w.__firstScreen = new Promise((resolve) => {
+        let start = -1;
+        let longest = 0;
+        new PerformanceObserver((list) =>
+          list.getEntries().forEach((e) => {
+            if (start >= 0 && e.startTime + e.duration >= start)
+              longest = Math.max(longest, e.duration);
+          }),
+        ).observe({ type: 'longtask' });
+        document.addEventListener('keydown', (e) => (start = e.timeStamp), {
+          capture: true,
+          once: true,
+        });
+        const observer = new MutationObserver(() => {
+          const text = document.querySelector('[data-viewer-content="doc-1"] [data-segment]');
+          if (start < 0 || !text) return;
+          observer.disconnect();
+          requestAnimationFrame(() => {
+            const ms = performance.now() - start;
+            // Long tasks are reported after they end: give the observer a moment.
+            setTimeout(() => resolve({ ms, longest }), 300);
+          });
+        });
+        observer.observe(document.body, { subtree: true, childList: true, attributes: true });
+      });
+    });
+    await page.keyboard.press('Enter');
+    const result = await page.evaluate(
+      () =>
+        (window as unknown as { __firstScreen: Promise<{ ms: number; longest: number }> })
+          .__firstScreen,
+    );
+    const text = page.getByLabel('Extracted text of ACM0000001');
+    await expect(text).toContainText('ACM0000001 part 1 line 1:');
+    await expect(page.getByText('Text truncated for search after 10 M characters')).toBeVisible();
+    // Only the first of the 40 chunks was needed for the first screen.
+    const chunks = () =>
+      mock.audit.filter((e) => e.documentId === 'doc-1' && e.rendition === 'text');
+    expect(chunks()).toHaveLength(1);
+    // Scrolling to the end of what is loaded fetches the next chunk.
+    await text.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect.poll(() => chunks().length).toBeGreaterThanOrEqual(2);
+    await expect(text).toContainText('ACM0000001 part 2 line 1:');
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+
+    results.push(
+      `| viewer, 10 MB text first screen | ${result.ms.toFixed(0)} ms | | longest task ${result.longest.toFixed(0)} ms | |`,
+    );
+    await testInfo.attach('first-screen', {
+      body: JSON.stringify(result, null, 2),
+      contentType: 'application/json',
+    });
+    // E16-T04 acceptance targets; shared runners record them and fail only on clear breakage (Q-44).
+    const strict = process.env['OPPORTUNITY_STRICT_LATENCY'] === '1';
+    expect(result.ms, 'first screen (ms)').toBeLessThanOrEqual(strict ? 1_000 : 2_000);
+    expect(result.longest, 'longest task (ms)').toBeLessThanOrEqual(strict ? 200 : 400);
+  });
+});
+
+// Coding acknowledgement (E16-T05: ≤ 200 ms p95, UI target): from the save key to the frame showing "Saved", with the
+// API answering a save in 50 ms, the CPU slowed like the page budgets.
+test.describe('coding pane', () => {
+  test.use({ api: { codingSaveDelayMs: 50, indexDelayMs: 60_000 } });
+
+  test('a save is acknowledged within 200 ms p95 (E16-T05)', async ({ page, mock }, testInfo) => {
+    test.setTimeout(120_000);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: budget.cpuSlowdown });
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    await page.keyboard.press('Enter');
+    const coding = page.getByRole('region', { name: 'Coding' });
+    await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+    await page.keyboard.press('Alt+Shift+KeyC');
+    await page.keyboard.press('Digit1');
+    const samples: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.press(i % 2 === 0 ? 'Digit1' : 'Digit2');
+      await expect(coding.getByText('Unsaved changes')).toBeVisible();
+      await page.evaluate(() => {
+        const w = window as unknown as { __ack: Promise<number> };
+        w.__ack = new Promise<number>((resolve) => {
+          let start = -1;
+          let saving = false;
+          document.addEventListener('keydown', (e) => (start = e.timeStamp), {
+            capture: true,
+            once: true,
+          });
+          const status = () => document.querySelector('.coding__status')?.textContent ?? '';
+          const observer = new MutationObserver(() => {
+            if (start < 0) return;
+            if (status().includes('Saving')) saving = true;
+            else if (saving && status().includes('Saved ·')) {
+              observer.disconnect();
+              requestAnimationFrame(() => resolve(performance.now() - start));
+            }
+          });
+          observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+        });
+      });
+      await page.keyboard.press('Control+KeyS');
+      samples.push(
+        await page.evaluate(() => (window as unknown as { __ack: Promise<number> }).__ack),
+      );
+    }
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    expect(mock.coding.saves).toHaveLength(20);
+
+    const sorted = [...samples].sort((a, b) => a - b);
+    const p95 = sorted[Math.ceil(0.95 * sorted.length) - 1];
+    results.push(`| coding pane, save acknowledged | p95 ${p95.toFixed(0)} ms | | | |`);
+    await testInfo.attach('coding-ack', {
+      body: JSON.stringify({ samples, p95 }, null, 2),
+      contentType: 'application/json',
+    });
+    // The UI target; shared runners fail only on clear breakage (Q-44, as for the other latency checks).
+    const strict = process.env['OPPORTUNITY_STRICT_LATENCY'] === '1';
+    expect(p95, 'coding acknowledgement, p95 (ms)').toBeLessThanOrEqual(strict ? 200 : 400);
   });
 });

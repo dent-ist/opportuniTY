@@ -1,0 +1,73 @@
+.metadata__zone {
+  margin-inline-start: auto;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.metadata__scroll {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.metadata__scroll:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+.metadata {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-md);
+}
+
+.metadata th,
+.metadata td {
+  padding: var(--opp-space-1) var(--opp-space-3);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.metadata thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--opp-color-surface-sunken);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.metadata tbody th {
+  inline-size: 30%;
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.metadata__value {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+// A value whose imported form differs (dates converted to the display time zone): dotted underline, tooltip.
+.metadata__value--raw {
+  text-decoration: underline dotted var(--opp-color-text-muted);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.metadata__value--raw:focus-visible {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: var(--opp-focus-ring-offset);
+}
+
+.metadata__type,
+.metadata__empty {
+  color: var(--opp-color-text-muted);
+}
+
+.metadata__type {
+  inline-size: 8rem;
+  font-size: var(--opp-font-size-sm);
+}
