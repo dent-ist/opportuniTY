@@ -16,6 +16,7 @@ namespace Opportunity.Contracts.Api;
 /// <param name="DatePrecision">Date fields only.</param>
 /// <param name="Capabilities">What search can do with the field.</param>
 /// <param name="ReducedCapabilities">The field lives in the overflow container (ADR-007 R6): exact and prefix match only.</param>
+/// <param name="Choices">Single/multiple choice fields only: the choices in admin order, inactive ones included (their values stay searchable).</param>
 public sealed record FieldResource(
     int FieldId,
     string DisplayName,
@@ -28,7 +29,14 @@ public sealed record FieldResource(
     bool IsSecurityAffecting,
     FieldResourceDatePrecision? DatePrecision,
     FieldCapabilitiesResource Capabilities,
-    bool ReducedCapabilities);
+    bool ReducedCapabilities,
+    IReadOnlyList<FieldChoiceResource>? Choices = null);
+
+/// <summary>One choice of a choice field (ADR-003 R8). Query text matches choices by name.</summary>
+/// <param name="ChoiceId">Stable id; values store it.</param>
+/// <param name="Name">Current name, used in query text.</param>
+/// <param name="IsActive">Inactive choices keep their values but cannot be newly assigned.</param>
+public sealed record FieldChoiceResource(int ChoiceId, string Name, bool IsActive);
 
 /// <summary>ADR-007 R8 capability flags. All false for a field that is not searchable.</summary>
 public sealed record FieldCapabilitiesResource(

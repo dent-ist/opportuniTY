@@ -19,6 +19,10 @@ export type { RunSearch$Params as RunSearch$Params } from './fn/search/run-searc
 export { runSearch as runSearch } from './fn/search/run-search';
 export type { GetSearchPage$Params as GetSearchPage$Params } from './fn/search/get-search-page';
 export { getSearchPage as getSearchPage } from './fn/search/get-search-page';
+export type { ListQueryHistory$Params as ListQueryHistory$Params } from './fn/search/list-query-history';
+export { listQueryHistory as listQueryHistory } from './fn/search/list-query-history';
+export type { RecordQueryHistory$Params as RecordQueryHistory$Params } from './fn/search/record-query-history';
+export { recordQueryHistory as recordQueryHistory } from './fn/search/record-query-history';
 export type { GetJob$Params as GetJob$Params } from './fn/jobs/get-job';
 export { getJob as getJob } from './fn/jobs/get-job';
 export type { ListFields$Params as ListFields$Params } from './fn/fields/list-fields';

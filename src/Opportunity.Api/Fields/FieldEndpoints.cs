@@ -12,7 +12,9 @@ namespace Opportunity.Api.Fields;
 
 /// <summary>
 /// <c>GET /api/v1/workspaces/{workspaceId}/fields</c> (E07-T02, ADR-007 R8): the field catalogue with query names and
-/// search capabilities, so the grid enables only the sorts, filters and facets the projection can serve.
+/// search capabilities, so the grid enables only the sorts, filters and facets the projection can serve, and the choices
+/// of choice fields for query-bar suggestions (#186). Fields the caller may not see (<see cref="IFieldAccessFilter"/>,
+/// E05-T06) are omitted with their choices.
 /// </summary>
 public sealed class FieldEndpoints : IApiEndpointModule
 {
@@ -31,23 +33,26 @@ public sealed class FieldEndpoints : IApiEndpointModule
     }
 
     internal static async Task<Results<Ok<CursorPage<FieldResource>>, ProblemHttpResult>> ListFieldsAsync(
-        string workspaceId, IFieldCatalogRepository fields, CancellationToken cancellationToken)
+        string workspaceId, HttpContext context, IFieldCatalogRepository fields, IFieldAccessFilter access, CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(workspaceId, out var ws))
+        _ = workspaceId;
+        if (context.GetWorkspaceAccess() is not { } caller)
         {
             return Problems.NotFound("No such workspace.");
         }
 
-        var catalog = await fields.GetCatalogAsync(ws, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var items = ToResources(catalog.Fields);
+        var catalog = await fields.GetCatalogAsync(caller.WorkspaceId, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var restricted = await access.RestrictedFieldIdsAsync(caller.WorkspaceId, caller.Principal, catalog, cancellationToken).ConfigureAwait(false);
+        var items = ToResources(catalog, restricted);
         return TypedResults.Ok(new CursorPage<FieldResource>(items, null, new TotalCount(items.Count, TotalRelation.Eq)));
     }
 
-    internal static IReadOnlyList<FieldResource> ToResources(IEnumerable<FieldDefinition> definitions)
+    internal static IReadOnlyList<FieldResource> ToResources(FieldCatalog catalog, IReadOnlySet<int> restricted)
     {
-        var ordered = definitions.Where(f => !f.IsDeleted).OrderBy(f => f.FieldId).ToList();
+        // Query names are assigned over every live field, so omitting a restricted one never renames another.
+        var ordered = catalog.Fields.Where(f => !f.IsDeleted).OrderBy(f => f.FieldId).ToList();
         var queryNames = FieldQueryNames.Assign(ordered);
-        return [.. ordered.Select(f => new FieldResource(
+        return [.. ordered.Where(f => !restricted.Contains(f.FieldId)).Select(f => new FieldResource(
             f.FieldId,
             f.Name,
             queryNames[f.FieldId],
@@ -59,7 +64,10 @@ public sealed class FieldEndpoints : IApiEndpointModule
             f.IsSecurityAffecting,
             f.DatePrecision is { } p ? Enum.Parse<FieldResourceDatePrecision>(p.ToString()) : null,
             ToResource(f.Capabilities),
-            f.SearchSlot == FieldRules.OverflowSlot))];
+            f.SearchSlot == FieldRules.OverflowSlot,
+            f.Type is FieldType.SingleChoice or FieldType.MultiChoice
+                ? [.. catalog.ChoicesOf(f.FieldId).Select(c => new FieldChoiceResource(c.ChoiceId, c.Name, c.IsActive))]
+                : null))];
     }
 
     private static FieldCapabilitiesResource ToResource(FieldCapabilities c) => new(
@@ -80,6 +88,7 @@ public static class FieldEndpointRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<IFieldCatalogRepository, FieldCatalogRepository>();
+        services.TryAddSingleton<IFieldAccessFilter, UnrestrictedFieldAccess>();
         services.AddSingleton<IApiEndpointModule, FieldEndpoints>();
         return services;
     }
