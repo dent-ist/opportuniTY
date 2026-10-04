@@ -13,7 +13,8 @@
 #     seed        create the demo workspace with demo coding fields and layout (idempotent)
 #     demo-documents [file.dat]
 #                 import synthetic demo documents into the demo workspace through the real import API, signed in as
-#                 admin.dev (default: seed/demo-documents.dat, 10 generated documents; run after `up` and `seed`)
+#                 admin.dev (default: seed/demo-volume, 10 readable documents with extracted text, copied into the
+#                 import share; a file.dat is imported as metadata only; run after `up` and `seed`)
 #     compose ... any other docker compose command with the right files, e.g. `compose config`
 set -euo pipefail
 
@@ -190,9 +191,29 @@ cmd_seed() {
 
 # Signs in through the BFF and Keycloak like a browser (the demo user's password is the realm's dev default), then
 # uploads the DAT to POST /api/v1/workspaces/{demo}/imports with the anti-forgery header. Developer profile only.
+# The import share the worker reads volumes from (OPPORTUNITY_IMPORT_SHARE in .env, relative to this folder).
+import_share() {
+  local share
+  share="$(sed -n 's/^OPPORTUNITY_IMPORT_SHARE=//p' "$env_file" 2>/dev/null | tail -n 1)"
+  share="${OPPORTUNITY_IMPORT_SHARE:-${share:-./import-share}}"
+  [[ "$share" == /* ]] || share="$here/$share"
+  printf '%s' "$share"
+}
+
 cmd_demo_documents() {
   command -v curl >/dev/null || die "curl is required"
-  local dat="${1:-$here/seed/demo-documents.dat}"
+  local dat request='{"name":"Demo documents"}'
+  if [[ $# -gt 0 ]]; then
+    dat="$1"
+  else
+    # The demo volume (load file + extracted text) goes into the import share; the import reads the text from there.
+    local share
+    share="$(import_share)"
+    mkdir -p "$share" && rm -rf "$share/demo-volume" && cp -R "$here/seed/demo-volume" "$share/demo-volume" ||
+      die "cannot copy the demo volume into the import share $share"
+    dat="$share/demo-volume/DATA/DEMO001.dat"
+    request='{"name":"Demo documents","profile":{"paths":{"volumeRoot":"demo-volume"}}}'
+  fi
   [[ -f "$dat" ]] || die "no such load file: $dat"
   local origin="${OPPORTUNITY_PUBLIC_ORIGIN:-http://localhost:8080}"
   local user="${DEMO_USER:-admin.dev}" password="${DEMO_PASSWORD:-opportunity}"
@@ -216,7 +237,7 @@ cmd_demo_documents() {
   # 4. Append import with the default profile: known columns are auto-mapped, the rest are ignored.
   response="$(curl -sS -c "$jar" -b "$jar" -w '\n%{http_code}' -H "Origin: $origin" -H "X-XSRF-TOKEN: $xsrf" \
     -H "Idempotency-Key: demo-documents-$(date +%s)-$$" -F "file=@$dat;type=application/octet-stream" \
-    -F 'request={"name":"Demo documents"};type=application/json' \
+    -F "request=$request;type=application/json" \
     "$origin/api/v1/workspaces/$workspace/imports")"
   local status="${response##*$'\n'}"
   [[ "$status" == 202 ]] || die "import was not accepted (HTTP $status): ${response%$'\n'*}"
