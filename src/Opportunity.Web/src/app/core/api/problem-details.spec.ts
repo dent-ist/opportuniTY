@@ -47,6 +47,22 @@ describe('problem details', () => {
     expect(describeError(limited).detail).toContain('7 seconds');
   });
 
+  it('reports an unreadable 200 response (e.g. HTML instead of JSON) without echoing "OK"', () => {
+    // What Angular reports when /api answers with the SPA's index.html (no proxy to the API).
+    const error = toApiError(
+      new HttpErrorResponse({
+        status: 200,
+        statusText: 'OK',
+        error: { error: new SyntaxError('Unexpected token <'), text: '<!doctype html>' },
+      }),
+    );
+    expect(error.code).toBe('unexpected-response');
+    const message = describeError(error);
+    expect(message.title).toBe('Unexpected response from the server');
+    expect(message.title).not.toContain('OK');
+    expect(message.detail).toContain('/api');
+  });
+
   it('never shows server text for 5xx and keeps the trace id as a reference', () => {
     const view = describeError(
       new ApiError(500, { title: 'NullReferenceException at Foo.Bar', traceId: 'abc' }),
