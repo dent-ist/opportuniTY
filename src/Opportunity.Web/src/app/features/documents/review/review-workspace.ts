@@ -21,16 +21,11 @@ import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { Announcer, Button, DialogService, Icon, IconButton, SplitPane } from '../../../ui';
-import { DocumentLoader } from './document-loader';
+import { DocumentLoader, LoadedDocument } from './document-loader';
 import { CursorDirection, MoveResult, ReviewCursor } from './review-cursor';
-import { CodingApi, DocumentContentApi, TextChunk } from './review-ports';
-import {
-  CodingState,
-  ReviewCoding,
-  ReviewRelated,
-  ReviewViewer,
-  ViewerDocument,
-} from './review-regions';
+import { CodingApi, DocumentContentApi } from './review-ports';
+import { CodingState, ReviewCoding, ReviewRelated } from './review-regions';
+import { DocumentViewer, ViewerDocument } from './viewer/document-viewer';
 import { UnsavedChangesDialog, UnsavedChoice } from './unsaved-changes-dialog';
 
 /** A message under the review bar; `refreshed` and the end notices clear on the next move. */
@@ -50,19 +45,19 @@ interface Notice {
  * - The review cursor walks the list the document was opened from, across cursor pages and refreshes (Q-33);
  *   it never wraps. Save & Next / Save & Previous save the coding pane's edits first; any other move with
  *   unsaved edits asks Save / Discard / Cancel.
- * - The next document's first text is prefetched through the gateway with `purpose=prefetch` (never audited as
- *   viewed); a view is recorded only once a document is on screen.
+ * - The next document (its metadata and the first content of its viewer mode) is prefetched through the gateway
+ *   with `purpose=prefetch` (never audited as viewed); a view is recorded only once a document is on screen.
  */
 @Component({
   selector: 'opp-review-workspace',
   imports: [
     Button,
     CommandRegionDirective,
+    DocumentViewer,
     Icon,
     IconButton,
     ReviewCoding,
     ReviewRelated,
-    ReviewViewer,
     SplitPane,
   ],
   templateUrl: './review-workspace.html',
@@ -234,18 +229,18 @@ export class ReviewWorkspace {
     const seq = ++this.seq;
     const id = hit.documentId;
     const loaded = this.loader.loaded(id);
-    this.viewer.set({ hit, state: loaded ? 'ready' : 'loading', text: loaded ?? null });
+    this.viewer.set({ hit, state: loaded ? 'ready' : 'loading', content: loaded ?? null });
     if (loaded) {
       this.displayed(seq, loaded);
     } else {
       this.loader.display(id).then(
-        (chunk) => {
+        (content) => {
           if (seq !== this.seq) return;
-          this.viewer.set({ hit, state: 'ready', text: chunk });
-          this.displayed(seq, chunk);
+          this.viewer.set({ hit, state: 'ready', content });
+          this.displayed(seq, content);
         },
         () => {
-          if (seq === this.seq) this.viewer.set({ hit, state: 'unavailable', text: null });
+          if (seq === this.seq) this.viewer.set({ hit, state: 'unavailable', content: null });
         },
       );
     }
@@ -257,11 +252,11 @@ export class ReviewWorkspace {
   }
 
   /** Once the document is on screen, the view is recorded (`Document.Viewed`) with the delivery's retrieval id. */
-  private displayed(seq: number, chunk: TextChunk): void {
+  private displayed(seq: number, loaded: LoadedDocument): void {
     afterNextRender(
       () => {
         if (seq !== this.seq) return;
-        this.content.recordView(chunk.documentId, chunk.retrievalId).catch(() => undefined);
+        this.content.recordView(loaded.documentId, loaded.retrievalId).catch(() => undefined);
       },
       { injector: this.injector },
     );

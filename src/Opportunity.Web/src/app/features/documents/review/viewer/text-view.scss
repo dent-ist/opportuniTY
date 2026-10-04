@@ -1,0 +1,73 @@
+.viewer__text {
+  flex: 1;
+  min-block-size: 6rem;
+  padding: var(--opp-space-4);
+  overflow: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-md);
+  line-height: var(--opp-line-height-normal);
+}
+
+.viewer__text:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+// Blocks off screen are not laid out or painted (a 10 MB text stays responsive); their size is estimated until then.
+.text__segment {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 40rem;
+}
+
+.text__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+  margin-block-start: var(--opp-space-3);
+  padding-block-start: var(--opp-space-2);
+  border-block-start: var(--opp-border-width) dashed var(--opp-color-border);
+  font-family: var(--opp-font-family-sans);
+}
+
+.text__progress {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+// Find matches and search hits use colour and an underline, so they never rely on colour alone (E16-T12).
+.text__segment::highlight(opp-hit) {
+  background-color: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+  text-decoration: underline 2px var(--opp-color-info-border);
+}
+
+.text__segment::highlight(opp-find) {
+  background-color: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+  text-decoration: underline dotted 2px var(--opp-color-warning-border);
+}
+
+.text__segment::highlight(opp-find-current) {
+  background-color: var(--opp-color-accent);
+  color: var(--opp-color-on-accent);
+  text-decoration: underline 2px var(--opp-color-on-accent);
+}
+
+@media (forced-colors: active) {
+  .text__segment::highlight(opp-hit),
+  .text__segment::highlight(opp-find) {
+    background-color: Mark;
+    color: MarkText;
+  }
+
+  .text__segment::highlight(opp-find-current) {
+    background-color: Highlight;
+    color: HighlightText;
+  }
+}

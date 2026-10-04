@@ -13,3 +13,4 @@ export * from './tabs/tabs';
 export * from './toast/announcer';
 export * from './toast/toast';
 export * from './menu/menu';
+export * from './tooltip/tooltip';

@@ -1,0 +1,108 @@
+@let doc = document();
+@let loaded = content();
+@let current = mode();
+<div
+  class="viewer"
+  [attr.data-viewer-document]="doc.hit.documentId"
+  [attr.data-state]="doc.state"
+  [attr.aria-busy]="doc.state === 'loading' ? true : null"
+>
+  <ul
+    #tabList
+    class="opp-tab-list viewer__modes"
+    role="tablist"
+    aria-label="Viewer mode"
+    (keydown)="onTabKey($event)"
+  >
+    @for (m of modes; track m.mode) {
+      <li
+        class="opp-tab"
+        role="tab"
+        [id]="'viewer-tab-' + m.mode"
+        [attr.data-mode]="m.mode"
+        aria-controls="viewer-panel"
+        [attr.aria-selected]="m.mode === current"
+        [attr.aria-disabled]="ready() && !available(m.mode) ? true : null"
+        [tabIndex]="m.mode === current ? 0 : -1"
+        [oppTooltip]="reason(m.mode)"
+        (click)="choose(m.mode)"
+      >
+        {{ m.label }}
+      </li>
+    }
+  </ul>
+  @if (fallback(); as f) {
+    <div class="viewer__fallback" role="status">
+      <opp-icon name="info" />
+      <span
+        ><strong>{{ f.reason }}.</strong> Showing {{ f.shown }}.</span
+      >
+      @for (other of f.others; track other.mode) {
+        <button type="button" oppButton="ghost" (click)="choose(other.mode)">
+          Show {{ other.label }}
+        </button>
+      }
+    </div>
+  }
+  <div
+    id="viewer-panel"
+    class="viewer__panel"
+    role="tabpanel"
+    [attr.aria-labelledby]="'viewer-tab-' + current"
+  >
+    @switch (doc.state) {
+      @case ('loading') {
+        <opp-loading-state label="Loading document…" />
+      }
+      @case ('unavailable') {
+        <opp-empty-state
+          title="This document cannot be shown"
+          message="It could not be loaded. Move to the next document or go back to the list."
+        />
+      }
+      @default {
+        <!-- The modes are a separate chunk, loaded when Review mode first shows a document (list mode stays light). -->
+        @defer (on immediate) {
+          @if (loaded) {
+            @switch (current) {
+              @case ('text') {
+                <opp-viewer-text
+                  [documentId]="loaded.documentId"
+                  [controlNumber]="doc.hit.controlNumber"
+                  [initial]="loaded.text"
+                  [terms]="terms()"
+                  [otherModes]="otherModes()"
+                  (modeRequest)="choose($event)"
+                />
+              }
+              @case ('image') {
+                <opp-viewer-image
+                  [documentId]="loaded.documentId"
+                  [controlNumber]="doc.hit.controlNumber"
+                  [images]="loaded.metadata.images"
+                  [initialPages]="loaded.pages"
+                  [initialImage]="loaded.firstImage"
+                />
+              }
+              @case ('native') {
+                <opp-viewer-native
+                  [hit]="doc.hit"
+                  [metadata]="loaded.metadata"
+                  [canDownload]="canDownload"
+                />
+              }
+              @case ('metadata') {
+                <opp-viewer-metadata [metadata]="loaded.metadata" />
+              }
+              @default {
+                <opp-empty-state [title]="reason(current) ?? 'Not available'" />
+              }
+            }
+          }
+        } @placeholder {
+          <opp-loading-state label="Loading document…" />
+        }
+      }
+    }
+  </div>
+</div>

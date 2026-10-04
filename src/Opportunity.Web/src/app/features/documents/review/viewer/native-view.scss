@@ -1,0 +1,62 @@
+.native {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-4);
+  max-inline-size: 40rem;
+  margin: var(--opp-space-4) auto;
+  padding: var(--opp-space-4);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  background: var(--opp-color-surface);
+}
+
+.native__icon {
+  flex: none;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  color: var(--opp-color-accent-text);
+}
+
+.native__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--opp-space-3);
+  min-inline-size: 0;
+}
+
+.native__name {
+  margin: 0;
+  font-size: var(--opp-font-size-lg);
+  overflow-wrap: anywhere;
+}
+
+.native__facts {
+  display: grid;
+  gap: var(--opp-space-1);
+  margin: 0;
+}
+
+.native__facts div {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: var(--opp-space-2);
+}
+
+.native__facts dt {
+  color: var(--opp-color-text-muted);
+}
+
+.native__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.native__note {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
