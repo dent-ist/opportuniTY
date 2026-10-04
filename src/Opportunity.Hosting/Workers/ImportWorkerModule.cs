@@ -17,6 +17,7 @@ using Opportunity.Data.Jobs;
 using Opportunity.Data.SearchWork;
 using Opportunity.Data.Workspaces;
 using Opportunity.Import.Jobs;
+using Opportunity.Import.Volumes;
 using Opportunity.Jobs;
 using Opportunity.Messaging;
 
@@ -49,7 +50,13 @@ public static class ImportWorkerModule
         services.TryAddSingleton<IFieldCatalogRepository>(sp => new FieldCatalogRepository(sp.GetRequiredService<NpgsqlDataSource>()));
         services.TryAddSingleton<IWorkspaceReader>(sp => new WorkspaceReader(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddJobChunkConsumer();
-        services.AddImportJobs();
+        services.AddImportJobs(BindOptions(configuration));
+
+        // Volumes whose natives, text (E08-T04) and OPT images the worker reads: Import:VolumeShareRoot.
+        services.TryAddSingleton(new ImportVolumeOptions
+        {
+            VolumeShareRoot = configuration[$"{ImportVolumeOptions.SectionName}:{nameof(ImportVolumeOptions.VolumeShareRoot)}"],
+        });
 
         // The dispatcher (E06-T04) publishes import chunks to import.chunks; this worker consumes them when RabbitMQ is
         // configured (without it, preparation still runs and chunks wait in PostgreSQL).
@@ -60,5 +67,20 @@ public static class ImportWorkerModule
         }
 
         return services;
+    }
+
+    /// <summary>
+    /// <c>Import:FileConcurrency</c> (volume files stored in parallel per chunk, E08-T04) and the indexed-text cap shared
+    /// with the projection (<c>Search:IndexedTextCap</c>, Q-29).
+    /// </summary>
+    public static ImportJobOptions BindOptions(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var defaults = new ImportJobOptions();
+        return new ImportJobOptions
+        {
+            FileConcurrency = configuration.GetValue("Import:FileConcurrency", defaults.FileConcurrency),
+            IndexedTextCap = configuration.GetValue("Search:IndexedTextCap", defaults.IndexedTextCap),
+        };
     }
 }

@@ -62,6 +62,7 @@ export type { MappingTarget } from './models/mapping-target';
 export type { MappingTargetKind } from './models/mapping-target-kind';
 export type { MatchKind } from './models/match-kind';
 export type { MeResponse } from './models/me-response';
+export type { MissingFilePolicy } from './models/missing-file-policy';
 export type { NewFieldPreview } from './models/new-field-preview';
 export type { NewFieldSpec } from './models/new-field-spec';
 export type { OverlaySettings } from './models/overlay-settings';

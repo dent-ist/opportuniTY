@@ -37,9 +37,9 @@ namespace Opportunity.IntegrationTests.Search;
 internal sealed class ChunkIndexHarness : IAsyncDisposable
 {
     private readonly ServiceProvider _services;
-    private readonly OpenSearchIndexScope _scope;
+    private readonly OpenSearchIndexScope? _scope;
 
-    private ChunkIndexHarness(ImportHarness import, ServiceProvider services, OpenSearchIndexScope scope, BulkHook hook, HookedTextLoader texts, HttpClient http)
+    private ChunkIndexHarness(ImportHarness import, ServiceProvider services, OpenSearchIndexScope? scope, BulkHook hook, HookedTextLoader texts, HttpClient http)
     {
         Import = import;
         _services = services;
@@ -74,6 +74,20 @@ internal sealed class ChunkIndexHarness : IAsyncDisposable
         var import = await ImportHarness.CreateAsync(postgres, rowsPerChunk);
         var scope = openSearch.CreateIndexScope();
         var options = new OpenSearchOptions { Endpoint = openSearch.BaseAddress, IndexPrefix = scope.Prefix, Placement = { CacheTtl = TimeSpan.Zero } };
+        return await CreateAsync(openSearch, import, options, scope, new ProjectionOptions(), realTexts: false, configure, writer);
+    }
+
+    /// <summary>
+    /// The worker over another harness's import pipeline, database and OpenSearch prefix (both owned by the caller),
+    /// reading extracted text from the import's object store with the real loader (end-to-end search tests).
+    /// </summary>
+    public static Task<ChunkIndexHarness> OverAsync(OpenSearchFixture openSearch, ImportHarness import, OpenSearchOptions options, ProjectionOptions projection) =>
+        CreateAsync(openSearch, import, options, null, projection, realTexts: true, null, null);
+
+    private static async Task<ChunkIndexHarness> CreateAsync(
+        OpenSearchFixture openSearch, ImportHarness import, OpenSearchOptions options, OpenSearchIndexScope? scope, ProjectionOptions projection, bool realTexts,
+        Action<ChunkIndexWorkerOptions>? configure, ProjectionWriterOptions? writer)
+    {
         var worker = new ChunkIndexWorkerOptions
         {
             WorkerId = "chunk-index-test",
@@ -94,7 +108,12 @@ internal sealed class ChunkIndexHarness : IAsyncDisposable
         services.AddSingleton<IIndexTaskMembershipReader>(new IndexTaskMembershipReader(import.Db.AppDataSource));
         services.AddSingleton<IObjectStore>(_ => import.Store);
         services.AddSingleton<IAuditEventWriter>(_ => harness!.Audit);
-        services.AddSingleton(sp => new HookedTextLoader(new ProjectionOptions()));
+        var store = import.Store;
+        var inner = realTexts
+            ? new ServiceCollection().AddSingleton(store).AddSearchProjection(projection).BuildServiceProvider().GetRequiredService<IProjectionTextLoader>()
+            : null;
+        services.AddSingleton(projection);
+        services.AddSingleton(sp => new HookedTextLoader(projection, inner));
         services.AddSingleton<IProjectionTextLoader>(sp => sp.GetRequiredService<HookedTextLoader>());
         services.AddOpenSearchIndexTemplateBootstrap(options);
         services.AddChunkIndexWorker(worker, writer);
@@ -202,12 +221,16 @@ internal sealed class ChunkIndexHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var generation in Enumerable.Range(1, 4))
+        if (_scope is not null)
         {
-            using var _ = await Http.DeleteAsync($"_index_template/{_scope.Prefix}-projection-g{generation}", CancellationToken.None);
+            foreach (var generation in Enumerable.Range(1, 4))
+            {
+                using var _ = await Http.DeleteAsync($"_index_template/{_scope.Prefix}-projection-g{generation}", CancellationToken.None);
+            }
+
+            await _scope.DisposeAsync();
         }
 
-        await _scope.DisposeAsync();
         Http.Dispose();
         await _services.DisposeAsync();
         await Import.DisposeAsync();
@@ -238,7 +261,7 @@ internal sealed class ChunkIndexHarness : IAsyncDisposable
     }
 
     /// <summary>The real loader shape with hooks: <see cref="Override"/> supplies text, <see cref="Gate"/> stalls a read.</summary>
-    internal sealed class HookedTextLoader(ProjectionOptions options) : IProjectionTextLoader
+    internal sealed class HookedTextLoader(ProjectionOptions options, IProjectionTextLoader? inner = null) : IProjectionTextLoader
     {
         public Func<ProjectionSource, string?>? Override { get; set; }
 
@@ -252,7 +275,12 @@ internal sealed class ChunkIndexHarness : IAsyncDisposable
                 await gate(source, cancellationToken);
             }
 
-            return Override?.Invoke(source) is { } text ? IndexedText.Cap(text, options.IndexedTextCap) : null;
+            if (Override?.Invoke(source) is { } text)
+            {
+                return IndexedText.Cap(text, options.IndexedTextCap);
+            }
+
+            return inner is null ? null : await inner.LoadAsync(source, cancellationToken);
         }
     }
 }

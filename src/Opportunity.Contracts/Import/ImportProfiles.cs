@@ -176,13 +176,36 @@ public sealed record OverlaySettings
     public bool AllowCodingFieldOverlay { get; init; }
 }
 
+/// <summary>
+/// Where the files a load file references (natives, extracted text, images) are read from. Volumes are read from the
+/// installation's server-side import share (operator setting <c>Import:VolumeShareRoot</c>); browsers never upload them.
+/// </summary>
 public sealed record PathSettings
 {
-    /// <summary>Volume root that relative native/text/image paths resolve against.</summary>
+    /// <summary>
+    /// Volume folder that relative native/text/image paths resolve against, relative to the import share (e.g.
+    /// <c>matter-a/VOL001</c>); null is the share itself. Never an absolute path.
+    /// </summary>
     public string? VolumeRoot { get; init; }
 
     /// <summary>Leading path portion removed from native/text paths before resolving (e.g. <c>\\server\export\</c>).</summary>
     public string? StripPrefix { get; init; }
+
+    /// <summary>The column mapped to Extracted Text Path holds the extracted text itself instead of a file path.</summary>
+    public bool TextInLoadFile { get; init; }
+
+    /// <summary>What a native or text file that cannot be found does to its row.</summary>
+    public MissingFilePolicy MissingFiles { get; init; } = MissingFilePolicy.Flag;
+}
+
+/// <summary>Handling of a referenced native or text file that is not in the volume.</summary>
+public enum MissingFilePolicy
+{
+    /// <summary>The document is loaded with Native Missing / Text Missing set and a warning in the import report.</summary>
+    Flag,
+
+    /// <summary>The row is not loaded; the import report lists it as an error. Other rows of the chunk still load.</summary>
+    Error,
 }
 
 /// <summary>One load-file column: ignored, or mapped to one or more targets (e.g. <c>BEGDOC</c> → Control Number and Beg Bates).</summary>

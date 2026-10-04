@@ -1,5 +1,6 @@
 using Opportunity.Contracts.Import;
 using Opportunity.Core.Fields;
+using Opportunity.Import.Volumes;
 
 namespace Opportunity.Import.Mapping;
 
@@ -174,6 +175,22 @@ public static class MappingCompiler
         if (profile.ControlNumberPrefix is { Length: > 0 } prefix && (prefix.Length > 50 || prefix.Any(char.IsControl)))
         {
             issues.Add(Error("invalid-prefix", "The control number prefix must be at most 50 characters without control characters."));
+        }
+
+        var paths = profile.Paths ?? new PathSettings();
+        if (paths.VolumeRoot is { } volumeRoot && !string.IsNullOrWhiteSpace(volumeRoot) && !VolumePath.TryParse(volumeRoot, null, out _, out var volumeError))
+        {
+            issues.Add(Error("invalid-volume-root", "The volume folder must be a path inside the import share: " + volumeError));
+        }
+
+        if (paths.StripPrefix is { } strip && (strip.Length > VolumePath.MaxLength || strip.Any(char.IsControl)))
+        {
+            issues.Add(Error("invalid-strip-prefix", $"The strip prefix must be at most {VolumePath.MaxLength} characters without control characters."));
+        }
+
+        if (!Enum.IsDefined(paths.MissingFiles))
+        {
+            issues.Add(Error("invalid-missing-file-policy", "Unknown missing-file handling."));
         }
     }
 

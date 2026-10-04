@@ -7,6 +7,7 @@ using Opportunity.Contracts.Import;
 using Opportunity.Core.Jobs;
 using Opportunity.Import.LoadFiles;
 using Opportunity.Import.Mapping;
+using Opportunity.Import.Volumes;
 
 namespace Opportunity.Import.Jobs;
 
@@ -15,13 +16,17 @@ namespace Opportunity.Import.Jobs;
 /// chunk's rows <c>RowFrom…RowTo</c> from the DAT (its byte range only), maps them with the import's frozen profile and
 /// hands them to <see cref="IImportBatchStore.ApplyChunkAsync"/>, which writes documents, members, row outcomes and the
 /// chunk's one IndexChunkTask together with fence F3. Re-running a chunk after a crash re-reads the same bytes; the
-/// earlier attempt either committed (the claim refuses a second run) or rolled back completely.
+/// earlier attempt either committed (the claim refuses a second run) or rolled back completely. Natives and extracted
+/// text are stored before the transaction under content-addressed keys of deterministic document ids
+/// (<see cref="ImportDocumentIds"/>), so a retry uploads nothing new and registers them with its documents (E08-T04).
 /// </summary>
 public sealed class ImportChunkExecutor(
     IImportBatchStore batches,
     IFieldCatalogRepository fields,
     IWorkspaceReader workspaces,
-    IObjectStore store) : IJobChunkExecutor
+    IObjectStore store,
+    ImportJobOptions options,
+    ImportVolumeOptions? volumes = null) : IJobChunkExecutor
 {
     public ChunkOperationKind OperationKind => ChunkOperationKind.ImportChunk;
 
@@ -74,7 +79,9 @@ public sealed class ImportChunkExecutor(
                 $"The mapping now loads coding or privilege field(s) {string.Join(", ", notEnabled)} that this import did not enable (Q-31).");
         }
 
+        var linker = ImportArtifactLinker.Create(mapping, options, volumes ?? new ImportVolumeOptions(), store);
         var rows = new List<ImportRow>(checked((int)(range.RowTo - range.RowFrom + 1)));
+        var values = new List<IReadOnlyList<string>>(linker is null ? 0 : rows.Capacity);
         var stream = ImportSource.OpenChunk(store, batch, range);
         var reader = await DatReader.OpenAsync(stream, readerOptions, leaveOpen: false, cancellationToken).ConfigureAwait(false);
         await using (reader.ConfigureAwait(false))
@@ -95,6 +102,10 @@ public sealed class ImportChunkExecutor(
 
                 firstLine ??= record.LineNumber;
                 rows.Add(ImportRowBuilder.Build(mapping, record, rowNo, range.LineFrom + record.LineNumber - firstLine.Value, ws, batchId, codingFields));
+                if (linker is not null)
+                {
+                    values.Add(record.Values);
+                }
             }
         }
 
@@ -103,9 +114,43 @@ public sealed class ImportChunkExecutor(
             throw new PermanentChunkException("ImportRangeMismatch", "The chunk's byte range holds fewer rows than were prepared.");
         }
 
+        if (linker is not null)
+        {
+            await LinkAsync(linker, ws, batch, rows, values, cancellationToken).ConfigureAwait(false);
+        }
+
         // Fence F2 before the PostgreSQL batch; F3 runs inside the store's transaction.
         await context.CheckFenceAsync(cancellationToken).ConfigureAwait(false);
         var result = await batches.ApplyChunkAsync(chunk, new ImportChunkWrite(batchId, batch.Mode, rows), cancellationToken).ConfigureAwait(false);
         return ChunkExecutionResult.Committed(result.Commit);
+    }
+
+    /// <summary>
+    /// Stores every row's files, <see cref="ImportJobOptions.FileConcurrency"/> rows at a time. An overlaid document's
+    /// files go under its existing id; every other row's under the id the row creates.
+    /// </summary>
+    private async Task LinkAsync(
+        ImportArtifactLinker linker, Guid ws, ImportBatchRecord batch, List<ImportRow> rows, List<IReadOnlyList<string>> values, CancellationToken cancellationToken)
+    {
+        IReadOnlyDictionary<string, Guid> existing = batch.Mode == ImportMode.Append
+            ? new Dictionary<string, Guid>()
+            : await batches.FindDocumentIdsAsync(ws, [.. rows.Where(r => r.Document is not null).Select(r => r.ControlNumberNorm!).Distinct(StringComparer.Ordinal)], cancellationToken)
+                .ConfigureAwait(false);
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, rows.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, options.FileConcurrency), CancellationToken = cancellationToken },
+            async (i, ct) =>
+            {
+                var row = rows[i];
+                var overlay = false;
+                if (row.Document is { } document && row.ControlNumberNorm is { } norm && existing.TryGetValue(norm, out var id))
+                {
+                    document.DocumentId = id;
+                    document.FamilyId = id;
+                    overlay = true;
+                }
+
+                rows[i] = await linker.LinkAsync(row, values[i], overlay, ct).ConfigureAwait(false);
+            }).ConfigureAwait(false);
     }
 }

@@ -38,7 +38,7 @@ public static partial class ImportRowBuilder
         }
 
         var mapped = mapping.Map(rowNo, record.Values);
-        var documentId = Guid.CreateVersion7();
+        var documentId = ImportDocumentIds.For(importBatchId, rowNo);
         var document = new Document
         {
             WorkspaceId = workspaceId,

@@ -15,12 +15,14 @@ using Opportunity.Contracts.Import;
 using Opportunity.Core.Documents;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.SearchWork;
+using Opportunity.Core.Storage;
 using Opportunity.Data.Audit;
 using Opportunity.Data.Coding;
 using Opportunity.Data.Documents;
 using Opportunity.Data.Jobs;
 using Opportunity.Data.Relationships;
 using Opportunity.Data.SearchWork;
+using Opportunity.Data.Storage;
 
 namespace Opportunity.Data.Import;
 
@@ -46,10 +48,11 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         rows_errored, created_by, created_at, completed_at, may_create_fields
         """;
 
-    // Overlay may set these document columns; identity, family and artifact columns belong to other tickets.
+    // Overlay may set these document columns; identity, family and page-set columns belong to other tickets. A new
+    // native or text (E08-T04) replaces the reference; the earlier object stays registered (ADR-011 §4.2).
     private static readonly Dictionary<string, DocumentColumns.Column> OverlayColumns = DocumentColumns.MutableColumns
         .Where(c => c.Name is not ("metadata" or "metadata_raw" or "family_id" or "parent_document_id" or "family_sequence"
-            or "family_status" or "native_object_id" or "text_object_id" or "active_page_set_id"))
+            or "family_status" or "active_page_set_id"))
         .ToDictionary(c => c.Name, StringComparer.Ordinal);
 
     public async Task<ImportBatchCreation> CreateAsync(NewImportBatch batch, CancellationToken cancellationToken = default)
@@ -361,6 +364,37 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         return range;
     }
 
+    public async Task<IReadOnlyDictionary<string, Guid>> FindDocumentIdsAsync(
+        Guid workspaceId, IReadOnlyCollection<string> controlNumberNorms, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(controlNumberNorms);
+        var ids = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        if (controlNumberNorms.Count == 0)
+        {
+            return ids;
+        }
+
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using (var command = tx.Command(
+            """
+            SELECT u.n, d.document_id
+            FROM unnest(@norms) AS u(n)
+            JOIN opportunity.document d ON d.workspace_id = @ws AND d.control_number_norm = normalize(u.n, NFC)
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("norms", controlNumberNorms.ToArray());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                ids[reader.GetString(0)] = reader.GetGuid(1);
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return ids;
+    }
+
     public async Task<ImportChunkResult> ApplyChunkAsync(ClaimedChunk chunk, ImportChunkWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunk);
@@ -629,6 +663,12 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
                     plan.Error(row, "control-number-exists",
                         $"A document with control number {row.ControlNumber} already exists; Append loads new documents only.");
                 }
+                else if (row.Objects.Any(o => o.DocumentId != document.DocumentId))
+                {
+                    // The chunk stored this row's files before the document existed (another load created it since).
+                    plan.Error(row, "document-changed",
+                        $"The document with control number {row.ControlNumber} was created by another load while its files were stored; load the row again.");
+                }
                 else
                 {
                     plan.Overlays.Add((row, document.DocumentId));
@@ -679,7 +719,11 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             d.FirstImportBatchId = batch.ImportBatchId;
             return d;
         }).ToList();
+
+        // Natives and text first (E08-T04): a document references registry rows of its own (ADR-011 §2.4).
+        await LinkObjectsAsync(tx, chunk, plan.Inserts.Select(r => (r, r.Document!.DocumentId)).Concat(plan.Overlays), cancellationToken).ConfigureAwait(false);
         var inserted = await DocumentRepository.InsertNewAsync(tx, documents, cancellationToken).ConfigureAwait(false);
+        var notInserted = new List<Guid>();
         foreach (var row in plan.Inserts)
         {
             if (inserted.Contains(row.Document!.DocumentId))
@@ -688,9 +732,16 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             }
             else
             {
+                if (row.Objects.Count > 0)
+                {
+                    notInserted.Add(row.Document.DocumentId);
+                }
+
                 plan.Error(row, "control-number-exists", $"A document with control number {row.ControlNumber} was created by another load meanwhile.");
             }
         }
+
+        await StoredObjectSql.UnregisterDocumentsAsync(tx, notInserted, cancellationToken).ConfigureAwait(false);
 
         // Overlays: only the supplied values; a blank value never overwrites (overlay options are E08-T07).
         var changed = await OverlayAsync(tx, plan.Overlays, cancellationToken).ConfigureAwait(false);
@@ -759,6 +810,43 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         }
 
         await InsertIssuesAsync(tx, batch.ImportBatchId, plan, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Registers the rows' stored files (<see cref="ImportRow.Objects"/>) and points each document at its native and
+    /// text object, before the document rows are written (their foreign keys are not deferred).
+    /// </summary>
+    private static async Task LinkObjectsAsync(
+        WorkspaceTransaction tx, ClaimedChunk chunk, IEnumerable<(ImportRow Row, Guid DocumentId)> rows, CancellationToken cancellationToken)
+    {
+        var linked = rows.Where(r => r.Row.Objects.Count > 0).ToList();
+        if (linked.Count == 0)
+        {
+            return;
+        }
+
+        if (linked.Any(r => r.Row.Objects.Any(o => o.DocumentId != r.DocumentId)))
+        {
+            throw new ArgumentException("A row's stored objects belong to another document.", nameof(rows));
+        }
+
+        var ids = await StoredObjectSql.RegisterAsync(tx, [.. linked.SelectMany(r => r.Row.Objects)], chunk.Lease.JobId, cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var (row, _) in linked)
+        {
+            foreach (var o in row.Objects)
+            {
+                switch (o.Area)
+                {
+                    case ObjectArea.Native:
+                        row.Document!.NativeObjectId = ids[o.LogicalKey];
+                        break;
+                    case ObjectArea.Text:
+                        row.Document!.TextObjectId = ids[o.LogicalKey];
+                        break;
+                }
+            }
+        }
     }
 
     /// <summary>

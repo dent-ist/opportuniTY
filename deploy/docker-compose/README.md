@@ -131,6 +131,16 @@ The web container serves the UI only; there is no edge proxy routing `/api` in t
 Local tweaks that should not be committed (extra ports, a build proxy) go in `compose.override.yaml` next to
 `compose.yaml`. It is git-ignored and the helper script includes it automatically.
 
+### Import share (natives and extracted text)
+
+Load-file volumes are not uploaded through the browser: the worker reads them from the **import share**, a host folder
+mounted read-only at `/var/lib/opportunity/import` (`Import:VolumeShareRoot`). By default that is
+`deploy/docker-compose/import-share/` (git-ignored; set `OPPORTUNITY_IMPORT_SHARE` in `.env` to use another folder).
+Copy a volume there, e.g. `import-share/matter-a/VOL001/{DATA,NATIVES,TEXT}`, upload its DAT as usual and set the
+import profile's `paths.volumeRoot` to `matter-a/VOL001`; `NativeLink`/`TextLink` paths resolve inside that folder.
+The folder must be readable by the container user (uid 1654). See
+[docs/architecture/import-volumes.md](../../docs/architecture/import-volumes.md) for path rules and outcomes.
+
 ## Observability profile
 
 OpenTelemetry is built into every host ([ADR-017](../../docs/adr/0017-observability-and-slos.md)) and is **off unless
