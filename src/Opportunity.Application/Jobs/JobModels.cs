@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 
+using Opportunity.Application.Audit;
 using Opportunity.Core.Jobs;
 
 namespace Opportunity.Application.Jobs;
@@ -35,6 +36,12 @@ public sealed record NewJob
     public string? CorrelationId { get; init; }
 
     public int MaxAttemptsPerChunk { get; init; } = ChunkRetryPolicy.DefaultMaxAttempts;
+
+    /// <summary>
+    /// A feature-specific audit event of the submission (e.g. <c>Coding.BulkSubmitted</c>), stored with the job in the
+    /// same transaction when the job is created (not for a deduplicated retry). Workspace and job are filled in.
+    /// </summary>
+    public AuditEvent? SubmissionAudit { get; init; }
 }
 
 /// <summary>Result of <see cref="IJobRepository.CreateAsync"/>; <see cref="Created"/> is false for a deduplicated retry.</summary>

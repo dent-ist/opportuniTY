@@ -36,6 +36,22 @@ public interface ICodingRepository
     Task<CodingChunkResult> ApplyChunkAsync(ClaimedChunk chunk, CodingWriteRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// <see cref="ApplyChunkAsync(ClaimedChunk, CodingWriteRequest, CancellationToken)"/> that also records
+    /// <paramref name="additionalItems"/> (outcomes the caller decided before the write, such as documents excluded because
+    /// the initiator lost access, ADR-015 D9.4) with the chunk. <paramref name="request"/> may then name no document at
+    /// all: the chunk still commits, with its item results and its audit event, and creates no index task.
+    /// </summary>
+    Task<CodingChunkResult> ApplyChunkAsync(
+        ClaimedChunk chunk, CodingWriteRequest request, IReadOnlyList<JobItemResult> additionalItems, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Documents whose coding a job changed (at least one <see cref="CodingEventKind.ValueChanged"/> event of the job),
+    /// in DocumentId order after <paramref name="after"/>: the "applied" list of a bulk coding report.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetJobChangedDocumentsAsync(
+        Guid workspaceId, Guid jobId, Guid? after, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Current coding of live documents with per-field change tracking (ChangedAtVersion / ChangedByJobId, ADR-010 §8).
     /// Missing or deleted documents are omitted; fields of deleted definitions are invisible.
     /// </summary>

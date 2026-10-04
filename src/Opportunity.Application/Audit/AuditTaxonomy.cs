@@ -44,7 +44,14 @@ public static class AuditTaxonomy
     {
         public const string Category = "Coding";
         public const string Changed = "Changed";
+
+        /// <summary>A bulk coding job was submitted over a snapshot (E10-T04): one event per job, never per document.</summary>
+        public const string BulkSubmitted = "BulkSubmitted";
+
         public const string BulkChunkApplied = "BulkChunkApplied";
+
+        /// <summary>A bulk coding job finished its chunks (Completed or CompletedWithErrors) with its final counts.</summary>
+        public const string BulkCompleted = "BulkCompleted";
 
         /// <summary>An administrator enabled coding/privilege fields for overlay by one import (Q-31).</summary>
         public const string OverlayEnabled = "OverlayEnabled";

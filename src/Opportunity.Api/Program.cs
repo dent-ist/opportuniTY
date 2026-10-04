@@ -46,6 +46,7 @@ builder.Services.AddImportEndpoints(builder.Configuration);
 builder.Services.AddProtectedContentGateway(builder.Configuration);
 builder.Services.AddFieldEndpoints();
 builder.Services.AddCodingEndpoints();
+builder.Services.AddBulkCodingEndpoints();
 builder.Services.AddUserPreferenceEndpoints();
 builder.Services.AddExportEndpoints();
 builder.Services.AddExportContentEndpoints();

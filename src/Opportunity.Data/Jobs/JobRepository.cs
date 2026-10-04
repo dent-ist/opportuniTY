@@ -7,6 +7,7 @@ using NpgsqlTypes;
 using Opportunity.Application.Audit;
 using Opportunity.Application.Jobs;
 using Opportunity.Core.Jobs;
+using Opportunity.Data.Audit;
 
 namespace Opportunity.Data.Jobs;
 
@@ -77,6 +78,17 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
         if (created)
         {
             await JobSql.AuditAsync(tx, info!, AuditTaxonomy.Job.Created, info!.InitiatedBy, cancellationToken).ConfigureAwait(false);
+            if (job.SubmissionAudit is { } submission)
+            {
+                await AuditSql.InsertAsync(tx, submission with
+                {
+                    WorkspaceId = job.WorkspaceId,
+                    JobId = jobId,
+                    SnapshotId = submission.SnapshotId ?? job.TargetSnapshotId,
+                    ResourceType = submission.ResourceType ?? "Job",
+                    ResourceId = submission.ResourceId ?? jobId.ToString(),
+                }, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         return new JobCreation(info!, created);

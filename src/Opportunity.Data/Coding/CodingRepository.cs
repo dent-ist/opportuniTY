@@ -64,18 +64,25 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         return result;
     }
 
+    public Task<CodingChunkResult> ApplyChunkAsync(
+        ClaimedChunk chunk, CodingWriteRequest request, CancellationToken cancellationToken = default) =>
+        ApplyChunkAsync(chunk, request, [], cancellationToken);
+
     public async Task<CodingChunkResult> ApplyChunkAsync(
-        ClaimedChunk chunk, CodingWriteRequest request, CancellationToken cancellationToken = default)
+        ClaimedChunk chunk, CodingWriteRequest request, IReadOnlyList<JobItemResult> additionalItems, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunk);
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(additionalItems);
         var lease = chunk.Lease;
         if (request.WorkspaceId != lease.WorkspaceId || request.JobId != lease.JobId || request.Actor.Type == CodingActorType.Human)
         {
             throw new ArgumentException("A chunk write is a job-originated write of the leased chunk's workspace and job.", nameof(request));
         }
 
-        var shapeErrors = ValidateShape(request);
+        // A chunk may be left with no document to write (every member excluded): it still commits, with its item results.
+        var empty = request.Documents is { Count: 0 };
+        var shapeErrors = ValidateShape(request, allowNoDocuments: empty);
         if (shapeErrors.Count > 0)
         {
             return new CodingChunkResult(CodingWriteResult.Failed(CodingWriteOutcome.Invalid, [.. shapeErrors]), null, null);
@@ -85,7 +92,21 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         ChunkCommitResult commit;
         await using (var tx = await WorkspaceTransaction.BeginAsync(dataSource, request.WorkspaceId, cancellationToken).ConfigureAwait(false))
         {
-            (result, var plan) = await ApplyInTransactionAsync(tx, request, restrictions, cancellationToken).ConfigureAwait(false);
+            WritePlan plan;
+            if (empty)
+            {
+                plan = new WritePlan();
+                result = new CodingWriteResult(CodingWriteOutcome.Applied, [], [], 0, false);
+                if (request.Audit is { } audit)
+                {
+                    await AuditSql.InsertAsync(tx, CodingAudit(audit, request, null, plan, []), cancellationToken).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                (result, plan) = await ApplyInTransactionAsync(tx, request, restrictions, cancellationToken).ConfigureAwait(false);
+            }
+
             if (result.Outcome != CodingWriteOutcome.Applied)
             {
                 return new CodingChunkResult(result, null, null);
@@ -101,7 +122,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                 ChangeMask = ChangeMask(plan),
                 IdempotencyKey = ChunkIdempotencyKey.ForChunk(lease.WorkspaceId, lease.JobId, chunk.Sequence, ChunkOperationKind.IndexChunk, 0),
             };
-            (commit, var taskId) = await SearchWorkSql.CommitChunkAsync(tx, lease, Completion(result), task, cancellationToken)
+            (commit, var taskId) = await SearchWorkSql.CommitChunkAsync(tx, lease, Completion(result, additionalItems), task, cancellationToken)
                 .ConfigureAwait(false);
             if (commit.Committed)
             {
@@ -328,6 +349,38 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         return new CodingEventPage(events, new CodingEventCursor(events[^1].OccurredAt, events[^1].EventId));
     }
 
+    public async Task<IReadOnlyList<Guid>> GetJobChangedDocumentsAsync(
+        Guid workspaceId, Guid jobId, Guid? after, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(limit, 5_000);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            """
+            SELECT DISTINCT e.document_id
+            FROM opportunity.coding_event e
+            WHERE e.workspace_id = @ws AND e.job_id = @job AND e.event_kind = 1
+              AND (@after::uuid IS NULL OR e.document_id > @after)
+            ORDER BY e.document_id
+            LIMIT @limit
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("job", jobId);
+        command.Parameters.Add(FieldCatalogRepository.Nullable("after", NpgsqlDbType.Uuid, after));
+        command.Parameters.AddWithValue("limit", limit);
+        var ids = new List<Guid>(limit);
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                ids.Add(reader.GetGuid(0));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return ids;
+    }
+
     private static async Task<(CodingWriteResult Result, WritePlan Plan)> ApplyInTransactionAsync(
         WorkspaceTransaction tx, CodingWriteRequest request, IRestrictionClassBinding? restrictions, CancellationToken cancellationToken)
     {
@@ -500,11 +553,12 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
 
     /// <summary>
     /// The chunk's job counters and item results (ADR-010 §1): one Q-07 skip per document (first skipped field, all of them
-    /// in the detail), missing documents as failed items.
+    /// in the detail); documents deleted since the snapshot are skipped likewise (ADR-010 §8.3). The caller's own item
+    /// results (e.g. documents excluded because the initiator lost access, ADR-015 D9.4) are recorded with them.
     /// </summary>
-    private static ChunkCompletion Completion(CodingWriteResult result)
+    private static ChunkCompletion Completion(CodingWriteResult result, IReadOnlyList<JobItemResult> additionalItems)
     {
-        var items = new List<JobItemResult>();
+        var items = new List<JobItemResult>(additionalItems);
         foreach (var document in result.Documents)
         {
             if (document.SkippedFieldIds.Count > 0)
@@ -515,7 +569,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
 
             if (document.Outcome == DocumentCodingOutcome.NotFound)
             {
-                items.Add(new JobItemResult(JobItemResultKind.Failed, document.DocumentId, null, null, "DocumentNotFound"));
+                items.Add(new JobItemResult(JobItemResultKind.SkippedConcurrentEdit, document.DocumentId, null, null, "DocumentDeleted"));
             }
         }
 
@@ -541,11 +595,11 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
     /// of a single-document write.
     /// </summary>
     private static AuditEvent CodingAudit(
-        AuditEvent template, CodingWriteRequest request, Guid writeId, WritePlan plan, List<DocumentCodingResult> results)
+        AuditEvent template, CodingWriteRequest request, Guid? writeId, WritePlan plan, List<DocumentCodingResult> results)
     {
         var details = new Dictionary<string, string?>(template.Details)
         {
-            ["CodingWriteId"] = writeId.ToString(),
+            ["CodingWriteId"] = writeId?.ToString(),
             ["Fields"] = string.Join(',', request.Operations.Select(o => o.FieldId).Distinct().Order()),
             ["Documents"] = Invariant(results.Count),
             ["Changed"] = Invariant(results.Count(r => r.Outcome == DocumentCodingOutcome.Changed)),
@@ -569,7 +623,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             }
         }
 
-        var single = request.Documents.Count == 1;
+        var single = request.JobId is null && request.Documents.Count == 1;
         return template with
         {
             EventId = Guid.CreateVersion7(),
@@ -585,7 +639,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
 
     private static string Invariant(int value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    private static List<FieldError> ValidateShape(CodingWriteRequest request)
+    private static List<FieldError> ValidateShape(CodingWriteRequest request, bool allowNoDocuments = false)
     {
         var errors = new List<FieldError>();
         void Add(string field, string code, string message) => errors.Add(new FieldError(field, code, message));
@@ -595,7 +649,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             Add("idempotencyKey", "invalid-idempotency-key", $"An idempotency key of 1–{CodingWriteRequest.MaxIdempotencyKeyLength} characters is required.");
         }
 
-        if (request.Documents is null || request.Documents.Count is 0 or > CodingWriteRequest.MaxDocuments
+        if (request.Documents is null || (request.Documents.Count == 0 && !allowNoDocuments) || request.Documents.Count > CodingWriteRequest.MaxDocuments
             || request.Documents.Select(d => d.DocumentId).Distinct().Count() != request.Documents.Count)
         {
             Add("documents", "invalid-documents", $"Between 1 and {CodingWriteRequest.MaxDocuments} distinct documents are required.");

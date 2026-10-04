@@ -1135,6 +1135,194 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/bulk-coding": {
+      "post": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "Apply coding operations to every document of a frozen set; 202 with the job.",
+        "description": "The set must be a Ready snapshot with purpose BulkCoding (POST …/snapshots). Runs in chunks: each chunk re-checks your access, skips documents whose requested field someone else changed after the set was frozen (Q-07) and documents you can no longer access, and is applied at most once. Security-affecting fields also need Coding.WritePrivilege. Follow the job at Location; outcomes per document at …/bulk-coding/{jobId}/report.",
+        "operationId": "SubmitBulkCoding",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkCodingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/bulk-coding/{jobId}/report": {
+      "get": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "Per-document outcomes of a bulk coding job, one outcome at a time, cursor-paged.",
+        "description": "outcome=applied (default) lists documents with at least one changed value, by document id; skippedChanged, skippedHidden and failed list the documents left unchanged, in processing order. total is the job's count for the outcome so far.",
+        "operationId": "GetBulkCodingReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfBulkCodingReportItemResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/snapshots": {
       "post": {
         "tags": [
@@ -3547,6 +3735,94 @@
   },
   "components": {
     "schemas": {
+      "BulkCodingOperationKind": {
+        "enum": [
+          "set",
+          "addChoices",
+          "removeChoices",
+          "clear"
+        ]
+      },
+      "BulkCodingOperationRequest": {
+        "required": [
+          "fieldId",
+          "operation"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/BulkCodingOperationKind"
+          },
+          "value": { }
+        }
+      },
+      "BulkCodingOutcomeResource": {
+        "enum": [
+          "applied",
+          "skippedChanged",
+          "skippedHidden",
+          "failed"
+        ]
+      },
+      "BulkCodingReportItemResource": {
+        "required": [
+          "documentId",
+          "outcome",
+          "reasonCode",
+          "fieldIds"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/BulkCodingOutcomeResource"
+          },
+          "reasonCode": {
+            "type": "string"
+          },
+          "fieldIds": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "BulkCodingRequest": {
+        "required": [
+          "snapshotId",
+          "changes"
+        ],
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkCodingOperationRequest"
+            }
+          }
+        }
+      },
       "CellError": {
         "required": [
           "code",
@@ -4158,6 +4434,31 @@
               "string"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "CursorPageOfBulkCodingReportItemResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkCodingReportItemResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
           }
         }
       },
