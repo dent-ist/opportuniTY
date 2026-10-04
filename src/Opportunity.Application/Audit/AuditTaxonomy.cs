@@ -40,6 +40,16 @@ public static class AuditTaxonomy
         public const string TextDownloaded = "TextDownloaded";
     }
 
+    /// <summary>Saved searches (E07-T09): changes to a search's criteria, place and sharing. Runs are <c>Search.Executed</c>.</summary>
+    public static class SavedSearch
+    {
+        public const string Category = "Search";
+        public const string Created = "SavedSearch.Created";
+        public const string Modified = "SavedSearch.Modified";
+        public const string Deleted = "SavedSearch.Deleted";
+        public const string Shared = "SavedSearch.Shared";
+    }
+
     public static class Coding
     {
         public const string Category = "Coding";
@@ -137,7 +147,7 @@ public static class AuditTaxonomy
         .. Expand("AuthZ", "Denied"),
         .. Expand("Document", "Retrieved", "Viewed", "NativeDownloaded", "Printed", "TextDownloaded"),
         .. Expand("Search", "Executed", "ResultsPageServed", "CountExact", "TermReportGenerated",
-            "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted"),
+            "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted", "SavedSearch.Shared"),
         .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled"),
         .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded"),
         .. Expand("Redaction", "Added", "Modified", "Removed"),

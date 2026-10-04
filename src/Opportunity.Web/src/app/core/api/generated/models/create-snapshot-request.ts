@@ -7,5 +7,6 @@ export interface CreateSnapshotRequest {
   name?: string | null;
   purpose: SnapshotResourcePurpose;
   query?: string | null;
+  savedSearchId?: string | null;
   snapshotId?: string | null;
 }

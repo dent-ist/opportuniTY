@@ -46,7 +46,7 @@ internal sealed partial class SearchService
         }
 
         var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
-        var plan = await PlanAsync(caller.WorkspaceId, request.Query, placement?.Generation, cancellationToken).ConfigureAwait(false);
+        var plan = await PlanAsync(caller, request.Query, placement?.Generation, true, cancellationToken).ConfigureAwait(false);
         if (plan.Errors is { } errors)
         {
             return new SearchSelectionOutcome { Status = SearchSelectionStatus.InvalidQuery, QueryErrors = errors };

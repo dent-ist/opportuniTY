@@ -8,5 +8,6 @@ export interface SearchRequest {
   highlight?: boolean | null;
   pageSize?: number | string | null;
   query: string | null;
+  savedSearchId?: string | null;
   sort?: Array<SearchSortKey> | null;
 }

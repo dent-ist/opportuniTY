@@ -1,5 +1,6 @@
 using System.Text.Json;
 
+using Opportunity.Application.Authorization;
 using Opportunity.Contracts.Search;
 using Opportunity.Core.QueryLanguage;
 
@@ -21,22 +22,48 @@ public sealed class QueryValidator(QueryLimits limits)
     }
 
     /// <summary>Parses, then binds a parsable query against <paramref name="workspaceId"/>; binding errors make it invalid.</summary>
+    public Task<QueryValidationResult> ValidateAsync(
+        string query, Guid workspaceId, IQueryBinder? binder, CancellationToken cancellationToken = default) =>
+        ValidateAsync(query, workspaceId, binder, null, null, cancellationToken);
+
+    /// <summary>
+    /// Parses, expands saved-search references (<c>savedsearch:&lt;id&gt;</c>, E07-T09: each must be visible to
+    /// <paramref name="caller"/>, nesting without cycles) when <paramref name="savedSearches"/> is given, then binds the
+    /// expanded query. The returned AST is the query as written; errors inside a referenced search point at the reference.
+    /// </summary>
     public async Task<QueryValidationResult> ValidateAsync(
-        string query, Guid workspaceId, IQueryBinder? binder, CancellationToken cancellationToken = default)
+        string query, Guid workspaceId, IQueryBinder? binder, ISavedSearchQueries? savedSearches, SecurityPrincipal? caller,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
         var parsed = QueryParser.Parse(query, Limits);
         var result = ToResult(parsed);
-        if (parsed.Ast is not { } ast || binder is null)
+        if (parsed.Ast is not { } ast)
         {
             return result;
         }
 
-        var errors = await binder.BindAsync(workspaceId, ast, cancellationToken).ConfigureAwait(false);
-        return errors.Count == 0
-            ? result
-            : result with { Valid = false, Ast = null, Normalized = null, Errors = [.. errors.Select(ToContract)] };
+        var expansion = SavedSearchExpansion.Unchanged(ast);
+        if (savedSearches is not null)
+        {
+            expansion = await savedSearches.ExpandAsync(new SavedSearchExpansionRequest(workspaceId, ast, caller), cancellationToken).ConfigureAwait(false);
+            if (!expansion.Success)
+            {
+                return Invalid(result, expansion.Errors);
+            }
+        }
+
+        if (binder is null)
+        {
+            return result;
+        }
+
+        var errors = await binder.BindAsync(workspaceId, expansion.Ast, cancellationToken).ConfigureAwait(false);
+        return errors.Count == 0 ? result : Invalid(result, expansion.Annotate(errors));
     }
+
+    private static QueryValidationResult Invalid(QueryValidationResult result, IReadOnlyList<QueryDiagnostic> errors) =>
+        result with { Valid = false, Ast = null, Normalized = null, Errors = [.. errors.Select(ToContract)] };
 
     private static QueryValidationResult ToResult(QueryParseResult result) => new()
     {

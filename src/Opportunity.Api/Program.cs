@@ -36,6 +36,7 @@ builder.Services.AddApiConventions();
 builder.Services.AddQueryValidation();
 builder.Services.AddSearchEndpoints();
 builder.Services.AddQueryHistoryEndpoints();
+builder.Services.AddSavedSearchEndpoints();
 builder.Services.AddSnapshotEndpoints(builder.Configuration);
 builder.Services.AddJobEndpoints();
 builder.Services.AddWorkspaceEndpoints(builder.Configuration);

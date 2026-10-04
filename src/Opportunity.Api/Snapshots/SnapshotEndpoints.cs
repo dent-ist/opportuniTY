@@ -10,6 +10,7 @@ using Opportunity.Application.Authorization;
 using Opportunity.Application.Search;
 using Opportunity.Application.Snapshots;
 using Opportunity.Contracts.Api;
+using Opportunity.Contracts.Search;
 using Opportunity.Core.Security;
 using Opportunity.Core.Snapshots;
 using Opportunity.Data.Snapshots;
@@ -87,11 +88,33 @@ public sealed class SnapshotEndpoints : IApiEndpointModule
             return Problems.Validation(new Dictionary<string, string[]> { ["purpose"] = ["Purpose must be BulkCoding, Export, Production or Report."] });
         }
 
+        var query = request.Query;
+        if (request.SavedSearchId is { } savedSearchId)
+        {
+            if (request.Query is not null || request.DocumentIds is not null || request.SnapshotId is not null)
+            {
+                return Problems.Validation(new Dictionary<string, string[]>
+                {
+                    ["savedSearchId"] = ["Give exactly one source: query, documentIds, snapshotId or savedSearchId."],
+                });
+            }
+
+            // E07-T09: a saved search the caller can see freezes as its reference, so the snapshot records which search it
+            // came from and its criteria are expanded (and filtered for the caller) when the set is selected.
+            if (context.RequestServices.GetService<ISavedSearchQueries>() is not { } savedSearches
+                || await savedSearches.FindForRunAsync(caller.Principal, caller.WorkspaceId, savedSearchId, cancellationToken).ConfigureAwait(false) is null)
+            {
+                return Problems.NotFound("No such saved search.");
+            }
+
+            query = $"{SavedSearchQuerySyntax.FieldName}:{savedSearchId:D}";
+        }
+
         var key = context.Request.Headers[IdempotencyMiddleware.HeaderName].ToString();
         var outcome = await snapshots.CreateAsync(caller, new SnapshotCreateRequest(
             Enum.Parse<SnapshotPurpose>(request.Purpose.ToString()),
             request.Name,
-            request.Query,
+            query,
             request.DocumentIds,
             request.SnapshotId,
             key.Length > 0 ? key : null), cancellationToken).ConfigureAwait(false);

@@ -10,12 +10,14 @@ namespace Opportunity.Contracts.Api;
 /// <param name="Query">Query-language text (empty selects every document you may see).</param>
 /// <param name="DocumentIds">Explicit documents.</param>
 /// <param name="SnapshotId">A Ready snapshot to re-freeze for you.</param>
+/// <param name="SavedSearchId">A saved search you may see: its criteria are run now, filtered for you.</param>
 public sealed record CreateSnapshotRequest(
     SnapshotResourcePurpose Purpose,
     string? Name = null,
     string? Query = null,
     IReadOnlyList<Guid>? DocumentIds = null,
-    Guid? SnapshotId = null);
+    Guid? SnapshotId = null,
+    Guid? SavedSearchId = null);
 
 /// <summary>
 /// A materialized document set (ADR-002). Once <see cref="SnapshotResourceStatus.Ready"/>, <see cref="DocumentCount"/>
