@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 using Opportunity.Application.Audit;
+using Opportunity.Application.Coding;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
@@ -45,14 +46,14 @@ internal sealed class ImportHarness : IAsyncDisposable
 
     private readonly bool _ownsDatabase;
 
-    private ImportHarness(CoreSchemaDatabase db, string storeRoot, ImportJobOptions options, bool ownsDatabase = true)
+    private ImportHarness(CoreSchemaDatabase db, string storeRoot, ImportJobOptions options, bool ownsDatabase = true, IRestrictionClassBinding? restrictions = null)
     {
         _ownsDatabase = ownsDatabase;
         Db = db;
         StoreRoot = storeRoot;
         Options = options;
         Store = new FileSystemObjectStore(new FileSystemObjectStoreOptions { RootPath = storeRoot });
-        Batches = new ImportBatchRepository(db.AppDataSource);
+        Batches = new ImportBatchRepository(db.AppDataSource, restrictions);
         Jobs = new JobRepository(db.AppDataSource);
         Chunks = new JobChunkRepository(db.AppDataSource);
         Workspaces = new WorkspaceReader(db.AppDataSource);
@@ -90,7 +91,9 @@ internal sealed class ImportHarness : IAsyncDisposable
     }
 
     /// <summary>The pipeline over a database another harness owns (and disposes).</summary>
-    public static ImportHarness Over(CoreSchemaDatabase db, int rowsPerChunk = 500, string? volumeRoot = null, int? textCap = null, bool ownsDatabase = false)
+    public static ImportHarness Over(
+        CoreSchemaDatabase db, int rowsPerChunk = 500, string? volumeRoot = null, int? textCap = null, bool ownsDatabase = false,
+        IRestrictionClassBinding? restrictions = null)
     {
         var root = Path.Combine(Path.GetTempPath(), "opp-import-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -100,7 +103,7 @@ internal sealed class ImportHarness : IAsyncDisposable
             KeyBatchSize = 7,
             IndexedTextCap = textCap ?? new ImportJobOptions().IndexedTextCap,
         };
-        return new ImportHarness(db, root, options, ownsDatabase) { Volumes = new ImportVolumeOptions { VolumeShareRoot = volumeRoot } };
+        return new ImportHarness(db, root, options, ownsDatabase, restrictions) { Volumes = new ImportVolumeOptions { VolumeShareRoot = volumeRoot } };
     }
 
     public async Task<Guid> WorkspaceAsync(bool caseSensitive = false)
@@ -128,7 +131,7 @@ internal sealed class ImportHarness : IAsyncDisposable
     {
         codingFields ??= [];
         profile = (profile ?? new ImportProfileDefinition()) with { Mode = mode };
-        profile = profile with { Overlay = profile.Overlay with { AllowCodingFieldOverlay = codingFields.Count > 0 } };
+        profile = profile with { Overlay = profile.Overlay with { AllowCodingFields = codingFields.Count > 0 } };
         var catalog = await Db.Fields.GetCatalogAsync(ws, cancellationToken: Ct);
         var issues = new List<MappingIssue>();
         var options = ImportSource.ReaderOptions(profile, null, issues);

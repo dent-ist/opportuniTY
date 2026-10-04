@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Npgsql;
 
+using Opportunity.Application.Coding;
 using Opportunity.Application.Fields;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
@@ -44,7 +45,10 @@ public static class ImportWorkerModule
         }
 
         services.AddPostgresAuditStore();
-        services.TryAddSingleton<IImportBatchStore>(sp => new ImportBatchRepository(sp.GetRequiredService<NpgsqlDataSource>()));
+        // Security-affecting overlays recompute restriction classes in the chunk transaction (§24); none bound until E05-T06.
+        services.TryAddSingleton<IRestrictionClassBinding>(NoRestrictionClassBinding.Instance);
+        services.TryAddSingleton<IImportBatchStore>(sp => new ImportBatchRepository(
+            sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IRestrictionClassBinding>()));
         services.TryAddSingleton<IJobRepository>(sp => new JobRepository(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddPostgresJobChunkStore();
         services.TryAddSingleton<IFieldCatalogRepository>(sp => new FieldCatalogRepository(sp.GetRequiredService<NpgsqlDataSource>()));

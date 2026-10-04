@@ -104,4 +104,94 @@ public class ImportRowBuilderTests
         rejected.ControlNumber.Should().Be("A-2");
         rejected.Issues.Should().ContainSingle(i => i.Code == "field-count-mismatch");
     }
+
+    [Theory]
+    [InlineData(ImportMode.Append, true, false)]
+    [InlineData(ImportMode.Overlay, false, false)]
+    [InlineData(ImportMode.Overlay, true, true)]
+    [InlineData(ImportMode.AppendOverlay, true, true)]
+    public async Task Blank_values_clear_only_overlays_that_ask_for_it(ImportMode mode, bool overwrite, bool expectCleared)
+    {
+        var custodian = Custom(1000, "Custodian", FieldType.Keyword);
+        var notes = Custom(1001, "Notes", FieldType.Keyword, storage: FieldStorage.Coding);
+        var profile = new ImportProfileDefinition
+        {
+            Mode = mode,
+            Overlay = new OverlaySettings { BlankValuesOverwrite = overwrite, AllowCodingFields = true },
+            Columns =
+            [
+                new ColumnMapping { Column = "NOTES", Targets = [FieldTarget(1001, "Notes")] },
+                new ColumnMapping { Column = "PARENT", Targets = [Structural(StructuralTarget.ParentId)] },
+            ],
+        };
+        var (mapping, records) = await ParseAsync(Concordance(["BEGDOC", "CUSTODIAN", "FILESIZE", "NOTES", "PARENT"], ["A-1", "", " ", "", ""]),
+            Catalog(custodian, notes), profile);
+
+        var row = ImportRowBuilder.Build(mapping, records[0], 1, 2, Workspace, Batch, new HashSet<int> { 1001 });
+
+        row.HasErrors.Should().BeFalse();
+        if (expectCleared)
+        {
+            row.ClearedMetadataKeys.Should().Equal(FieldKey.For(1000));
+            row.SuppliedColumns.Should().Contain(["file_size", "parent_id_norm"]);
+            row.Coding.Should().ContainSingle().Which.Should().Match<ImportCodingValue>(c => c.FieldId == 1001 && c.Value == null);
+        }
+        else
+        {
+            row.ClearedMetadataKeys.Should().BeEmpty();
+            row.SuppliedColumns.Should().NotContain(["file_size", "parent_id_norm"]);
+            row.Coding.Should().BeEmpty("a blank value never overwrites by default");
+        }
+    }
+
+    [Fact]
+    public async Task Multi_value_merge_marks_multiple_choice_values_of_overlays_only()
+    {
+        var tags = Custom(1000, "Tags", FieldType.MultiChoice);
+        var issues = Custom(1001, "Issues", FieldType.MultiChoice, storage: FieldStorage.Coding);
+        Choice[] choices =
+        [
+            new() { WorkspaceId = Workspace, FieldId = 1000, ChoiceId = 10, Name = "Hot", IsActive = true },
+            new() { WorkspaceId = Workspace, FieldId = 1001, ChoiceId = 20, Name = "Pricing", IsActive = true },
+        ];
+        static ImportProfileDefinition Profile(ImportMode mode, OverlayMultiValue multi) => new()
+        {
+            Mode = mode,
+            Overlay = new OverlaySettings { MultiValue = multi, AllowCodingFields = true },
+            Columns =
+            [
+                new ColumnMapping { Column = "TAGS", Targets = [FieldTarget(1000, "Tags")] },
+                new ColumnMapping { Column = "ISSUES", Targets = [FieldTarget(1001, "Issues")] },
+            ],
+        };
+        var dat = Concordance(["BEGDOC", "TAGS", "ISSUES"], ["A-1", "Hot", "Pricing"]);
+
+        foreach (var (mode, multi, merge) in new[]
+                 {
+                     (ImportMode.AppendOverlay, OverlayMultiValue.Merge, true),
+                     (ImportMode.Overlay, OverlayMultiValue.Replace, false),
+                     (ImportMode.Append, OverlayMultiValue.Merge, false),
+                 })
+        {
+            var (mapping, records) = await ParseAsync(dat, Catalog([tags, issues], choices), Profile(mode, multi));
+            var row = ImportRowBuilder.Build(mapping, records[0], 1, 2, Workspace, Batch, new HashSet<int> { 1001 });
+            row.HasErrors.Should().BeFalse(string.Join("; ", row.Issues.Select(i => i.Message)));
+            row.MergedMetadataKeys.Should().BeEquivalentTo(merge ? [FieldKey.For(1000)] : Array.Empty<string>());
+            row.Coding.Single().Merge.Should().Be(merge);
+        }
+    }
+
+    [Theory]
+    [InlineData(ImportMode.Append, true, ImportKeyDecision.KeyExists, ImportKeyRules.KeyExists)]
+    [InlineData(ImportMode.Append, false, ImportKeyDecision.Create, null)]
+    [InlineData(ImportMode.Overlay, true, ImportKeyDecision.Overlay, null)]
+    [InlineData(ImportMode.Overlay, false, ImportKeyDecision.KeyMissing, ImportKeyRules.KeyMissing)]
+    [InlineData(ImportMode.AppendOverlay, true, ImportKeyDecision.Overlay, null)]
+    [InlineData(ImportMode.AppendOverlay, false, ImportKeyDecision.Create, null)]
+    public void Key_collisions_follow_the_import_mode(ImportMode mode, bool exists, ImportKeyDecision decision, string? code)
+    {
+        ImportKeyRules.Decide(mode, exists).Should().Be(decision);
+        ImportKeyRules.Issue(decision, "A-1")?.Code.Should().Be(code);
+        (ImportKeyRules.Issue(decision, "A-1") is null).Should().Be(code is null);
+    }
 }

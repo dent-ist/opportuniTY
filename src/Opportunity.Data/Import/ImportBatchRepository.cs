@@ -7,6 +7,7 @@ using Npgsql;
 using NpgsqlTypes;
 
 using Opportunity.Application.Audit;
+using Opportunity.Application.Coding;
 using Opportunity.Application.Documents;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
@@ -31,7 +32,15 @@ namespace Opportunity.Data.Import;
 /// The chunk write follows the bulk-coding pattern (<c>CodingRepository.ApplyChunkAsync</c>): every write of the chunk,
 /// fence F3 and the chunk's one IndexChunkTask (the transaction's last statement) commit together or not at all.
 /// </summary>
-public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) : IImportBatchStore
+/// <remarks>
+/// Overlays (E08-T07) change only the values a row supplies (blanks too when blank values overwrite), never coding
+/// unless the import enabled coding fields (Q-31). Every changed document gets a DocumentVersion bump, a
+/// <c>document_overlay_event</c> row with its old and new values, and is reindexed by the chunk's IndexChunkTask; the
+/// chunk's <c>Import.Overlaid</c> audit event references those rows (ADR-013 §6.2; §7: audit never holds metadata values).
+/// Security-affecting coding values recompute the restriction classes through <paramref name="restrictions"/> in the
+/// chunk's transaction (§24 rule 1).
+/// </remarks>
+public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, IRestrictionClassBinding? restrictions = null) : IImportBatchStore
 {
     /// <summary>Actor of chunk-level audit events: the import worker, on behalf of the job's initiator.</summary>
     public const string ImportWorkerActor = "service:import";
@@ -436,7 +445,7 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
             }
 
             var plan = await PlanAsync(tx, batch, chunk, write, cancellationToken).ConfigureAwait(false);
-            await WriteAsync(tx, batch, chunk, plan, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(tx, batch, chunk, plan, restrictions, cancellationToken).ConfigureAwait(false);
 
             // Fence F3 after the chunk's own writes; the chunk always gets exactly one IndexChunkTask (§21).
             var relationshipTasks = RelationshipTasks(chunk, plan.OtherChangedDocuments).ToList();
@@ -717,10 +726,9 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
                 {
                     plan.Error(row, "document-deleted", $"The document with control number {row.ControlNumber} was deleted.");
                 }
-                else if (write.Mode == ImportMode.Append)
+                else if (ImportKeyRules.Issue(ImportKeyRules.Decide(write.Mode, exists: true), row.ControlNumber) is { } refused)
                 {
-                    plan.Error(row, "control-number-exists",
-                        $"A document with control number {row.ControlNumber} already exists; Append loads new documents only.");
+                    plan.Error(row, refused.Code, refused.Message);
                 }
                 else if (row.Objects.Any(o => o.DocumentId != document.DocumentId))
                 {
@@ -733,9 +741,9 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
                     plan.Overlays.Add((row, document.DocumentId));
                 }
             }
-            else if (write.Mode == ImportMode.Overlay)
+            else if (ImportKeyRules.Issue(ImportKeyRules.Decide(write.Mode, exists: false), row.ControlNumber) is { } missing)
             {
-                plan.Error(row, "overlay-key-not-found", $"No document with control number {row.ControlNumber} exists to overlay.");
+                plan.Error(row, missing.Code, missing.Message);
             }
             else
             {
@@ -763,7 +771,8 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
     }
 
     private static async Task WriteAsync(
-        WorkspaceTransaction tx, ImportBatchRecord batch, ClaimedChunk chunk, ChunkPlan plan, CancellationToken cancellationToken)
+        WorkspaceTransaction tx, ImportBatchRecord batch, ClaimedChunk chunk, ChunkPlan plan, IRestrictionClassBinding? restrictions,
+        CancellationToken cancellationToken)
     {
         var ws = tx.WorkspaceId;
 
@@ -796,24 +805,36 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
                     notInserted.Add(row.Document.DocumentId);
                 }
 
-                plan.Error(row, "control-number-exists", $"A document with control number {row.ControlNumber} was created by another load meanwhile.");
+                plan.Error(row, ImportKeyRules.KeyExists, $"A document with control number {row.ControlNumber} was created by another load meanwhile.");
             }
         }
 
         await StoredObjectSql.UnregisterDocumentsAsync(tx, notInserted, cancellationToken).ConfigureAwait(false);
 
-        // Overlays: only the supplied values; a blank value never overwrites (overlay options are E08-T07).
-        var changed = await OverlayAsync(tx, plan.Overlays, cancellationToken).ConfigureAwait(false);
+        // Overlays (E08-T07): only the supplied values (and, when blank values overwrite, the blanked ones); each changed
+        // document's old and new values are kept as an overlay event with the version the change created.
+        var changes = await OverlayAsync(tx, plan.Overlays, cancellationToken).ConfigureAwait(false);
+        var changed = changes.Keys.ToHashSet();
         if (changed.Count > 0)
         {
-            await using var bump = tx.Command(
+            var versions = new Dictionary<Guid, long>();
+            await using (var bump = tx.Command(
                 """
                 UPDATE opportunity.document_projection_state SET document_version = document_version + 1
                 WHERE workspace_id = @ws AND document_id = ANY(@ids)
-                """);
-            bump.Parameters.AddWithValue("ws", ws);
-            bump.Parameters.AddWithValue("ids", changed.ToArray());
-            await bump.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                RETURNING document_id, document_version
+                """))
+            {
+                bump.Parameters.AddWithValue("ws", ws);
+                bump.Parameters.AddWithValue("ids", changed.ToArray());
+                await using var reader = await bump.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    versions[reader.GetGuid(0)] = reader.GetInt64(1);
+                }
+            }
+
+            await RecordOverlayEventsAsync(tx, batch, chunk, plan, changes, versions, cancellationToken).ConfigureAwait(false);
         }
 
         // New documents start at version 1 and changed overlays were bumped above, so the derived date needs no bump.
@@ -829,7 +850,7 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
         if (coding.Count > 0)
         {
             var outcome = await CodingRepository.ApplyImportValuesAsync(
-                tx, chunk.Lease.JobId, chunk.InitiatedBy, "import:" + chunk.IdempotencyKey, coding, cancellationToken).ConfigureAwait(false);
+                tx, chunk.Lease.JobId, chunk.InitiatedBy, "import:" + chunk.IdempotencyKey, coding, cancellationToken, restrictions).ConfigureAwait(false);
             codingChanged.UnionWith(outcome.ChangedDocuments);
             plan.CodingChanged = outcome.ChangedDocuments.Count > 0;
             plan.SecurityChanged = outcome.TouchesSecurityAffectingField;
@@ -844,6 +865,8 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
                         ["Changed"] = Invariant(outcome.ChangedDocuments.Count),
                         ["CodingEvents"] = Invariant(outcome.EventsWritten),
                         ["SecurityAffecting"] = outcome.TouchesSecurityAffectingField ? "true" : "false",
+                        ["RestrictionClasses.Added"] = Classes(outcome.RestrictionChanges, added: true),
+                        ["RestrictionClasses.Removed"] = Classes(outcome.RestrictionChanges, added: false),
                     }), cancellationToken).ConfigureAwait(false);
             }
         }
@@ -1008,39 +1031,60 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
     }
 
     /// <summary>
-    /// One UPDATE per overlaid row, sent as one batch: supplied columns are replaced, supplied metadata keys merged. The
-    /// row is touched only when something differs, so an identical re-load changes nothing and bumps nothing.
+    /// One UPDATE per overlaid row, sent as one batch: supplied columns are replaced (blanked ones set to null), supplied
+    /// metadata keys merged in, blanked keys removed and multi-value merge keys united with the stored choices. The row
+    /// is touched only when something differs, so an identical re-load changes nothing and bumps nothing. Returns each
+    /// changed document's changes (<c>{ key: { old, new } }</c>, column names and <c>f{FieldId}</c> keys), read from the
+    /// pre-update row the UPDATE joins (the rows are locked by the plan).
     /// </summary>
-    private static async Task<HashSet<Guid>> OverlayAsync(
+    private static async Task<Dictionary<Guid, JsonObject>> OverlayAsync(
         WorkspaceTransaction tx, List<(ImportRow Row, Guid DocumentId)> overlays, CancellationToken cancellationToken)
     {
-        var changed = new HashSet<Guid>();
+        var changes = new Dictionary<Guid, JsonObject>();
         if (overlays.Count == 0)
         {
-            return changed;
+            return changes;
         }
 
         await using var batch = tx.Batch();
         foreach (var (row, documentId) in overlays)
         {
             var document = row.Document!;
-            var columns = row.SuppliedColumns.Select(name => OverlayColumns.TryGetValue(name, out var c)
+            var columns = row.SuppliedColumns.Order(StringComparer.Ordinal).Select(name => OverlayColumns.TryGetValue(name, out var c)
                 ? c
                 : throw new ArgumentException($"Column '{name}' cannot be overlaid.", nameof(overlays))).ToList();
             var command = new NpgsqlBatchCommand();
             var sets = new List<string>();
             var olds = new List<string>();
             var news = new List<string>();
+            var oldValues = new List<string>();
+            var newValues = new List<string>();
             for (var i = 0; i < columns.Count; i++)
             {
                 command.Parameters.Add(new NpgsqlParameter("p" + Invariant(i), columns[i].Type) { Value = columns[i].Get(document) ?? DBNull.Value });
                 sets.Add($"{columns[i].Name} = @p{Invariant(i)}");
                 olds.Add("d." + columns[i].Name);
                 news.Add("@p" + Invariant(i));
+                oldValues.Add($"'{columns[i].Name}', to_jsonb(o.{columns[i].Name})");
+                newValues.Add($"'{columns[i].Name}', to_jsonb(d.{columns[i].Name})");
             }
 
-            const string metadata = "d.metadata || @meta::jsonb";
-            const string raw = "CASE WHEN @raw::jsonb IS NULL THEN d.metadata_raw ELSE coalesce(d.metadata_raw, '{}') || @raw::jsonb END";
+            var metadata = "(d.metadata - @clear::text[]) || @meta::jsonb";
+            if (row.MergedMetadataKeys.Count > 0)
+            {
+                // Multi-value merge: the stored choices plus the load file's, canonical (distinct, ascending).
+                metadata +=
+                    """
+                     || coalesce((SELECT jsonb_object_agg(k.key, (
+                            SELECT jsonb_agg(DISTINCT e.value ORDER BY e.value)
+                            FROM (SELECT jsonb_array_elements(CASE WHEN jsonb_typeof(d.metadata -> k.key) = 'array' THEN d.metadata -> k.key ELSE '[]'::jsonb END)
+                                  UNION ALL SELECT jsonb_array_elements(@meta::jsonb -> k.key)) AS e(value)))
+                        FROM unnest(@merge::text[]) AS k(key)), '{}'::jsonb)
+                    """;
+            }
+
+            const string raw =
+                "CASE WHEN @raw::jsonb IS NULL THEN d.metadata_raw - @clear::text[] ELSE (coalesce(d.metadata_raw, '{}') - @clear::text[]) || @raw::jsonb END";
             sets.Add("metadata = " + metadata);
             sets.Add("metadata_raw = " + raw);
             olds.Add("d.metadata");
@@ -1050,13 +1094,22 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
             command.CommandText =
                 $"""
                 UPDATE opportunity.document d SET {string.Join(", ", sets)}, updated_at = now()
-                WHERE d.workspace_id = @ws AND d.document_id = @id AND ({string.Join(", ", olds)}) IS DISTINCT FROM ({string.Join(", ", news)})
-                RETURNING d.document_id
+                FROM opportunity.document o
+                WHERE d.workspace_id = @ws AND d.document_id = @id AND o.workspace_id = @ws AND o.document_id = @id
+                  AND ({string.Join(", ", olds)}) IS DISTINCT FROM ({string.Join(", ", news)})
+                RETURNING d.document_id, jsonb_build_object({string.Join(", ", oldValues)})::text, jsonb_build_object({string.Join(", ", newValues)})::text,
+                          o.metadata::text, d.metadata::text
                 """;
             command.Parameters.AddWithValue("ws", tx.WorkspaceId);
             command.Parameters.AddWithValue("id", documentId);
-            command.Parameters.Add(new NpgsqlParameter("meta", NpgsqlDbType.Jsonb) { Value = document.Metadata });
+            command.Parameters.Add(new NpgsqlParameter("meta", NpgsqlDbType.Jsonb) { Value = document.Metadata ?? "{}" });
             command.Parameters.Add(new NpgsqlParameter("raw", NpgsqlDbType.Jsonb) { Value = (object?)document.MetadataRaw ?? DBNull.Value });
+            command.Parameters.Add(new NpgsqlParameter("clear", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = row.ClearedMetadataKeys.Order(StringComparer.Ordinal).ToArray() });
+            if (row.MergedMetadataKeys.Count > 0)
+            {
+                command.Parameters.Add(new NpgsqlParameter("merge", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = row.MergedMetadataKeys.Order(StringComparer.Ordinal).ToArray() });
+            }
+
             batch.BatchCommands.Add(command);
         }
 
@@ -1065,13 +1118,91 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                changed.Add(reader.GetGuid(0));
+                changes[reader.GetGuid(0)] = Diff(
+                    JsonNode.Parse(reader.GetString(1))!.AsObject(), JsonNode.Parse(reader.GetString(2))!.AsObject(),
+                    JsonNode.Parse(reader.GetString(3))!.AsObject(), JsonNode.Parse(reader.GetString(4))!.AsObject());
             }
         }
         while (await reader.NextResultAsync(cancellationToken).ConfigureAwait(false));
 
-        return changed;
+        return changes;
     }
+
+    /// <summary>The keys whose value differs, as <c>{ key: { old, new } }</c>: document columns, then metadata keys.</summary>
+    private static JsonObject Diff(JsonObject oldColumns, JsonObject newColumns, JsonObject oldMetadata, JsonObject newMetadata)
+    {
+        var diff = new JsonObject();
+        void Add(string key, JsonNode? before, JsonNode? after)
+        {
+            if (!JsonNode.DeepEquals(before, after))
+            {
+                diff[key] = new JsonObject { ["old"] = before?.DeepClone(), ["new"] = after?.DeepClone() };
+            }
+        }
+
+        foreach (var (key, value) in newColumns)
+        {
+            Add(key, oldColumns[key], value);
+        }
+
+        foreach (var key in oldMetadata.Select(p => p.Key).Union(newMetadata.Select(p => p.Key), StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            Add(key, oldMetadata[key], newMetadata[key]);
+        }
+
+        return diff;
+    }
+
+    /// <summary>
+    /// The old and new values of every document the chunk's overlay changed (<c>document_overlay_event</c>), and one
+    /// <c>Import.Overlaid</c> audit event for the chunk that references them by import and rows (ADR-013 §6.2): audit
+    /// itself carries only IDs, counts and the changed keys, never metadata values (§7).
+    /// </summary>
+    private static async Task RecordOverlayEventsAsync(
+        WorkspaceTransaction tx, ImportBatchRecord batch, ClaimedChunk chunk, ChunkPlan plan, Dictionary<Guid, JsonObject> changes,
+        Dictionary<Guid, long> versions, CancellationToken cancellationToken)
+    {
+        var rows = plan.Overlays.Where(o => changes.ContainsKey(o.DocumentId)).OrderBy(o => o.Row.RowNo).ToList();
+        await using (var command = tx.Command(
+            """
+            INSERT INTO opportunity.document_overlay_event
+                (workspace_id, import_batch_id, row_no, document_id, document_version, job_id, actor_id, changes)
+            SELECT @ws, @batch, u.row_no, u.document_id, u.version, @job, @actor, u.changes::jsonb
+            FROM unnest(@rows, @documents, @versions, @changes) AS u(row_no, document_id, version, changes)
+            ON CONFLICT DO NOTHING
+            """))
+        {
+            command.Parameters.AddWithValue("ws", tx.WorkspaceId);
+            command.Parameters.AddWithValue("batch", batch.ImportBatchId);
+            command.Parameters.AddWithValue("job", chunk.Lease.JobId);
+            command.Parameters.AddWithValue("actor", chunk.InitiatedBy);
+            command.Parameters.AddWithValue("rows", rows.Select(r => r.Row.RowNo).ToArray());
+            command.Parameters.AddWithValue("documents", rows.Select(r => r.DocumentId).ToArray());
+            command.Parameters.AddWithValue("versions", rows.Select(r => versions[r.DocumentId]).ToArray());
+            command.Parameters.Add(new NpgsqlParameter("changes", NpgsqlDbType.Array | NpgsqlDbType.Text)
+            {
+                Value = rows.Select(r => changes[r.DocumentId].ToJsonString()).ToArray(),
+            });
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        var keys = string.Join(',', changes.Values.SelectMany(c => c.Select(p => p.Key)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+        await AuditSql.InsertAsync(tx, ServiceEvent(batch, chunk, AuditTaxonomy.Import.Category, AuditTaxonomy.Import.Overlaid,
+            new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["ImportBatchId"] = batch.ImportBatchId.ToString(),
+                ["Documents"] = Invariant(rows.Count),
+                ["RowFrom"] = Invariant(chunk.Membership.RangeFrom!.Value),
+                ["RowTo"] = Invariant(chunk.Membership.RangeTo!.Value),
+                ["Changed"] = Truncate(keys, 2_000),
+                ["OldNewValues"] = "document_overlay_event",
+            }), cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string? Classes(IReadOnlyList<RestrictionClassChange> changes, bool added) =>
+        changes.Any(c => c.Added == added)
+            ? string.Join(',', changes.Where(c => c.Added == added).Select(c => c.ClassKey).Distinct().Order(StringComparer.Ordinal))
+            : null;
 
     private static async Task InsertIssuesAsync(WorkspaceTransaction tx, Guid importBatchId, ChunkPlan plan, CancellationToken cancellationToken)
     {

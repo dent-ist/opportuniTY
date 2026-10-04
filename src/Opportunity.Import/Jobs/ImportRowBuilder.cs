@@ -51,6 +51,13 @@ public static partial class ImportRowBuilder
         var raw = new JsonObject();
         var supplied = new HashSet<string>(StringComparer.Ordinal);
         var coding = new List<ImportCodingValue>();
+        var cleared = new HashSet<string>(StringComparer.Ordinal);
+        var merged = new HashSet<string>(StringComparer.Ordinal);
+        var profile = mapping.EffectiveProfile;
+        var overlay = profile.Overlay ?? new OverlaySettings();
+        var overlays = profile.Mode != ImportMode.Append;
+        var clearBlanks = overlays && overlay.BlankValuesOverwrite;
+        var mergeChoices = overlays && overlay.MultiValue == OverlayMultiValue.Merge;
         foreach (var cell in mapped.Cells)
         {
             var column = cell.Column.Column;
@@ -72,8 +79,19 @@ public static partial class ImportRowBuilder
                 continue;
             }
 
-            if (cell.Value is not { } value || cell.Target.IsControlNumber)
+            if (cell.Target.IsControlNumber)
             {
+                continue;
+            }
+
+            if (cell.Value is not { } value)
+            {
+                // E08-T07 "Clear existing values": a blank cell clears what an overlaid document holds.
+                if (clearBlanks && string.IsNullOrWhiteSpace(cell.Raw) && cell.Status == CoercionStatus.Absent)
+                {
+                    Clear(cell, document, supplied, cleared, coding, codingOverlayFieldIds);
+                }
+
                 continue;
             }
 
@@ -115,10 +133,15 @@ public static partial class ImportRowBuilder
                         continue;
                     }
 
-                    coding.Add(new ImportCodingValue(fieldId, value.DeepClone()));
+                    coding.Add(new ImportCodingValue(fieldId, value.DeepClone(), mergeChoices && definition.Type == FieldType.MultiChoice));
                     break;
                 default:
                     metadata[FieldKey.For(fieldId)] = value.DeepClone();
+                    if (mergeChoices && definition.Type == FieldType.MultiChoice)
+                    {
+                        merged.Add(FieldKey.For(fieldId));
+                    }
+
                     break;
             }
 
@@ -163,11 +186,93 @@ public static partial class ImportRowBuilder
             Document = failed ? null : document,
             SuppliedColumns = supplied,
             Coding = coding,
+            ClearedMetadataKeys = cleared,
+            MergedMetadataKeys = merged,
             DuplicateGroup = failed ? null : relationships.DuplicateGroup,
             EmailThread = failed ? null : relationships.EmailThread,
             Issues = issues,
         };
     }
+
+    /// <summary>
+    /// A blank cell under "blank values overwrite" (E08-T07): the column, metadata key, enabled coding field or family
+    /// source it maps to is supplied empty, so an overlay clears it. Paths and upstream relationship identifiers are
+    /// never cleared by a blank (a blank native path does not remove the native).
+    /// </summary>
+    private static void Clear(
+        MappedCell cell, Document document, HashSet<string> supplied, HashSet<string> cleared, List<ImportCodingValue> coding,
+        IReadOnlySet<int> codingOverlayFieldIds)
+    {
+        if (cell.Target.Structural is { } structural)
+        {
+            switch (structural)
+            {
+                case StructuralTarget.ParentId:
+                    supplied.Add("parent_id_norm");
+                    break;
+                case StructuralTarget.GroupId:
+                    supplied.Add("group_identifier");
+                    break;
+                case StructuralTarget.AttachmentIds:
+                    supplied.Add("attachment_ids_norm");
+                    break;
+            }
+
+            return;
+        }
+
+        if (cell.Target.FieldId is not { } fieldId)
+        {
+            return;
+        }
+
+        var definition = cell.Target.Definition;
+        switch (definition.Storage)
+        {
+            case FieldStorage.Column:
+                switch (fieldId)
+                {
+                    case SystemFields.FamilyDate:
+                        supplied.Add("upstream_family_date");
+                        break;
+                    case SystemFields.DocumentDate:
+                        // Cleared upstream date: the chunk derives the document date from the other dates again.
+                        document.DocumentDate = null;
+                        document.DocumentDateSource = null;
+                        supplied.Add("document_date");
+                        supplied.Add("document_date_source");
+                        break;
+                    default:
+                        if (ClearableColumns.Contains(fieldId) && definition.ColumnName is { } column)
+                        {
+                            supplied.Add(column);
+                        }
+
+                        break;
+                }
+
+                break;
+            case FieldStorage.Coding:
+                if (codingOverlayFieldIds.Contains(fieldId))
+                {
+                    coding.Add(new ImportCodingValue(fieldId, null));
+                }
+
+                break;
+            default:
+                cleared.Add(FieldKey.For(fieldId));
+                break;
+        }
+    }
+
+    /// <summary>Column fields <see cref="TrySetColumn"/> loads whose column a blank may clear (FileType keeps its derived value).</summary>
+    private static readonly HashSet<int> ClearableColumns =
+    [
+        SystemFields.BegBates, SystemFields.EndBates, SystemFields.BegAttach, SystemFields.EndAttach, SystemFields.FileName,
+        SystemFields.FileExtension, SystemFields.MimeType, SystemFields.FileSize, SystemFields.PageCount, SystemFields.DateSent,
+        SystemFields.DateReceived, SystemFields.DateCreated, SystemFields.DateLastModified, SystemFields.Md5, SystemFields.Sha1,
+        SystemFields.Sha256,
+    ];
 
     /// <summary>
     /// Upstream duplicate group, dedupe/email hash and email thread (E09-T02, ADR-009 R13-R20). The columns it sets

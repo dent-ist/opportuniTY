@@ -173,13 +173,52 @@ public sealed record ParsingDefaults
     public IReadOnlyList<string> FalseValues { get; init; } = [];
 }
 
+/// <summary>How an overlay writes a multiple-choice value onto a document that already has one (E08-T07).</summary>
+public enum OverlayMultiValue
+{
+    /// <summary>The load file's values replace the document's values.</summary>
+    Replace,
+
+    /// <summary>The load file's values are added to the document's values.</summary>
+    Merge,
+}
+
+/// <summary>Overlay and append/overlay options (E08-T07, guide §5.1 step 4). Append ignores all but the key.</summary>
 public sealed record OverlaySettings
 {
-    /// <summary>Field that identifies existing documents on overlay; null is Control Number.</summary>
+    /// <summary>The control number field's name, the default overlay key.</summary>
+    public const string ControlNumberKey = "ControlNumber";
+
+    /// <summary>
+    /// Field that identifies existing documents (by name or id). Only fields declared unique may be keys; today that is
+    /// Control Number (<c>ControlNumber</c>, the default).
+    /// </summary>
+    public string? KeyField { get; init; } = ControlNumberKey;
+
+    /// <summary>
+    /// "Clear existing values": a blank value in the load file clears the document's value. Off ("Leave existing
+    /// values") by default: blank values never overwrite.
+    /// </summary>
+    public bool BlankValuesOverwrite { get; init; }
+
+    /// <summary>Multiple-choice values: <c>replace</c> (default) or <c>merge</c> with the document's values.</summary>
+    public OverlayMultiValue MultiValue { get; init; } = OverlayMultiValue.Replace;
+
+    /// <summary>
+    /// Q-31: coding and privilege fields are loaded only when a Workspace Admin allows it for this import (audited, with
+    /// the fields it enabled). An overlay never touches coding fields otherwise.
+    /// </summary>
+    public bool AllowCodingFields { get; init; }
+
+    /// <summary>Deprecated alias of <see cref="KeyField"/> by field id; null defers to <see cref="KeyField"/>.</summary>
     public int? KeyFieldId { get; init; }
 
-    /// <summary>Q-31: coding and privilege fields are only mappable when an admin enables this (audited per load).</summary>
+    /// <summary>Deprecated alias of <see cref="AllowCodingFields"/>; either one allows coding fields.</summary>
     public bool AllowCodingFieldOverlay { get; init; }
+
+    /// <summary>Coding and privilege fields may be mapped (<see cref="AllowCodingFields"/> or its deprecated alias).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool CodingFieldsAllowed => AllowCodingFields || AllowCodingFieldOverlay;
 }
 
 /// <summary>

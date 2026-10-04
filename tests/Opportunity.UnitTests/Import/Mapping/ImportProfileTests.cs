@@ -172,7 +172,7 @@ public class ImportProfileTests
     }
 
     [Fact]
-    public void Overlay_by_another_key_field_does_not_need_a_control_number_mapping()
+    public void Only_control_number_can_be_the_overlay_key_and_it_must_be_mapped()
     {
         var catalog = Catalog(Custom(1000, "Doc Key", FieldType.Keyword));
         ImportProfileDefinition overlay = new()
@@ -182,8 +182,17 @@ public class ImportProfileTests
             Columns = [Map("KEY", FieldTarget(1000, "Doc Key"))],
         };
 
-        MappingCompiler.Compile(overlay, ["KEY"], catalog, new MappingOptions { AutoMap = false }).HasErrors.Should().BeFalse();
-        MappingCompiler.Compile(overlay with { Mode = ImportMode.AppendOverlay }, ["KEY"], catalog, new MappingOptions { AutoMap = false })
-            .Issues.Should().Contain(i => i.Code == "control-number-unmapped");
+        // Rows are matched by control number; no other field is declared unique (E08-T07).
+        MappingCompiler.Compile(overlay, ["KEY"], catalog, new MappingOptions { AutoMap = false })
+            .Issues.Select(i => i.Code).Should().Contain(["overlay-key-not-unique", "overlay-key-unmapped"]);
+        MappingCompiler.Compile(overlay with { Overlay = new OverlaySettings { KeyField = "Doc Key" } }, ["KEY"], catalog, new MappingOptions { AutoMap = false })
+            .Issues.Should().Contain(i => i.Code == "overlay-key-not-unique");
+        foreach (var key in new[] { "ControlNumber", "Control Number", "controlnumber", "1", null })
+        {
+            MappingCompiler.IsControlNumberKey(new OverlaySettings { KeyField = key }).Should().BeTrue(key);
+        }
+
+        MappingCompiler.Compile(overlay with { Overlay = new OverlaySettings() }, ["KEY"], catalog, new MappingOptions { AutoMap = false })
+            .Issues.Select(i => i.Code).Should().Contain("overlay-key-unmapped").And.NotContain("overlay-key-not-unique");
     }
 }

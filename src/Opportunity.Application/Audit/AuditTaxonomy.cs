@@ -62,6 +62,9 @@ public static class AuditTaxonomy
         public const string Category = "Import";
         public const string Started = "Started";
         public const string Completed = "Completed";
+
+        /// <summary>An import chunk overlaid documents (E08-T07); old and new values are in <c>document_overlay_event</c>.</summary>
+        public const string Overlaid = "Overlaid";
     }
 
     /// <summary>Load-file exports of a frozen set (E12-T01, ADR-013 §5).</summary>
@@ -132,7 +135,7 @@ public static class AuditTaxonomy
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun"),
-        .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch"),
+        .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",
             "AcknowledgmentAccepted"),

@@ -110,6 +110,7 @@ export type { MeResponse } from './models/me-response';
 export type { MissingFilePolicy } from './models/missing-file-policy';
 export type { NewFieldPreview } from './models/new-field-preview';
 export type { NewFieldSpec } from './models/new-field-spec';
+export type { OverlayMultiValue } from './models/overlay-multi-value';
 export type { OverlaySettings } from './models/overlay-settings';
 export type { ParsingDefaults } from './models/parsing-defaults';
 export type { PathSettings } from './models/path-settings';
