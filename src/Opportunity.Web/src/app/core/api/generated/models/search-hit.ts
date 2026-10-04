@@ -12,6 +12,7 @@ export interface SearchHit {
   fileName: string | null;
   fileSize: number | string | null;
   fileType: string | null;
+  isFamilyParent?: boolean;
   mimeType: string | null;
   pageCount: number | string | null;
   parentDocumentId: string | null;

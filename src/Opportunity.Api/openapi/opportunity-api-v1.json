@@ -4733,6 +4733,10 @@
             "items": {
               "$ref": "#/components/schemas/SearchSnippet"
             }
+          },
+          "isFamilyParent": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

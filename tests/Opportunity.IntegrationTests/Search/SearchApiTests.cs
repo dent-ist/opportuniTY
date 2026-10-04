@@ -65,7 +65,8 @@ public sealed class SearchApiTests(OpenSearchFixture openSearch, MigrationPostgr
         root.GetProperty("items")[0].GetProperty("snippets")[0].GetProperty("highlights").GetArrayLength().Should().BeGreaterThan(0);
         root.GetProperty("items")[0].TryGetProperty("text", out _).Should().BeFalse("responses carry grid fields and snippets, never full text");
         root.GetProperty("total").GetProperty("relation").GetString().Should().Be("eq");
-        root.GetProperty("freshness").GetProperty("servedGeneration").ValueKind.Should().Be(JsonValueKind.Null);
+        root.GetProperty("freshness").GetProperty("servedGeneration").ValueKind.Should().Be(JsonValueKind.Number);
+        root.GetProperty("freshness").GetProperty("current").GetBoolean().Should().BeTrue("no search work is pending (Q-10)");
         var searchId = root.GetProperty("searchId").GetString()!;
         var cursor = root.GetProperty("nextCursor").GetString()!;
         audit.Events.Should().Contain(e => e.Action == "Executed" && e.RestrictedDetails!["query"] == "contract termination");

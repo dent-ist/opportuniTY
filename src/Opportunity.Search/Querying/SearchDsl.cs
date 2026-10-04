@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 
 using Opportunity.Application.Authorization;
 using Opportunity.Contracts.Search;
+using Opportunity.Core.QueryLanguage;
 
 using static Opportunity.Search.Indexing.JsonBodies;
 
@@ -31,6 +32,24 @@ internal sealed record SortKey(string Field, string Path, bool Descending)
 
     /// <summary>Relevance, best first.</summary>
     public static SortKey Default { get; } = new(SearchSortFields.Relevance, ScorePath, Descending: true);
+
+    /// <summary>Control Number ascending (natural order, ADR-009 R5).</summary>
+    public static SortKey ControlNumber { get; } = new("controlNumber", ProjectionFields.ControlNumberSort, Descending: false);
+
+    /// <summary>
+    /// The sort of a request that gives none: relevance when the query has a keyword (an unfielded term, phrase,
+    /// wildcard or proximity outside a NOT), else Control Number ascending. Without a keyword every hit scores alike
+    /// (match-all, filters), so relevance order would be arbitrary.
+    /// </summary>
+    public static SortKey DefaultFor(QueryNode? ast) => ast is not null && HasKeyword(ast) ? Default : ControlNumber;
+
+    private static bool HasKeyword(QueryNode node) => node switch
+    {
+        TermNode or PhraseNode or WildcardNode or ProximityNode => true,
+        AndNode and => and.Children.Any(HasKeyword),
+        OrNode or => or.Children.Any(HasKeyword),
+        _ => false,
+    };
 
     public static string ToJson(IReadOnlyList<SortKey> keys) =>
         new JsonArray([.. keys.Select(k => (JsonNode)Obj(("field", k.Field), ("direction", k.Descending ? "desc" : "asc")))]).ToJsonString();

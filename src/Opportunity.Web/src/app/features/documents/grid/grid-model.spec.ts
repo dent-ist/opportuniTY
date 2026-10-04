@@ -70,9 +70,16 @@ describe('Document list columns', () => {
     ]);
   });
 
-  it('marks attachments', () => {
+  it('marks parents and attachments, not standalone documents', () => {
     expect(familyMarker(hit(1))).toBeNull();
-    expect(familyMarker(hit(2, { parentDocumentId: 'doc-1' }))).toEqual({
+    expect(familyMarker(hit(1, { isFamilyParent: false }))).toBeNull();
+    expect(familyMarker(hit(1, { isFamilyParent: true }))).toEqual({
+      symbol: 'P',
+      label: 'Parent',
+    });
+    expect(
+      familyMarker(hit(2, { familyId: 'doc-1', familySequence: 1, parentDocumentId: 'doc-1' })),
+    ).toEqual({
       symbol: '└A',
       label: 'Attachment',
     });

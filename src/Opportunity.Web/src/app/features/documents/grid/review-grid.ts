@@ -522,7 +522,7 @@ export class ReviewGrid {
     void this.run({ anchor: this.focusedId() });
   }
 
-  /** Header click or Enter on a header: ascending → descending → back to relevance. */
+  /** Header click or Enter on a header: ascending → descending → back to the default order (relevance with a keyword, else Control Number). */
   protected toggleSort(column: GridColumn): void {
     if (!column.sortField) return;
     const current = this.sort();

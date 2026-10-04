@@ -12,6 +12,7 @@ export function hit(n: number, overrides: Partial<SearchHit> = {}): SearchHit {
     fileName: `Message ${n}.msg`,
     fileSize: 2048 * n,
     fileType: 'Email',
+    isFamilyParent: false,
     mimeType: 'application/vnd.ms-outlook',
     pageCount: 2,
     parentDocumentId: null,

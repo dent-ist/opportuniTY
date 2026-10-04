@@ -8,7 +8,12 @@
    `must_not terms securityTags` for denied classes/walls; the user clause goes only into `bool.must`.
 4. **Search** a point-in-time reader of the placement's read alias (`IIndexManager`; routing on shared indexes) with
    `search_after` and the `documentId` tie-breaker, `track_total_hits` capped at 10,000 (Q-32), bounded snippets.
+   Without an explicit sort, a query with a keyword (an unfielded term, phrase, wildcard or proximity outside a NOT)
+   sorts by relevance and any other query (empty, filters only) by Control Number ascending (`SortKey.DefaultFor`); an
+   explicit sort always wins.
 5. **Post-filter** the page: `AuthorizeManyAsync(Document.View, DenialAudit.Summary)` against PostgreSQL (Q-12, Q-59).
+   Then one size-0 aggregation on the same reader and outer filter marks family parents (`SearchHit.IsFamilyParent`:
+   top-level documents of the page whose family has members with `familySequence >= 1`).
 6. **Persist** the reader and positions in `search_session` / `search_cursor` (V0013, RLS); clients get opaque IDs
    bound to (user, session, workspace). Mismatches answer 404 and are audited (`AuthZ.Denied`, `SearchHandleMismatch`).
 7. **Audit** `Search.Executed` with the full text in restricted details (Q-16); later pages `Search.ResultsPageServed`.
@@ -41,6 +46,9 @@ selection. No search handle is stored; `DocumentSetSnapshotService` audits the s
   `documentId` as `Guid "D"` strings, `controlNumber.sort`, `fileName.kw`, stored `text`) and encode security
   attributes in `securityTags` as `SecurityTags.Class(classKey)` / `SecurityTags.Wall(wallId)`. Grid columns come from
   `ProjectionFields.GridSource`; extend it (and `SearchHit`) when field capabilities arrive.
-- **Watermark (E07-T08)** – fill `SearchFreshness.ServedGeneration`/`Current` and `AuditEvent.SearchGeneration`.
+- **Watermark (E07-T08)** – interim: `ISearchWatermarkReader` reads the applied watermark (ADR-001 §7.2) before the
+  reader opens; it is stored as `search_session.served_generation` and served as `SearchFreshness.ServedGeneration`,
+  with `Current` true while the workspace's generation counter still equals it. E07-T08 makes it refresh-aware and
+  fills `AuditEvent.SearchGeneration`.
 - **Pending-set exclusion (ADR-015 D8.3, E05-T06)** – add the unindexed security-change IDs as a second server-side
   `must_not` in `SearchDsl.Query`.

@@ -24,6 +24,7 @@ function searchPage(total: number, pageSize: number, number: number) {
   const count = Math.max(0, Math.min(pageSize, total - first + 1));
   const items = Array.from({ length: count }, (_, i) => {
     const n = first + i;
+    // Families of a parent and one attachment (n % 4 === 3 → n + 1), the rest standalone.
     const attachment = n % 4 === 0;
     return {
       documentId: `doc-${n}`,
@@ -35,7 +36,8 @@ function searchPage(total: number, pageSize: number, number: number) {
       fileExtension: attachment ? 'pdf' : 'msg',
       fileName: attachment ? `Attachment ${n}.pdf` : `RE: Quarterly terms ${n}.msg`,
       fileSize: 1024 * ((n * 37) % 900) + 512,
-      fileType: attachment ? 'PDF Document' : 'Email Message',
+      fileType: attachment ? 'PDF' : 'Email',
+      isFamilyParent: n % 4 === 3 && n < total,
       mimeType: attachment ? 'application/pdf' : 'application/vnd.ms-outlook',
       pageCount: (n % 7) + 1,
       snippets: [],
