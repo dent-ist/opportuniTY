@@ -262,8 +262,11 @@ services:
       # The dev realm's client credential (keycloak/opportunity-realm.json); a real IdP's secret comes from a secret store.
       Authentication__Oidc__ClientSecret: opportunity-dev-client
       Authentication__Oidc__RequireHttpsMetadata: "false"
+      # Import pre-flight (E08-T06) checks that the natives, text and images a load file names exist (stat only).
+      Import__VolumeShareRoot: /var/lib/opportunity/import
     volumes:
       - objects:/var/lib/opportunity/objects
+      - ${OPPORTUNITY_IMPORT_SHARE:-./import-share}:/var/lib/opportunity/import:ro
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${API_PORT:-8081}:8080"
     healthcheck: *ready-healthcheck

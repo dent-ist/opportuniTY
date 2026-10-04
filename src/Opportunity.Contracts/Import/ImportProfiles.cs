@@ -107,6 +107,12 @@ public sealed record ImportProfileDefinition
 
     public RelationshipSettings Relationships { get; init; } = new();
 
+    /// <summary>
+    /// 'Stop after N errors' (E08-T06): once at least this many rows have errored, the import stops (job Failed with
+    /// <c>import-error-limit</c>); rows already committed stay loaded. Null runs the whole file.
+    /// </summary>
+    public int? StopAfterErrors { get; init; }
+
     /// <summary>One row per load-file column, by header name.</summary>
     public IReadOnlyList<ColumnMapping> Columns { get; init; } = [];
 }

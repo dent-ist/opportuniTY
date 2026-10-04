@@ -27,6 +27,8 @@ using Opportunity.Data.Workspaces;
 using Opportunity.Import.Jobs;
 using Opportunity.Import.LoadFiles;
 using Opportunity.Import.Mapping;
+using Opportunity.Import.Preflight;
+using Opportunity.Import.Volumes;
 using Opportunity.Security.Authorization;
 
 namespace Opportunity.Api.Import;
@@ -65,6 +67,20 @@ public sealed class ImportEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
+        // Same body as the start; nothing but the pre-flight's own result is written (E08-T06).
+        group.MapPost("/preflight", PreflightAsync)
+            .WithName("PreflightImport")
+            .WithTags("Import")
+            .WithSummary("Pre-flight an import: check the load file, mapping, rows, workspace collisions and file paths without loading anything.")
+            .WithDescription("Same multipart body as starting an import. 200 with error/warning counts and the first 200 issues; all issues download as CSV from …/imports/preflight/{preflightId}/issues for 48 hours (creator only).")
+            .DisableAntiforgery()
+            .Accepts<ImportStartForm>("multipart/form-data")
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
+            .ProducesProblem(StatusCodes.Status415UnsupportedMediaType);
+
         group.MapGet(string.Empty, ListAsync)
             .WithName("ListImports")
             .WithTags("Import")
@@ -99,34 +115,44 @@ public sealed class ImportEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status404NotFound);
     }
 
-    internal static async Task<Results<Accepted<ImportResource>, ValidationProblem, ProblemHttpResult>> StartAsync(
-        string workspaceId,
+    /// <summary>A start (or pre-flight) form read and authorized: files, request, effective profile and reader settings.</summary>
+    internal sealed record StartForm(
+        WorkspaceAccess Access,
+        IFormFile? File,
+        IFormFile? Opt,
+        ImportStartRequest Request,
+        ImportProfileDefinition Profile,
+        long? ProfileVersion,
+        string Name,
+        string FileName,
+        string OptFileName,
+        IReadOnlyList<int> CodingFields,
+        DatReaderOptions ReaderOptions)
+    {
+        public bool ImagesOnly => File is null;
+    }
+
+    /// <summary>
+    /// Reads the multipart start form (shared by the start and the pre-flight, which take the same body), resolves the
+    /// profile and checks the permissions beyond <c>Import.Run</c> that the mode and coding overlay need.
+    /// </summary>
+    internal static async Task<(StartForm? Form, ValidationProblem? Invalid, ProblemHttpResult? Problem)> ReadStartFormAsync(
         HttpContext context,
-        IImportBatchStore batches,
         IImportProfileRepository profiles,
-        IFieldCatalogRepository fields,
-        IWorkspaceReader workspaces,
         IAuthorizationService authorization,
-        IImportSourceStore sources,
-        IOptions<ImportStartOptions> options,
-        IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> json,
+        ImportStartOptions options,
+        JsonSerializerOptions json,
         CancellationToken cancellationToken)
     {
-        _ = workspaceId;
         if (context.GetWorkspaceAccess() is not { } access)
         {
-            return Problems.NotFound("No such workspace.");
+            return (null, null, Problems.NotFound("No such workspace."));
         }
 
         var ws = access.WorkspaceId;
-        if (!sources.IsAvailable)
-        {
-            return Problems.Create(StatusCodes.Status503ServiceUnavailable, ProblemCodes.ServiceUnavailable, "Object storage is not configured.");
-        }
-
         if (!context.Request.HasFormContentType)
         {
-            return Problems.Create(StatusCodes.Status415UnsupportedMediaType, ProblemCodes.UnsupportedMediaType, "Send multipart/form-data with a file and a request part.");
+            return (null, null, Problems.Create(StatusCodes.Status415UnsupportedMediaType, ProblemCodes.UnsupportedMediaType, "Send multipart/form-data with a file and a request part."));
         }
 
         // Bound by hand: the form carries a file larger than any buffer, and the JSON part needs the API's options.
@@ -135,7 +161,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
         var opt = form.Files.GetFile("opt") is { Length: > 0 } optFile ? optFile : null;
         if (file is null && opt is null)
         {
-            return Validation("file", "The DAT file is required (or an OPT alone, to re-load the pages of existing documents).");
+            return (null, Validation("file", "The DAT file is required (or an OPT alone, to re-load the pages of existing documents)."), null);
         }
 
         // The request part may also arrive as a JSON file part (a Blob in browser FormData, most HTTP clients' file
@@ -145,17 +171,17 @@ public sealed class ImportEndpoints : IApiEndpointModule
         {
             if (requestPart.Length > MaxRequestPartBytes)
             {
-                return Validation("request", $"The request part has at most {MaxRequestPartBytes} bytes.");
+                return (null, Validation("request", $"The request part has at most {MaxRequestPartBytes} bytes."), null);
             }
 
             using var reader = new StreamReader(requestPart.OpenReadStream(), Encoding.UTF8);
             requestJson = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        if (file?.Length > options.Value.MaxDatBytes || opt?.Length > options.Value.MaxDatBytes)
+        if (file?.Length > options.MaxDatBytes || opt?.Length > options.MaxDatBytes)
         {
-            return Problems.Create(StatusCodes.Status413PayloadTooLarge, ProblemCodes.PayloadTooLarge,
-                $"A DAT or OPT of at most {options.Value.MaxDatBytes} bytes can be uploaded.");
+            return (null, null, Problems.Create(StatusCodes.Status413PayloadTooLarge, ProblemCodes.PayloadTooLarge,
+                $"A DAT or OPT of at most {options.MaxDatBytes} bytes can be uploaded."));
         }
 
         // An OPT without a DAT replaces the pages of existing documents (ticket review E08-T05): an overlay.
@@ -166,11 +192,11 @@ public sealed class ImportEndpoints : IApiEndpointModule
         {
             request = string.IsNullOrWhiteSpace(requestJson)
                 ? new ImportStartRequest()
-                : JsonSerializer.Deserialize<ImportStartRequest>(requestJson, json.Value.SerializerOptions) ?? new ImportStartRequest();
+                : JsonSerializer.Deserialize<ImportStartRequest>(requestJson, json) ?? new ImportStartRequest();
         }
         catch (JsonException ex)
         {
-            return Validation("request", $"Not a valid import request: {ex.Message}");
+            return (null, Validation("request", $"Not a valid import request: {ex.Message}"), null);
         }
 
         var fileName = SafeFileName(file?.FileName, "loadfile.dat");
@@ -185,7 +211,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
             : request.Name.Trim();
         if (name.Length > MaxNameLength || name.Any(char.IsControl))
         {
-            return Validation("name", $"The import name has at most {MaxNameLength} characters and no control characters.");
+            return (null, Validation("name", $"The import name has at most {MaxNameLength} characters and no control characters."), null);
         }
 
         // Profile: saved, ad hoc or defaults; the mode chosen in step 1 wins.
@@ -195,12 +221,12 @@ public sealed class ImportEndpoints : IApiEndpointModule
         {
             if (profile is not null)
             {
-                return Validation("profile", "Give either profileId or profile, not both.");
+                return (null, Validation("profile", "Give either profileId or profile, not both."), null);
             }
 
             if (await profiles.GetAsync(ws, profileId, cancellationToken).ConfigureAwait(false) is not { } saved)
             {
-                return Problems.NotFound("No such import profile.");
+                return (null, null, Problems.NotFound("No such import profile."));
             }
 
             profile = ImportProfileRules.Deserialize(saved.DefinitionJson);
@@ -217,12 +243,12 @@ public sealed class ImportEndpoints : IApiEndpointModule
         {
             if (request.Mode is ImportMode.Append or ImportMode.AppendOverlay)
             {
-                return Validation("mode", "An OPT without a DAT replaces the pages of existing documents: use mode overlay.");
+                return (null, Validation("mode", "An OPT without a DAT replaces the pages of existing documents: use mode overlay."), null);
             }
 
             if (request.CodingOverlayFieldIds.Count > 0)
             {
-                return Validation("codingOverlayFieldIds", "An OPT-only load loads no field values.");
+                return (null, Validation("codingOverlayFieldIds", "An OPT-only load loads no field values."), null);
             }
 
             profile = profile with { Mode = ImportMode.Overlay };
@@ -237,29 +263,68 @@ public sealed class ImportEndpoints : IApiEndpointModule
             var decision = await authorization.AuthorizeAsync(access.Principal, ws, Permission.ImportOverlay, cancellationToken).ConfigureAwait(false);
             if (!decision.IsAllowed)
             {
-                return AuthorizationResults.Problem(decision);
+                return (null, null, AuthorizationResults.Problem(decision));
             }
         }
 
         // The system fields must exist before the header is mapped (Control Number, file metadata).
         await WorkspaceProvisioning.EnsureFieldsAsync(context.RequestServices, ws, cancellationToken).ConfigureAwait(false);
 
-        // The header decides the mapping; validate it before anything is stored.
-        var workspace = await workspaces.GetAsync(ws, cancellationToken).ConfigureAwait(false);
-        var catalog = await fields.GetCatalogAsync(ws, cancellationToken: cancellationToken).ConfigureAwait(false);
         var settingsIssues = new List<MappingIssue>();
         var readerOptions = ImportSource.ReaderOptions(profile, null, settingsIssues);
         if (settingsIssues.Any(i => i.Severity == MappingIssueSeverity.Error))
         {
-            return MappingProblem(settingsIssues);
+            return (null, MappingProblem(settingsIssues), null);
         }
 
-        if (imagesOnly)
+        return (new StartForm(access, file, opt, request, profile, profileVersion, name, fileName, optFileName, codingFields, readerOptions), null, null);
+    }
+
+    internal static async Task<Results<Accepted<ImportResource>, ValidationProblem, ProblemHttpResult>> StartAsync(
+        string workspaceId,
+        HttpContext context,
+        IImportBatchStore batches,
+        IImportProfileRepository profiles,
+        IFieldCatalogRepository fields,
+        IWorkspaceReader workspaces,
+        IAuthorizationService authorization,
+        IImportSourceStore sources,
+        IOptions<ImportStartOptions> options,
+        IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> json,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (context.GetWorkspaceAccess() is null)
+        {
+            return Problems.NotFound("No such workspace.");
+        }
+
+        if (!sources.IsAvailable)
+        {
+            return Problems.Create(StatusCodes.Status503ServiceUnavailable, ProblemCodes.ServiceUnavailable, "Object storage is not configured.");
+        }
+
+        var (start, invalid, problem) = await ReadStartFormAsync(context, profiles, authorization, options.Value, json.Value.SerializerOptions, cancellationToken)
+            .ConfigureAwait(false);
+        if (start is null)
+        {
+            return invalid is not null ? invalid : problem!;
+        }
+
+        var access = start.Access;
+        var ws = access.WorkspaceId;
+        var (file, opt, request, profile, profileVersion, name) = (start.File, start.Opt, start.Request, start.Profile, start.ProfileVersion, start.Name);
+        var (fileName, optFileName, readerOptions) = (start.FileName, start.OptFileName, start.ReaderOptions);
+        var codingFields = start.CodingFields;
+        if (start.ImagesOnly)
         {
             return await StartImagesOnlyAsync(context, access, batches, sources, opt!, name, optFileName, profile, request, profileVersion, cancellationToken)
                 .ConfigureAwait(false);
         }
 
+        // The header decides the mapping; validate it before anything is stored.
+        var workspace = await workspaces.GetAsync(ws, cancellationToken).ConfigureAwait(false);
+        var catalog = await fields.GetCatalogAsync(ws, cancellationToken: cancellationToken).ConfigureAwait(false);
         CompiledMapping mapping;
         var sample = file!.OpenReadStream();
         await using (sample.ConfigureAwait(false))
@@ -400,6 +465,101 @@ public sealed class ImportEndpoints : IApiEndpointModule
         return string.IsNullOrEmpty(name) || name.Any(char.IsControl) ? fallback : name[..Math.Min(name.Length, 255)];
     }
 
+    /// <summary>Issues returned inline by the pre-flight; the rest download as CSV.</summary>
+    public const int PreflightInlineIssues = 200;
+
+    internal static async Task<Results<Ok<ImportPreflightResource>, ValidationProblem, ProblemHttpResult>> PreflightAsync(
+        string workspaceId,
+        HttpContext context,
+        IImportProfileRepository profiles,
+        IFieldCatalogRepository fields,
+        IWorkspaceReader workspaces,
+        IAuthorizationService authorization,
+        IImportPreflightStore preflights,
+        ImportPreflightRunner runner,
+        IAuditEventWriter audit,
+        IOptions<ImportStartOptions> options,
+        IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> json,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        var (start, invalid, problem) = await ReadStartFormAsync(context, profiles, authorization, options.Value, json.Value.SerializerOptions, cancellationToken)
+            .ConfigureAwait(false);
+        if (start is null)
+        {
+            return invalid is not null ? invalid : problem!;
+        }
+
+        var access = start.Access;
+        var ws = access.WorkspaceId;
+        var workspace = await workspaces.GetAsync(ws, cancellationToken).ConfigureAwait(false);
+        var catalog = await fields.GetCatalogAsync(ws, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var dat = start.File?.OpenReadStream();
+        var opt = start.Opt?.OpenReadStream();
+        ImportPreflightResult result;
+        try
+        {
+            result = await runner.RunAsync(new ImportPreflightRequest
+            {
+                WorkspaceId = ws,
+                Dat = dat,
+                Opt = opt,
+                Profile = start.Profile,
+                Catalog = catalog,
+                AutoMap = start.Request.AutoMap,
+                ControlNumberCaseSensitive = workspace?.ControlNumberCaseSensitive ?? false,
+                CodingOverlayFieldIds = start.CodingFields,
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (dat is not null)
+            {
+                await dat.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (opt is not null)
+            {
+                await opt.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+
+        var principal = access.Principal;
+        var now = DateTimeOffset.UtcNow;
+        var record = new ImportPreflightRecord(ws, Guid.CreateVersion7(), principal.UserId, now, now + IImportPreflightStore.RetentionPeriod,
+            start.Profile.Mode, start.FileName, result.RowsRead, result.ErrorCount, result.WarningCount, result.IssuesDropped);
+        await preflights.SaveAsync(record, result.Issues, cancellationToken).ConfigureAwait(false);
+        await audit.WriteAsync(new AuditEvent
+        {
+            WorkspaceId = ws,
+            OccurredAt = now,
+            Category = AuditTaxonomy.Import.Category,
+            Action = AuditTaxonomy.Import.PreflightRun,
+            ActorType = AuditActorType.User,
+            ActorId = principal.UserId.ToString(),
+            ActorDisplay = string.IsNullOrEmpty(principal.DisplayName) ? principal.UserId.ToString() : principal.DisplayName,
+            ClientIp = principal.ClientIp,
+            UserAgent = principal.UserAgent,
+            CorrelationId = principal.CorrelationId,
+            ResourceType = "ImportPreflight",
+            ResourceId = record.PreflightId.ToString(),
+            Outcome = AuditOutcome.Success,
+            Details = new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["PreflightId"] = record.PreflightId.ToString(),
+                ["SourceFileName"] = start.FileName,
+                ["Mode"] = start.Profile.Mode.ToString(),
+                ["RowsRead"] = result.RowsRead.ToString(CultureInfo.InvariantCulture),
+                ["ErrorCount"] = result.ErrorCount.ToString(CultureInfo.InvariantCulture),
+                ["WarningCount"] = result.WarningCount.ToString(CultureInfo.InvariantCulture),
+            },
+        }, cancellationToken).ConfigureAwait(false);
+
+        return TypedResults.Ok(new ImportPreflightResource(
+            record.PreflightId, result.RowsRead, result.ErrorCount, result.WarningCount, result.Blocking, result.IssueCounts,
+            [.. result.Issues.Take(PreflightInlineIssues)], start.Profile.Mode));
+    }
+
     internal static async Task<Results<Ok<CursorPage<ImportResource>>, ValidationProblem, ProblemHttpResult>> ListAsync(
         string workspaceId, [AsParameters] PageQuery page, HttpContext context, IImportBatchStore batches, IJobRepository jobs,
         CancellationToken cancellationToken)
@@ -442,7 +602,8 @@ public sealed class ImportEndpoints : IApiEndpointModule
     }
 
     internal static async Task<Results<Ok<ImportResource>, ProblemHttpResult>> GetAsync(
-        string workspaceId, string importId, HttpContext context, IImportBatchStore batches, IJobRepository jobs, CancellationToken cancellationToken)
+        string workspaceId, string importId, HttpContext context, IImportBatchStore batches, IJobRepository jobs, IImportReportStore reports,
+        CancellationToken cancellationToken)
     {
         _ = workspaceId;
         if (context.GetWorkspaceAccess() is not { } access || !Guid.TryParse(importId, out var id)
@@ -452,7 +613,36 @@ public sealed class ImportEndpoints : IApiEndpointModule
             return Problems.NotFound("No such import.");
         }
 
-        return TypedResults.Ok(ToResource(record, job));
+        var report = await reports.GetAsync(access.WorkspaceId, id, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(ToResource(record, job) with { Summary = report is null ? null : ToReportResource(record, job, report) });
+    }
+
+    /// <summary>The import report resource (E08-T06) of a batch, its job and its report figures.</summary>
+    public static ImportReportResource ToReportResource(ImportBatchRecord record, JobInfo job, ImportReportData report)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(job);
+        ArgumentNullException.ThrowIfNull(report);
+        return new ImportReportResource(
+            record.ImportBatchId,
+            record.Name,
+            record.Mode,
+            record.SourceFileName,
+            JobEndpoints.ToResource(job).Status,
+            report.Final,
+            report.StartedAt,
+            report.CompletedAt,
+            report.ElapsedSeconds,
+            new ImportReportRows(report.RowsRead, report.RowsImported, report.RowsOverlaid, report.RowsSkipped, report.RowsErrored, report.RowsWithWarnings),
+            new ImportReportFiles(report.NativesLinked, report.NativesMissing),
+            new ImportReportFiles(report.TextLinked, report.TextMissing, report.TextTruncated),
+            new ImportReportImages(report.ImageDocumentsLinked, report.DocumentsWithoutImages, report.PagesLinked, report.PagesMissing),
+            new ImportReportFamilies(report.FamiliesBuilt, report.FamilyOrphans),
+            report.FieldsCreated,
+            report.ChoicesCreated,
+            report.ErrorFileRows,
+            [.. report.IssueCounts.Select(c => new ImportPreflightIssueCount(
+                c.Code, c.Severity == ImportIssueSeverity.Error ? ImportRowIssueSeverity.Error : ImportRowIssueSeverity.Warning, c.Count))]);
     }
 
     internal static async Task<Results<Ok<CursorPage<ImportRowIssueResource>>, ValidationProblem, ProblemHttpResult>> ListErrorsAsync(
@@ -652,6 +842,16 @@ public static class ImportEndpointRegistration
         services.TryAddSingleton<IJobRepository, JobRepository>();
         services.TryAddSingleton<IFieldCatalogRepository, FieldCatalogRepository>();
         services.TryAddSingleton<IWorkspaceReader, WorkspaceReader>();
+        services.TryAddSingleton<IImportReportStore, ImportReportRepository>();
+        services.TryAddSingleton<IImportPreflightStore, ImportPreflightRepository>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IImportPreflightCheck, AppendKeyCollisionCheck>());
+        // Pre-flight stats the files a load names (never reads them): the import share, read-only, when configured.
+        services.TryAddSingleton(new ImportVolumeOptions
+        {
+            VolumeShareRoot = configuration[$"{ImportVolumeOptions.SectionName}:{nameof(ImportVolumeOptions.VolumeShareRoot)}"],
+        });
+        services.TryAddSingleton(sp => new ImportPreflightRunner(
+            sp.GetRequiredService<IImportPreflightStore>(), sp.GetServices<IImportPreflightCheck>(), sp.GetRequiredService<ImportVolumeOptions>()));
         services.AddImportSourceStore();
         services.AddSingleton<IApiEndpointModule, ImportEndpoints>();
         return services;

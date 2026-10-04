@@ -13,9 +13,11 @@ Q-29 (indexed-text cap).
 
 The DAT itself is still uploaded through `POST /workspaces/{id}/imports` and stored content-addressed under
 `imports/{importId}/source/`. The import profile's `paths.volumeRoot` names the volume folder **inside** the share
-(`matter-a/VOL001`, never an absolute path); without it the share itself is the volume. The API never reads the share;
-only the import worker does. A load that maps `NativeLink`, or `TextLink` without text-in-DAT mode, fails its
-preparation with `import-volume-unavailable` when the share is not configured or the folder does not exist.
+(`matter-a/VOL001`, never an absolute path); without it the share itself is the volume. Only the import worker reads
+files from the share; the API mounts it read-only too, but only to check that files exist during the pre-flight
+(E08-T06; it resolves paths with the same rules and never opens a file). A load that maps `NativeLink`, or `TextLink`
+without text-in-DAT mode, fails its preparation with `import-volume-unavailable` when the share is not configured or
+the folder does not exist.
 
 ## Path rules (`Opportunity.Import.Volumes`)
 
@@ -63,3 +65,26 @@ No outcome fails the chunk. An unreadable share (I/O error) fails the chunk tran
 The OPT image load (`E08-T05`) reuses `ImportVolume` (resolve), `VolumeObjectWriter.StoreFileAsync` with the `Image`
 area (store), `ImportObject` (the stored file a row carries) and `StoredObjectSql.RegisterAsync` (registry rows in the
 chunk transaction).
+
+## Pre-flight, import report and error file (E08-T06)
+
+- **Pre-flight** (`POST …/imports/preflight`, same multipart body as the start, `Import.Run` plus `Import.Overlay` for
+  overlay modes): one streaming read with the importer's own parser, mapping and row builder. Checks: header and
+  mapping, field count per row, required values (control number: `REQUIRED_FIELD_MISSING`), value coercion
+  (`DATE_PARSE_FAILED`, unknown choices, hashes), duplicate control numbers within the file, collisions with the
+  workspace through pluggable `IImportPreflightCheck`s (Append: `KEY_EXISTS`, `KEY_RETIRED`; overlay modes add
+  `KEY_MISSING`), and file existence. Nothing is written but the pre-flight's own result (`import_preflight`, kept 48
+  hours for its creator) and a `Import.PreflightRun` audit event.
+- **Path rule:** the native/text/image paths of the first 10,000 rows that name files are all checked; after that every
+  100th such row is checked and a `PATHS_SAMPLED` warning states how many were. Without `Import:VolumeShareRoot` on the
+  API the paths are not checked (`PATHS_NOT_CHECKED` warning); a configured share without the volume folder is a
+  `VOLUME_UNAVAILABLE` error.
+- **Report:** computed from the batch, its documents, page sets and row issues; frozen on `import_batch.report` by the
+  transaction that completes the import and summarized in its `Import.Completed` audit event. `GET …/imports/{id}`
+  embeds it as `summary`; `…/report` and `…/report.csv` serve it through the gateway (`Import.ReportDownloaded`).
+- **Error file** (`…/error-file`, gateway, audited): built on demand from the retained source DAT and the row errors —
+  the header plus `ImportError`, then each failed row byte for byte in the source's delimiters, encoding and BOM. The
+  mapping never loads an `ImportError` column, so the fixed file loads again unchanged. Rows over the record-size limit
+  cannot be reproduced and appear only in the row errors.
+- **Stop after N errors:** profile `stopAfterErrors`; once the committed chunks errored at least N rows the job fails
+  with `import-error-limit` (committed rows stay loaded) and the report is frozen.

@@ -113,7 +113,7 @@ internal sealed class ImportHarness : IAsyncDisposable
     public ImportJobPreparer Preparer() =>
         new(Batches, Jobs, Db.Fields, Workspaces, Store, Options, NullLogger<ImportJobPreparer>.Instance, Volumes);
 
-    public ImportChunkExecutor Executor() => new(Batches, Db.Fields, Workspaces, Store, Options, Volumes);
+    public ImportChunkExecutor Executor() => new(Batches, Db.Fields, Workspaces, Store, Options, Volumes, Jobs);
 
     /// <summary>A Concordance DAT (þ qualifier, DC4 separator, CRLF rows).</summary>
     public static string Dat(params string[][] rows) =>

@@ -660,7 +660,10 @@ public sealed class DatReader : IAsyncDisposable, IDisposable
 
             if (_o.ReturnRejectedRecords)
             {
-                result = new DatRecord(Header, row, line, offset, length, [.. _fields], issues, true, key);
+                result = new DatRecord(Header, row, line, offset, length, [.. _fields], issues, true, key)
+                {
+                    RawRecord = _o.CaptureRawRecords ? raw.ToArray() : default,
+                };
             }
         }
         else
@@ -671,7 +674,10 @@ public sealed class DatReader : IAsyncDisposable, IDisposable
                 Statistics.RowsWithWarnings++;
             }
 
-            result = new DatRecord(Header, row, line, offset, length, [.. _fields], issues, false, key);
+            result = new DatRecord(Header, row, line, offset, length, [.. _fields], issues, false, key)
+            {
+                RawRecord = _o.CaptureRawRecords ? raw.ToArray() : default,
+            };
         }
 
         Consume();

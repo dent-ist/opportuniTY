@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Opportunity.Application.Fields;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
@@ -29,8 +31,12 @@ public sealed class ImportChunkExecutor(
     IWorkspaceReader workspaces,
     IObjectStore store,
     ImportJobOptions options,
-    ImportVolumeOptions? volumes = null) : IJobChunkExecutor
+    ImportVolumeOptions? volumes = null,
+    IJobRepository? jobs = null) : IJobChunkExecutor
 {
+    /// <summary>Failure code of an import stopped by 'Stop after N errors' (E08-T06).</summary>
+    public const string ErrorLimitReached = "import-error-limit";
+
     public ChunkOperationKind OperationKind => ChunkOperationKind.ImportChunk;
 
     public async Task<ChunkExecutionResult> ExecuteAsync(ChunkExecutionContext context, CancellationToken cancellationToken)
@@ -140,7 +146,33 @@ public sealed class ImportChunkExecutor(
         // Fence F2 before the PostgreSQL batch; F3 runs inside the store's transaction.
         await context.CheckFenceAsync(cancellationToken).ConfigureAwait(false);
         var result = await batches.ApplyChunkAsync(chunk, new ImportChunkWrite(batchId, batch.Mode, rows), cancellationToken).ConfigureAwait(false);
+        if (result.Committed && result.Errored > 0 && profile.StopAfterErrors is { } limit)
+        {
+            await StopAtErrorLimitAsync(ws, batchId, limit, cancellationToken).ConfigureAwait(false);
+        }
+
         return ChunkExecutionResult.Committed(result.Commit);
+    }
+
+    /// <summary>
+    /// 'Stop after N errors': once the committed chunks errored at least <paramref name="limit"/> rows, the job fails
+    /// (its open chunks are cancelled, committed rows stay loaded) and the import completes with its frozen report.
+    /// </summary>
+    private async Task StopAtErrorLimitAsync(Guid ws, Guid batchId, int limit, CancellationToken cancellationToken)
+    {
+        if (jobs is null || await batches.GetAsync(ws, batchId, cancellationToken).ConfigureAwait(false) is not { } current
+            || current.RowsErrored < limit)
+        {
+            return;
+        }
+
+        var reason = string.Create(CultureInfo.InvariantCulture,
+            $"{ErrorLimitReached}: {current.RowsErrored} rows errored, at or over the limit of {limit} ('Stop after N errors'); the remaining rows were not loaded.");
+        var failed = await jobs.FailAsync(ws, current.JobId, reason, cancellationToken).ConfigureAwait(false);
+        if (failed.Applied)
+        {
+            await batches.RecordCompletedAsync(ws, batchId, ErrorLimitReached, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>The images of the DAT rows' OPT documents, stored for the document each row creates or overlays.</summary>
