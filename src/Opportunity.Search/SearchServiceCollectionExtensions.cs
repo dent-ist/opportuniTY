@@ -11,6 +11,7 @@ using Opportunity.Application.Search.Projection;
 using Opportunity.Application.SearchWork;
 using Opportunity.Application.Storage;
 using Opportunity.Application.Telemetry;
+using Opportunity.Application.Workspaces;
 using Opportunity.Core.QueryLanguage;
 using Opportunity.Search.Indexing;
 using Opportunity.Search.Projection;
@@ -137,6 +138,27 @@ public static class SearchServiceCollectionExtensions
         services.AddSearchProjection(projection);
         services.AddProjectionIndexWriter(writer);
         services.TryAddScoped<ChunkIndexTaskConsumer>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the interactive index worker (E07-T03): <see cref="InteractiveIndexWorker"/> (scoped, like every message
+    /// handler), the projection pipeline and the shared writer. Bind it to the security and interactive lanes with
+    /// <c>AddMessageHandler&lt;SearchOutboxMessage, InteractiveIndexWorker&gt;(queue)</c>. The host also registers
+    /// <see cref="ISearchOutboxRepository"/>, <see cref="IWorkspaceReader"/>, <see cref="IProjectionSourceReader"/>,
+    /// <see cref="IIndexPlacementStore"/> and <see cref="IObjectStore"/>.
+    /// </summary>
+    public static IServiceCollection AddInteractiveIndexWorker(
+        this IServiceCollection services, InteractiveIndexWorkerOptions? options = null, ProjectionWriterOptions? writer = null, ProjectionOptions? projection = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        options ??= new InteractiveIndexWorkerOptions();
+        options.Validate();
+        services.TryAddSingleton(options);
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSearchProjection(projection);
+        services.AddProjectionIndexWriter(writer);
+        services.TryAddScoped<InteractiveIndexWorker>();
         return services;
     }
 

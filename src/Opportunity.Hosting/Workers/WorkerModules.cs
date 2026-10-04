@@ -31,6 +31,11 @@ public static class WorkerModuleCatalog
             services.AddImportWorker(configuration);
         }
 
+        if (type == WorkerTypes.Indexing)
+        {
+            services.AddIndexingWorker(configuration);
+        }
+
         if (type == WorkerTypes.Dispatcher)
         {
             AddDispatcher(services, configuration);

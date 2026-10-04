@@ -15,6 +15,8 @@ public class SearchIndexIsolationTests
 {
     private const string IndexingNamespace = "Opportunity.Search.Indexing";
     private const string QueryingNamespace = "Opportunity.Search.Querying";
+    private const string WritingNamespace = "Opportunity.Search.Writing";
+    private const string WorkersNamespace = "Opportunity.Search.Workers";
 
     public static TheoryData<string> NonSearchAssemblies => new()
     {
@@ -83,6 +85,27 @@ public class SearchIndexIsolationTests
         string[] internals = ["IndexNames", "OpenSearchConnection", "IndexTemplates", "IndexManager"];
 
         search.GetExportedTypes().Select(t => t.Name).Should().NotContain(internals);
+    }
+
+    /// <summary>
+    /// E07-T03 / ADR-001 R1: projection writes reach OpenSearch only through the search module's writer, used by the index
+    /// workers. Outside <c>Opportunity.Search</c>, only the indexing worker modules (Hosting composition) may name the
+    /// writer or the workers, and the writer implementation is not public.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(NonSearchAssemblies))]
+    public void Only_index_workers_write_projections(string assemblyName)
+    {
+        var types = Types.InAssembly(Assembly.Load(assemblyName));
+        var result = assemblyName == "Opportunity.Hosting"
+            ? types.That().DoNotHaveNameEndingWith("WorkerModule").ShouldNot().HaveDependencyOnAny(WritingNamespace, WorkersNamespace).GetResult()
+            : types.ShouldNot().HaveDependencyOnAny(WritingNamespace, WorkersNamespace).GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            "{0} must not write projections (ADR-001 R1); offending: {1}",
+            assemblyName,
+            string.Join(", ", result.FailingTypeNames ?? []));
+        typeof(Search.AssemblyMarker).Assembly.GetExportedTypes().Select(t => t.Name).Should().NotContain("ProjectionIndexWriter");
     }
 
     [Fact]

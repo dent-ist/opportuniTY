@@ -15,9 +15,13 @@ public sealed class PostgresCollectionDefinition : ICollectionFixture<PostgresFi
     public const string Name = "PostgreSQL";
 }
 
-/// <summary>Also starts a PostgreSQL container: the search service suites need authoritative security state (E07-T05).</summary>
+/// <summary>
+/// Also starts PostgreSQL (the search service suites need authoritative security state, E07-T05) and RabbitMQ (the index
+/// workers consume the dispatcher's lanes end to end, E07-T03), so no second OpenSearch container is needed.
+/// </summary>
 [CollectionDefinition(Name)]
-public sealed class OpenSearchCollectionDefinition : ICollectionFixture<OpenSearchFixture>, ICollectionFixture<MigrationPostgresFixture>
+public sealed class OpenSearchCollectionDefinition
+    : ICollectionFixture<OpenSearchFixture>, ICollectionFixture<MigrationPostgresFixture>, ICollectionFixture<RabbitMqFixture>
 {
     public const string Name = "OpenSearch";
 }
