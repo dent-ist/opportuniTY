@@ -2,6 +2,7 @@ import {
   HttpBackend,
   HttpErrorResponse,
   HttpEvent,
+  HttpHeaders,
   HttpRequest,
   HttpResponse,
 } from '@angular/common/http';
@@ -11,6 +12,7 @@ import { Observable, defer, of, throwError } from 'rxjs';
 export interface FakeResponse {
   status?: number;
   body?: unknown;
+  headers?: Record<string, string>;
 }
 
 type Handler = FakeResponse | ((req: HttpRequest<unknown>) => FakeResponse);
@@ -36,14 +38,18 @@ export class FakeApi implements HttpBackend {
     return defer(() => {
       this.requests.push(req);
       const handler = this.handlers.get(`${req.method} ${req.url}`);
-      const { status = 200, body = null } = !handler
+      const {
+        status = 200,
+        body = null,
+        headers,
+      } = !handler
         ? { status: 404, body: { title: 'Not found', status: 404 } }
         : typeof handler === 'function'
           ? handler(req)
           : handler;
       return status >= 400
         ? throwError(() => new HttpErrorResponse({ status, error: body, url: req.url }))
-        : of(new HttpResponse({ status, body, url: req.url }));
+        : of(new HttpResponse({ status, body, url: req.url, headers: new HttpHeaders(headers) }));
     });
   }
 }

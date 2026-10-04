@@ -23,6 +23,10 @@ const PATHS = {
   inbox: 'M3.5 13.5l3-8h11l3 8M3.5 13.5V19h17v-5.5M3.5 13.5H9l1 2h4l1-2h5.5',
   help: 'M12 21a9 9 0 100-18 9 9 0 000 18zM9.5 9.5a2.5 2.5 0 114 2c-1 .6-1.5 1.2-1.5 2.5M12 17v.5',
   unfold: 'M8 9l4-4 4 4M8 15l4 4 4-4',
+  // Review mode: back to the list; panes.
+  'back-to-list': 'M10 7H20M10 12H20M10 17H20M7 9l-3 3 3 3',
+  'pane-right': 'M4 4.5h16v15H4zM14.5 4.5v15',
+  'pane-bottom': 'M4 4.5h16v15H4zM4 14.5h16',
   fold: 'M8 4.5l4 4 4-4M8 19.5l4-4 4 4',
   // Workspace navigation (sidebar).
   documents: 'M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 12h6M9.5 15.5h6',

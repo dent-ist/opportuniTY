@@ -98,9 +98,8 @@ test('the user menu opens, changes the theme and closes with the keyboard', asyn
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
-// Command framework (E15-T03, familiarity guide §4). The review screen's own loop (code → Save & Next → next
-// document) arrives with E16-T03/T05 and extends this file then; until it exists the loop is covered against the
-// registry in src/app/core/commands/command-registry.spec.ts.
+// Command framework (E15-T03, familiarity guide §4). The review loop (open → Next / Save & Next → back to the
+// list) is covered below (E16-T03); coding itself arrives with E16-T05.
 
 test('focuses the keyword search with Alt+Shift+K and /, cycles regions and opens the cheat sheet with ?', async ({
   page,
@@ -246,9 +245,8 @@ test('works the document list with the keyboard: rows, selection and open (E16-T
   await page.keyboard.press('Control+Home');
   await expect.poll(active).toBe('ACM0000001');
   await page.keyboard.press('Enter');
-  await expect(
-    page.getByText('Review mode is not available yet (ACM0000001).').first(),
-  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Viewer' })).toBeFocused();
+  await expect(page.locator('.review__position')).toHaveText('Doc 1 of 250');
 });
 
 test('filters the document list from the filter row with the keyboard only (#191)', async ({
@@ -323,4 +321,184 @@ test('filters the document list from the filter row with the keyboard only (#191
   await expect(fileName).toBeHidden();
   await expect(grid).toBeFocused();
   await expect(filters).toHaveAttribute('aria-pressed', 'false');
+});
+
+// Review mode (E16-T03, familiarity guide §3.2): the review cursor, the panes as regions and the way back.
+
+test('reviews with the keyboard only: cursor across pages, panes as regions, Save & Next and back to the list (E16-T03)', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await tabTo(page, grid);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Space');
+  await expect(page.getByText('Selected: 1')).toBeVisible();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+
+  const viewer = page.getByRole('region', { name: 'Viewer' });
+  const coding = page.getByRole('region', { name: 'Coding' });
+  const related = page.getByRole('region', { name: 'Related Items' });
+  const position = page.locator('.review__position');
+  await expect(viewer).toBeFocused();
+  await expect(position).toHaveText('Doc 100 of 250');
+  await expect(viewer.getByLabel('Extracted text of ACM0000100')).toContainText(
+    'Document ACM0000100',
+  );
+
+  // Next crosses into the second cursor page; Previous comes back; ] is the single-key alternative.
+  await page.keyboard.press('Alt+Shift+Period');
+  await expect(position).toHaveText('Doc 101 of 250');
+  await expect(viewer.getByLabel('Extracted text of ACM0000101')).toBeVisible();
+  await page.keyboard.press('BracketRight');
+  await expect(position).toHaveText('Doc 102 of 250');
+  await page.keyboard.press('Alt+Shift+Comma');
+  await expect(position).toHaveText('Doc 101 of 250');
+
+  // Each pane is a named region in the region cycle: viewer → coding → related.
+  await page.keyboard.press('Alt+Shift+KeyG');
+  await expect(coding).toBeFocused();
+  await page.keyboard.press('Alt+Shift+KeyG');
+  await expect(related).toBeFocused();
+  await page.keyboard.press('Alt+Shift+KeyG');
+  await expect(viewer).toBeFocused();
+  await page.keyboard.press('Alt+Shift+KeyI');
+  await expect(related).toBeFocused();
+
+  // Save & Next (Ctrl+Enter) from anywhere in Review mode.
+  await page.keyboard.press('Control+Enter');
+  await expect(position).toHaveText('Doc 102 of 250');
+
+  // The splitter collapses the Related Items pane; the cycle skips it while it is hidden.
+  const splitter = page.getByRole('separator', { name: 'Resize Related Items pane' });
+  await tabTo(page, splitter);
+  await page.keyboard.press('Enter');
+  await expect(splitter).toHaveAttribute('aria-valuenow', '0');
+  await expect(page.getByRole('button', { name: 'Related Items' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  await page.keyboard.press('Alt+Shift+KeyB');
+  await expect(coding).toBeFocused();
+  await page.keyboard.press('Alt+Shift+KeyB');
+  await expect(viewer).toBeFocused();
+
+  // Back to the list: focus, the reviewed document and the selection are where the reviewer left them.
+  await page.keyboard.press('Escape');
+  await expect(grid).toBeFocused();
+  await expect
+    .poll(() =>
+      grid.evaluate((el) =>
+        document
+          .getElementById(el.getAttribute('aria-activedescendant') ?? '')
+          ?.textContent?.trim(),
+      ),
+    )
+    .toBe('ACM0000102');
+  await expect(grid.getByRole('gridcell', { name: 'ACM0000102', exact: true })).toBeInViewport();
+  await expect(page.getByText('Selected: 1')).toBeVisible();
+});
+
+test('back to the list restores its scroll position; pane sizes follow the user to another browser (E16-T03)', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await tabTo(page, grid);
+  for (let i = 0; i < 3; i++) await page.keyboard.press('PageDown');
+  await expect.poll(() => grid.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  const scrollTop = await grid.evaluate((el) => el.scrollTop);
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('region', { name: 'Viewer' })).toBeFocused();
+
+  const splitter = page.getByRole('separator', { name: 'Resize coding pane' });
+  await tabTo(page, splitter);
+  const saved = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().endsWith('/api/v1/me/preferences/pane.review.coding'),
+  );
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect(splitter).toHaveAttribute('aria-valuenow', '38');
+  expect((await saved).postDataJSON()).toEqual({ size: 38, collapsed: false });
+
+  await page.keyboard.press('Alt+Shift+KeyL');
+  await expect(grid).toBeFocused();
+  expect(await grid.evaluate((el) => el.scrollTop)).toBe(scrollTop);
+
+  // Another browser: nothing stored locally; the pane size comes from the user profile on the server.
+  await page.evaluate(() => localStorage.clear());
+  await openPage(page, '/w/ws-1/documents');
+  await grid.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('separator', { name: 'Resize coding pane' })).toHaveAttribute(
+    'aria-valuenow',
+    '38',
+  );
+});
+
+test('prefetches the next document through the gateway as prefetch, never as a view (E16-T03)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  await page.getByRole('grid', { name: 'Documents' }).focus();
+  await page.keyboard.press('Enter');
+  const viewer = page.getByRole('region', { name: 'Viewer' });
+  await expect(viewer.getByLabel('Extracted text of ACM0000001')).toBeVisible();
+
+  // The view beacon and the prefetch both follow the display, in either order.
+  const events = () =>
+    mock.audit.map((e) => `${e.action} ${e.documentId} ${e.purpose ?? e.retrievalId}`).sort();
+  await expect
+    .poll(events)
+    .toEqual(['Retrieved doc-1 display', 'Retrieved doc-2 prefetch', 'Viewed doc-1 retrieval-1']);
+
+  // Displaying the prefetched document records its view against the prefetch delivery; doc-3 is prefetched.
+  await page.keyboard.press('BracketRight');
+  await expect(viewer.getByLabel('Extracted text of ACM0000002')).toBeVisible();
+  await expect
+    .poll(events)
+    .toEqual([
+      'Retrieved doc-1 display',
+      'Retrieved doc-2 prefetch',
+      'Retrieved doc-3 prefetch',
+      'Viewed doc-1 retrieval-1',
+      'Viewed doc-2 retrieval-2',
+    ]);
+  expect(mock.audit.filter((e) => e.action === 'Viewed' && e.documentId === 'doc-3')).toEqual([]);
+});
+
+test('keeps reviewing when the results refresh and offers Continue from next when the document left them (Q-33)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await grid.focus();
+  // Row 80: far enough from the end of the first page that the list has not fetched the second.
+  for (let i = 0; i < 79; i++) await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  const position = page.locator('.review__position');
+  await expect(position).toHaveText('Doc 80 of 250');
+
+  // The search expires on the server, and ACM0000100 is recoded out of the results by someone else.
+  mock.expireSearches();
+  mock.removeDocuments(100);
+  for (let n = 81; n <= 99; n++) {
+    await page.keyboard.press('BracketRight');
+    await expect(position).toHaveText(`Doc ${n} of 250`);
+  }
+  await page.keyboard.press('BracketRight');
+  // At the end of the loaded page the cursor fetched the next one: the search ran again without the document.
+  const status = page.getByRole('status').filter({ hasText: 'no longer in the results' });
+  await expect(status).toContainText('ACM0000100 is no longer in the results.');
+  await expect(status).toContainText(
+    'Results refreshed: the search had expired and was run again.',
+  );
+  await expect(position).toHaveText('Not in the refreshed results · 249');
+
+  await tabTo(page, page.getByRole('button', { name: 'Continue from next' }));
+  await page.keyboard.press('Enter');
+  await expect(position).toHaveText('Doc 100 of 249');
+  await expect(page.locator('.review__control')).toHaveText('ACM0000101');
 });

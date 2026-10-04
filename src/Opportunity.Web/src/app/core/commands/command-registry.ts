@@ -213,19 +213,23 @@ export class CommandScopeDirective {
 /**
  * A focus region for "Next / Previous region" (Alt+Shift+G / Alt+Shift+B): list → viewer → coding → related on
  * the review screen. The region must have an accessible name (`aria-label` or `aria-labelledby`); focus lands
- * on the region itself so screen readers announce it.
+ * on the region itself so screen readers announce it. Regions cycle in document order unless they give an
+ * order (`oppCommandRegion="2"`), for layouts whose visual order differs from the source order.
  */
 @Directive({
   selector: '[oppCommandRegion]',
-  host: { 'data-command-region': '', tabindex: '-1' },
+  host: { '[attr.data-command-region]': 'oppCommandRegion()', tabindex: '-1' },
 })
-export class CommandRegionDirective {}
+export class CommandRegionDirective {
+  readonly oppCommandRegion = input<string | number>('');
+}
 
 /** Moves focus to the next (`step` 1) or previous (-1) visible command region; false when there is none. */
 export function cycleRegion(document: Document, step: 1 | -1): boolean {
-  const regions = [...document.querySelectorAll<HTMLElement>('[data-command-region]')].filter(
-    (r) => !r.closest('[hidden],[inert],[aria-hidden="true"]'),
-  );
+  const order = (r: HTMLElement) => Number(r.dataset['commandRegion']) || 0;
+  const regions = [...document.querySelectorAll<HTMLElement>('[data-command-region]')]
+    .filter((r) => !r.closest('[hidden],[inert],[aria-hidden="true"]'))
+    .sort((a, b) => order(a) - order(b));
   if (regions.length === 0) return false;
   const active = document.activeElement;
   const current = regions.findIndex((r) => r === active || r.contains(active));
