@@ -22,3 +22,14 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "wildcard": {
+      "fileName.wc": {
+        "value": "*budget*",
+        "case_insensitive": true,
+        "rewrite": "constant_score"
+      }
+    }
+  }

@@ -39,3 +39,23 @@ ast: |
       }
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "span_near": {
+      "clauses": [
+        {
+          "span_term": {
+            "metadata.txt.s002": "merger"
+          }
+        },
+        {
+          "span_term": {
+            "metadata.txt.s002": "acquisition"
+          }
+        }
+      ],
+      "slop": 2,
+      "in_order": false
+    }
+  }

@@ -17,6 +17,7 @@ const PATHS = {
   refresh: 'M19 8a8 8 0 10.9 6M19 3.5V8h-4.5',
   clock: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3.5 2',
   search: 'M10.5 17.5a7 7 0 100-14 7 7 0 000 14zM15.5 15.5L21 21',
+  filter: 'M4 5h16l-6 7.5v5.5l-4 2v-7.5z',
   'grip-vertical': 'M10 6v.5M14 6v.5M10 12v.5M14 12v.5M10 18v.5M14 18v.5',
   'grip-horizontal': 'M6 10h.5M12 10h.5M18 10h.5M6 14h.5M12 14h.5M18 14h.5',
   inbox: 'M3.5 13.5l3-8h11l3 8M3.5 13.5V19h17v-5.5M3.5 13.5H9l1 2h4l1-2h5.5',

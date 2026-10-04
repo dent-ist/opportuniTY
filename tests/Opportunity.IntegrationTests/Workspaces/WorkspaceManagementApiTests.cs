@@ -114,6 +114,11 @@ public sealed class WorkspaceManagementApiTests(MigrationPostgresFixture postgre
 
         using var list = await JsonAsync(await SendAsync(client, HttpMethod.Get, "/api/v1/workspaces", admin));
         Ids(list).Should().Equal(ws);
+
+        // Provisioned for loading: the system fields exist, so an import can map Control Number at once.
+        using var fields = await JsonAsync(await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{ws}/fields?limit=200", admin));
+        fields.RootElement.GetProperty("items").EnumerateArray().Select(f => f.GetProperty("queryName").GetString())
+            .Should().Contain(["controlnumber", "filename", "date"]);
         (await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{ws}", plain)).StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         var audit = await db.Core.ColumnAsync(

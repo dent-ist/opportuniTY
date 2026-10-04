@@ -1,0 +1,21 @@
+description: "R7: at least 3 literal characters on full text"
+query: "co*"
+printed: "co*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "wildcard",
+      "span": {
+        "start": 0,
+        "end": 3
+      },
+      "pattern": "co*"
+    }
+  }
+planError:
+  code: LEADING_WILDCARD
+  span: [0, 3]
+  expected: []
+  message: "A wildcard on 'text' needs at least 3 literal character(s) before the first * or ?."

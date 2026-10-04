@@ -26,3 +26,12 @@ ast: |
       }
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "metadata.dt.s002": {
+        "gte": "2025-03-01T08:00:00.000Z"
+      }
+    }
+  }

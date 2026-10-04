@@ -27,6 +27,9 @@ public static class ProjectionFields
 
     public const string FileName = "fileName";
     public const string FileNameKeyword = "fileName.kw";
+
+    /// <summary><c>wildcard</c>-typed subfield: leading and infix wildcards (ADR-008 R7, <c>filename:*.xlsx</c>).</summary>
+    public const string FileNameWildcard = "fileName.wc";
     public const string FileType = "fileType";
     public const string FileExtension = "fileExtension";
     public const string MimeType = "mimeType";

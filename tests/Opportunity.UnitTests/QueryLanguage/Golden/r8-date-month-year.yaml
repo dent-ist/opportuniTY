@@ -29,3 +29,13 @@ ast: |
       }
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "documentDate": {
+        "gte": "2025-03-01T00:00:00.000Z",
+        "lt": "2027-01-01T00:00:00.000Z"
+      }
+    }
+  }

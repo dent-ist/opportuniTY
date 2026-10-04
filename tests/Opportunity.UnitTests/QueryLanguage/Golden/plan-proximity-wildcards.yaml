@@ -1,0 +1,67 @@
+description: "R6/R7: wildcard operands become span_multi with constant_score_boolean (never truncated)"
+query: "contr* W/5 terminat*"
+printed: "contr* W/5 terminat*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "proximity",
+      "span": {
+        "start": 0,
+        "end": 20
+      },
+      "distance": 5,
+      "ordered": false,
+      "left": {
+        "kind": "wildcard",
+        "span": {
+          "start": 0,
+          "end": 6
+        },
+        "pattern": "contr*"
+      },
+      "right": {
+        "kind": "wildcard",
+        "span": {
+          "start": 11,
+          "end": 20
+        },
+        "pattern": "terminat*"
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "span_near": {
+      "clauses": [
+        {
+          "span_multi": {
+            "match": {
+              "wildcard": {
+                "text": {
+                  "value": "contr*",
+                  "rewrite": "constant_score_boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "span_multi": {
+            "match": {
+              "wildcard": {
+                "text": {
+                  "value": "terminat*",
+                  "rewrite": "constant_score_boolean"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "slop": 4,
+      "in_order": false
+    }
+  }

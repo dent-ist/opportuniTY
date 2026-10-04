@@ -265,6 +265,21 @@ public sealed class SearchServiceTests(OpenSearchFixture openSearch, MigrationPo
     }
 
     [Fact]
+    public async Task Filter_row_clauses_run_with_catalogue_names_and_contains_on_file_name()
+    {
+        await using var h = await SearchHarness.CreateAsync(openSearch, postgres);
+        var ws = await h.WorkspaceAsync();
+        var user = await h.MemberAsync(ws);
+        var early = await h.DocumentAsync(ws, "FLT-001", "alpha memo"); // FLT-001.msg, 2024-05-08
+        var late = await h.DocumentAsync(ws, "FLT-0002", "beta memo"); // FLT-0002.msg, 2024-05-09
+
+        Ok(await h.SearchAsync(ws, user, "filename:*0002*")).Items.Select(i => i.DocumentId).Should().Equal(late);
+        Ok(await h.SearchAsync(ws, user, "date:[2024-05-09 TO *]")).Items.Select(i => i.DocumentId).Should().Equal(late);
+        Ok(await h.SearchAsync(ws, user, @"(memo) AND filename:*t\-00* AND NOT date:[2024-05-09 TO *]"))
+            .Items.Select(i => i.DocumentId).Should().Equal(early);
+    }
+
+    [Fact]
     public async Task Executed_search_text_is_audited_and_unindexed_workspaces_answer_empty()
     {
         await using var h = await SearchHarness.CreateAsync(openSearch, postgres);

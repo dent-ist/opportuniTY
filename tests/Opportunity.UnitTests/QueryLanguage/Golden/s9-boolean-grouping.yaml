@@ -55,3 +55,45 @@ ast: |
       ]
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "bool": {
+            "should": [
+              {
+                "match": {
+                  "text": {
+                    "query": "contract"
+                  }
+                }
+              },
+              {
+                "match": {
+                  "text": {
+                    "query": "agreement"
+                  }
+                }
+              }
+            ],
+            "minimum_should_match": 1
+          }
+        },
+        {
+          "bool": {
+            "must_not": [
+              {
+                "match": {
+                  "text": {
+                    "query": "draft"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }

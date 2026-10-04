@@ -2,7 +2,7 @@
 
 `ISearchService` (Application) is the only search path. `SearchService` (internal) runs every page as:
 
-1. **Plan** the query text: `QueryParser` (ADR-008) → `ISearchQueryTranslator` → user clause.
+1. **Plan** the query text: `QueryParser` (ADR-008) → `ISearchQueryTranslator` (`SearchQueryPlanner`) → user clause.
 2. **Visibility** from the PDP (`GetVisibilityAsync`, needs `Search.Execute`).
 3. **Filter** (`SearchDsl.Query`): `bool.filter[0]` = `term workspaceId` (from the authorized route), then
    `must_not terms securityTags` for denied classes/walls; the user clause goes only into `bool.must`.
@@ -13,12 +13,30 @@
    bound to (user, session, workspace). Mismatches answer 404 and are audited (`AuthZ.Denied`, `SearchHandleMismatch`).
 7. **Audit** `Search.Executed` with the full text in restricted details (Q-16); later pages `Search.ResultsPageServed`.
 
+## Snapshot selection (E10-T02)
+
+`SelectAsync` enumerates every matching document ID for snapshot materialization (ADR-002 §5.1): optional index
+refresh, one point-in-time reader (`SelectionKeepAlive`), sort by `documentId` only, `_source: false`, the same outer
+filter, an exact count first (`TooManyHits` above the caller's bound), and the Q-12 PostgreSQL re-check of every page
+(one summary `AuthZ.Denied` per selection). A lost reader returns `ReaderLost`; partial or timed-out pages abort the
+selection. No search handle is stored; `DocumentSetSnapshotService` audits the selection with what it froze.
+
 ## Plug-in points for parallel tickets
 
-- **Planner (E07-T07, #69)** – replace `BasicSearchQueryTranslator` by registering another `ISearchQueryTranslator`
-  before `AddOpenSearchSearchService` (it uses `TryAdd`). Return positioned `QueryDiagnostic`s (never a silent
-  match-none) and `SearchTranslation.Simple`/`Complex` for the latency metric. Never address
-  `ProjectionFields.NotAddressable`; whatever you return is confined to `bool.must`.
+- **Planner (E07-T07, #69)** – `SearchQueryPlanner` is the registered `ISearchQueryTranslator` (replace it by registering
+  another before `AddOpenSearchSearchService`, which uses `TryAdd`). It binds query names (`FieldQueryNames`, ADR-008 R11)
+  to projection paths (`ProjectionFieldPaths`) through `SearchFieldResolver`, using the catalogue's capability flags;
+  the catalogue comes from `IFieldCatalogRepository` (cached `OpenSearch:Search:FieldCatalogCacheTtl`, default 5 s).
+  Terms use `match`/`match_phrase`, keywords `term` (case-insensitive), choices are resolved by name to ChoiceIds, dates
+  are whole units in the context zone (R8, UTC until the user zone is wired), `W/n` is `span_near` over tokens from
+  OpenSearch's own analyzers (`OpenSearchTextAnalyzer`, derived from the mapping), wildcards follow R7 (leading only with
+  `LeadingWildcard`, matched on `fileName.wc`; inside `W/n` via `span_multi` + `constant_score_boolean`). Limits:
+  `QueryLimits.MaxClauses` (after custodian expansion / choice resolution) and `MaxProximityWildcards`; OpenSearch's
+  clause-limit failure becomes `WILDCARD_TOO_BROAD` at the bounded wildcard spans and a timed-out search
+  `QUERY_TIMEOUT` (both 400). Every problem is a positioned `QueryDiagnostic`, never a silent match-none, and the
+  validate endpoint reports the same errors through `IQueryBinder`. `QueryClass` follows the §29 gate classifier
+  (coding filters, sort and facets make a query complex). Golden DSL lives next to the AST in
+  `tests/Opportunity.UnitTests/QueryLanguage/Golden` (fields: `PlannerFixture`).
 - **Projection (E07-T02, #64)** – documents must carry the fields in `ProjectionFields` (`workspaceId` and
   `documentId` as `Guid "D"` strings, `controlNumber.sort`, `fileName.kw`, stored `text`) and encode security
   attributes in `securityTags` as `SecurityTags.Class(classKey)` / `SecurityTags.Wall(wallId)`. Grid columns come from

@@ -14,3 +14,12 @@ ast: |
       "text": "e-mail"
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "match_phrase": {
+      "text": {
+        "query": "e-mail"
+      }
+    }
+  }

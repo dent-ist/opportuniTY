@@ -22,6 +22,82 @@ public interface ISearchService
     /// </summary>
     Task<SearchOutcome> GetPageAsync(
         SearchCaller caller, string searchId, SearchPageRequest page, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Enumerates every document matching the query for snapshot materialization (ADR-002 §5.1): one point-in-time
+    /// reader, sorted by <c>documentId</c>, IDs only (no source, snippets or facets), the same outer filter as every
+    /// search, and the Q-12 PostgreSQL re-check of every page before it reaches <paramref name="onPage"/>. The exact hit
+    /// count is taken first; nothing is delivered when it exceeds <see cref="SearchSelectionRequest.MaxHits"/>. No
+    /// search handle is kept and no <c>Search.Executed</c> is written: the caller audits the selection together with
+    /// what it froze (post-filter denials are audited here as one summary <c>AuthZ.Denied</c>, Q-59).
+    /// </summary>
+    Task<SearchSelectionOutcome> SelectAsync(
+        SearchCaller caller,
+        SearchSelectionRequest request,
+        Func<IReadOnlyList<Guid>, CancellationToken, Task> onPage,
+        CancellationToken cancellationToken = default);
+}
+
+/// <param name="Query">Query-language text; empty selects every document the caller may see.</param>
+/// <param name="MaxHits">Largest hit count to enumerate; above it the outcome is <see cref="SearchSelectionStatus.TooManyHits"/>.</param>
+/// <param name="PageSize">IDs per OpenSearch page (and per <c>onPage</c> call, before the post-filter).</param>
+/// <param name="RefreshFirst">
+/// Refresh the index before the reader opens, so every change applied before the call is visible to the selection
+/// (ADR-001 §7.3): the applied watermark read before the call becomes a true lower bound of what was selected.
+/// </param>
+public sealed record SearchSelectionRequest(string Query, long MaxHits, int PageSize = 5_000, bool RefreshFirst = true);
+
+public enum SearchSelectionStatus
+{
+    Ok,
+
+    /// <summary>The query does not parse or bind (positioned errors in <see cref="SearchSelectionOutcome.QueryErrors"/>).</summary>
+    InvalidQuery,
+
+    /// <summary>The caller is not a member of the workspace: 404.</summary>
+    NotFound,
+
+    /// <summary>The caller lacks <c>Search.Execute</c>: 403.</summary>
+    Forbidden,
+
+    /// <summary>More hits than <see cref="SearchSelectionRequest.MaxHits"/>; nothing was delivered.</summary>
+    TooManyHits,
+
+    /// <summary>
+    /// The point-in-time reader expired or its index went away mid-selection (ADR-002 §5.3): what was delivered is
+    /// incomplete and must be discarded; the caller may restart once with a new reader.
+    /// </summary>
+    ReaderLost,
+}
+
+public sealed record SearchSelectionOutcome
+{
+    public required SearchSelectionStatus Status { get; init; }
+
+    /// <summary>The normalized interpretation of the query (e.g. <c>a AND b</c>).</summary>
+    public string Normalized { get; init; } = string.Empty;
+
+    /// <summary>Canonical AST JSON (ADR-008 R13) of the query, for the audit record.</summary>
+    public string? AstJson { get; init; }
+
+    /// <summary>Exact number of hits of the outer-filtered query (before the PostgreSQL re-check).</summary>
+    public long Hits { get; init; }
+
+    /// <summary>IDs delivered to <c>onPage</c> after the re-check.</summary>
+    public long Selected { get; init; }
+
+    /// <summary>Hits dropped by the re-check (or the integrity check), by reason.</summary>
+    public IReadOnlyDictionary<string, long> Dropped { get; init; } = new Dictionary<string, long>();
+
+    /// <summary>The projection generation of the index the selection read; null when the workspace has no index yet.</summary>
+    public int? ProjectionGeneration { get; init; }
+
+    /// <summary>The caller's visibility relied on an active break-glass activation (audit access path).</summary>
+    public bool BreakGlass { get; init; }
+
+    public IReadOnlyList<QueryValidationDiagnostic> QueryErrors { get; init; } = [];
+
+    public long DroppedTotal => Dropped.Values.Sum();
 }
 
 /// <summary>

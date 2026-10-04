@@ -14,3 +14,12 @@ ast: |
       "text": "say \"hi\" C:\\temp a\\b"
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "match_phrase": {
+      "text": {
+        "query": "say \"hi\" C:\\temp a\\b"
+      }
+    }
+  }

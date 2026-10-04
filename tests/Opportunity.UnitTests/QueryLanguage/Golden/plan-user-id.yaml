@@ -1,0 +1,33 @@
+description: "User fields take user ids"
+query: "reviewer:0199A8A0-4444-7000-8000-000000000004"
+printed: "reviewer:0199A8A0-4444-7000-8000-000000000004"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 45
+      },
+      "name": "reviewer",
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 9,
+          "end": 45
+        },
+        "text": "0199A8A0-4444-7000-8000-000000000004"
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "term": {
+      "coding.usr.s001": {
+        "value": "0199a8a0-4444-7000-8000-000000000004"
+      }
+    }
+  }

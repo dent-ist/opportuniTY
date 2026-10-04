@@ -253,6 +253,13 @@ export const COMMANDS: readonly CommandDefinition[] = [
     keys: ['Alt+Shift+KeyK', 'Slash'],
   },
   {
+    id: 'grid.toggleFilters',
+    label: 'Show or hide the filter row',
+    group: 'Focus',
+    scope: 'global',
+    keys: ['Alt+Shift+KeyU'],
+  },
+  {
     id: 'coding.focus',
     label: 'Focus coding pane',
     group: 'Focus',
@@ -330,7 +337,16 @@ export interface FixedKey {
 
 export const FIXED_KEYS: readonly FixedKey[] = [
   { label: 'Toggle choice n in the focused choice field', keys: '1–9', scope: 'coding' },
+  { label: 'Move between rows and cells', keys: '↑ ↓ ← →', scope: 'grid' },
+  {
+    label: 'Move a screen up or down, to the first or last loaded row',
+    keys: 'PageUp / PageDown / Home / End',
+    scope: 'grid',
+  },
+  { label: 'Sort by the focused column header', keys: 'Enter', scope: 'grid' },
   { label: 'Extend the selection', keys: 'Shift+↑ / Shift+↓', scope: 'grid' },
+  { label: 'Move between the filters of the filter row', keys: '← / →', scope: 'grid' },
+  { label: 'Clear the focused filter', keys: 'Esc', scope: 'grid' },
   { label: 'Close a dialog or menu', keys: 'Esc', scope: 'global' },
 ];
 

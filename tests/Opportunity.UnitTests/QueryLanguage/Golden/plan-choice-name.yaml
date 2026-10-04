@@ -1,0 +1,33 @@
+description: "Coding filter: choice name to ChoiceId, case-insensitive"
+query: "responsiveness:\"not responsive\""
+printed: "responsiveness:\"not responsive\""
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 31
+      },
+      "name": "responsiveness",
+      "child": {
+        "kind": "phrase",
+        "span": {
+          "start": 15,
+          "end": 31
+        },
+        "text": "not responsive"
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "term": {
+      "coding.ch.s001": {
+        "value": "2"
+      }
+    }
+  }

@@ -1,4 +1,6 @@
 using Opportunity.Application.Jobs;
+using Opportunity.Core.Jobs;
+using Opportunity.Core.SearchWork;
 
 namespace Opportunity.Application.SearchWork;
 
@@ -35,6 +37,16 @@ public interface ISearchOutboxRepository
     Task<int> MarkAppliedThroughAsync(
         Guid workspaceId, Guid documentId, long documentVersion, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The index worker could not apply a Dispatched row (ADR-001 §6.4: retry state lives in PostgreSQL): it returns to
+    /// Pending with the outbox backoff for the dispatcher to publish again, or becomes Failed when
+    /// <paramref name="permanent"/> or its attempts are used up. Rows in any other status are left alone (another
+    /// delivery is already on its way, or the row was applied meanwhile). Returns the resulting status, or null when
+    /// nothing changed.
+    /// </summary>
+    Task<SearchOutboxStatus?> ReturnUnappliedAsync(
+        Guid workspaceId, long outboxId, string reason, bool permanent, CancellationToken cancellationToken = default);
+
     Task<SearchOutboxRow?> GetAsync(Guid workspaceId, long outboxId, CancellationToken cancellationToken = default);
 }
 
@@ -70,9 +82,37 @@ public interface IIndexChunkTaskRepository
     /// <summary>Transient with attempts left → RetryWait with backoff; otherwise Failed (replayable, never cancelled).</summary>
     Task<IndexTaskFailureResult> FailAsync(IndexTaskLease lease, ChunkError failure, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Heartbeat and fence F2 of the index worker (ADR-010 §3.2, ADR-001 §4 R5): extends the lease by
+    /// <paramref name="leaseDuration"/> while the token still matches and the workspace is Active.
+    /// </summary>
+    Task<IndexTaskRenewal> RenewLeaseAsync(IndexTaskLease lease, TimeSpan leaseDuration, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Running → Pending without charging the attempt (worker shutdown): the dispatcher publishes the task again. False
+    /// when the lease was lost.
+    /// </summary>
+    Task<bool> ReleaseAsync(IndexTaskLease lease, CancellationToken cancellationToken = default);
+
     Task<IndexChunkTaskInfo?> GetAsync(Guid workspaceId, Guid taskId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<IndexChunkTaskInfo>> GetByJobAsync(Guid workspaceId, Guid jobId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Resolves the membership reference of an IndexChunkTask to document ids from authoritative state (§21 step 1,
+/// ADR-010 §4), one keyset page at a time in ascending DocumentId order. Identifiers only: the projection is read
+/// separately, in its own snapshot.
+/// </summary>
+public interface IIndexTaskMembershipReader
+{
+    /// <summary>
+    /// Up to <paramref name="limit"/> member ids greater than <paramref name="after"/> (null: from the start). An empty
+    /// page means the membership is exhausted. Throws <see cref="NotSupportedException"/> for a membership kind that
+    /// cannot be resolved by this build (a permanent task failure, replayable once it can).
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ReadPageAsync(
+        Guid workspaceId, ChunkMembership membership, Guid? after, int limit, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Housekeeping of both search work tables: redispatch, backlog, day partitions and retention.</summary>

@@ -1,0 +1,72 @@
+description: "Relationship fields addressed directly (ADR-007 §3)"
+query: "familystatus:complete AND duplicateprimary:true"
+printed: "familystatus:complete AND duplicateprimary:true"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 47
+      },
+      "children": [
+        {
+          "kind": "field",
+          "span": {
+            "start": 0,
+            "end": 21
+          },
+          "name": "familystatus",
+          "child": {
+            "kind": "term",
+            "span": {
+              "start": 13,
+              "end": 21
+            },
+            "text": "complete"
+          }
+        },
+        {
+          "kind": "field",
+          "span": {
+            "start": 26,
+            "end": 47
+          },
+          "name": "duplicateprimary",
+          "child": {
+            "kind": "term",
+            "span": {
+              "start": 43,
+              "end": 47
+            },
+            "text": "true"
+          }
+        }
+      ]
+    }
+  }
+queryClass: simple
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "term": {
+            "familyStatus": {
+              "value": "complete",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "term": {
+            "isDuplicatePrimary": {
+              "value": true
+            }
+          }
+        }
+      ]
+    }
+  }

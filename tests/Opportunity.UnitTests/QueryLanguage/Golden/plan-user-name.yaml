@@ -1,0 +1,29 @@
+description: "User names are not resolved yet: an error, not a match-none"
+query: "reviewer:alice"
+printed: "reviewer:alice"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 14
+      },
+      "name": "reviewer",
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 9,
+          "end": 14
+        },
+        "text": "alice"
+      }
+    }
+  }
+planError:
+  code: INVALID_FIELD_VALUE
+  span: [9, 14]
+  expected: []
+  message: "'alice' is not valid for field 'reviewer': expected a user id (UUID); user names are not resolved yet."

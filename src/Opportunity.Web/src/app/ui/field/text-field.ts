@@ -24,7 +24,7 @@ import { FieldBase } from './field';
 })
 export class TextField extends FieldBase implements FormValueControl<string> {
   readonly value = model('');
-  readonly type = input<'text' | 'search' | 'email' | 'password' | 'url' | 'tel'>('text');
+  readonly type = input<'text' | 'search' | 'email' | 'password' | 'url' | 'tel' | 'date'>('text');
   readonly placeholder = input<string>();
   readonly autocomplete = input<string>('off');
   readonly readonly = input(false);

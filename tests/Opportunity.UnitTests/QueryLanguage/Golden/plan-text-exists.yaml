@@ -1,0 +1,30 @@
+description: "Exists on the default field"
+query: "text:*"
+printed: "text:*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 6
+      },
+      "name": "text",
+      "child": {
+        "kind": "exists",
+        "span": {
+          "start": 5,
+          "end": 6
+        }
+      }
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "exists": {
+      "field": "text"
+    }
+  }

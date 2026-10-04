@@ -1,0 +1,29 @@
+description: "Boolean values are validated"
+query: "hot:perhaps"
+printed: "hot:perhaps"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 11
+      },
+      "name": "hot",
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 4,
+          "end": 11
+        },
+        "text": "perhaps"
+      }
+    }
+  }
+planError:
+  code: INVALID_FIELD_VALUE
+  span: [4, 11]
+  expected: []
+  message: "'perhaps' is not valid for field 'hot': expected true or false (yes/no, y/n)."

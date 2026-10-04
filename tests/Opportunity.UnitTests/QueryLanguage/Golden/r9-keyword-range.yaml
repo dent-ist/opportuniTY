@@ -29,3 +29,13 @@ ast: |
       }
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "range": {
+      "begBatesSort": {
+        "gte": "ABC00000000000000000100",
+        "lte": "ABC00000000000000000200"
+      }
+    }
+  }

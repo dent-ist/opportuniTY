@@ -14,3 +14,12 @@ ast: |
       "text": "W/5"
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "match_phrase": {
+      "text": {
+        "query": "W/5"
+      }
+    }
+  }

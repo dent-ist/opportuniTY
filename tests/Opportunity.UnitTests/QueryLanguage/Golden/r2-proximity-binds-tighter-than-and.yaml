@@ -48,3 +48,36 @@ ast: |
       ]
     }
   }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "text": {
+              "query": "a"
+            }
+          }
+        },
+        {
+          "span_near": {
+            "clauses": [
+              {
+                "span_term": {
+                  "text": "b"
+                }
+              },
+              {
+                "span_term": {
+                  "text": "c"
+                }
+              }
+            ],
+            "slop": 2,
+            "in_order": false
+          }
+        }
+      ]
+    }
+  }

@@ -172,6 +172,19 @@ public enum IndexTaskFailureOutcome
     LeaseLost,
 }
 
+/// <summary>What an index worker's heartbeat (fence F2) found.</summary>
+public enum IndexTaskRenewal
+{
+    /// <summary>Lease extended: continue.</summary>
+    Renewed,
+
+    /// <summary>The fencing token no longer matches (another worker took over): stop, record nothing.</summary>
+    LeaseLost,
+
+    /// <summary>The workspace is no longer Active (ADR-001 §4 R5): stop before the next OpenSearch request.</summary>
+    WorkspaceNotActive,
+}
+
 /// <param name="RetryAt">When the task becomes due again (RetryScheduled only).</param>
 public sealed record IndexTaskFailureResult(IndexTaskFailureOutcome Outcome, DateTimeOffset? RetryAt);
 

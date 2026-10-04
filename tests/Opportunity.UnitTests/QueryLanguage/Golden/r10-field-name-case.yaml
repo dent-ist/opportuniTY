@@ -22,3 +22,13 @@ ast: |
       }
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "term": {
+      "metadata.kw.s001": {
+        "value": "JOHN smith",
+        "case_insensitive": true
+      }
+    }
+  }

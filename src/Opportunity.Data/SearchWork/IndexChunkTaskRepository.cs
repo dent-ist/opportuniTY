@@ -240,6 +240,57 @@ public sealed class IndexChunkTaskRepository(NpgsqlDataSource dataSource) : IInd
         };
     }
 
+    public async Task<IndexTaskRenewal> RenewLeaseAsync(IndexTaskLease lease, TimeSpan leaseDuration, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(leaseDuration, TimeSpan.Zero);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, lease.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            $"""
+            WITH renewed AS (
+                UPDATE opportunity.index_chunk_task t
+                SET lease_expires_at = greatest(t.lease_expires_at, clock_timestamp() + @lease), updated_at = now()
+                WHERE {ById} AND t.status = 3 AND t.lease_token = @token
+                RETURNING 1)
+            SELECT (SELECT count(*) FROM renewed),
+                   (SELECT w.status FROM opportunity.workspace w WHERE w.workspace_id = @ws)
+            """);
+        AddId(command, lease.WorkspaceId, lease.TaskId);
+        command.Parameters.AddWithValue("token", lease.LeaseToken);
+        command.Parameters.AddWithValue("lease", leaseDuration);
+        long renewed;
+        string? status;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            renewed = reader.GetInt64(0);
+            status = reader.IsDBNull(1) ? null : reader.GetString(1);
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return renewed == 0 ? IndexTaskRenewal.LeaseLost
+            : status == nameof(WorkspaceStatus.Active) ? IndexTaskRenewal.Renewed
+            : IndexTaskRenewal.WorkspaceNotActive;
+    }
+
+    public async Task<bool> ReleaseAsync(IndexTaskLease lease, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, lease.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            $"""
+            UPDATE opportunity.index_chunk_task t
+            SET status = 1, attempt_count = greatest(t.attempt_count - 1, 0), available_at = now(), lease_owner = NULL,
+                lease_expires_at = NULL, updated_at = now()
+            WHERE {ById} AND t.status = 3 AND t.lease_token = @token
+            """);
+        AddId(command, lease.WorkspaceId, lease.TaskId);
+        command.Parameters.AddWithValue("token", lease.LeaseToken);
+        var released = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return released;
+    }
+
     public async Task<IndexChunkTaskInfo?> GetAsync(Guid workspaceId, Guid taskId, CancellationToken cancellationToken = default)
     {
         if (taskId.Version != 7)

@@ -1,0 +1,46 @@
+description: "W/n needs a full-text field"
+query: "custodian:(smith W/3 jones)"
+printed: "custodian:(smith W/3 jones)"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 27
+      },
+      "name": "custodian",
+      "child": {
+        "kind": "proximity",
+        "span": {
+          "start": 10,
+          "end": 27
+        },
+        "distance": 3,
+        "ordered": false,
+        "left": {
+          "kind": "term",
+          "span": {
+            "start": 11,
+            "end": 16
+          },
+          "text": "smith"
+        },
+        "right": {
+          "kind": "term",
+          "span": {
+            "start": 21,
+            "end": 26
+          },
+          "text": "jones"
+        }
+      }
+    }
+  }
+planError:
+  code: UNSUPPORTED_FOR_FIELD
+  span: [10, 27]
+  expected: []
+  message: "W/n needs a full-text field; 'custodian' is not one."

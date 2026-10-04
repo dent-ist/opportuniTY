@@ -1,0 +1,63 @@
+description: "§29 gate class: a coding-field filter makes the query complex"
+query: "contract AND hot:true"
+printed: "contract AND hot:true"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "and",
+      "span": {
+        "start": 0,
+        "end": 21
+      },
+      "children": [
+        {
+          "kind": "term",
+          "span": {
+            "start": 0,
+            "end": 8
+          },
+          "text": "contract"
+        },
+        {
+          "kind": "field",
+          "span": {
+            "start": 13,
+            "end": 21
+          },
+          "name": "hot",
+          "child": {
+            "kind": "term",
+            "span": {
+              "start": 17,
+              "end": 21
+            },
+            "text": "true"
+          }
+        }
+      ]
+    }
+  }
+queryClass: complex
+dsl: |
+  {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "text": {
+              "query": "contract"
+            }
+          }
+        },
+        {
+          "term": {
+            "coding.bool.s001": {
+              "value": true
+            }
+          }
+        }
+      ]
+    }
+  }

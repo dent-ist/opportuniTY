@@ -1,0 +1,111 @@
+description: "Limit: wildcard terms inside W/n"
+query: "(aaa* OR bbb* OR ccc* OR ddd* OR eee* OR fff* OR ggg* OR hhh* OR iii*) W/3 contract"
+printed: "(aaa* OR bbb* OR ccc* OR ddd* OR eee* OR fff* OR ggg* OR hhh* OR iii*) W/3 contract"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "proximity",
+      "span": {
+        "start": 0,
+        "end": 83
+      },
+      "distance": 3,
+      "ordered": false,
+      "left": {
+        "kind": "or",
+        "span": {
+          "start": 0,
+          "end": 70
+        },
+        "children": [
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 1,
+              "end": 5
+            },
+            "pattern": "aaa*"
+          },
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 9,
+              "end": 13
+            },
+            "pattern": "bbb*"
+          },
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 17,
+              "end": 21
+            },
+            "pattern": "ccc*"
+          },
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 25,
+              "end": 29
+            },
+            "pattern": "ddd*"
+          },
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 33,
+              "end": 37
+            },
+            "pattern": "eee*"
+          },
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 41,
+              "end": 45
+            },
+            "pattern": "fff*"
+          },
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 49,
+              "end": 53
+            },
+            "pattern": "ggg*"
+          },
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 57,
+              "end": 61
+            },
+            "pattern": "hhh*"
+          },
+          {
+            "kind": "wildcard",
+            "span": {
+              "start": 65,
+              "end": 69
+            },
+            "pattern": "iii*"
+          }
+        ]
+      },
+      "right": {
+        "kind": "term",
+        "span": {
+          "start": 75,
+          "end": 83
+        },
+        "text": "contract"
+      }
+    }
+  }
+planError:
+  code: TOO_MANY_WILDCARDS
+  span: [65, 69]
+  expected: []
+  message: "At most 8 wildcard terms may be used inside W/n."

@@ -1,0 +1,218 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  min-width: 0;
+}
+
+.grid__header,
+.grid__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2) var(--opp-space-4);
+}
+
+.grid__count,
+.grid__selected,
+.grid__rows {
+  margin: 0;
+}
+
+.grid__freshness,
+.grid__rows,
+.grid__size {
+  color: var(--opp-color-text-muted);
+}
+
+.grid__selected {
+  margin-inline-start: auto;
+}
+
+.grid__notice {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-1) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-info-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+}
+
+.grid__notice--error {
+  border-color: var(--opp-color-danger-border);
+  background: var(--opp-color-danger-bg);
+  color: var(--opp-color-danger-text);
+}
+
+.grid__viewport {
+  position: relative;
+  block-size: clamp(16rem, calc(100dvh - 21rem), 120rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  font-size: var(--opp-font-size-control);
+}
+
+.grid__head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  min-inline-size: var(--grid-min-width);
+}
+
+.grid__body {
+  position: relative;
+  min-inline-size: var(--grid-min-width);
+  contain: strict;
+}
+
+.grid__row {
+  display: grid;
+  contain: strict;
+  grid-template-columns: var(--grid-columns);
+  min-inline-size: var(--grid-min-width);
+  block-size: var(--opp-row-height);
+  background: var(--opp-color-surface);
+  cursor: default;
+}
+
+.grid__row:hover {
+  background: var(--opp-color-hover);
+}
+
+.grid__row.is-selected {
+  background: var(--opp-color-selected);
+}
+
+.grid__row--head {
+  background: var(--opp-color-surface-sunken);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.grid__cell {
+  display: flex;
+  align-items: center;
+  min-inline-size: 0;
+  padding-inline: var(--opp-cell-padding-x);
+  overflow: hidden;
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: inherit;
+  contain: strict;
+}
+
+// Filter row (#191) and the no-results message: sized by their content, not by the row height.
+.grid__row--filters,
+.grid__row--message {
+  block-size: auto;
+  contain: none;
+
+  &:hover {
+    background: var(--opp-color-surface);
+  }
+
+  .grid__cell {
+    contain: none;
+    overflow: visible;
+    padding-block: var(--opp-space-1);
+  }
+}
+
+.grid__row--message .grid__cell {
+  grid-column: 1 / -1;
+  padding-block: var(--opp-space-4);
+  color: var(--opp-color-text-muted);
+  white-space: normal;
+}
+
+.grid__cell--numeric {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid__cell--control {
+  border-inline-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+// Pinned columns only while the grid scrolls sideways: sticky cells cost a compositing layer each.
+.grid__viewport.is-wide {
+  .grid__cell--select,
+  .grid__cell--control {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+  }
+
+  .grid__cell--control {
+    inset-inline-start: 2.25rem;
+  }
+}
+
+.grid__cell--select,
+.grid__cell--family {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.grid__cell--sortable {
+  cursor: pointer;
+}
+
+.grid__sort {
+  margin-inline-start: var(--opp-space-1);
+  font-size: var(--opp-font-size-xs);
+}
+
+.grid__viewport:focus-visible .grid__row.is-focused {
+  box-shadow: inset 3px 0 0 var(--opp-color-focus);
+}
+
+.grid__viewport:focus-visible .is-active {
+  outline: 2px solid var(--opp-color-focus);
+  outline-offset: -2px;
+}
+
+.grid__pager {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  margin-inline-start: auto;
+}
+
+.grid__page {
+  min-inline-size: 9rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+// These change on every scrolled row: fixed boxes keep the relayout inside them.
+.grid__rows,
+.grid__page {
+  contain: strict;
+  block-size: 1.5em;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.grid__rows {
+  inline-size: 20rem;
+}
+
+.grid__page {
+  inline-size: 11rem;
+}
+
+.grid__size select {
+  margin-inline-start: var(--opp-space-1);
+  min-block-size: var(--opp-target-min);
+  font: inherit;
+  color: var(--opp-color-text);
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+}

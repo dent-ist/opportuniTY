@@ -14,3 +14,12 @@ ast: |
       "text": "5*"
     }
   }
+queryClass: simple
+dsl: |
+  {
+    "match": {
+      "text": {
+        "query": "5*"
+      }
+    }
+  }

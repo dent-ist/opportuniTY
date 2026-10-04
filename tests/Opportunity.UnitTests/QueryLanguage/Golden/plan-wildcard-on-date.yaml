@@ -1,0 +1,29 @@
+description: "Wildcards on a date field are a capability error"
+query: "date:2025*"
+printed: "date:2025*"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 10
+      },
+      "name": "date",
+      "child": {
+        "kind": "wildcard",
+        "span": {
+          "start": 5,
+          "end": 10
+        },
+        "pattern": "2025*"
+      }
+    }
+  }
+planError:
+  code: UNSUPPORTED_FOR_FIELD
+  span: [5, 10]
+  expected: []
+  message: "Wildcards are not supported for field 'date'."

@@ -1,0 +1,29 @@
+description: "A field without a search slot is a capability error"
+query: "unsearchable:x"
+printed: "unsearchable:x"
+warnings: []
+ast: |
+  {
+    "astVersion": 1,
+    "root": {
+      "kind": "field",
+      "span": {
+        "start": 0,
+        "end": 14
+      },
+      "name": "unsearchable",
+      "child": {
+        "kind": "term",
+        "span": {
+          "start": 13,
+          "end": 14
+        },
+        "text": "x"
+      }
+    }
+  }
+planError:
+  code: UNSUPPORTED_FOR_FIELD
+  span: [0, 12]
+  expected: []
+  message: "Field 'unsearchable' is not searchable."

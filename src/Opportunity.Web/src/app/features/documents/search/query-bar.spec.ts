@@ -6,16 +6,24 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { provideAppRouting } from '../../../app.config';
 import { CommandRegistry } from '../../../core/commands';
 import { FakeApi, provideFakeApi } from '../../../core/api/fake-api.testing';
-import type { QueryValidationRequest } from '../../../core/api/generated/models';
+import type {
+  QueryHistoryEntryResource,
+  QueryHistoryRequest,
+  QueryValidationRequest,
+  SearchRequest,
+} from '../../../core/api/generated/models';
 import { provideOpportunityHttp } from '../../../core/api/http';
-import { SearchFieldSource } from '../../../core/search/search-fields';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
+import { fakePage } from '../grid/grid-fixtures.testing';
 import { goldenCases, goldenResult } from './golden.testing';
 import { QUERY_BAR_TIMING, QueryBarTiming } from './query-bar';
-import { TEST_FIELDS } from './search-fixtures.testing';
+import { TEST_FIELDS, TEST_FIELD_RESOURCES } from './search-fixtures.testing';
 
 const VALIDATE = '/api/v1/workspaces/ws-1/query-validations';
+const FIELDS = '/api/v1/workspaces/ws-1/fields';
+const HISTORY = '/api/v1/workspaces/ws-1/query-history';
+const SEARCHES = '/api/v1/workspaces/ws-1/searches';
 const golden = new Map(goldenCases().map((c) => [c.query, goldenResult(c)]));
 /** An invalid result as the server builds it (rules of the golden error cases, at other offsets). */
 function invalid(
@@ -49,9 +57,31 @@ describe('Query bar (Documents search panel)', () => {
   let api: FakeApi;
   let harness: RouterTestingHarness;
   let announce: ReturnType<typeof vi.spyOn>;
+  /** The server's copy of the user's history in ws-1: outlives the page, like PostgreSQL. */
+  let stored: QueryHistoryEntryResource[];
+
+  beforeEach(() => {
+    stored = [];
+  });
 
   async function setup(timing?: QueryBarTiming): Promise<void> {
     api = new FakeApi()
+      .on('GET', FIELDS, {
+        body: {
+          items: TEST_FIELD_RESOURCES,
+          nextCursor: null,
+          total: { value: TEST_FIELD_RESOURCES.length, relation: 'eq' },
+        },
+      })
+      .on('GET', HISTORY, () => ({ body: { items: stored } }))
+      .on('POST', HISTORY, (req: HttpRequest<unknown>) => {
+        const query = (req.body as QueryHistoryRequest).query!.trim();
+        stored = [
+          { query, ranAt: new Date().toISOString() },
+          ...stored.filter((e) => e.query !== query),
+        ].slice(0, 50);
+        return { status: 204 };
+      })
       .on('GET', '/api/v1/me', {
         body: {
           userId: 'u-1',
@@ -64,9 +94,10 @@ describe('Query bar (Documents search panel)', () => {
         body: {
           workspaceId: 'ws-1',
           name: 'Acme v. Widget',
-          permissions: [PERMISSIONS.documentView],
+          permissions: [PERMISSIONS.documentView, PERMISSIONS.searchExecute],
         },
       })
+      .on('POST', SEARCHES, { body: fakePage({ total: 3, pageSize: 100 }, 1) })
       .on('POST', VALIDATE, (req: HttpRequest<unknown>) => {
         const query = (req.body as QueryValidationRequest).query ?? '';
         return {
@@ -84,7 +115,6 @@ describe('Query bar (Documents search panel)', () => {
         ...provideAppRouting(),
         ...provideOpportunityHttp(),
         ...provideFakeApi(api),
-        { provide: SearchFieldSource, useValue: { fields: () => Promise.resolve(TEST_FIELDS) } },
         ...(timing ? [{ provide: QUERY_BAR_TIMING, useValue: timing }] : []),
       ],
     });
@@ -129,7 +159,11 @@ describe('Query bar (Documents search panel)', () => {
     await settle(5);
   }
 
-  const resultTitle = () => query('opp-empty-state h2')?.textContent?.trim();
+  /** Queries the document list ran: the page opens on every document (''), then one per search. */
+  const searched = () =>
+    api.requests
+      .filter((r) => r.method === 'POST' && r.url === SEARCHES)
+      .map((r) => (r.body as SearchRequest).query);
 
   it('renders an accessible keyword box in the Documents search panel', async () => {
     await setup();
@@ -155,7 +189,7 @@ describe('Query bar (Documents search panel)', () => {
 
     key('Enter');
     await settle(5);
-    expect(resultTitle()).toBe('No document list yet');
+    expect(searched()).toEqual(['']);
     expect(announce).toHaveBeenCalledWith(
       'Search not run. The phrase has no closing quote (at character 14).',
       'assertive',
@@ -170,7 +204,7 @@ describe('Query bar (Documents search panel)', () => {
     key('Enter');
     await settle(5);
     expect(api.requests.filter((r) => r.url === VALIDATE)).toHaveLength(1);
-    expect(resultTitle()).toBe('No document list yet');
+    expect(searched()).toEqual(['']);
     expect(query('.qb-t--point')).not.toBeNull(); // empty span at the end: missing operand
     expect(root().textContent).toContain(
       'a term is missing (at the end of the query). Expected: term, phrase, field:, (, NOT.',
@@ -237,7 +271,7 @@ describe('Query bar (Documents search panel)', () => {
       await search(example);
       expect(textbox().getAttribute('aria-invalid')).toBeNull();
       expect(query('.qb-t--error')).toBeNull();
-      expect(resultTitle()).toBe('Document list not available yet');
+      expect(searched()).toEqual(['', example]);
       for (const [kind, text] of expected) expect(texts(`.qb-t--${kind}`)).toContain(text);
       expect(query('.qb__mirror')?.textContent).toBe(`${example} `);
     });
@@ -283,7 +317,7 @@ describe('Query bar (Documents search panel)', () => {
     await settle();
     expect(textbox().value).toBe('contract AND responsiveness:"Not Responsive" ');
     expect(list()).toBeNull();
-    expect(resultTitle()).toBe('No document list yet'); // inserting is not searching
+    expect(searched()).toEqual(['']); // inserting is not searching
     await expectNoAxeViolations(root());
   });
 
@@ -317,6 +351,47 @@ describe('Query bar (Documents search panel)', () => {
     await settle();
     expect(textbox().value).toBe('"trade secret"');
     expect(query('[role="listbox"]')).toBeNull();
+    expect(
+      api.requests.filter((r) => r.method === 'POST' && r.url === HISTORY).map((r) => r.body),
+    ).toEqual([
+      { query: 'contract AND termination' },
+      { query: '"trade secret"' },
+      { query: 'contract AND termination' },
+    ]);
+  });
+
+  it('shows the history the server kept from earlier sessions and never stores it in the browser', async () => {
+    stored = [
+      { query: 'custodian:"Smith"', ranAt: '2026-10-02T09:00:00.000Z' },
+      { query: 'pricing', ranAt: '2026-10-01T09:00:00.000Z' },
+    ];
+    localStorage.clear();
+    sessionStorage.clear();
+    await setup({ validateMs: 0, suggestMs: 0 });
+    await search('termination');
+
+    key('ArrowDown', { altKey: true });
+    await settle();
+    expect(texts('[role="option"] .qb__option-label')).toEqual([
+      'termination',
+      'custodian:"Smith"',
+      'pricing',
+    ]);
+    expect(stored.map((e) => e.query)).toEqual(['termination', 'custodian:"Smith"', 'pricing']);
+    const browserStorage = JSON.stringify({ ...localStorage, ...sessionStorage });
+    expect(browserStorage).not.toContain('termination');
+    expect(browserStorage).not.toContain('Smith');
+  });
+
+  it('offers the custom fields and choices of the workspace catalogue, without unsearchable fields', async () => {
+    await setup({ validateMs: 0, suggestMs: 0 });
+    type('');
+    key(' ', { ctrlKey: true });
+    await settle();
+    const labels = texts('[role="option"] .qb__option-label');
+    expect(labels).toContain('privilege_status');
+    expect(labels).not.toContain('internal_note');
+    expect(api.urls()).toContain(FIELDS);
   });
 
   it('focuses the keyword box with Alt+Shift+K, or / while single-key shortcuts are on', async () => {
