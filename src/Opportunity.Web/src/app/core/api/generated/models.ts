@@ -17,6 +17,7 @@ export type { CursorPageOfWorkspaceSummary } from './models/cursor-page-of-works
 export type { DelimiterInfo } from './models/delimiter-info';
 export type { DocumentViewRecord } from './models/document-view-record';
 export type { FieldCapabilitiesResource } from './models/field-capabilities-resource';
+export type { FieldChoiceResource } from './models/field-choice-resource';
 export type { FieldResource } from './models/field-resource';
 export type { FieldResourceDatePrecision } from './models/field-resource-date-precision';
 export type { FieldResourceStorage } from './models/field-resource-storage';
@@ -59,6 +60,9 @@ export type { OverlaySettings } from './models/overlay-settings';
 export type { ParsingDefaults } from './models/parsing-defaults';
 export type { PathSettings } from './models/path-settings';
 export type { ProblemDetails } from './models/problem-details';
+export type { QueryHistoryEntryResource } from './models/query-history-entry-resource';
+export type { QueryHistoryRequest } from './models/query-history-request';
+export type { QueryHistoryResource } from './models/query-history-resource';
 export type { QueryValidationDiagnostic } from './models/query-validation-diagnostic';
 export type { QueryValidationRequest } from './models/query-validation-request';
 export type { QueryValidationResult } from './models/query-validation-result';

@@ -2,8 +2,9 @@ import type { Page, Route } from '@playwright/test';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
- * shell needs (`/api/v1/me`, the user's preferences, the workspace directory) and 404 problem details for anything else, so a page that
- * starts calling a new endpoint fails visibly instead of hanging.
+ * shell needs (`/api/v1/me`, the user's preferences, the workspace directory), the query bar's field catalogue, query
+ * validation and query history, and 404 problem details for anything else, so a page that starts calling a new
+ * endpoint fails visibly instead of hanging.
  */
 export interface MockApiOptions {
   signedIn?: boolean;
@@ -64,6 +65,55 @@ const principal = {
   sessionExpiresAt: null,
 };
 
+const CAPABILITIES = {
+  sortable: true,
+  filterable: true,
+  rangeable: true,
+  aggregatable: true,
+  fullText: true,
+  wildcard: true,
+  leadingWildcard: false,
+  highlightable: true,
+  exists: true,
+};
+
+/** `GET /api/v1/workspaces/{id}/fields` items: a structural field and the custom fields of the review template. */
+export const FIELDS = [
+  {
+    fieldId: 1,
+    displayName: 'Control Number',
+    queryName: 'controlnumber',
+    type: 'keyword',
+    storage: 'column',
+    multiValue: false,
+    isSystem: true,
+    isHidden: false,
+    isSecurityAffecting: false,
+    datePrecision: null,
+    capabilities: CAPABILITIES,
+    reducedCapabilities: false,
+    choices: null,
+  },
+  {
+    fieldId: 1000,
+    displayName: 'Responsiveness',
+    queryName: 'responsiveness',
+    type: 'singleChoice',
+    storage: 'coding',
+    multiValue: false,
+    isSystem: false,
+    isHidden: false,
+    isSecurityAffecting: false,
+    datePrecision: null,
+    capabilities: CAPABILITIES,
+    reducedCapabilities: false,
+    choices: [
+      { choiceId: 1, name: 'Responsive', isActive: true },
+      { choiceId: 2, name: 'Not Responsive', isActive: true },
+    ],
+  },
+] as const;
+
 function problem(status: number, title: string) {
   return {
     status,
@@ -77,6 +127,8 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const { signedIn = true, permissions = ALL_PERMISSIONS } = options;
   // The "server" copy of the preferences outlives reloads of the page, like the real profile.
   const preferences: Record<string, unknown> = { ...options.preferences };
+  // Likewise the user's query history per workspace (newest first, distinct, at most 50).
+  const history = new Map<string, { query: string; ranAt: string }[]>();
   const json = (route: Route, body: unknown) => route.fulfill({ json: body });
   const unhandled: string[] = [];
 
@@ -109,6 +161,29 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         errors: [],
         warnings: [],
       });
+    }
+    if (signedIn && method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/fields$/.test(path)) {
+      return json(route, {
+        items: FIELDS,
+        nextCursor: null,
+        total: { value: FIELDS.length, relation: 'eq' },
+      });
+    }
+    const queryHistory = /^\/api\/v1\/workspaces\/([^/]+)\/query-history$/.exec(path);
+    if (signedIn && queryHistory) {
+      const entries = history.get(queryHistory[1]) ?? [];
+      if (method === 'GET') return json(route, { items: entries });
+      if (method === 'POST') {
+        const query = String((route.request().postDataJSON() as { query?: string }).query).trim();
+        history.set(
+          queryHistory[1],
+          [
+            { query, ranAt: new Date().toISOString() },
+            ...entries.filter((e) => e.query !== query),
+          ].slice(0, 50),
+        );
+        return route.fulfill({ status: 204 });
+      }
     }
     if (signedIn && path === '/api/v1/workspaces')
       return json(route, {

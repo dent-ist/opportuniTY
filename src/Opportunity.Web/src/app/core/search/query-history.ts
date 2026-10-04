@@ -1,4 +1,9 @@
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { ApiConfiguration } from '../api/generated/api-configuration';
+import { listQueryHistory } from '../api/generated/fn/search/list-query-history';
+import { recordQueryHistory } from '../api/generated/fn/search/record-query-history';
 import { WorkspaceContext } from '../workspace/workspace-context';
 
 export interface QueryHistoryEntry {
@@ -8,23 +13,33 @@ export interface QueryHistoryEntry {
 }
 
 /**
- * Durable per-user query history. There is no API for it yet, so the default keeps nothing beyond the
- * workspace visit; a server-backed implementation (per user, per workspace, last 50) replaces it through DI.
- * Query text is workspace data, so it is never written to browser storage.
+ * Durable per-user, per-workspace query history (#186): last 50 distinct valid queries, newest first, kept by the
+ * server so it survives sign-out and other browsers. Query text is workspace data (Q-16), so it is never written to
+ * browser storage.
  */
-@Injectable({ providedIn: 'root', useFactory: () => new NoQueryHistoryBackend() })
+@Injectable({ providedIn: 'root', useFactory: () => inject(HttpQueryHistoryBackend) })
 export abstract class QueryHistoryBackend {
   abstract load(workspaceId: string): Promise<readonly QueryHistoryEntry[]>;
   abstract record(workspaceId: string, entry: QueryHistoryEntry): Promise<void>;
 }
 
-export class NoQueryHistoryBackend extends QueryHistoryBackend {
-  load(): Promise<readonly QueryHistoryEntry[]> {
-    return Promise.resolve([]);
+/** `GET`/`POST /api/v1/workspaces/{workspaceId}/query-history`; the server stamps its own run time. */
+@Injectable({ providedIn: 'root' })
+export class HttpQueryHistoryBackend extends QueryHistoryBackend {
+  private readonly http = inject(HttpClient);
+  private readonly rootUrl = inject(ApiConfiguration).rootUrl;
+
+  async load(workspaceId: string): Promise<readonly QueryHistoryEntry[]> {
+    const response = await firstValueFrom(
+      listQueryHistory(this.http, this.rootUrl, { workspaceId }),
+    );
+    return response.body.items.map((e) => ({ query: e.query, ranAt: String(e.ranAt) }));
   }
 
-  record(): Promise<void> {
-    return Promise.resolve();
+  async record(workspaceId: string, entry: QueryHistoryEntry): Promise<void> {
+    await firstValueFrom(
+      recordQueryHistory(this.http, this.rootUrl, { workspaceId, body: { query: entry.query } }),
+    );
   }
 }
 

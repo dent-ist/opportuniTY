@@ -379,6 +379,120 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/query-history": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "The caller's recent queries in the workspace: distinct, newest first, at most 50.",
+        "operationId": "ListQueryHistory",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryHistoryResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "Record a query the caller ran; re-running a query moves it to the top.",
+        "description": "The query must parse (see query-validations); surrounding whitespace is trimmed and empty queries are rejected.",
+        "operationId": "RecordQueryHistory",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryHistoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/jobs/{jobId}": {
       "get": {
         "tags": [
@@ -2588,6 +2702,30 @@
           }
         }
       },
+      "FieldChoiceResource": {
+        "required": [
+          "choiceId",
+          "name",
+          "isActive"
+        ],
+        "type": "object",
+        "properties": {
+          "choiceId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
       "FieldResource": {
         "required": [
           "fieldId",
@@ -2652,6 +2790,15 @@
           },
           "reducedCapabilities": {
             "type": "boolean"
+          },
+          "choices": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/FieldChoiceResource"
+            }
           }
         }
       },
@@ -3917,6 +4064,49 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "QueryHistoryEntryResource": {
+        "required": [
+          "query",
+          "ranAt"
+        ],
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "ranAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "QueryHistoryRequest": {
+        "required": [
+          "query"
+        ],
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "QueryHistoryResource": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryHistoryEntryResource"
+            }
           }
         }
       },
