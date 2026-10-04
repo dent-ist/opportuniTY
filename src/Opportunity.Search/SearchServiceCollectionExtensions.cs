@@ -6,11 +6,15 @@ using Opportunity.Application.Bootstrap;
 using Opportunity.Application.Search;
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Application.Search.Projection;
+using Opportunity.Application.SearchWork;
 using Opportunity.Application.Storage;
+using Opportunity.Application.Telemetry;
 using Opportunity.Core.QueryLanguage;
 using Opportunity.Search.Indexing;
 using Opportunity.Search.Projection;
 using Opportunity.Search.Querying;
+using Opportunity.Search.Workers;
+using Opportunity.Search.Writing;
 
 namespace Opportunity.Search;
 
@@ -75,6 +79,52 @@ public static class SearchServiceCollectionExtensions
         services.TryAddSingleton<IProjectionTextLoader>(sp => new ObjectStoreProjectionTextLoader(
             sp.GetRequiredService<IObjectStore>(), sp.GetRequiredService<ProjectionOptions>()));
         services.TryAddSingleton<IProjectionService, ProjectionService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="IProjectionIndexWriter"/>, the byte-bounded <c>_bulk</c> write path every index worker shares,
+    /// with index management. OpenSearch settings are bound from configuration on first use unless an
+    /// <see cref="OpenSearchOptions"/> instance is registered first. Needs <see cref="IIndexPlacementStore"/>.
+    /// </summary>
+    public static IServiceCollection AddProjectionIndexWriter(this IServiceCollection services, ProjectionWriterOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        options ??= new ProjectionWriterOptions();
+        options.Validate();
+        services.TryAddSingleton(options);
+        services.TryAddSingleton(sp =>
+        {
+            var bound = OpenSearchOptions.Bind(sp.GetRequiredService<IConfiguration>());
+            bound.Validate();
+            return bound;
+        });
+        AddOpenSearchServices(services, null);
+        AddIndexManagement(services);
+        services.TryAddSingleton<IProjectionIndexWriter>(sp => new ProjectionIndexWriter(
+            sp.GetRequiredService<IIndexManager>(), sp.GetRequiredService<OpenSearchConnection>(), sp.GetRequiredService<ProjectionWriterOptions>()));
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the chunk index worker (E07-T04): <see cref="ChunkIndexTaskConsumer"/> (scoped, like every message
+    /// handler), the projection pipeline and the shared writer. Bind it to the security-bulk and bulk lanes with
+    /// <c>AddMessageHandler&lt;IndexChunkTaskMessage, ChunkIndexTaskConsumer&gt;(queue)</c>. The host also registers
+    /// <see cref="IIndexChunkTaskRepository"/>, <see cref="IIndexTaskMembershipReader"/>,
+    /// <see cref="IProjectionSourceReader"/>, <see cref="IIndexPlacementStore"/>, <see cref="IObjectStore"/> and an audit writer.
+    /// </summary>
+    public static IServiceCollection AddChunkIndexWorker(
+        this IServiceCollection services, ChunkIndexWorkerOptions? options = null, ProjectionWriterOptions? writer = null, ProjectionOptions? projection = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        options ??= new ChunkIndexWorkerOptions();
+        options.Validate();
+        services.TryAddSingleton(options);
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IMessageProcessingMeter>(NullMessageProcessingMeter.Instance);
+        services.AddSearchProjection(projection);
+        services.AddProjectionIndexWriter(writer);
+        services.TryAddScoped<ChunkIndexTaskConsumer>();
         return services;
     }
 

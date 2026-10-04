@@ -202,6 +202,11 @@ public class SearchWorkRulesTests
         public Task<IndexTaskFailureResult> FailAsync(IndexTaskLease lease, ChunkError failure, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<IndexTaskRenewal> RenewLeaseAsync(IndexTaskLease lease, TimeSpan leaseDuration, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> ReleaseAsync(IndexTaskLease lease, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task<IndexChunkTaskInfo?> GetAsync(Guid workspaceId, Guid taskId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

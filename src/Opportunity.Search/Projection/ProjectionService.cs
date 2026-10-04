@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 
 using Opportunity.Application.Search.Projection;
@@ -17,6 +18,14 @@ public interface IProjectionService
     /// <summary>One <see cref="ProjectionDocument"/> per requested id, in request order (duplicates collapsed).</summary>
     Task<IReadOnlyList<ProjectionDocument>> BuildAsync(
         Guid workspaceId, IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same projections, streamed: the inputs of every id are read in one snapshot when enumeration starts, and each
+    /// document's text is loaded only when it is reached, so a caller that writes as it goes holds one document's text
+    /// at a time (bulk index workers with ~10 MB texts, E07-T04).
+    /// </summary>
+    IAsyncEnumerable<ProjectionDocument> BuildEachAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Loads a document's extracted text, reading no more than the cap needs (ADR-007 R9).</summary>
@@ -33,8 +42,19 @@ internal sealed class ProjectionService(IProjectionSourceReader reader, IProject
     public async Task<IReadOnlyList<ProjectionDocument>> BuildAsync(
         Guid workspaceId, IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default)
     {
+        var documents = new List<ProjectionDocument>(documentIds.Count);
+        await foreach (var document in BuildEachAsync(workspaceId, documentIds, cancellationToken).ConfigureAwait(false))
+        {
+            documents.Add(document);
+        }
+
+        return documents;
+    }
+
+    public async IAsyncEnumerable<ProjectionDocument> BuildEachAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
         var batch = await reader.ReadAsync(workspaceId, documentIds, cancellationToken).ConfigureAwait(false);
-        var documents = new List<ProjectionDocument>(batch.Documents.Count);
         foreach (var source in batch.Documents)
         {
             if (source.WorkspaceId != workspaceId)
@@ -45,10 +65,8 @@ internal sealed class ProjectionService(IProjectionSourceReader reader, IProject
             var text = source.State == ProjectionSourceState.Live
                 ? await texts.LoadAsync(source, cancellationToken).ConfigureAwait(false)
                 : null;
-            documents.Add(builder.Build(source, batch.Catalog, text));
+            yield return builder.Build(source, batch.Catalog, text);
         }
-
-        return documents;
     }
 }
 
