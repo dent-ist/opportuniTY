@@ -8009,9 +8009,30 @@
           }
         }
       },
+      "OverlayMultiValue": {
+        "enum": [
+          "replace",
+          "merge"
+        ]
+      },
       "OverlaySettings": {
         "type": "object",
         "properties": {
+          "keyField": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "blankValuesOverwrite": {
+            "type": "boolean"
+          },
+          "multiValue": {
+            "$ref": "#/components/schemas/OverlayMultiValue"
+          },
+          "allowCodingFields": {
+            "type": "boolean"
+          },
           "keyFieldId": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [

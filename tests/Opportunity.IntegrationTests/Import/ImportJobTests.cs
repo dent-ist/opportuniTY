@@ -92,7 +92,7 @@ public sealed class ImportJobTests(MigrationPostgresFixture postgres)
             (4L, "duplicate-control-number"),
             (5L, "control-number-missing"),
             (8L, "invalid-integer"),
-            (9L, "control-number-exists"),
+            (9L, "KEY_EXISTS"),
             (10L, "control-number-retired"));
         errors.Single(e => e.RowNo == 4).Message.Should().Contain("row 1");
         errors.Single(e => e.RowNo == 2).Column.Should().Be("DATESENT");
@@ -169,7 +169,7 @@ public sealed class ImportJobTests(MigrationPostgresFixture postgres)
         var again = await h.StartAsync(ws, dat);
         await h.RunAsync(again);
         (await h.BatchAsync(again)).RowsErrored.Should().Be(7);
-        (await h.IssuesAsync(again)).Select(e => e.Code).Distinct().Should().BeEquivalentTo(["control-number-exists", "duplicate-control-number"]);
+        (await h.IssuesAsync(again)).Select(e => e.Code).Distinct().Should().BeEquivalentTo(["KEY_EXISTS", "duplicate-control-number"]);
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public sealed class ImportJobTests(MigrationPostgresFixture postgres)
 
         var report = await h.BatchAsync(overlay);
         (report.RowsImported, report.RowsOverlaid, report.RowsSkipped, report.RowsErrored).Should().Be((0L, 2L, 1L, 1L));
-        (await h.IssuesAsync(overlay)).Select(e => (e.RowNo, e.Code)).Should().Equal((4L, "overlay-key-not-found"));
+        (await h.IssuesAsync(overlay)).Select(e => (e.RowNo, e.Code)).Should().Equal((4L, "KEY_MISSING"));
 
         var after = await h.DocumentsAsync(ws);
         after.Keys.Should().BeEquivalentTo(["OV-1", "OV-2", "OV-3"]);

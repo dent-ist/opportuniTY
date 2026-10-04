@@ -132,6 +132,7 @@ M1 events ship with `E14-T01`/`E05-T04`; the rest with the owning feature, and `
 | **Production** | `Created`, `SpecFrozen`, `Run`, `VerificationFailed`, `QcOverride`, `Finalized`, `Voided`, `Downloaded`, `Rerun` | Production | spec version, Bates range, manifest hash, V1–V5 results (ADR-012) |
 | **Import** | `Started`, `Completed`, `MalwareDetected`, `HashMismatch` | Import | counts (Completed: the frozen import report figures, E08-T06); quarantined `ObjectId`s |
 | | `PreflightRun`, `ReportDownloaded` | Import | pre-flight counts; downloaded report, error file or pre-flight issue list (E08-T06) |
+| | `Overlaid` | Job | one per overlay chunk (E08-T07): import, rows, document count and the changed column/field keys; old and new values live in `document_overlay_event` (like `CodingEvent`, §6.2), never in audit (§7) |
 | **Security** | `RoleAssigned`, `RoleRevoked`, `PermissionChanged`, `RestrictionChanged` (Q-11), `WallCreated`, `WallChanged`, `WallDeleted`, `WallMemberAdded`, `WallMemberRemoved` | Role, Wall, User | before/after membership (user and group IDs) |
 | | `BreakGlassActivated`, `BreakGlassEnded` | Wall/Workspace | reason (required), duration (default 60 min, max 4 h — decision Q-45; read-only per ADR-015 D6.4); workspace admins and auditors notified. Every event during the window carries `AccessPath = BreakGlass` and is listed in the break-glass report (Q-13) |
 | | `AcknowledgmentAccepted` | Workspace | text version hash (`E20-T03`) |

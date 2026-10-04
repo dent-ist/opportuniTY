@@ -112,6 +112,35 @@ public sealed class ImportPreflightReportTests(MigrationPostgresFixture postgres
     }
 
     [Fact]
+    public async Task Preflight_applies_the_overlay_key_rules_of_the_import_mode()
+    {
+        using var share = new Share();
+        await using var h = await ImportHarness.CreateAsync(postgres, volumeRoot: share.Root);
+        var ws = await h.WorkspaceAsync();
+        var existing = await h.StartAsync(ws, ImportHarness.Utf8Bom(ImportHarness.Dat(["BEGDOC", "CUSTODIAN"], ["OV-1", "Smith"])));
+        (await h.RunAsync(existing)).Status.Should().Be(JobStatus.Completed);
+
+        await using var factory = new ApiFactory();
+        using var client = Client(factory, h, share.Root);
+        var dat = ImportHarness.Utf8Bom(ImportHarness.Dat(["BEGDOC", "CUSTODIAN"], ["OV-1", "Jones"], ["OV-2", "Doe"]));
+
+        async Task<List<string>> KeyIssuesAsync(string mode)
+        {
+            using var response = await PostAsync(client, ws, "imports/preflight", dat, new { autoMap = true, profile = new { mode } });
+            response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+            var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct)).RootElement;
+            result.GetProperty("mode").GetString().Should().Be(mode);
+            return [.. result.GetProperty("issues").EnumerateArray()
+                .Select(i => $"{i.GetProperty("row").GetInt64()}:{i.GetProperty("code").GetString()}")
+                .Where(i => i.Contains(":KEY_", StringComparison.Ordinal))];
+        }
+
+        (await KeyIssuesAsync("append")).Should().Equal("1:KEY_EXISTS");
+        (await KeyIssuesAsync("overlay")).Should().Equal("2:KEY_MISSING");
+        (await KeyIssuesAsync("appendOverlay")).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Preflight_samples_paths_beyond_the_full_check_limit_and_says_so()
     {
         using var share = new Share();

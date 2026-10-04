@@ -134,6 +134,45 @@ public sealed class AppendKeyCollisionCheck : IImportPreflightCheck
     }
 }
 
+/// <summary>
+/// Overlay and Append/Overlay (E08-T07): the import's own key rules (<see cref="ImportKeyCollisionChecker"/>), so the
+/// pre-flight reports exactly the rows the import would refuse: Overlay needs an existing document (<c>KEY_MISSING</c>);
+/// Append/Overlay accepts both. Only Control Number is a supported overlay key; another key fails the whole check.
+/// </summary>
+public sealed class OverlayKeyCollisionCheck(ImportKeyCollisionChecker checker) : IImportPreflightCheck
+{
+    public async Task CheckKeysAsync(
+        ImportPreflightContext context, IReadOnlyList<ImportPreflightKeyRow> rows, IImportPreflightIssueSink issues, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(issues);
+        if (context.Profile.Mode == ImportMode.Append || rows.Count == 0)
+        {
+            return;
+        }
+
+        ImportKeyCheck check;
+        try
+        {
+            check = await checker.CheckAsync(context.WorkspaceId, context.Profile.Mode, context.Profile.Overlay?.KeyField,
+                [.. rows.Select(r => new ImportKeyProbe(r.Row, r.ControlNumber, r.ControlNumberNorm))], cancellationToken).ConfigureAwait(false);
+        }
+        catch (ArgumentException ex)
+        {
+            issues.Add(new ImportPreflightIssue(rows[0].Row, null, null, ImportPreflightCodes.From(ImportKeyRules.KeyNotUnique),
+                ImportRowIssueSeverity.Error, ex.Message));
+            return;
+        }
+
+        foreach (var collision in check.Collisions)
+        {
+            issues.Add(new ImportPreflightIssue(collision.RowNo, collision.Key, null, collision.Issue.Code, ImportRowIssueSeverity.Error,
+                collision.Issue.Message));
+        }
+    }
+}
+
 /// <summary>Pre-flight issue codes (UPPER_SNAKE_CASE). Other row codes are the importer's codes, upper-cased.</summary>
 public static partial class ImportPreflightCodes
 {

@@ -254,11 +254,17 @@ public sealed class ImportEndpoints : IApiEndpointModule
             profile = profile with { Mode = ImportMode.Overlay };
         }
 
+        // Q-31: coding and privilege fields load only when allowed for this import: profile.overlay.allowCodingFields
+        // (then every mapped coding field is enabled) or an explicit codingOverlayFieldIds list.
         var codingFields = request.CodingOverlayFieldIds.Distinct().Order().ToList();
-        profile = profile with { Overlay = profile.Overlay with { AllowCodingFieldOverlay = codingFields.Count > 0 } };
+        var allowCoding = (profile.Overlay ?? new OverlaySettings()).CodingFieldsAllowed || codingFields.Count > 0;
+        profile = profile with
+        {
+            Overlay = (profile.Overlay ?? new OverlaySettings()) with { AllowCodingFields = allowCoding, AllowCodingFieldOverlay = false },
+        };
 
         // Authorization beyond Import.Run (Q-31: coding overlay is Workspace Admin only via Import.Overlay).
-        if (profile.Mode != ImportMode.Append || codingFields.Count > 0)
+        if (profile.Mode != ImportMode.Append || allowCoding)
         {
             var decision = await authorization.AuthorizeAsync(access.Principal, ws, Permission.ImportOverlay, cancellationToken).ConfigureAwait(false);
             if (!decision.IsAllowed)
@@ -316,6 +322,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
         var (file, opt, request, profile, profileVersion, name) = (start.File, start.Opt, start.Request, start.Profile, start.ProfileVersion, start.Name);
         var (fileName, optFileName, readerOptions) = (start.FileName, start.OptFileName, start.ReaderOptions);
         var codingFields = start.CodingFields;
+        var allowCoding = profile.Overlay?.AllowCodingFields == true; // set by ReadStartFormAsync (Q-31)
         if (start.ImagesOnly)
         {
             return await StartImagesOnlyAsync(context, access, batches, sources, opt!, name, optFileName, profile, request, profileVersion, cancellationToken)
@@ -353,6 +360,12 @@ public sealed class ImportEndpoints : IApiEndpointModule
         var mappedCoding = mapping.Targets.Where(t => t.Usable && t.FieldId is not null
                 && (t.Definition.Storage == FieldStorage.Coding || t.Definition.IsSecurityAffecting))
             .Select(t => t.FieldId!.Value).ToHashSet();
+        if (allowCoding && request.CodingOverlayFieldIds.Count == 0)
+        {
+            // allowCodingFields without a list enables exactly the mapped coding fields (audited as Coding.OverlayEnabled).
+            codingFields = [.. mappedCoding.Order()];
+        }
+
         errors.AddRange(mappedCoding.Where(id => !codingFields.Contains(id)).Select(id => new MappingIssue(
             MappingIssueSeverity.Error, "coding-field-not-enabled", $"Coding field {id} is mapped but not listed in codingOverlayFieldIds (Q-31).")));
         errors.AddRange(codingFields.Where(id => !mappedCoding.Contains(id)).Select(id => new MappingIssue(
@@ -839,12 +852,14 @@ public static class ImportEndpointRegistration
         ArgumentNullException.ThrowIfNull(configuration);
         services.AddOptions<ImportStartOptions>().Bind(configuration.GetSection(ImportStartOptions.SectionName)).ValidateDataAnnotations();
         services.TryAddSingleton<IImportBatchStore, ImportBatchRepository>();
+        services.TryAddSingleton<ImportKeyCollisionChecker>();
         services.TryAddSingleton<IJobRepository, JobRepository>();
         services.TryAddSingleton<IFieldCatalogRepository, FieldCatalogRepository>();
         services.TryAddSingleton<IWorkspaceReader, WorkspaceReader>();
         services.TryAddSingleton<IImportReportStore, ImportReportRepository>();
         services.TryAddSingleton<IImportPreflightStore, ImportPreflightRepository>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IImportPreflightCheck, AppendKeyCollisionCheck>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IImportPreflightCheck, OverlayKeyCollisionCheck>());
         // Pre-flight stats the files a load names (never reads them): the import share, read-only, when configured.
         services.TryAddSingleton(new ImportVolumeOptions
         {
