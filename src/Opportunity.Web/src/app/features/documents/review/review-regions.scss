@@ -51,36 +51,6 @@
   overflow-wrap: anywhere;
 }
 
-.coding__values {
-  display: grid;
-  gap: var(--opp-space-2);
-  margin: 0;
-}
-
-.coding__value {
-  display: grid;
-  grid-template-columns: minmax(7rem, 40%) 1fr;
-  gap: var(--opp-space-2);
-}
-
-.coding__value dt {
-  font-weight: var(--opp-font-weight-semibold);
-}
-
-.coding__value dd {
-  margin: 0;
-}
-
-.coding__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--opp-space-2);
-  margin-block-start: auto;
-  padding-block-start: var(--opp-space-3);
-  border-block-start: var(--opp-border-width) solid var(--opp-color-border);
-}
-
 .related__family {
   margin: 0;
 }

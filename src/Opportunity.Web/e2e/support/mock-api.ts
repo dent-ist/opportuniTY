@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { CODING_FIELDS, CodingMock } from './mock-coding';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -16,6 +17,10 @@ export interface MockApiOptions {
   documents?: number;
   /** Delay of the document content gateway (`GET …/documents/{id}/text`), to make prefetch measurable. */
   contentDelayMs?: number;
+  /** How long a coding save stays "indexing" before it is searchable (default 600 ms). */
+  indexDelayMs?: number;
+  /** Delay of `PUT …/coding`, to measure the coding acknowledgement. */
+  codingSaveDelayMs?: number;
 }
 
 /** One protected-content gateway audit record of the mock, as ADR-013 defines them. */
@@ -36,6 +41,8 @@ export interface MockControl {
   expireSearches(): void;
   /** Documents (1-based numbers) that no longer match any search, e.g. after a recode. */
   removeDocuments(...numbers: number[]): void;
+  /** The coding store: saves received, and another user's changes (`coding.codeAsOtherUser`). */
+  readonly coding: CodingMock;
 }
 
 /** Extracted text of mock document `n`: a few paragraphs, so the viewer shows something realistic. */
@@ -187,40 +194,8 @@ const principal = {
   sessionExpiresAt: null,
 };
 
-const CAPABILITIES = {
-  sortable: true,
-  filterable: true,
-  rangeable: true,
-  aggregatable: true,
-  fullText: true,
-  wildcard: true,
-  leadingWildcard: false,
-  highlightable: true,
-  exists: true,
-};
-
-/** `GET /api/v1/workspaces/{id}/fields` items: the grid's structural fields and a custom field of the review template. */
-export const FIELDS = [
-  ...SYSTEM_FIELDS,
-  {
-    fieldId: 1000,
-    displayName: 'Responsiveness',
-    queryName: 'responsiveness',
-    type: 'singleChoice',
-    storage: 'coding',
-    multiValue: false,
-    isSystem: false,
-    isHidden: false,
-    isSecurityAffecting: false,
-    datePrecision: null,
-    capabilities: CAPABILITIES,
-    reducedCapabilities: false,
-    choices: [
-      { choiceId: 1, name: 'Responsive', isActive: true },
-      { choiceId: 2, name: 'Not Responsive', isActive: true },
-    ],
-  },
-];
+/** `GET /api/v1/workspaces/{id}/fields` items: the grid's structural fields and the coding fields (./mock-coding.ts). */
+export const FIELDS = [...SYSTEM_FIELDS, ...CODING_FIELDS];
 
 function problem(status: number, title: string) {
   return {
@@ -252,9 +227,16 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const history = new Map<string, { query: string; ranAt: string }[]>();
   const json = (route: Route, body: unknown) => route.fulfill({ json: body });
   const unhandled: string[] = [];
+  const coding = new CodingMock({
+    write: permissions.includes('Coding.Write'),
+    writePrivilege: permissions.includes('Coding.WritePrivilege'),
+    indexDelayMs: options.indexDelayMs ?? 600,
+    saveDelayMs: options.codingSaveDelayMs ?? 0,
+  });
   const control: MockControl = {
     unhandled,
     audit,
+    coding,
     expireSearches: () => (expired = true),
     removeDocuments: (...numbers) => numbers.forEach((n) => removed.add(n)),
   };
@@ -332,6 +314,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
           : Number(url.searchParams.get('page') ?? 1);
       return json(route, searchPage(docs, pageSize, n));
     }
+    // Coding and coding layouts (E10-T01, E04-T03): ./mock-coding.ts.
+    const coded = signedIn ? coding.handle(route, method, path) : undefined;
+    if (coded) return coded;
     // Protected-content gateway (E05-T04 / E11-T01): the first chunk of extracted text, audited per delivery
     // with its purpose; only the view beacon records `Viewed` (ADR-013).
     const content =
@@ -362,36 +347,6 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         const body = route.request().postDataJSON() as { retrievalId?: string | null };
         audit.push({ action: 'Viewed', documentId, retrievalId: body?.retrievalId ?? null });
         return route.fulfill({ status: 204 });
-      }
-      if (content[2] === 'coding' && method === 'GET') {
-        // E10-T01: current coding with the DocumentVersion as ETag.
-        const n = Number(content[1]);
-        return route.fulfill({
-          json: {
-            documentId,
-            documentVersion: '3',
-            projectedVersion: '3',
-            layoutId: null,
-            lastEditor: null,
-            indexingState: 'indexed',
-            // Responsiveness (field 1000) = Responsive (choice 1) on every third document.
-            fields:
-              n % 3 === 0
-                ? [
-                    {
-                      fieldId: 1000,
-                      value: 1,
-                      editable: true,
-                      isSecurityAffecting: false,
-                      changedAtVersion: '3',
-                      changedBy: null,
-                      changedAt: null,
-                    },
-                  ]
-                : [],
-          },
-          headers: { ETag: '"3"' },
-        });
       }
     }
     if (signedIn && path === '/api/v1/workspaces')

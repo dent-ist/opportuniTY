@@ -139,6 +139,13 @@
   border-inline-end: var(--opp-border-width) solid var(--opp-color-border);
 }
 
+// The reviewer's own coding is saved but not searchable yet (E16-T05).
+.grid__pending {
+  display: inline-flex;
+  margin-inline-start: var(--opp-space-1);
+  color: var(--opp-color-info-text);
+}
+
 // Pinned columns only while the grid scrolls sideways: sticky cells cost a compositing layer each.
 .grid__viewport.is-wide {
   .grid__cell--select,

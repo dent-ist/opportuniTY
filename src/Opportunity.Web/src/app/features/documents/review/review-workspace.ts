@@ -23,14 +23,9 @@ import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { Announcer, Button, DialogService, Icon, IconButton, SplitPane } from '../../../ui';
 import { DocumentLoader } from './document-loader';
 import { CursorDirection, MoveResult, ReviewCursor } from './review-cursor';
-import { CodingApi, DocumentContentApi, TextChunk } from './review-ports';
-import {
-  CodingState,
-  ReviewCoding,
-  ReviewRelated,
-  ReviewViewer,
-  ViewerDocument,
-} from './review-regions';
+import { ReviewCoding } from './coding/coding-pane';
+import { DocumentContentApi, TextChunk } from './review-ports';
+import { ReviewRelated, ReviewViewer, ViewerDocument } from './review-regions';
 import { UnsavedChangesDialog, UnsavedChoice } from './unsaved-changes-dialog';
 
 /** A message under the review bar; `refreshed` and the end notices clear on the next move. */
@@ -72,14 +67,13 @@ interface Notice {
 })
 export class ReviewWorkspace {
   readonly cursor = input.required<ReviewCursor>();
-  /** The workspace's field catalogue (the coding pane shows its coding fields). */
+  /** The workspace's field catalogue (the coding pane reads its layouts and fields through `CodingApi`). */
   readonly fields = input<readonly FieldResource[] | null>(null);
   /** Back to the list (after any unsaved edits were saved or discarded). */
   readonly back = output<void>();
 
   private readonly loader = inject(DocumentLoader);
   private readonly content = inject(DocumentContentApi);
-  private readonly codingApi = inject(CodingApi);
   private readonly announcer = inject(Announcer);
   private readonly dialogs = inject(DialogService);
   private readonly prefs = inject(UiPreferences);
@@ -97,7 +91,6 @@ export class ReviewWorkspace {
   private readonly relatedToggle = viewChild.required<ElementRef<HTMLElement>>('relatedToggle');
 
   protected readonly viewer = signal<ViewerDocument | null>(null);
-  protected readonly coding = signal<CodingState>('loading');
   protected readonly notice = signal<Notice | null>(null);
   /** Bumped whenever another document is displayed; late responses for an older one are dropped. */
   private seq = 0;
@@ -130,7 +123,9 @@ export class ReviewWorkspace {
     });
     registry.handle('review.cancelEdits', () => this.editor()?.discard());
     registry.handle('review.backToList', () => void this.leave());
-    registry.handle('coding.focus', () => this.focusPane('coding'));
+    registry.handle('coding.focus', ({ digit }) =>
+      digit ? this.editor()?.focusField(digit) : this.focusPane('coding'),
+    );
     registry.handle('related.focus', () => this.focusPane('related'));
 
     effect(() => {
@@ -249,11 +244,6 @@ export class ReviewWorkspace {
         },
       );
     }
-    this.coding.set('loading');
-    this.codingApi.get(id).then(
-      (coding) => seq === this.seq && this.coding.set(coding),
-      () => seq === this.seq && this.coding.set('unavailable'),
-    );
   }
 
   /** Once the document is on screen, the view is recorded (`Document.Viewed`) with the delivery's retrieval id. */
@@ -286,6 +276,13 @@ export class ReviewWorkspace {
     const split = pane === 'coding' ? this.codingSplit() : this.relatedSplit();
     split.toggleCollapsed(false);
     const region = pane === 'coding' ? this.codingRegion() : this.relatedRegion();
-    afterNextRender(() => region.nativeElement.focus(), { injector: this.injector });
+    // Focus already inside the pane stays (Alt+Shift+C, then n may have moved it to field n meanwhile).
+    afterNextRender(
+      () => {
+        if (!region.nativeElement.contains(this.document.activeElement))
+          region.nativeElement.focus();
+      },
+      { injector: this.injector },
+    );
   }
 }

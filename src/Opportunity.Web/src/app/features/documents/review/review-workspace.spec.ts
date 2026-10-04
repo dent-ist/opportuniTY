@@ -13,7 +13,7 @@ import { PreferenceStorage } from '../../../core/preferences/preference-storage'
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
 import { FakeResultOptions, fakePage, hit } from '../grid/grid-fixtures.testing';
-import { ReviewCoding } from './review-regions';
+import { ReviewCoding } from './coding/coding-pane';
 
 const WS = '/api/v1/workspaces/ws-1';
 const SEARCHES = `${WS}/searches`;
@@ -135,6 +135,12 @@ describe('Review mode (E16-T03)', () => {
   }
 
   const root = () => harness.routeNativeElement as HTMLElement;
+  const checkedChoice = () =>
+    region('Coding')
+      .querySelector('input:checked')
+      ?.closest('label')
+      ?.querySelector('.coding__option-label')
+      ?.textContent?.trim() ?? null;
   const grid = () => root().querySelector<HTMLElement>('[role="grid"]')!;
   const review = () => root().querySelector<HTMLElement>('opp-review-workspace');
   const region = (name: string) =>
@@ -181,7 +187,7 @@ describe('Review mode (E16-T03)', () => {
     expect(document.activeElement).toBe(region('Viewer'));
     expect(viewerText()).toBe('Extracted text of document 2');
     expect(region('Coding').textContent).toContain('Responsiveness');
-    expect(region('Coding').textContent).toContain('Not set');
+    expect(checkedChoice()).toBeNull();
     await expectNoAxeViolations(review()!);
   }, 30_000); // axe over the review layout is slow in jsdom on a loaded machine
 
@@ -201,7 +207,7 @@ describe('Review mode (E16-T03)', () => {
     expect(viewerText()).toBe('Extracted text of document 3');
     await settle();
     expect(bar()).toContain('Doc 3 of 250');
-    expect(region('Coding').textContent).toContain('Responsive');
+    expect(checkedChoice()).toBe('Responsive');
     expect(textRequests()).toEqual(['doc-2:display', 'doc-3:prefetch', 'doc-4:prefetch']);
     // The view of doc-3 refers to the prefetch delivery; doc-4 (prefetched only) has no view.
     expect(views()).toEqual(['doc-2:r-1-display', 'doc-3:r-2-prefetch']);

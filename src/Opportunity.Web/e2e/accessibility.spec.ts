@@ -108,6 +108,38 @@ for (const theme of THEMES) {
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
+    test('coding pane: every field type, a blocked save and a version conflict (E16-T05)', async ({
+      page,
+      mock,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      await page.getByRole('grid', { name: 'Documents' }).focus();
+      await page.keyboard.press('Enter');
+      const coding = page.getByRole('region', { name: 'Coding' });
+      await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+      // A required field left empty blocks the save; Withhold shows Privilege Basis.
+      await coding.getByRole('radio', { name: 'Withhold' }).check();
+      await page.keyboard.press('Control+KeyS');
+      await expect(coding.getByText('Responsiveness is required.')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      // Someone else saved first.
+      mock.coding.codeAsOtherUser(1, 1000, 2, 'J. Smith');
+      await coding.getByRole('radio', { name: 'Responsive', exact: true }).check();
+      await page.keyboard.press('Control+KeyS');
+      await expect(coding.getByRole('alert').filter({ hasText: 'Changed by' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      // The other field types (dates, numbers, user, multi-value text) in the Review Details layout.
+      await coding.getByRole('button', { name: 'Reload current coding' }).click();
+      await coding.getByRole('combobox', { name: 'Layout' }).selectOption('Review Details');
+      await expect(coding.getByRole('textbox', { name: 'Pages Reviewed' })).toBeVisible();
+      await coding.getByRole('textbox', { name: 'Pages Reviewed' }).fill('many');
+      await page.keyboard.press('Control+KeyS');
+      await expect(coding.getByText('Pages Reviewed: enter a whole number')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
     for (const popup of POPUPS) {
       test(`${popup.name} open`, async ({ page }, testInfo) => {
         await openPage(page, popup.path);

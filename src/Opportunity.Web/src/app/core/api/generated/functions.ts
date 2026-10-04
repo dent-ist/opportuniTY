@@ -51,6 +51,8 @@ export type { RecordDocumentView$Params as RecordDocumentView$Params } from './f
 export { recordDocumentView as recordDocumentView } from './fn/document-content/record-document-view';
 export type { ListFields$Params as ListFields$Params } from './fn/fields/list-fields';
 export { listFields as listFields } from './fn/fields/list-fields';
+export type { ListCodingLayouts$Params as ListCodingLayouts$Params } from './fn/fields/list-coding-layouts';
+export { listCodingLayouts as listCodingLayouts } from './fn/fields/list-coding-layouts';
 export type { GetDocumentCoding$Params as GetDocumentCoding$Params } from './fn/coding/get-document-coding';
 export { getDocumentCoding as getDocumentCoding } from './fn/coding/get-document-coding';
 export type { SaveDocumentCoding$Params as SaveDocumentCoding$Params } from './fn/coding/save-document-coding';

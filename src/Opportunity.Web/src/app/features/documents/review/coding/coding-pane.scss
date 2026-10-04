@@ -1,0 +1,194 @@
+// Coding pane (E16-T05): dense, keyboard-first, opportuniTY tokens only. The fields scroll; the actions stay
+// at the bottom of the pane.
+:host {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.coding__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  min-block-size: 0;
+  padding: var(--opp-space-3);
+  overflow: auto;
+}
+
+.coding__top,
+.coding__form,
+.coding__section,
+.coding__field,
+.coding__readonly {
+  display: grid;
+  gap: var(--opp-space-2);
+  min-inline-size: 0;
+}
+
+.coding__form {
+  gap: var(--opp-space-4);
+}
+
+.coding__field,
+.coding__readonly {
+  gap: var(--opp-space-1);
+}
+
+.coding__status,
+.coding__layout-name,
+.coding__message,
+.coding__label,
+.coding__access,
+.coding__option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-1) var(--opp-space-2);
+  margin: 0;
+}
+
+.coding__dirty {
+  font-weight: var(--opp-font-weight-semibold);
+  color: var(--opp-color-warning-text);
+}
+
+.coding__muted,
+.coding__hint {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+}
+
+.coding__message {
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-danger-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-danger-bg);
+  color: var(--opp-color-danger-text);
+}
+
+// Section headings: small spaced capitals over a hairline, so sections read as groups without boxes.
+.coding__section-title {
+  margin: 0;
+  padding-block-end: var(--opp-space-1);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.coding__label {
+  padding: 0;
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.coding__required,
+.coding__error {
+  margin: 0;
+  color: var(--opp-color-danger-text);
+}
+
+// Security-affecting fields (Q-11): lock and words, never colour alone.
+.coding__access {
+  gap: var(--opp-space-1);
+  padding: 0 var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-privileged-border);
+  border-radius: var(--opp-radius-pill);
+  background: var(--opp-color-privileged-bg);
+  color: var(--opp-color-privileged-text);
+  font-size: var(--opp-font-size-xs);
+}
+
+.coding__choices {
+  display: grid;
+  gap: 1px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.coding__options--scroll {
+  max-block-size: 14rem;
+  overflow: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.coding__option {
+  flex-wrap: nowrap;
+  min-block-size: var(--opp-target-min);
+  padding-inline: var(--opp-space-2);
+  border-radius: var(--opp-radius-sm);
+  cursor: pointer;
+
+  &.is-checked {
+    background: var(--opp-color-selected);
+    font-weight: var(--opp-font-weight-medium);
+  }
+
+  input {
+    flex: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    margin: 0;
+    accent-color: var(--opp-color-accent);
+  }
+}
+
+// The access digit, in the mono face so (1)…(9) line up down the list.
+.coding__digit {
+  min-inline-size: 1.75rem;
+  color: var(--opp-color-text-muted);
+  font-family: var(--opp-font-family-mono);
+}
+
+.coding__filter,
+.coding__textarea {
+  min-block-size: var(--opp-control-height);
+  padding: var(--opp-space-1) var(--opp-control-padding-x);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font: inherit;
+}
+
+.coding__textarea {
+  min-block-size: 4.5rem;
+  resize: vertical;
+}
+
+.coding__textarea[aria-invalid='true'] {
+  border-color: var(--opp-color-danger-border);
+}
+
+.coding__hint,
+.coding__error,
+.coding__access {
+  font-size: var(--opp-font-size-xs);
+}
+
+// Compact: a mouse affordance (the chosen choice's digit clears it from the keyboard); still a 24 px target.
+.coding__choices .coding__clear {
+  justify-self: start;
+  min-block-size: var(--opp-target-min);
+  padding-block: 0;
+  font-size: var(--opp-font-size-sm);
+}
+
+.coding__value {
+  overflow-wrap: anywhere;
+}
+
+.coding__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border-block-start: var(--opp-border-width) solid var(--opp-color-border);
+  background: var(--opp-color-surface);
+}

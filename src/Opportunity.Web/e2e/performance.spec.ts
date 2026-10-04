@@ -323,3 +323,65 @@ test.describe('review mode', () => {
     expect(p95, 'next document visible, p95 (ms)').toBeLessThanOrEqual(strict ? 500 : 1_000);
   });
 });
+
+// Coding acknowledgement (E16-T05: ≤ 200 ms p95, UI target): from the save key to the frame showing "Saved", with the
+// API answering a save in 50 ms, the CPU slowed like the page budgets.
+test.describe('coding pane', () => {
+  test.use({ api: { codingSaveDelayMs: 50, indexDelayMs: 60_000 } });
+
+  test('a save is acknowledged within 200 ms p95 (E16-T05)', async ({ page, mock }, testInfo) => {
+    test.setTimeout(120_000);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: budget.cpuSlowdown });
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    await page.keyboard.press('Enter');
+    const coding = page.getByRole('region', { name: 'Coding' });
+    await expect(coding.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
+    await page.keyboard.press('Alt+Shift+KeyC');
+    await page.keyboard.press('Digit1');
+    const samples: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.press(i % 2 === 0 ? 'Digit1' : 'Digit2');
+      await expect(coding.getByText('Unsaved changes')).toBeVisible();
+      await page.evaluate(() => {
+        const w = window as unknown as { __ack: Promise<number> };
+        w.__ack = new Promise<number>((resolve) => {
+          let start = -1;
+          let saving = false;
+          document.addEventListener('keydown', (e) => (start = e.timeStamp), {
+            capture: true,
+            once: true,
+          });
+          const status = () => document.querySelector('.coding__status')?.textContent ?? '';
+          const observer = new MutationObserver(() => {
+            if (start < 0) return;
+            if (status().includes('Saving')) saving = true;
+            else if (saving && status().includes('Saved ·')) {
+              observer.disconnect();
+              requestAnimationFrame(() => resolve(performance.now() - start));
+            }
+          });
+          observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+        });
+      });
+      await page.keyboard.press('Control+KeyS');
+      samples.push(
+        await page.evaluate(() => (window as unknown as { __ack: Promise<number> }).__ack),
+      );
+    }
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    expect(mock.coding.saves).toHaveLength(20);
+
+    const sorted = [...samples].sort((a, b) => a - b);
+    const p95 = sorted[Math.ceil(0.95 * sorted.length) - 1];
+    results.push(`| coding pane, save acknowledged | p95 ${p95.toFixed(0)} ms | | | |`);
+    await testInfo.attach('coding-ack', {
+      body: JSON.stringify({ samples, p95 }, null, 2),
+      contentType: 'application/json',
+    });
+    // The UI target; shared runners fail only on clear breakage (Q-44, as for the other latency checks).
+    const strict = process.env['OPPORTUNITY_STRICT_LATENCY'] === '1';
+    expect(p95, 'coding acknowledgement, p95 (ms)').toBeLessThanOrEqual(strict ? 200 : 400);
+  });
+});

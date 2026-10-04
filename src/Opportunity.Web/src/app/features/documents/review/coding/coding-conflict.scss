@@ -1,0 +1,44 @@
+// A save that met a newer version (412): warning colours, the differences as a table.
+:host {
+  display: grid;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-warning-border);
+  border-inline-start-width: 4px;
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+}
+.conflict__title {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  margin: 0;
+}
+.conflict__text {
+  margin: 0;
+  font-size: var(--opp-font-size-sm);
+}
+.conflict__diff {
+  inline-size: 100%;
+  border-collapse: collapse;
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font-size: var(--opp-font-size-sm);
+}
+th,
+td {
+  padding: var(--opp-space-1) var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+thead th {
+  background: var(--opp-color-surface-sunken);
+}
+.conflict__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}

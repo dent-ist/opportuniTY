@@ -172,8 +172,6 @@
     @if (current) {
       <opp-review-coding
         [documentId]="current.documentId"
-        [fields]="fields()"
-        [coding]="coding()"
         [canCode]="canCode"
         (move)="saveAndMove($event)"
       />

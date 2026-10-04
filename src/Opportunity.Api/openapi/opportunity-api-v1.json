@@ -883,6 +883,58 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/coding-layouts": {
+      "get": {
+        "tags": [
+          "Fields"
+        ],
+        "summary": "The coding layouts you may use: sections, field order, required, read-only and conditional fields.",
+        "description": "The default layout first, then the layouts assigned to one of your roles (Workspace Admins see every layout), by name. Fields you may not see are omitted. Field names, types and choices come from GET …/fields.",
+        "operationId": "ListCodingLayouts",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfCodingLayoutResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/documents/{documentId}/coding": {
       "get": {
         "tags": [
@@ -3143,6 +3195,129 @@
           "failed"
         ]
       },
+      "CodingLayoutConditionResource": {
+        "required": [
+          "fieldId",
+          "choiceIds",
+          "booleanValue"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "choiceIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "booleanValue": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "CodingLayoutFieldResource": {
+        "required": [
+          "fieldId",
+          "isRequired",
+          "isReadOnly",
+          "visibleWhen"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isRequired": {
+            "type": "boolean"
+          },
+          "isReadOnly": {
+            "type": "boolean"
+          },
+          "visibleWhen": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CodingLayoutConditionResource"
+              }
+            ]
+          }
+        }
+      },
+      "CodingLayoutResource": {
+        "required": [
+          "layoutId",
+          "name",
+          "isDefault",
+          "sections"
+        ],
+        "type": "object",
+        "properties": {
+          "layoutId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingLayoutSectionResource"
+            }
+          }
+        }
+      },
+      "CodingLayoutSectionResource": {
+        "required": [
+          "sectionId",
+          "title",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "sectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingLayoutFieldResource"
+            }
+          }
+        }
+      },
       "CodingOperationResource": {
         "enum": [
           "set",
@@ -3369,6 +3544,31 @@
               "string"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "CursorPageOfCodingLayoutResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingLayoutResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
           }
         }
       },

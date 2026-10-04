@@ -1,0 +1,661 @@
+import { _IdGenerator } from '@angular/cdk/a11y';
+import { NgTemplateOutlet } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
+import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
+import { UiPreferences } from '../../../../core/preferences/ui-preferences';
+import { SessionService } from '../../../../core/session/session';
+import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
+import {
+  Announcer,
+  Badge,
+  Button,
+  Icon,
+  LoadingState,
+  Select,
+  SelectOption,
+  TextField,
+} from '../../../../ui';
+import type { CodingEditor } from '../review-regions';
+import {
+  CodingApi,
+  CodingConflictError,
+  CodingLayout,
+  CodingLayoutField,
+  CodingRejectedError,
+  CodingValue,
+  DocumentCoding,
+} from '../review-ports';
+import {
+  ACCESS_DIGITS,
+  EditorKind,
+  apiValue,
+  displayValue,
+  editorKind,
+  fromDateTimeInput,
+  isEmpty,
+  isVisible,
+  layoutFields,
+  linesOf,
+  sameValue,
+  toDateTimeInput,
+  toggleChoice,
+  validate,
+} from './coding-form';
+import { CodingConflict, CodingDifference } from './coding-conflict';
+import { PendingCoding } from './pending-coding';
+
+/** A choice as a radio button or checkbox. */
+interface ChoiceOption {
+  readonly label: string;
+  readonly value: string | boolean;
+  readonly checked: boolean;
+  readonly disabled: boolean;
+  /** Access digit 1–9, or null past the ninth choice. */
+  readonly digit: number | null;
+}
+
+/** A field on screen. */
+interface FieldRow {
+  readonly field: CodingLayoutField;
+  readonly kind: EditorKind;
+  readonly id: string;
+  readonly editable: boolean;
+  readonly value: CodingValue | undefined;
+  readonly display: string;
+  readonly error: string | null;
+  readonly options: readonly ChoiceOption[];
+  /** Why a field the reviewer could otherwise code is read-only. */
+  readonly lockedReason: string | null;
+}
+
+interface SectionView {
+  readonly title: string;
+  readonly id: string;
+  readonly rows: readonly FieldRow[];
+}
+
+const WRITE_PRIVILEGE = 'Coding.WritePrivilege';
+
+/**
+ * The coding pane of Review mode (E16-T05, familiarity guide §3.3), rendered from the coding layout the reviewer
+ * chooses (remembered per user and workspace): its sections and fields in order, required (`*`) and conditional
+ * fields, an editor per field type, and security-affecting fields marked "Affects access".
+ *
+ * - Choice fields with ≤ 15 choices are radio buttons (single) or checkboxes (multiple) with access digits (1)…(9):
+ *   a digit toggles that choice while the field has focus. Longer lists get a filter box.
+ * - Explicit save only: Save, Save & Next, Save & Previous (from the workspace) and Cancel; no autosave. A save
+ *   sends the changed fields with `If-Match` and an Idempotency-Key per attempt. Required fields that are empty, or
+ *   values that are not valid, block the save and the first one is focused; messages are linked to their fields.
+ * - A stale version (someone else saved first) is never overwritten silently: the pane shows who changed what and
+ *   when, and offers to reload their coding or to apply the reviewer's changes on top of it.
+ * - After a save: "Saved · indexing" until search has the new version, then "Saved · searchable".
+ * - Read-only without Coding.Write (values without inputs), per field when the layout marks it read-only, and for
+ *   security-affecting fields without Coding.WritePrivilege.
+ */
+@Component({
+  selector: 'opp-review-coding',
+  imports: [Badge, Button, CodingConflict, Icon, LoadingState, NgTemplateOutlet, Select, TextField],
+  templateUrl: './coding-pane.html',
+  styleUrl: './coding-pane.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'pane__content coding' },
+})
+export class ReviewCoding implements CodingEditor {
+  readonly documentId = input.required<string>();
+  /** Coding.Write: without it the pane shows values without inputs (familiarity guide §3.3). */
+  readonly canCode = input(false);
+  /** Save & Next / Save & Previous: the workspace saves through `save()`, then moves. */
+  readonly move = output<'next' | 'previous'>();
+
+  private readonly api = inject(CodingApi);
+  private readonly pending = inject(PendingCoding, { optional: true });
+  private readonly storage = inject(PreferenceStorage);
+  private readonly context = inject(WorkspaceContext);
+  private readonly session = inject(SessionService);
+  private readonly announcer = inject(Announcer);
+  private readonly prefs = inject(UiPreferences);
+  private readonly injector = inject(Injector);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  protected readonly uid = inject(_IdGenerator).getId('opp-coding-');
+  protected readonly accessHint =
+    'Affects access: changing it can change who may see this document.';
+
+  private readonly layoutKey = `coding.layout.${this.context.workspaceId}`;
+  protected readonly layouts = signal<readonly CodingLayout[] | null>(null);
+  protected readonly layout = computed(() => {
+    const all = this.layouts();
+    if (!all?.length) return null;
+    const chosen = this.storage.read<{ layoutId?: string }>(this.layoutKey)?.layoutId;
+    return all.find((l) => l.id === chosen) ?? all[0];
+  });
+  protected readonly layoutOptions = computed<SelectOption[]>(() =>
+    (this.layouts() ?? []).map((l) => ({ value: l.id, label: l.name })),
+  );
+
+  protected readonly coding = signal<DocumentCoding | 'loading' | 'unavailable'>('loading');
+  /** The reviewer's unsaved values by query name (only fields they touched). */
+  private readonly edits = signal<Readonly<Record<string, CodingValue>>>({});
+  private readonly errors = signal<ReadonlyMap<string, string>>(new Map());
+  private readonly filters = signal<Readonly<Record<string, string>>>({});
+  /** The Tab stop of each long checkbox list (roving focus). */
+  private readonly roving = signal<Readonly<Record<string, number>>>({});
+  protected readonly saving = signal(false);
+  /** A message about the last save that is not about one field. */
+  protected readonly message = signal<string | null>(null);
+  /** The document's current coding after a 412: someone else saved first. */
+  protected readonly conflict = signal<DocumentCoding | null>(null);
+  /** The reviewer saved the displayed document in this visit (the indexing badge shows). */
+  private readonly savedHere = signal(false);
+  private seq = 0;
+  private inFlight: Promise<boolean> | null = null;
+
+  private readonly base = computed(() => {
+    const c = this.coding();
+    return typeof c === 'string' ? {} : c.values;
+  });
+
+  readonly dirty = computed(() => {
+    const base = this.base();
+    return Object.entries(this.edits()).some(([q, v]) => !sameValue(v, base[q]));
+  });
+
+  protected readonly stateKind = computed(() => {
+    const c = this.coding();
+    return typeof c === 'string' ? c : 'ready';
+  });
+
+  private readonly canWritePrivilege = this.context.can(WRITE_PRIVILEGE);
+
+  protected readonly sections = computed<SectionView[]>(() => {
+    const layout = this.layout();
+    const coding = this.coding();
+    if (!layout || typeof coding === 'string') return [];
+    const value = (q: string) => this.value(q);
+    const errors = this.errors();
+    let n = 0;
+    return layout.sections
+      .map((section, s) => ({
+        title: section.title,
+        id: `${this.uid}-s${s}`,
+        rows: section.fields
+          .filter((field) => isVisible(field, value))
+          .map((field) => this.row(field, coding, errors.get(field.queryName) ?? null, n++)),
+      }))
+      .filter((s) => s.rows.length > 0);
+  });
+
+  /** Fields on screen in layout order (Alt+Shift+C, then n jumps to the n-th). */
+  private readonly rows = computed(() => this.sections().flatMap((s) => s.rows));
+  /** Save actions: kept while the next document loads, so focus on them survives Save & Next. */
+  protected readonly showActions = computed(
+    () => this.canCode() && (this.stateKind() !== 'ready' || this.rows().some((r) => r.editable)),
+  );
+
+  /** The indexing badge: after the reviewer's save, until search has it, and once it has. */
+  protected readonly indexBadge = computed(() => {
+    if (this.saving()) return 'saving';
+    const c = this.coding();
+    if (typeof c === 'string') return null;
+    // The reviewer's own save of this document in this list, also when they come back to it.
+    return this.pending?.state(c.documentId) ?? (this.savedHere() ? c.indexState : null);
+  });
+
+  protected readonly differences = computed<CodingDifference[]>(() => {
+    const current = this.conflict();
+    if (!current) return [];
+    return layoutFields(this.layout())
+      .filter((f) => !sameValue(current.values[f.queryName], this.value(f.queryName)))
+      .map((f) => ({
+        label: f.label,
+        theirs: displayValue(f, current.values[f.queryName]),
+        yours: displayValue(f, this.value(f.queryName)),
+      }));
+  });
+
+  protected readonly conflictTitle = computed(() => {
+    const editor = this.conflict()?.lastEditor;
+    if (!editor) return 'Changed by someone else';
+    const who = editor.jobId ? 'a Mass Edit job' : (editor.displayName ?? 'another reviewer');
+    return `Changed by ${who} at ${this.formatTime(editor.changedAt)}`;
+  });
+
+  constructor() {
+    this.api.layouts().then(
+      (layouts) => this.layouts.set(layouts),
+      () => this.layouts.set([]),
+    );
+    effect(() => {
+      const id = this.documentId();
+      untracked(() => this.load(id));
+    });
+  }
+
+  // ── CodingEditor (Save & Next, Save & Previous, the unsaved-changes prompt) ───────────────────────────────
+
+  /** Saves the edits; false when they could not be saved and a move must not happen. */
+  save(): Promise<boolean> {
+    this.inFlight ??= this.trySave().finally(() => (this.inFlight = null));
+    return this.inFlight;
+  }
+
+  /** Cancel: reverts every unsaved edit. */
+  discard(): void {
+    const had = this.dirty();
+    this.edits.set({});
+    this.errors.set(new Map());
+    this.message.set(null);
+    this.conflict.set(null);
+    if (had) this.announcer.announce('Unsaved coding changes cancelled.');
+  }
+
+  /** Focuses field `n` (1-based, layout order, fields on screen). */
+  focusField(n: number): void {
+    const row = this.rows()[n - 1];
+    if (!row) return;
+    // At once when the field is on screen, so a digit typed right after lands in it; else after rendering.
+    if (!this.focusRow(row.field.queryName)) {
+      afterNextRender(() => this.focusRow(row.field.queryName), { injector: this.injector });
+    }
+  }
+
+  // ── Editing ──────────────────────────────────────────────────────────────────────────────────────────────
+
+  protected chooseLayout(id: string): void {
+    const layout = this.layouts()?.find((l) => l.id === id);
+    if (!layout) return;
+    this.storage.write(this.layoutKey, { layoutId: id });
+    this.errors.set(new Map());
+    this.announcer.announce(`Layout ${layout.name}.`);
+  }
+
+  protected set(field: CodingLayoutField, value: CodingValue): void {
+    this.edits.update((e) => ({ ...e, [field.queryName]: value }));
+    if (this.errors().has(field.queryName)) {
+      const next = new Map(this.errors());
+      next.delete(field.queryName);
+      this.errors.set(next);
+    }
+  }
+
+  protected setText(field: CodingLayoutField, text: string): void {
+    this.set(field, text === '' ? null : text);
+  }
+
+  protected setLines(field: CodingLayoutField, event: Event): void {
+    const lines = linesOf((event.target as HTMLTextAreaElement).value);
+    this.set(field, lines.length ? lines : null);
+  }
+
+  protected setDateTime(field: CodingLayoutField, text: string): void {
+    this.set(field, fromDateTimeInput(text));
+  }
+
+  protected setLongText(field: CodingLayoutField, event: Event): void {
+    this.setText(field, (event.target as HTMLTextAreaElement).value);
+  }
+
+  protected choose(row: FieldRow, option: ChoiceOption): void {
+    if (option.disabled) return;
+    if (row.kind === 'yesNo') {
+      this.set(row.field, row.value === option.value ? null : (option.value as boolean));
+    } else {
+      this.set(row.field, toggleChoice(row.field, row.value, option.value as string));
+    }
+  }
+
+  /** Radio buttons report only selection; a single choice is cleared with its Clear button or its digit. */
+  protected pick(row: FieldRow, option: ChoiceOption): void {
+    if (row.value !== option.value) this.choose(row, option);
+  }
+
+  /** Digits 1–9 toggle the field's n-th choice while focus is in the field (not in its filter box). */
+  protected onChoiceKey(event: KeyboardEvent, row: FieldRow): void {
+    if (row.kind === 'filterMulti' && this.moveInList(event)) return;
+    const digit = /^(Digit|Numpad)([1-9])$/.exec(event.code);
+    if (!digit || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if ((event.target as HTMLElement).matches('input[type="search"]')) return;
+    const option = row.options.find((o) => o.digit === Number(digit[2]));
+    event.preventDefault();
+    if (!option || option.disabled) return;
+    this.choose(row, option);
+    const inputs = (event.currentTarget as HTMLElement).querySelectorAll<HTMLInputElement>(
+      'input:not([type="search"])',
+    );
+    inputs[row.options.indexOf(option)]?.focus();
+  }
+
+  protected rovingIndex(row: FieldRow): number {
+    return Math.min(this.roving()[row.field.queryName] ?? 0, Math.max(0, row.options.length - 1));
+  }
+
+  protected setRoving(row: FieldRow, index: number): void {
+    this.roving.update((r) => ({ ...r, [row.field.queryName]: index }));
+  }
+
+  /** Up / Down / Home / End between the checkboxes of a long list; true when the key was handled. */
+  private moveInList(event: KeyboardEvent): boolean {
+    const target = event.target as HTMLElement;
+    if (!target.matches('input[type="checkbox"]')) return false;
+    const inputs = [
+      ...(event.currentTarget as HTMLElement).querySelectorAll<HTMLInputElement>(
+        'input[type="checkbox"]',
+      ),
+    ];
+    const at = inputs.indexOf(target as HTMLInputElement);
+    const next = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: inputs.length - 1 }[
+      event.key as 'ArrowDown'
+    ];
+    if (next === undefined) return false;
+    event.preventDefault();
+    inputs[Math.max(0, Math.min(inputs.length - 1, next))]?.focus();
+    return true;
+  }
+
+  protected setFilter(field: CodingLayoutField, event: Event): void {
+    const text = (event.target as HTMLInputElement).value;
+    this.filters.update((f) => ({ ...f, [field.queryName]: text }));
+  }
+
+  protected filterOf(field: CodingLayoutField): string {
+    return this.filters()[field.queryName] ?? '';
+  }
+
+  protected chosenSummary(row: FieldRow): string {
+    return Array.isArray(row.value) ? row.value.join(', ') : String(row.value ?? '');
+  }
+
+  protected userOptions(row: FieldRow): SelectOption[] {
+    const me = this.session.principal();
+    const options: SelectOption[] = [];
+    if (me) options.push({ value: me.userId, label: `Me (${me.displayName ?? 'you'})` });
+    const current = typeof row.value === 'string' ? row.value : null;
+    if (current && current !== me?.userId) {
+      options.push({ value: current, label: `Another user (${current.slice(0, 8)}…)` });
+    }
+    return options;
+  }
+
+  /** Spoken with a choice field: which digits pick its choices. */
+  protected keysHint(row: FieldRow, single: boolean): string {
+    const last = Math.max(...row.options.map((o) => o.digit ?? 0));
+    if (last < 1) return '';
+    const keys = last === 1 ? 'Key 1' : `Keys 1 to ${last}`;
+    if (single) return `${keys} choose; the same key again clears.`;
+    const arrows = row.kind === 'filterMulti' ? ' Up and Down arrows move between choices.' : '';
+    return `${keys} check or clear a choice.${arrows}`;
+  }
+
+  protected areaDescribedBy(row: FieldRow, multi: boolean): string | null {
+    const ids = [
+      multi || row.field.securityAffecting ? `${row.id}-hint` : null,
+      row.error ? `${row.id}-error` : null,
+    ];
+    return ids.filter(Boolean).join(' ') || null;
+  }
+
+  protected lines(value: CodingValue | undefined): string {
+    return Array.isArray(value) ? value.join('\n') : typeof value === 'string' ? value : '';
+  }
+
+  protected text(value: CodingValue | undefined): string {
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  protected dateTime(value: CodingValue | undefined): string {
+    return toDateTimeInput(value);
+  }
+
+  // ── Conflict (412) ───────────────────────────────────────────────────────────────────────────────────────
+
+  /** Their coding replaces the reviewer's edits. */
+  protected reloadTheirs(): void {
+    const current = this.conflict();
+    if (!current) return;
+    this.coding.set(current);
+    this.edits.set({});
+    this.errors.set(new Map());
+    this.conflict.set(null);
+    this.message.set(null);
+    this.announcer.announce('The current coding is shown. Your changes were discarded.');
+    this.focusField(1);
+  }
+
+  /** The reviewer's changed fields are saved on top of the current version (their other fields stay). */
+  protected async overwrite(): Promise<void> {
+    const current = this.conflict();
+    if (!current) return;
+    this.coding.set(current);
+    this.conflict.set(null);
+    await this.save();
+  }
+
+  // ── Internals ────────────────────────────────────────────────────────────────────────────────────────────
+
+  private value(queryName: string): CodingValue | undefined {
+    const edits = this.edits();
+    return queryName in edits ? edits[queryName] : this.base()[queryName];
+  }
+
+  private load(documentId: string): void {
+    const seq = ++this.seq;
+    // A field with focus goes away while the next document loads: focus waits on the pane, then returns to the
+    // same field, so code → Save & Next → code continues without the mouse.
+    const active = this.host.ownerDocument.activeElement;
+    const field = active?.closest('.coding__form [data-coding-field]');
+    const refocus = field?.getAttribute('data-coding-field') ?? null;
+    if (field) this.host.closest<HTMLElement>('[data-command-region]')?.focus();
+    this.coding.set('loading');
+    this.edits.set({});
+    this.errors.set(new Map());
+    this.filters.set({});
+    this.roving.set({});
+    this.message.set(null);
+    this.conflict.set(null);
+    this.savedHere.set(false);
+    this.api.get(documentId).then(
+      (coding) => {
+        if (seq !== this.seq) return;
+        this.coding.set(coding);
+        if (refocus) {
+          afterNextRender(
+            () => {
+              const region = this.host.closest('[data-command-region]');
+              const waiting = this.host.ownerDocument.activeElement === region;
+              if (waiting && !this.focusRow(refocus)) this.focusField(1);
+            },
+            { injector: this.injector },
+          );
+        }
+      },
+      () => seq === this.seq && this.coding.set('unavailable'),
+    );
+  }
+
+  private async trySave(): Promise<boolean> {
+    const coding = this.coding();
+    const layout = this.layout();
+    if (typeof coding === 'string' || !layout) return !this.dirty();
+    if (!this.dirty()) {
+      this.announcer.announce('No changes to save.');
+      return true;
+    }
+    const fields = layoutFields(layout);
+    const editable = this.rows()
+      .filter((r) => r.editable)
+      .map((r) => r.field);
+    const errors = validate(editable, (q) => this.value(q));
+    this.errors.set(errors);
+    if (errors.size > 0) {
+      this.message.set(null);
+      this.focusFirstError(errors);
+      this.announcer.announce(
+        errors.size === 1
+          ? 'The coding was not saved: one field needs attention.'
+          : `The coding was not saved: ${errors.size} fields need attention.`,
+      );
+      return false;
+    }
+    const base = this.base();
+    const changes: Record<string, CodingValue> = {};
+    for (const field of fields) {
+      const edits = this.edits();
+      if (field.queryName in edits && !sameValue(edits[field.queryName], base[field.queryName])) {
+        changes[field.queryName] = apiValue(field, edits[field.queryName]);
+      }
+    }
+    if (Object.keys(changes).length === 0) {
+      this.edits.set({});
+      return true;
+    }
+
+    const seq = this.seq;
+    this.saving.set(true);
+    this.message.set(null);
+    try {
+      const saved = await this.api.save(coding.documentId, coding.version, changes, {
+        layoutId: layout.serverId,
+        idempotencyKey: newIdempotencyKey(),
+      });
+      this.pending?.track(saved);
+      if (seq === this.seq) {
+        this.coding.set(saved);
+        this.edits.set({});
+        this.errors.set(new Map());
+        this.savedHere.set(true);
+      }
+      return true;
+    } catch (e) {
+      if (seq !== this.seq) return false;
+      if (e instanceof CodingConflictError) {
+        this.conflict.set(e.current);
+        this.announcer.announce(`${this.conflictTitle()}. Your changes were not saved.`, {
+          politeness: 'assertive',
+        });
+        afterNextRender(() => this.host.querySelector<HTMLElement>('.coding__conflict')?.focus(), {
+          injector: this.injector,
+        });
+      } else if (e instanceof CodingRejectedError) {
+        const fieldErrors = new Map(Object.entries(e.fieldErrors));
+        this.errors.set(fieldErrors);
+        this.message.set(e.message);
+        if (fieldErrors.size > 0) this.focusFirstError(fieldErrors);
+      } else {
+        this.message.set('The coding could not be saved. Check your connection and try again.');
+      }
+      return false;
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  private row(
+    field: CodingLayoutField,
+    coding: DocumentCoding,
+    error: string | null,
+    index: number,
+  ): FieldRow {
+    const value = this.value(field.queryName);
+    const state = coding.fields[field.queryName];
+    const permitted = state ? state.editable : !field.securityAffecting || this.canWritePrivilege;
+    const editable = this.canCode() && !field.readOnly && permitted;
+    const kind = editorKind(field);
+    return {
+      field,
+      kind,
+      id: `${this.uid}-f${index}`,
+      editable,
+      value,
+      display: displayValue(field, value),
+      error,
+      options: this.options(field, kind, value),
+      lockedReason:
+        this.canCode() && !field.readOnly && !permitted && field.securityAffecting
+          ? 'Changing it needs the privilege coding permission.'
+          : null,
+    };
+  }
+
+  private options(
+    field: CodingLayoutField,
+    kind: EditorKind,
+    value: CodingValue | undefined,
+  ): ChoiceOption[] {
+    if (kind === 'yesNo') {
+      return [true, false].map((v, i) => ({
+        label: v ? 'Yes' : 'No',
+        value: v,
+        checked: value === v,
+        disabled: false,
+        digit: i + 1,
+      }));
+    }
+    if (field.type !== 'singleChoice' && field.type !== 'multiChoice') return [];
+    const chosen = Array.isArray(value) ? value : isEmpty(value) ? [] : [String(value)];
+    const filter =
+      kind === 'filterSingle' || kind === 'filterMulti'
+        ? this.filterOf(field).trim().toLowerCase()
+        : '';
+    return field.choices
+      .filter((c) => c.active || chosen.includes(c.name))
+      .filter((c) => !filter || c.name.toLowerCase().includes(filter))
+      .map((c, i) => ({
+        label: c.active ? c.name : `${c.name} (inactive)`,
+        value: c.name,
+        checked: chosen.includes(c.name),
+        disabled: !c.active && !chosen.includes(c.name),
+        digit: i < ACCESS_DIGITS ? i + 1 : null,
+      }));
+  }
+
+  private focusFirstError(errors: ReadonlyMap<string, string>): void {
+    const first = this.rows().find((r) => errors.has(r.field.queryName));
+    if (first)
+      afterNextRender(() => this.focusRow(first.field.queryName), { injector: this.injector });
+  }
+
+  private focusRow(queryName: string): boolean {
+    const el = this.host.querySelector<HTMLElement>(
+      `[data-coding-field="${CSS.escape(queryName)}"]`,
+    );
+    const target =
+      el?.querySelector<HTMLElement>('input:checked:not(:disabled)') ??
+      el?.querySelector<HTMLElement>(
+        'input:not(:disabled):not([type="search"]), textarea:not(:disabled), select:not(:disabled)',
+      ) ??
+      el;
+    target?.focus();
+    return !!target;
+  }
+
+  private formatTime(iso: string): string {
+    const at = new Date(iso);
+    if (Number.isNaN(at.getTime())) return iso;
+    const sameDay = at.toDateString() === new Date().toDateString();
+    return new Intl.DateTimeFormat(
+      this.prefs.locale(),
+      sameDay
+        ? { hour: 'numeric', minute: '2-digit' }
+        : { dateStyle: 'medium', timeStyle: 'short' },
+    ).format(at);
+  }
+}
+
+/** A fresh key per save attempt (the adapter reuses it for its one automatic retry). */
+function newIdempotencyKey(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+}
