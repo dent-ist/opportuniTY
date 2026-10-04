@@ -352,9 +352,22 @@ public sealed class RabbitMqTransportTests(RabbitMqFixture fixture)
         again.Redelivered.Should().BeTrue();
         await WaitUntilAsync(async () => await harness.CountAsync(WorkQueues.IndexBulk.Name) == 0);
 
-        // The recovered consumer keeps working.
-        var next = await harness.Publisher.PublishAsync(MessagingHarness.ChunkTask(), Ct);
-        await WaitUntilAsync(() => Task.FromResult(deliveries.Any(d => d.Envelope.MessageId == next.MessageId)));
+        // The recovered consumer keeps working. The publisher's connection recovers on its own schedule and fails fast
+        // until then (see the test below), so publish once it is back.
+        MessageEnvelope? next = null;
+        await WaitUntilAsync(async () =>
+        {
+            try
+            {
+                next = await harness.Publisher.PublishAsync(MessagingHarness.ChunkTask(), Ct);
+                return true;
+            }
+            catch (MessagePublishException)
+            {
+                return false;
+            }
+        });
+        await WaitUntilAsync(() => Task.FromResult(deliveries.Any(d => d.Envelope.MessageId == next!.MessageId)));
     }
 
     [Fact]
