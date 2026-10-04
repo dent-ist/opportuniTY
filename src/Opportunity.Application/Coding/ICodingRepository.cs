@@ -167,6 +167,12 @@ public sealed record CodingWriteResult(
     int EventsWritten,
     bool TouchesSecurityAffectingField)
 {
+    /// <summary>
+    /// Restriction classes this write added or removed (ADR-015 D6.1), committed with it. Empty unless a bound
+    /// security-affecting field changed (<see cref="IRestrictionClassBinding"/>).
+    /// </summary>
+    public IReadOnlyList<RestrictionClassChange> RestrictionChanges { get; init; } = [];
+
     public static CodingWriteResult Failed(CodingWriteOutcome outcome, params FieldError[] errors) =>
         new(outcome, [], errors, 0, false);
 }

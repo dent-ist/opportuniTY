@@ -3,6 +3,11 @@
 
 export type { CellError } from './models/cell-error';
 export type { CellPreview } from './models/cell-preview';
+export type { CodingChangeRequest } from './models/coding-change-request';
+export type { CodingEditorResource } from './models/coding-editor-resource';
+export type { CodingFieldValueResource } from './models/coding-field-value-resource';
+export type { CodingIndexingStateResource } from './models/coding-indexing-state-resource';
+export type { CodingOperationResource } from './models/coding-operation-resource';
 export type { ColumnMapping } from './models/column-mapping';
 export type { ColumnParsing } from './models/column-parsing';
 export type { ColumnPreview } from './models/column-preview';
@@ -17,6 +22,7 @@ export type { CursorPageOfSnapshotResource } from './models/cursor-page-of-snaps
 export type { CursorPageOfWorkspaceMemberResource } from './models/cursor-page-of-workspace-member-resource';
 export type { CursorPageOfWorkspaceSummary } from './models/cursor-page-of-workspace-summary';
 export type { DelimiterInfo } from './models/delimiter-info';
+export type { DocumentCodingResource } from './models/document-coding-resource';
 export type { DocumentViewRecord } from './models/document-view-record';
 export type { FieldCapabilitiesResource } from './models/field-capabilities-resource';
 export type { FieldChoiceResource } from './models/field-choice-resource';
@@ -93,6 +99,7 @@ export type { TextSpan } from './models/text-span';
 export type { TotalCount } from './models/total-count';
 export type { TotalRelation } from './models/total-relation';
 export type { UnmappedColumnPolicy } from './models/unmapped-column-policy';
+export type { UpdateDocumentCodingRequest } from './models/update-document-coding-request';
 export type { UserPreferencesResource } from './models/user-preferences-resource';
 export type { WorkspaceMemberKind } from './models/workspace-member-kind';
 export type { WorkspaceMemberResource } from './models/workspace-member-resource';

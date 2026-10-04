@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using Opportunity.Api.Coding;
 using Opportunity.Api.Content;
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Fields;
@@ -43,6 +44,7 @@ builder.Services.AddImportMappingEndpoints();
 builder.Services.AddImportEndpoints(builder.Configuration);
 builder.Services.AddProtectedContentGateway(builder.Configuration);
 builder.Services.AddFieldEndpoints();
+builder.Services.AddCodingEndpoints();
 builder.Services.AddUserPreferenceEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
