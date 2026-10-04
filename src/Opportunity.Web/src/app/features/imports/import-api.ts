@@ -125,7 +125,7 @@ export interface ImportPage {
 export interface SavedProfile {
   readonly profileId: string;
   readonly name: string;
-  readonly definition: ImportProfileDefinition & { overlay?: Partial<OverlayOptions> };
+  readonly definition: ImportProfileDefinition;
 }
 
 @Injectable()
@@ -237,7 +237,7 @@ export class HttpImportApi extends ImportApi {
     const r = await firstValueFrom(
       createImportProfile(this.http, this.rootUrl, {
         workspaceId: this.workspaceId,
-        // The contract's overlay options (#81) replace the generated OverlaySettings at merge.
+        // The wizard's draft (column drafts, overlay options) is wider than the generated definition type.
         body: { name, definition: definition as unknown as ImportProfileDefinition },
       }),
     );

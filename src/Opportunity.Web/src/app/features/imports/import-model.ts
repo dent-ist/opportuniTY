@@ -5,6 +5,7 @@ import type {
   ImportMode,
   JobResource,
   MappingTarget,
+  OverlaySettings,
   TargetPreview,
 } from '../../core/api/generated/models';
 import type { JobStatus } from '../../ui';
@@ -224,7 +225,7 @@ export function settingsFromProfile(
   };
 }
 
-function pickOverlay(o: Partial<OverlayOptions> | undefined): Partial<OverlayOptions> {
+function pickOverlay(o: OverlaySettings | undefined): Partial<OverlayOptions> {
   if (!o) return {};
   const out: { -readonly [K in keyof OverlayOptions]?: OverlayOptions[K] } = {};
   if (typeof o.keyField === 'string') out.keyField = o.keyField;
