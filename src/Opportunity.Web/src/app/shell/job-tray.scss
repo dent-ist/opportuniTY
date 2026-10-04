@@ -1,0 +1,59 @@
+:host {
+  display: flex;
+  margin-inline-start: auto;
+}
+
+.tray__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  min-height: 2rem;
+  padding-inline: var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-pill);
+  background: transparent;
+  color: var(--opp-color-text);
+  font: inherit;
+  font-weight: var(--opp-font-weight-medium);
+  cursor: pointer;
+}
+
+.tray__trigger opp-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.tray__trigger:hover,
+.tray__trigger[aria-expanded='true'] {
+  background: var(--opp-color-hover);
+}
+
+.tray__trigger.is-busy {
+  border-color: var(--opp-color-accent);
+}
+
+.tray__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding-inline: var(--opp-space-1);
+  border-radius: var(--opp-radius-pill);
+  background: var(--opp-color-accent);
+  color: var(--opp-color-on-accent);
+  font-size: var(--opp-font-size-xs);
+  font-weight: var(--opp-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 48rem) {
+  .tray__text {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .tray__count {
+    border: var(--opp-border-width) solid CanvasText;
+  }
+}

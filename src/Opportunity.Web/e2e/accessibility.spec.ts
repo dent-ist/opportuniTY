@@ -15,6 +15,8 @@ const SIGNED_IN_ROUTES = [
   '/not-available',
   '/w/ws-1/documents',
   '/w/ws-1/jobs',
+  '/w/ws-1/jobs/job-exp-3',
+  '/w/ws-1/jobs/job-bulk-7',
   '/w/ws-1/imports',
   '/w/ws-1/imports/imp-1',
   '/w/ws-1/admin/fields',
@@ -24,6 +26,7 @@ const SIGNED_IN_ROUTES = [
 /** Popups are rendered only while open, so each is opened and checked separately. */
 const POPUPS = [
   { name: 'user menu', path: '/workspaces', trigger: { role: 'button', name: /User menu/ } },
+  { name: 'job tray', path: '/w/ws-1/jobs', trigger: { role: 'button', name: /^Jobs, / } },
   {
     name: 'workspace switcher',
     path: '/w/ws-1/documents',
@@ -272,6 +275,20 @@ for (const theme of THEMES) {
       await expect(page.getByRole('checkbox', { name: /I have reviewed/ })).toBeVisible();
       await page.getByRole('button', { name: 'Start import' }).click();
       await expect(page.getByRole('alert')).toContainText('Acknowledge the warnings');
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('job notification and the cancel confirmation (E06-T07)', async ({
+      page,
+      mock,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/jobs/job-bulk-7');
+      mock.jobs.update('job-idx-2', { status: 'failed' });
+      await expect(page.getByRole('region', { name: 'Notifications' })).toBeVisible({
+        timeout: 5000,
+      });
+      await page.getByRole('button', { name: 'Cancel job' }).click();
+      await expect(page.getByRole('alertdialog')).toBeVisible();
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 

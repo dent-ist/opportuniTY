@@ -88,7 +88,7 @@ export class ErrorState {
     '[attr.aria-valuemin]': '0',
     '[attr.aria-valuemax]': 'max()',
     '[attr.aria-valuenow]': 'value() ?? null',
-    '[attr.aria-valuetext]': 'value() === undefined ? null : percentText()',
+    '[attr.aria-valuetext]': 'value() === undefined ? null : (valueText() ?? percentText())',
     '[class.progress--indeterminate]': 'value() === undefined',
     '[style.--progress]': 'fraction()',
   },
@@ -99,6 +99,8 @@ export class Progress {
   readonly value = input<number>();
   readonly max = input(100);
   readonly showValue = input(true);
+  /** Spoken value instead of the bare percentage, e.g. "40% · 400 of 1,000 saved · about 2 minutes left". */
+  readonly valueText = input<string>();
 
   private readonly prefs = inject(UiPreferences);
   protected readonly fraction = computed(() => {

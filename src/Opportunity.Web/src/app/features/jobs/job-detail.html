@@ -1,0 +1,236 @@
+<div class="jobs__header">
+  <div class="jobs__heading-group">
+    <a class="jobs__back-link" routerLink="..">
+      <opp-icon name="chevron-left" />
+      Jobs
+    </a>
+    <h1 class="jobs__title">{{ job()?.name ?? 'Job' }}</h1>
+    @if (job(); as j) {
+      <p class="jobs__muted">
+        {{ typeName(j) }} · started by {{ j.createdBy.displayName }} · {{ date(j.createdAt) }}
+      </p>
+    }
+  </div>
+  <opp-live-note />
+</div>
+
+@if (!job()) {
+  @if (error(); as e) {
+    <opp-error-state [error]="e" (retry)="load()" />
+  } @else {
+    <opp-loading-state label="Loading the job…" />
+  }
+} @else {
+  @let j = job()!;
+  <section class="jobs__panel" aria-labelledby="job-progress">
+    <h2 id="job-progress">Progress</h2>
+    <div class="jobs__status">
+      <opp-status-pill [status]="pill(j)" />
+      @if (!finished()) {
+        <span class="jobs__note">You can leave this page: the job keeps running.</span>
+      }
+      @if (ownPage(); as link) {
+        <a [routerLink]="link">Open the {{ typeName(j).toLowerCase() }} page</a>
+      }
+      @if (mayRetry() || mayCancel()) {
+        <div class="jobs__actions">
+          @if (mayRetry()) {
+            <button type="button" oppButton="secondary" [busy]="retrying()" (click)="retry()">
+              <opp-icon name="refresh" />
+              Retry failed chunks
+            </button>
+          }
+          @if (mayCancel()) {
+            <button type="button" oppButton="danger" [busy]="cancelling()" (click)="cancel()">
+              <opp-icon name="close" />
+              Cancel job
+            </button>
+          }
+        </div>
+      }
+    </div>
+
+    @if (saved(); as s) {
+      <div class="jobs__phase">
+        <span class="jobs__phase-label" aria-hidden="true">Saved</span>
+        <opp-progress label="Saved" [value]="s.value" [valueText]="s.spoken" [showValue]="false" />
+        <span class="jobs__phase-value" aria-hidden="true">
+          <span>{{ s.percent }} · {{ s.count }}</span>
+          @if (s.eta) {
+            <span>{{ s.eta }}</span>
+          }
+        </span>
+      </div>
+    }
+    <div class="jobs__phase">
+      <span class="jobs__phase-label" aria-hidden="true">Searchable</span>
+      @if (searchable(); as s) {
+        <opp-progress
+          label="Searchable"
+          [value]="s.value"
+          [valueText]="s.spoken"
+          [showValue]="false"
+        />
+        <span class="jobs__phase-value">
+          @if (s.current) {
+            <opp-badge tone="success" icon="success">Searchable</opp-badge>
+          } @else {
+            <span aria-hidden="true">{{ s.percent }} · {{ s.count }}</span>
+            <span>{{ s.state }}</span>
+          }
+        </span>
+      } @else {
+        <span class="jobs__note">Not needed: this job does not change what search finds.</span>
+      }
+    </div>
+    <p class="jobs__note">
+      Saved: committed in the database. Searchable: applied to the search index, so searches find
+      the changes.
+    </p>
+    @if (error(); as e) {
+      <p class="jobs__note" role="status">
+        Progress cannot be shown right now ({{ e.status || 'no connection' }}). Trying again.
+      </p>
+    }
+  </section>
+
+  <section class="jobs__panel" aria-labelledby="job-counts">
+    <h2 id="job-counts">Chunks and errors</h2>
+    <dl class="jobs__facts">
+      <div>
+        <dt>Pending</dt>
+        <dd>{{ num(j.chunks.pending) }}</dd>
+      </div>
+      <div>
+        <dt>Running</dt>
+        <dd>{{ num(j.chunks.running) }}</dd>
+      </div>
+      <div>
+        <dt>Done</dt>
+        <dd>{{ num(j.chunks.done) }}</dd>
+      </div>
+      <div>
+        <dt>Failed</dt>
+        <dd>{{ num(j.chunks.failed) }}</dd>
+      </div>
+      <div>
+        <dt>Dead-lettered</dt>
+        <dd>{{ num(j.chunks.deadLettered) }}</dd>
+      </div>
+      <div>
+        <dt>Cancelled</dt>
+        <dd>{{ num(j.chunks.cancelled) }}</dd>
+      </div>
+      <div>
+        <dt>Attempts</dt>
+        <dd>{{ num(j.attempts) }}</dd>
+      </div>
+      <div>
+        <dt>Errors</dt>
+        <dd>{{ num(j.errorCount) }}</dd>
+      </div>
+    </dl>
+    @if (j.lastError) {
+      <p class="jobs__error"><strong>Last error:</strong> {{ j.lastError }}</p>
+    }
+  </section>
+
+  @if (failed() > 0) {
+    <section class="jobs__panel" aria-labelledby="job-failures">
+      <h2 id="job-failures">Failed chunks</h2>
+      @if (failures().length) {
+        <div class="jobs__table-wrap" tabindex="0" role="region" aria-label="Failed chunk list">
+          <table class="jobs__table">
+            <caption class="opp-visually-hidden">
+              Failed and dead-lettered chunks of the job
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Kind</th>
+                <th scope="col">Id</th>
+                <th scope="col" class="jobs__num">Attempts</th>
+                <th scope="col">Failed at</th>
+                <th scope="col">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (f of failures(); track f.kind + f.id) {
+                <tr>
+                  <td class="jobs__nowrap">{{ f.kind }}</td>
+                  <td class="jobs__nowrap">
+                    <code>{{ f.id }}</code>
+                  </td>
+                  <td class="jobs__num">{{ num(f.attempts) }}</td>
+                  <td class="jobs__nowrap">{{ date(f.failedAt) }}</td>
+                  <td>{{ f.error }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+      @if (failuresError(); as e) {
+        <opp-error-state [error]="e" (retry)="loadFailures(!failures().length)" />
+      }
+      @if (failuresCursor()) {
+        <div>
+          <button type="button" oppButton="secondary" (click)="loadFailures()">
+            Load more failed chunks
+          </button>
+        </div>
+      }
+      @if (!mayRetry()) {
+        <p class="jobs__note">A workspace admin can retry failed chunks.</p>
+      }
+    </section>
+  }
+
+  <section class="jobs__panel" aria-labelledby="job-ids">
+    <h2 id="job-ids">For support</h2>
+    <dl class="jobs__ids">
+      <dt>Correlation ID</dt>
+      <dd>
+        <code>{{ j.correlationId || '–' }}</code>
+        @if (j.correlationId) {
+          <button
+            type="button"
+            oppIconButton
+            label="Copy correlation ID"
+            (click)="copy('Correlation ID', j.correlationId)"
+          >
+            <opp-icon name="copy" />
+          </button>
+        } @else {
+          <span></span>
+        }
+      </dd>
+      @if (j.snapshotId) {
+        <dt>Frozen set (snapshot) ID</dt>
+        <dd>
+          <code>{{ j.snapshotId }}</code>
+          <button
+            type="button"
+            oppIconButton
+            label="Copy snapshot ID"
+            (click)="copy('Snapshot ID', j.snapshotId)"
+          >
+            <opp-icon name="copy" />
+          </button>
+        </dd>
+      }
+      <dt>Job ID</dt>
+      <dd>
+        <code>{{ j.jobId }}</code>
+        <button type="button" oppIconButton label="Copy job ID" (click)="copy('Job ID', j.jobId)">
+          <opp-icon name="copy" />
+        </button>
+      </dd>
+    </dl>
+    <p class="jobs__note">
+      Last updated {{ date(j.updatedAt) }}
+      @if (j.completedAt) {
+        · finished {{ date(j.completedAt) }}
+      }
+    </p>
+  </section>
+}

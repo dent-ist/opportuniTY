@@ -38,6 +38,7 @@ const PATHS = {
   thumbnails: 'M4 4.5h6v6H4zM14 4.5h6v6h-6zM4 13.5h6v6H4zM14 13.5h6v6h-6z',
   file: 'M7 3.5h7l4 4v13H7zM14 3.5v4h4',
   download: 'M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M4 16.5V20h16v-3.5',
+  copy: 'M9 8.5h10.5v12H9zM15 8.5V3.5H4.5v12H9',
   // Workspace navigation (sidebar).
   documents: 'M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 12h6M9.5 15.5h6',
   report: 'M5 20V11M10 20V5M15 20v-6M20 20V8',

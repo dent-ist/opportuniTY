@@ -29,7 +29,7 @@
       @if (!finished()) {
         <span class="imports__note">You can leave this page: the import keeps running.</span>
       }
-      <a [routerLink]="['../../jobs']" [queryParams]="{ job: i.job.jobId }">View in Jobs</a>
+      <a [routerLink]="['../../jobs', i.job.jobId]">View in Jobs</a>
     </div>
     <div class="imports__phase">
       <span class="imports__phase-label" id="import-saved-label">Saved</span>
