@@ -11,3 +11,5 @@ groups:
         annotations:
           summary: "Search outbox lane {{ $labels.opportunity_lane }} is not being dispatched"
           description: "The oldest undispatched SearchOutbox row is {{ $value | humanizeDuration }} old (> 60 s). Check RabbitMQ and the dispatcher worker."
+          # Every alert links to its runbook (E06-T06); a unit test keeps the links valid.
+          runbook_url: "docs/operations/re-dispatch-stuck-work.md#outboxoldestagehigh"

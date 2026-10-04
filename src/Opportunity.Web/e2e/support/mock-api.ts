@@ -2,6 +2,8 @@ import type { Page, Route } from '@playwright/test';
 import { CODING_FIELDS, CodingMock } from './mock-coding';
 import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
 import { ImportsMock } from './mock-imports';
+import { JobsMock } from './mock-jobs';
+import { SavedSearchesMock } from './mock-saved-searches';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -31,6 +33,12 @@ export interface MockApiOptions {
   largeTextDocument?: number;
   /** The import pre-flight reports a blocking error (E08-T08). */
   preflightBlocking?: boolean;
+  /** Serve the live job stream (`GET …/job-events`); false answers 404, so pages poll (E06-T07). Default true. */
+  jobEvents?: boolean;
+  /** Installation permissions of the signed-in user (`/api/v1/me`); default: may create workspaces. */
+  installationPermissions?: readonly string[];
+  /** Whether the session satisfies MFA (`/api/v1/me`); default true. Without it creating a workspace needs a step-up. */
+  mfa?: boolean;
 }
 
 /** A request the mock answered, with its JSON body and Idempotency-Key. */
@@ -67,6 +75,16 @@ export interface MockControl {
   readonly bulkCoding: MockRequest[];
   /** Imports (E08-T08): previews, pre-flights and started imports received. */
   readonly imports: ImportsMock;
+  /** Job operations (E06-T07): the jobs, server-side changes (`jobs.update`), cancels and retries received. */
+  readonly jobs: JobsMock;
+  /** Workspace writes (E04-T07): `POST /api/v1/workspaces` and `PUT /api/v1/workspaces/{id}` bodies with If-Match. */
+  readonly workspaceWrites: {
+    method: string;
+    body: Record<string, unknown>;
+    ifMatch: string | null;
+  }[];
+  /** Saved searches (E16-T11): folders, searches, writes received and runs by id. */
+  readonly savedSearches: SavedSearchesMock;
 }
 
 /**
@@ -174,6 +192,7 @@ export const ALL_PERMISSIONS = [
   'PrivilegeLog.Generate',
   'Job.ViewAll',
   'Job.Manage',
+  'Job.Replay',
   'Audit.Read',
   'Audit.ReadSearchText',
   'Workspace.ManageUsers',
@@ -201,7 +220,24 @@ const principal = {
   groups: [],
   mfa: true,
   sessionExpiresAt: null,
+  installationPermissions: ['Installation.ManageWorkspaces'],
 };
+
+/** Read-only search placement of the mock's workspaces (`WorkspaceResource.searchPlacement`). */
+const SEARCH_PLACEMENT = { kind: 'shared', projectionGeneration: 18432, state: 'active' } as const;
+
+/** `WorkspaceMemberResource` of a user's role assignment. */
+function member(assignmentId: string, displayName: string, role: string) {
+  return {
+    assignmentId,
+    kind: 'user',
+    role,
+    userId: `user-${assignmentId}`,
+    displayName,
+    groupName: null,
+    assignedAt: '2026-10-03T00:00:00.000Z',
+  };
+}
 
 /** `GET /api/v1/workspaces/{id}/fields` items: the grid's structural fields and the coding fields (./mock-coding.ts). */
 export const FIELDS = [...SYSTEM_FIELDS, ...CODING_FIELDS];
@@ -319,8 +355,35 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const frozen = new Map<string, number>();
   const jobs = new Map<string, { snapshotId: string; polls: number }>();
   const imports = new ImportsMock({ preflightBlocking: options.preflightBlocking });
+  // Workspaces (E04-T07): the seeded ones plus any the test creates; a created one starts empty (no imports, only
+  // system fields, an empty Default layout, the creator's own role).
+  const workspaces = new Map<string, Record<string, unknown>>(
+    WORKSPACES.map((w) => [
+      w.workspaceId,
+      {
+        ...w,
+        breakGlassActive: false,
+        storageProfile: 'default',
+        version: 1,
+        updatedAt: w.createdAt,
+        searchPlacement: SEARCH_PLACEMENT,
+      },
+    ]),
+  );
+  const created = new Set<string>();
+  const workspaceWrites: MockControl['workspaceWrites'] = [];
+  const jobsMock = new JobsMock({
+    userId: principal.userId,
+    viewAll: permissions.includes('Job.ViewAll'),
+    stream: options.jobEvents ?? true,
+    lookup: (id) => imports.job(id),
+  });
+  const savedSearches = new SavedSearchesMock();
   const control: MockControl = {
     imports,
+    jobs: jobsMock,
+    workspaceWrites,
+    savedSearches,
     unhandled,
     audit,
     coding,
@@ -334,9 +397,43 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     const url = new URL(route.request().url());
     const path = url.pathname;
     if (path === '/api/v1/me') {
-      return signedIn ? json(route, principal) : route.fulfill(problem(401, 'Unauthorized'));
+      return signedIn
+        ? json(route, {
+            ...principal,
+            mfa: options.mfa ?? principal.mfa,
+            installationPermissions:
+              options.installationPermissions ?? principal.installationPermissions,
+          })
+        : route.fulfill(problem(401, 'Unauthorized'));
     }
     const method = route.request().method();
+    // A workspace created in the test is empty: answered before the shared import/field/layout mocks.
+    const fresh = /^\/api\/v1\/workspaces\/([^/]+)\/(imports|fields|coding-layouts|members)$/.exec(
+      path,
+    );
+    if (signedIn && method === 'GET' && fresh && created.has(fresh[1])) {
+      const items =
+        fresh[2] === 'fields'
+          ? SYSTEM_FIELDS
+          : fresh[2] === 'coding-layouts'
+            ? [{ layoutId: 'layout-default', name: 'Default', isDefault: true, sections: [] }]
+            : fresh[2] === 'members'
+              ? [member('a-1', 'Alex Reviewer', 'workspaceAdmin')]
+              : [];
+      return json(route, {
+        items,
+        nextCursor: null,
+        total: { value: items.length, relation: 'eq' },
+      });
+    }
+    if (signedIn && method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/members$/.test(path)) {
+      const items = [
+        member('a-1', 'Alex Reviewer', 'workspaceAdmin'),
+        member('a-2', 'Sam Senior', 'seniorReviewer'),
+        member('a-3', 'Riley Reviewer', 'reviewer'),
+      ];
+      return json(route, { items, nextCursor: null, total: { value: 3, relation: 'eq' } });
+    }
     if (signedIn && path === '/api/v1/me/preferences' && method === 'GET') {
       return json(route, { values: preferences });
     }
@@ -387,15 +484,27 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       const body = route.request().postDataJSON() as {
         pageSize?: number;
         query?: string;
+        savedSearchId?: string;
         highlight?: boolean | null;
       };
       pageSize = Number(body?.pageSize ?? 100);
+      if (body?.savedSearchId) {
+        // A saved search runs its stored query (wave-9 contract): unknown or not visible → 404.
+        const stored = savedSearches.queryOf(body.savedSearchId);
+        if (stored === null) return route.fulfill(problem(404, 'Not found'));
+        body.query = stored;
+      }
       // A fielded query (the filter row) narrows the list, so filtering is visible end to end.
       total = body?.query?.includes(':') ? Math.min(documents, 12) : documents;
       expired = false;
       // Like the API, snippets come only with highlighting (on by default); the search keeps the setting for its pages.
       lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
-      return json(route, searchPage(matching(), pageSize, 1, lastQuery));
+      if (!body?.savedSearchId) return json(route, searchPage(matching(), pageSize, 1, lastQuery));
+      savedSearches.run(body.savedSearchId, matching().length);
+      return json(route, {
+        ...searchPage(matching(), pageSize, 1, lastQuery),
+        savedSearchId: body.savedSearchId,
+      });
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches\/[^/]+\/pages$/.test(path)) {
       if (expired) return route.fulfill(problem(404, 'Not found'));
@@ -409,6 +518,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
           : Number(url.searchParams.get('page') ?? 1);
       return json(route, searchPage(docs, pageSize, n, lastQuery));
     }
+    // Saved searches (E16-T11): ./mock-saved-searches.ts.
+    const savedSearch = signedIn ? savedSearches.handle(route, method, path, url) : undefined;
+    if (savedSearch) return savedSearch;
     // Imports (E08-T08): ./mock-imports.ts.
     const imported = signedIn ? imports.handle(route, method, path) : undefined;
     if (imported) return imported;
@@ -505,21 +617,78 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       job.polls++;
       return json(route, body);
     }
-    if (signedIn && path === '/api/v1/workspaces')
+    // Job operations and the live job stream (E06-T07): ./mock-jobs.ts.
+    const jobRoute = signedIn ? jobsMock.handle(route, method, path, url) : undefined;
+    if (jobRoute) return jobRoute;
+    if (signedIn && path === '/api/v1/workspaces' && method === 'GET') {
+      const items = [...workspaces.values()].map(
+        ({ workspaceId, name, matterNumber, displayTimeZone, status, createdAt }) => ({
+          workspaceId,
+          name,
+          matterNumber,
+          displayTimeZone,
+          status,
+          createdAt,
+        }),
+      );
       return json(route, {
-        items: WORKSPACES,
+        items,
         nextCursor: null,
-        total: { value: WORKSPACES.length, relation: 'eq' },
+        total: { value: items.length, relation: 'eq' },
       });
-    const ws = WORKSPACES.find((w) => path === `/api/v1/workspaces/${w.workspaceId}`);
-    if (signedIn && ws)
-      return json(route, {
-        ...ws,
-        permissions,
+    }
+    if (signedIn && path === '/api/v1/workspaces' && method === 'POST') {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      workspaceWrites.push({ method, body, ifMatch: null });
+      if (options.mfa === false)
+        return route.fulfill({
+          status: 403,
+          contentType: 'application/problem+json',
+          body: JSON.stringify({
+            status: 403,
+            title: 'Forbidden',
+            code: 'step-up-required',
+            stepUpUrl: '/bff/login?stepUp=true',
+          }),
+        });
+      const id = `ws-new-${created.size + 1}`;
+      created.add(id);
+      const workspace = {
+        workspaceId: id,
+        name: String(body['name']),
+        matterNumber: (body['matterNumber'] as string | null) ?? null,
+        displayTimeZone: String(body['displayTimeZone']),
+        status: 'active',
+        createdAt: '2026-10-04T09:00:00.000Z',
+        updatedAt: '2026-10-04T09:00:00.000Z',
         breakGlassActive: false,
         storageProfile: 'default',
         version: 1,
         searchPlacement: null,
+      };
+      workspaces.set(id, workspace);
+      return route.fulfill({ status: 201, json: { ...workspace, permissions: ALL_PERMISSIONS } });
+    }
+    const wsPath = /^\/api\/v1\/workspaces\/([^/]+)$/.exec(path);
+    const ws = wsPath ? workspaces.get(wsPath[1]) : undefined;
+    if (signedIn && ws && method === 'PUT') {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      const ifMatch = route.request().headers()['if-match'] ?? null;
+      workspaceWrites.push({ method, body, ifMatch });
+      if (ifMatch !== `"${ws['version']}"`) return route.fulfill(problem(412, 'Version conflict'));
+      const updated = {
+        ...ws,
+        ...body,
+        version: Number(ws['version']) + 1,
+        updatedAt: '2026-10-04T10:00:00.000Z',
+      };
+      workspaces.set(wsPath![1], updated);
+      return json(route, { ...updated, permissions });
+    }
+    if (signedIn && ws && method === 'GET')
+      return json(route, {
+        ...ws,
+        permissions: created.has(wsPath![1]) ? ALL_PERMISSIONS : permissions,
       });
     unhandled.push(`${route.request().method()} ${path}`);
     return route.fulfill(problem(404, 'Not found'));

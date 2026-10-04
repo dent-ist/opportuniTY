@@ -220,7 +220,8 @@ and may relax it only through an amendment to this ADR.
    | `Production.Create` / `Production.Finalize` | ✔ | | | | ✔ | | |
    | `PrivilegeLog.Generate` | ✔ | | | ✔ | ✔ | | |
    | `Job.ViewAll` | ✔ | | | | ✔ | ✔ | |
-   | `Job.Manage` (cancel, replay) | ✔ | | | | | | |
+   | `Job.Manage` (cancel others' jobs, pause, resume) | ✔ | | | | | | |
+   | `Job.Replay` (replay failed work from PG; E06-T06, ticket-named) | ✔ | | | | | | |
    | `Audit.Read` | ✔ | | | | | ✔ | ✔ |
    | `Audit.ReadSearchText` (Q-16) | ✔ | | | | | ✔ | |
    | `Workspace.ManageUsers` | ✔ | | | | | | |
@@ -228,7 +229,8 @@ and may relax it only through an amendment to this ADR.
    | `Workspace.ManageFields` | ✔ | | | | | | |
    | `Workspace.RequestDeletion` (Q-23) | ✔ | | | | | | |
 
-   Users always see their own jobs. Installation-level permissions (`Installation.ManageWorkspaces`,
+   Users always see their own jobs and may cancel them. *Amendment 2026-10-04 (E06-T06, #61):* replay was split out of
+   `Job.Manage` into `Job.Replay`, the permission the ticket names, so it can be granted on its own later. Installation-level permissions (`Installation.ManageWorkspaces`,
    `Installation.ManageIdentity`, `Installation.AssignBreakGlass`, `Installation.ApproveDeletion`,
    `Installation.ManageLegalHold`) belong to the **Installation Admin** role. That role grants **no** document access
    by itself: an installation admin who needs content must hold a workspace role and is subject to walls.

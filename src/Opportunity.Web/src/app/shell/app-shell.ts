@@ -29,6 +29,7 @@ import {
 import { Button, DialogService, Icon, type IconName } from '../ui';
 import { Brand } from './brand';
 import { SHELL_PATHS } from './navigation';
+import { JobTray } from './job-tray';
 import { SessionEndedDialog } from './session-ended-dialog';
 import { ShortcutDialogs } from './shortcuts/shortcut-dialogs';
 import { SkipLink } from './skip-link';
@@ -53,7 +54,7 @@ const SECTION_ICONS: Readonly<Record<string, IconName>> = {
 
 /**
  * Authenticated layout (familiarity guide §2.2, Q-64): skip link, banner with the product mark, workspace
- * switcher and the user menu; a collapsible left sidebar with the RBAC-filtered workspace sections; the main
+ * switcher, the job tray and the user menu; a collapsible left sidebar with the RBAC-filtered workspace sections; the main
  * region, which shows a section's own tabs (e.g. Admin's areas) at its top. Focus moves to the new page's
  * heading after each navigation (ADR-018 §3.4). When the session ends, the routed content (and with it every
  * workspace-scoped store) is destroyed and the user is asked to sign in again.
@@ -67,6 +68,7 @@ const SECTION_ICONS: Readonly<Record<string, IconName>> = {
     Brand,
     Button,
     Icon,
+    JobTray,
     SkipLink,
     UserMenu,
     WorkspaceSwitcher,

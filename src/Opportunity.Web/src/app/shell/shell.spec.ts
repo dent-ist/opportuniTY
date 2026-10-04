@@ -28,6 +28,7 @@ const alex: SessionPrincipal = {
   groups: [],
   mfa: true,
   sessionExpiresAt: null,
+  installationPermissions: [],
 };
 
 const reviewer = [PERMISSIONS.documentView];

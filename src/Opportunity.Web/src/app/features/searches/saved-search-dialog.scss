@@ -1,0 +1,94 @@
+// Saved search editor and the small saved-search dialogs (rename, move, copy, share, folders).
+
+.ssd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+}
+
+.ssd__lead {
+  margin: 0;
+}
+
+.ssd__heading {
+  margin: 0;
+  font-size: var(--opp-font-size-md);
+}
+
+.ssd__query {
+  padding: var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.ssd__conditions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3) var(--opp-space-3);
+  border: var(--opp-border-width) dashed var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+}
+
+.ssd__conditions legend {
+  padding-inline: var(--opp-space-1);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.ssd__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-1);
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.ssd__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-1);
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-danger-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-danger-bg);
+  color: var(--opp-color-danger-text);
+}
+
+.ssd__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ssd__share {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-1) var(--opp-space-1) var(--opp-space-1) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.ssd__share-kind {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.ssd__add {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--opp-space-2);
+}
+
+.ssd__add opp-select {
+  flex: 1;
+}

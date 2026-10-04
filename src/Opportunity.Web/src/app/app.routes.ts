@@ -22,6 +22,16 @@ import { WorkspaceShell } from './shell/workspace-shell';
 
 const sectionPage = () => import('./shell/pages/section-page').then((m) => m.SectionPage);
 
+/** Admin areas that have shipped; the others show the section placeholder (E04-T07). */
+const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
+  settings: () =>
+    import('./features/workspace-admin/workspace-settings-page').then(
+      (m) => m.WorkspaceSettingsPage,
+    ),
+  setup: () =>
+    import('./features/workspace-admin/workspace-setup-page').then((m) => m.WorkspaceSetupPage),
+};
+
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */
 export const workspaceChildren: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'documents' },
@@ -40,7 +50,12 @@ export const workspaceChildren: Routes = [
         title: a.label,
         canActivate: [requirePermission(a.permission)],
         data: { section: a.label },
-        loadComponent: sectionPage,
+        // Saved Searches (E16-T11); Search Terms Reports follow with their own ticket.
+        loadComponent:
+          a.path === 'saved'
+            ? () =>
+                import('./features/searches/saved-searches-page').then((m) => m.SavedSearchesPage)
+            : sectionPage,
       })),
     ],
   },
@@ -67,8 +82,26 @@ export const workspaceChildren: Routes = [
       },
     ],
   },
+  {
+    // The workspace's jobs and one job's progress, failures, retry and cancel (E06-T07).
+    path: 'jobs',
+    canActivate: [requirePermission(PERMISSIONS.documentView)],
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        title: 'Jobs',
+        loadComponent: () => import('./features/jobs/jobs-page').then((m) => m.JobsPage),
+      },
+      {
+        path: ':jobId',
+        title: 'Job',
+        loadComponent: () => import('./features/jobs/job-detail').then((m) => m.JobDetail),
+      },
+    ],
+  },
   ...WORKSPACE_SECTIONS.filter(
-    (s) => s.path !== 'documents' && s.path !== 'searches' && s.path !== 'imports',
+    (s) => !['documents', 'searches', 'imports', 'jobs'].includes(s.path),
   ).map((s): Route => ({
     path: s.path,
     title: s.label,
@@ -85,7 +118,7 @@ export const workspaceChildren: Routes = [
         title: a.label,
         canActivate: [requirePermission(a.permission)],
         data: { section: a.label },
-        loadComponent: sectionPage,
+        loadComponent: ADMIN_PAGES[a.path] ?? sectionPage,
       })),
     ],
   },

@@ -33,6 +33,7 @@ permissions in the Break-glass column (Q-45).
 | `PrivilegeLog.Generate` | ✔ | | | ✔ | ✔ | | |
 | `Job.ViewAll` | ✔ | | | | ✔ | ✔ | |
 | `Job.Manage` | ✔ | | | | | | |
+| `Job.Replay` | ✔ | | | | | | |
 | `Audit.Read` | ✔ | | | | | ✔ | ✔ |
 | `Audit.ReadSearchText` | ✔ | | | | | ✔ | |
 | `Workspace.ManageUsers` | ✔ | | | | | | |
@@ -67,7 +68,8 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Production.Finalize` | Finalize productions. |
 | `PrivilegeLog.Generate` | Generate privilege logs. |
 | `Job.ViewAll` | See every user's jobs (users always see their own). |
-| `Job.Manage` | Cancel and replay jobs. |
+| `Job.Manage` | Cancel, pause and resume other users' jobs (users may cancel their own). |
+| `Job.Replay` | Replay failed job chunks, index tasks and search outbox rows from PostgreSQL (ADR-010 §7.4). |
 | `Audit.Read` | Read the workspace audit trail. |
 | `Audit.ReadSearchText` | Read search query text in the audit trail (Q-16). |
 | `Workspace.ManageUsers` | Assign and revoke workspace roles. |

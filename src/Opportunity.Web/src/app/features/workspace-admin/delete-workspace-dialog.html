@@ -1,0 +1,71 @@
+<form novalidate (submit)="submit($event)">
+  <opp-dialog-layout [title]="title">
+    <div class="wsa__dialog-body">
+      @if (lock; as l) {
+        <div class="wsa__notice wsa__notice--warning">
+          <opp-icon name="lock" />
+          <div>
+            <p class="wsa__notice-title">{{ data.workspaceName }} is under a preservation lock</p>
+            <p>
+              Nothing in this workspace can be deleted while the lock applies. Placed by
+              {{ l.placedBy }} on {{ date(l.placedAt) }}: {{ l.reason }}
+            </p>
+            <p>Deletion becomes possible once the lock is released.</p>
+          </div>
+        </div>
+      }
+      @if (summary; as s) {
+        <p class="wsa__lead">
+          This removes the workspace and its contents for everyone. It cannot be undone.
+        </p>
+        <div class="wsa__columns">
+          <section aria-labelledby="delete-removed">
+            <h3 id="delete-removed" class="wsa__subheading">Will be removed</h3>
+            <ul class="wsa__list">
+              @for (item of s.removed; track item.label) {
+                <li>
+                  {{ item.label }}
+                  @if (item.detail) {
+                    <span class="wsa__muted">({{ item.detail }})</span>
+                  }
+                </li>
+              }
+            </ul>
+          </section>
+          <section aria-labelledby="delete-kept">
+            <h3 id="delete-kept" class="wsa__subheading">Kept</h3>
+            <ul class="wsa__list">
+              @for (item of s.retained; track item.label) {
+                <li>
+                  {{ item.label }}
+                  @if (item.detail) {
+                    <span class="wsa__muted">({{ item.detail }})</span>
+                  }
+                </li>
+              }
+            </ul>
+          </section>
+        </div>
+        @if (s.approvalRequired) {
+          <p class="wsa__fine">
+            A second person with the approval role must approve the request before anything is
+            removed. You receive a destruction certificate when the deletion completes.
+          </p>
+        }
+        <opp-text-field
+          [label]="'Type ' + data.workspaceName + ' to confirm'"
+          [required]="true"
+          [(value)]="typed"
+        />
+      }
+    </div>
+    <ng-container dialogActions>
+      <button type="button" oppButton="ghost" data-autofocus (click)="ref.close(false)">
+        {{ lock ? 'Close' : 'Cancel' }}
+      </button>
+      @if (summary) {
+        <button type="submit" oppButton="danger" [disabled]="!matches()">Request deletion</button>
+      }
+    </ng-container>
+  </opp-dialog-layout>
+</form>

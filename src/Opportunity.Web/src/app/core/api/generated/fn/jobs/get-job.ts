@@ -7,7 +7,7 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { JobResource } from '../../models/job-resource';
+import { JobDetail } from '../../models/job-detail';
 
 export interface GetJob$Params {
   workspaceId: string;
@@ -19,7 +19,7 @@ export function getJob(
   rootUrl: string,
   params: GetJob$Params,
   context?: HttpContext,
-): Observable<StrictHttpResponse<JobResource>> {
+): Observable<StrictHttpResponse<JobDetail>> {
   const rb = new RequestBuilder(rootUrl, getJob.PATH, 'get');
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
@@ -29,7 +29,7 @@ export function getJob(
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<JobResource>;
+      return r as StrictHttpResponse<JobDetail>;
     }),
   );
 }

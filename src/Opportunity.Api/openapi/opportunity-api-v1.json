@@ -146,6 +146,7 @@
           "Opportunity.Api"
         ],
         "summary": "Parse query-language text and return its AST, normalized form and positioned errors.",
+        "description": "Also checks saved-search references (savedsearch:<savedSearchId>): each must be a saved search you can see, and nested saved searches must not form a loop (SAVED_SEARCH_NOT_FOUND, SAVED_SEARCH_CYCLE, SAVED_SEARCH_TOO_DEEP, SAVED_SEARCH_INVALID, SAVED_SEARCH_INVALID_REFERENCE); errors inside a referenced search point at the reference.",
         "operationId": "ValidateQuery",
         "parameters": [
           {
@@ -493,25 +494,16 @@
         }
       }
     },
-    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}": {
+    "/api/v1/workspaces/{workspaceId}/saved-search-folders": {
       "get": {
         "tags": [
-          "Jobs"
+          "Saved searches"
         ],
-        "summary": "Job status with separate committed and indexed progress.",
-        "description": "Users always see their own jobs; other users' jobs need Job.ViewAll.",
-        "operationId": "GetJob",
+        "summary": "Every saved-search folder of the workspace, ordered by name.",
+        "operationId": "ListSavedSearchFolders",
         "parameters": [
           {
             "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "jobId",
             "in": "path",
             "required": true,
             "schema": {
@@ -525,7 +517,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/JobResource"
+                  "$ref": "#/components/schemas/SavedSearchFolderList"
                 }
               }
             }
@@ -539,6 +531,945 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Create a folder (top level, or below parentFolderId).",
+        "operationId": "CreateSavedSearchFolder",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchFolderResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/saved-search-folders/{folderId}": {
+      "put": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Rename or move a folder (If-Match required). Its creator or a Workspace Admin may change it.",
+        "operationId": "UpdateSavedSearchFolder",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "folderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchFolderResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Delete an empty folder (409 FOLDER_NOT_EMPTY otherwise). If-Match is honoured when sent.",
+        "operationId": "DeleteSavedSearchFolder",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "folderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/saved-searches": {
+      "get": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "The saved searches you can see (yours, shared with you or a group of yours; all as Workspace Admin), by name.",
+        "description": "folderId narrows to one folder (folderId=root: searches outside any folder); q matches names (case-insensitive). Each entry carries its owner, sharing, and the time, hit count and freshness of its last run.",
+        "operationId": "ListSavedSearches",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "folderId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfSavedSearchSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Save a search: query text (validated now, re-parsed at every run), columns, sort and folder. Private until shared.",
+        "operationId": "CreateSavedSearch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/saved-searches/share-candidates": {
+      "get": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Users and IdP groups of the workspace you can share a saved search with (needs SavedSearch.Share).",
+        "description": "Users with a role in the workspace (directly or through one of their groups) and the IdP groups that hold a role, except yourself, by display name; q matches names and e-mail addresses (case-insensitive); limit 1–500, default 50.",
+        "operationId": "ListSavedSearchShareCandidates",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchShareCandidateList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/saved-searches/{savedSearchId}": {
+      "get": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "A saved search with its criteria and ETag.",
+        "operationId": "GetSavedSearch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "savedSearchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Replace a saved search's name, folder, criteria, columns and sort (If-Match required; owner or Workspace Admin).",
+        "operationId": "UpdateSavedSearch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "savedSearchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Delete a saved search (If-Match required; owner or Workspace Admin).",
+        "operationId": "DeleteSavedSearch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "savedSearchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/saved-searches/{savedSearchId}/clone": {
+      "post": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Copy a saved search you can see as a new private search of yours.",
+        "operationId": "CloneSavedSearch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "savedSearchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SavedSearchCloneRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/saved-searches/{savedSearchId}/sharing": {
+      "put": {
+        "tags": [
+          "Saved searches"
+        ],
+        "summary": "Replace the users and IdP groups a saved search is shared with (owner or Workspace Admin; needs SavedSearch.Share).",
+        "description": "Sharing never grants document access: whoever runs the search sees only documents they may see. If-Match is honoured when sent.",
+        "operationId": "ShareSavedSearch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "savedSearchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchSharingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/job-events": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Live job changes as server-sent events (event 'job': {jobId, status, committed, searchable, updatedAt}).",
+        "description": "Your own jobs, or all with Job.ViewAll. A ': heartbeat' comment every 15 s; the stream ends after at most 30 minutes and EventSource reconnects with Last-Event-ID. Fallback: GET …/jobs?updatedSince=<ISO 8601> every ≥ 5 s.",
+        "operationId": "StreamJobEvents",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           },
           "404": {
             "description": "Not Found",
@@ -1535,6 +2466,534 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SnapshotResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Jobs, newest first (or, with updatedSince, in change order): your own, or everyone's with Job.ViewAll.",
+        "description": "Filters: type and status (repeat or comma-separate), createdBy=me|all (all needs Job.ViewAll, else only your own jobs are listed), from/to (creation time, ISO 8601). updatedSince=<ISO 8601> is the polling fallback of the job-events stream: jobs changed after that instant, oldest change first. Timestamps have millisecond precision and a change becomes visible when its transaction commits, so poll with the newest updatedAt seen minus a few seconds; items are state, so a repeated one is harmless.",
+        "operationId": "ListJobs",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "createdBy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "updatedSince",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfJobSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Job detail: committed and searchable progress, chunks by state, attempts, last error and ETA.",
+        "description": "Users always see their own jobs; other users' jobs need Job.ViewAll.",
+        "operationId": "GetJob",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}/failures": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Failed chunks and index tasks of the job, oldest failure first (PostgreSQL is the failure ledger).",
+        "operationId": "ListJobFailures",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfJobFailure"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}/cancel": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Cancel a job: pending chunks are cancelled now, running chunks stop at their next fence (your own jobs, or Job.Manage).",
+        "description": "Committed chunks stay (no undo, Q-34) and their index tasks still run. Repeating the call is harmless.",
+        "operationId": "CancelJob",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/jobs/{jobId}/retry-failed": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Replay the job's failed chunks and index tasks from PostgreSQL (Job.Replay); idempotent and audited.",
+        "description": "Failed rows return to Pending with their attempts reset and the dispatcher publishes them again; dead-lettered broker messages are never re-published (ADR-010 §7.3). Chunks replay while the job is running, paused or completed with errors; index tasks always (a committed change must reach the index). Fix the cause first.",
+        "operationId": "RetryFailedJobWork",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobReplayResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/search-outbox/failures": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Failed SearchOutbox rows (interactive edits not yet searchable), oldest failure first (Job.ViewAll).",
+        "operationId": "ListSearchOutboxFailures",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfJobFailure"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/search-outbox/retry-failed": {
+      "post": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Replay every failed SearchOutbox row of the workspace from PostgreSQL (Job.Replay); idempotent and audited.",
+        "operationId": "RetrySearchOutboxFailures",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOutboxReplayResource"
                 }
               }
             }
@@ -4783,6 +6242,13 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "savedSearchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -5073,6 +6539,81 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ImportTargetResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfJobFailure": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobFailure"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfJobSummary": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfSavedSearchSummary": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedSearchSummary"
             }
           },
           "nextCursor": {
@@ -7391,6 +8932,67 @@
           }
         }
       },
+      "JobChunkCounts": {
+        "required": [
+          "pending",
+          "running",
+          "done",
+          "failed",
+          "deadLettered",
+          "cancelled"
+        ],
+        "type": "object",
+        "properties": {
+          "pending": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "running": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "done": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "failed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deadLettered": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "cancelled": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "JobCommittedProgress": {
         "required": [
           "chunksTotal",
@@ -7485,8 +9087,232 @@
               "string"
             ],
             "format": "int64"
+          },
+          "done": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
           }
         }
+      },
+      "JobCreator": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "JobDetail": {
+        "required": [
+          "jobId",
+          "type",
+          "name",
+          "status",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "committed",
+          "searchable",
+          "errorCount",
+          "correlationId",
+          "snapshotId",
+          "link",
+          "chunks",
+          "attempts",
+          "lastError",
+          "etaSeconds",
+          "workspaceId",
+          "jobType",
+          "statusReason",
+          "initiatedBy",
+          "targetSnapshotId",
+          "startedAt",
+          "finishedAt",
+          "indexed"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobResourceType"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobResourceStatus"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/JobCreator"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "committed": {
+            "$ref": "#/components/schemas/JobCommittedProgress"
+          },
+          "searchable": {
+            "$ref": "#/components/schemas/JobSearchableProgress"
+          },
+          "errorCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "correlationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "link": {
+            "type": "string"
+          },
+          "chunks": {
+            "$ref": "#/components/schemas/JobChunkCounts"
+          },
+          "attempts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "etaSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobType": {
+            "$ref": "#/components/schemas/JobResourceType"
+          },
+          "statusReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "initiatedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetSnapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          },
+          "indexed": {
+            "$ref": "#/components/schemas/JobIndexedProgress"
+          }
+        }
+      },
+      "JobFailure": {
+        "required": [
+          "kind",
+          "id",
+          "attempts",
+          "error",
+          "failedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/JobFailureKind"
+          },
+          "id": {
+            "type": "string"
+          },
+          "attempts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "failedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "JobFailureKind": {
+        "enum": [
+          "chunk",
+          "indexTask",
+          "outbox"
+        ]
       },
       "JobIndexState": {
         "enum": [
@@ -7520,6 +9346,35 @@
               "string"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "JobReplayResource": {
+        "required": [
+          "chunksReplayed",
+          "indexTasksReplayed",
+          "job"
+        ],
+        "type": "object",
+        "properties": {
+          "chunksReplayed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "indexTasksReplayed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobDetail"
           }
         }
       },
@@ -7611,6 +9466,119 @@
           "production",
           "render"
         ]
+      },
+      "JobSearchableProgress": {
+        "required": [
+          "done",
+          "total",
+          "state"
+        ],
+        "type": "object",
+        "properties": {
+          "done": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobSearchableState"
+          }
+        }
+      },
+      "JobSearchableState": {
+        "enum": [
+          "notApplicable",
+          "pending",
+          "catchingUp",
+          "current"
+        ]
+      },
+      "JobSummary": {
+        "required": [
+          "jobId",
+          "type",
+          "name",
+          "status",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "committed",
+          "searchable",
+          "errorCount",
+          "correlationId",
+          "snapshotId",
+          "link"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobResourceType"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobResourceStatus"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/JobCreator"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "committed": {
+            "$ref": "#/components/schemas/JobCommittedProgress"
+          },
+          "searchable": {
+            "$ref": "#/components/schemas/JobSearchableProgress"
+          },
+          "errorCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "correlationId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "link": {
+            "type": "string"
+          }
+        }
       },
       "JsonElement": { },
       "JsonNode": { },
@@ -7906,7 +9874,8 @@
           "email",
           "groups",
           "mfa",
-          "sessionExpiresAt"
+          "sessionExpiresAt",
+          "installationPermissions"
         ],
         "type": "object",
         "properties": {
@@ -7933,6 +9902,12 @@
           },
           "sessionExpiresAt": {
             "format": "date-time"
+          },
+          "installationPermissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -8340,6 +10315,464 @@
           }
         }
       },
+      "SavedSearchCloneRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "SavedSearchFolderList": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedSearchFolderResource"
+            }
+          }
+        }
+      },
+      "SavedSearchFolderRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "parentFolderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "SavedSearchFolderResource": {
+        "required": [
+          "folderId",
+          "name",
+          "parentFolderId",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parentFolderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "SavedSearchFreshness": {
+        "required": [
+          "state",
+          "asOf"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/SavedSearchFreshnessState"
+          },
+          "asOf": {
+            "format": "date-time"
+          }
+        }
+      },
+      "SavedSearchFreshnessState": {
+        "enum": [
+          "current",
+          "catchingUp"
+        ]
+      },
+      "SavedSearchOwner": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        }
+      },
+      "SavedSearchRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "query": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "columns": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "sort": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SearchSortKey"
+            }
+          },
+          "includeFamily": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "SavedSearchResource": {
+        "required": [
+          "savedSearchId",
+          "name",
+          "folderId",
+          "owner",
+          "scope",
+          "sharedWith",
+          "lastRunAt",
+          "lastHitCount",
+          "lastHitRelation",
+          "lastRunFreshness",
+          "modifiedAt",
+          "version",
+          "query",
+          "columns",
+          "sort",
+          "includeFamily",
+          "astVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "savedSearchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/SavedSearchOwner"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SavedSearchScope"
+          },
+          "sharedWith": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedSearchShareResource"
+            }
+          },
+          "lastRunAt": {
+            "format": "date-time"
+          },
+          "lastHitCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "lastHitRelation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TotalRelation"
+              }
+            ]
+          },
+          "lastRunFreshness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SavedSearchFreshness"
+              }
+            ]
+          },
+          "modifiedAt": {
+            "format": "date-time"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "query": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sort": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchSortKey"
+            }
+          },
+          "includeFamily": {
+            "type": "boolean"
+          },
+          "astVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SavedSearchScope": {
+        "enum": [
+          "private",
+          "shared"
+        ]
+      },
+      "SavedSearchShareCandidateList": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedSearchShareResource"
+            }
+          }
+        }
+      },
+      "SavedSearchShareKind": {
+        "enum": [
+          "user",
+          "group"
+        ]
+      },
+      "SavedSearchShareResource": {
+        "required": [
+          "kind",
+          "id",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SavedSearchShareKind"
+          },
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        }
+      },
+      "SavedSearchShareTarget": {
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SavedSearchShareKind"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "SavedSearchSharingRequest": {
+        "required": [
+          "sharedWith"
+        ],
+        "type": "object",
+        "properties": {
+          "sharedWith": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SavedSearchShareTarget"
+            }
+          }
+        }
+      },
+      "SavedSearchSummary": {
+        "required": [
+          "savedSearchId",
+          "name",
+          "folderId",
+          "owner",
+          "scope",
+          "sharedWith",
+          "lastRunAt",
+          "lastHitCount",
+          "lastHitRelation",
+          "lastRunFreshness",
+          "modifiedAt",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "savedSearchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/SavedSearchOwner"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SavedSearchScope"
+          },
+          "sharedWith": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedSearchShareResource"
+            }
+          },
+          "lastRunAt": {
+            "format": "date-time"
+          },
+          "lastHitCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "lastHitRelation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TotalRelation"
+              }
+            ]
+          },
+          "lastRunFreshness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SavedSearchFreshness"
+              }
+            ]
+          },
+          "modifiedAt": {
+            "format": "date-time"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "SearchFacet": {
         "required": [
           "field",
@@ -8509,6 +10942,22 @@
           }
         }
       },
+      "SearchOutboxReplayResource": {
+        "required": [
+          "rowsReplayed"
+        ],
+        "type": "object",
+        "properties": {
+          "rowsReplayed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "SearchPageInfo": {
         "required": [
           "number",
@@ -8603,6 +11052,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "savedSearchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -8621,6 +11077,13 @@
               "null",
               "string"
             ]
+          },
+          "savedSearchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           },
           "normalized": {
             "type": "string"
@@ -9307,6 +11770,9 @@
     },
     {
       "name": "Search"
+    },
+    {
+      "name": "Saved searches"
     },
     {
       "name": "Jobs"

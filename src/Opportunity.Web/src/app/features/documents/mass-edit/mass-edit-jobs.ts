@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
+import { JobFeed } from '../../../core/jobs/job-feed';
 import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { ToastService } from '../../../ui';
 import { BulkCodingApi, BulkJob, isFinished } from './bulk-coding-api';
@@ -23,7 +24,7 @@ export interface TrackedJob {
   readonly documentCount: number;
   readonly job: Signal<BulkJob | null>;
   readonly error: Signal<ApiError | null>;
-  /** While a dialog shows the job, it reports the outcome; otherwise a toast does (there is no job tray yet). */
+  /** While a dialog shows the job, it reports the outcome; otherwise a toast with the Mass Edit counts does. */
   attached: boolean;
 }
 
@@ -44,6 +45,8 @@ export class MassEditJobs {
   private readonly toasts = inject(ToastService);
   private readonly prefs = inject(UiPreferences);
   private readonly pollMs = inject(MASS_EDIT_POLL_MS);
+  /** The job tray would notify too; Mass Edit reports its own outcome (Updated / Skipped / Failed). */
+  private readonly feed = inject(JobFeed, { optional: true });
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private destroyed = false;
 
@@ -63,6 +66,7 @@ export class MassEditJobs {
       attached: true,
       done: false,
     };
+    this.feed?.reportedElsewhere(jobId);
     void this.poll(entry);
     return entry;
   }

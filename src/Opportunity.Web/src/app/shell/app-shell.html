@@ -19,7 +19,11 @@
       </ul>
     </nav>
   }
-  <opp-user-menu class="shell__user" />
+  @if (workspace()) {
+    <!-- The tray takes the free space before it, so the user menu follows it directly. -->
+    <opp-job-tray />
+  }
+  <opp-user-menu [class.shell__user]="!workspace()" />
 </header>
 <div class="shell__body">
   @if (workspace(); as ws) {

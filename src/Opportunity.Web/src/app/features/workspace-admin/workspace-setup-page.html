@@ -1,0 +1,83 @@
+<div class="wsa__header">
+  <div class="wsa__heading-group">
+    <h1 class="wsa__title">Set up {{ workspace()?.name }}</h1>
+    <p class="wsa__lead">
+      Work through these steps to get the workspace ready for review. Each step ticks itself off
+      when the workspace has it.
+    </p>
+  </div>
+  <button type="button" oppButton="secondary" [busy]="checking()" (click)="check()">
+    <opp-icon name="refresh" />
+    Check again
+  </button>
+</div>
+
+<div class="wsa__progress">
+  <opp-progress
+    label="Setup progress"
+    [value]="doneCount()"
+    [max]="steps().length"
+    [showValue]="false"
+  />
+  <p class="wsa__muted" role="status">{{ summary() }}</p>
+</div>
+
+<ol class="wsa__steps">
+  @for (s of steps(); track s.step.key; let i = $index) {
+    <li class="wsa__step" [class.is-done]="s.state === 'done'">
+      <span class="wsa__step-marker" aria-hidden="true">
+        @if (s.state === 'done') {
+          <opp-icon name="check" />
+        } @else {
+          {{ i + 1 }}
+        }
+      </span>
+      <div class="wsa__step-body">
+        <div class="wsa__step-head">
+          <h2 class="wsa__step-title">{{ s.step.title }}</h2>
+          @switch (s.state) {
+            @case ('done') {
+              <opp-badge tone="success" icon="success">Done</opp-badge>
+            }
+            @case ('todo') {
+              <opp-badge tone="neutral">To do</opp-badge>
+            }
+            @case ('unknown') {
+              <opp-badge tone="neutral" icon="lock">Not checked</opp-badge>
+            }
+            @case ('error') {
+              <opp-badge tone="warning" icon="warning">Not checked</opp-badge>
+            }
+            @default {
+              <opp-badge tone="info" icon="refresh">Checking</opp-badge>
+            }
+          }
+          @if (s.step.comingSoon) {
+            <opp-badge tone="info" icon="clock">Page coming soon</opp-badge>
+          }
+        </div>
+        <p class="wsa__step-text">{{ s.step.description }}</p>
+        <p class="wsa__muted">{{ s.status }}</p>
+        @if (s.step.comingSoon && s.step.today) {
+          <p class="wsa__muted">{{ s.step.today }}</p>
+        }
+        @if (s.link) {
+          <a class="wsa__step-link" [routerLink]="s.link">
+            {{ s.step.link.label }}
+            @if (s.step.comingSoon) {
+              <span class="opp-visually-hidden">(coming soon)</span>
+            }
+            <opp-icon name="chevron-right" />
+          </a>
+        }
+      </div>
+    </li>
+  }
+</ol>
+
+<p class="wsa__muted">This checklist stays available under Admin › Setup Checklist.</p>
+@if (canOpenDocuments) {
+  <p>
+    <a [routerLink]="['/w', workspaceId, 'documents']">Go to Documents</a>
+  </p>
+}

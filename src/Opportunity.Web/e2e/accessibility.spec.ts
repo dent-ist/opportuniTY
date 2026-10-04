@@ -14,16 +14,28 @@ const SIGNED_IN_ROUTES = [
   '/about',
   '/not-available',
   '/w/ws-1/documents',
+  '/w/ws-1/documents?savedSearch=ss-3',
+  '/w/ws-1/searches/saved',
   '/w/ws-1/jobs',
+  '/w/ws-1/jobs/job-exp-3',
+  '/w/ws-1/jobs/job-bulk-7',
   '/w/ws-1/imports',
   '/w/ws-1/imports/imp-1',
   '/w/ws-1/admin/fields',
   '/w/ws-1/admin/audit',
+  '/w/ws-1/admin/settings',
+  '/w/ws-1/admin/setup',
 ];
 
 /** Popups are rendered only while open, so each is opened and checked separately. */
 const POPUPS = [
   { name: 'user menu', path: '/workspaces', trigger: { role: 'button', name: /User menu/ } },
+  { name: 'job tray', path: '/w/ws-1/jobs', trigger: { role: 'button', name: /^Jobs, / } },
+  {
+    name: 'New workspace dialog',
+    path: '/workspaces',
+    trigger: { role: 'button', name: /New workspace/ },
+  },
   {
     name: 'workspace switcher',
     path: '/w/ws-1/documents',
@@ -56,6 +68,42 @@ for (const theme of THEMES) {
       await openPage(page, '/w/ws-1/admin/fields');
       await page.getByRole('button', { name: 'Collapse navigation' }).click();
       await expect(page.getByRole('button', { name: 'Expand navigation' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('saved searches: actions menu, editor, share dialog, folder dialog and frozen sets', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/searches/saved');
+      await page.getByRole('button', { name: 'Actions for Termination clauses' }).click();
+      await expect(
+        page.getByRole('menu', { name: 'Actions for Termination clauses' }),
+      ).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('menuitem', { name: 'Edit…' }).click();
+      const editor = page.getByRole('dialog', { name: 'Edit saved search' });
+      await expect(editor.getByRole('textbox', { name: 'Keyword search' })).toHaveValue(
+        '"termination" W/10 notice',
+      );
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await editor.getByRole('button', { name: 'Cancel' }).click();
+
+      await page.getByRole('button', { name: 'Actions for Termination clauses' }).click();
+      await page.getByRole('menuitem', { name: 'Share…' }).click();
+      const share = page.getByRole('dialog', { name: 'Share Termination clauses' });
+      await expect(share.getByRole('listitem')).toContainText('Review Team');
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await share.getByRole('button', { name: 'Cancel' }).click();
+
+      await page.getByRole('button', { name: 'New folder' }).click();
+      await expect(page.getByRole('dialog', { name: 'New folder' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.keyboard.press('Escape');
+
+      await page.getByRole('treeitem', { name: /Frozen sets/ }).click();
+      await expect(page.getByRole('region', { name: 'Frozen sets' })).toContainText(
+        'Mass Edit 2026-10-03',
+      );
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
@@ -272,6 +320,20 @@ for (const theme of THEMES) {
       await expect(page.getByRole('checkbox', { name: /I have reviewed/ })).toBeVisible();
       await page.getByRole('button', { name: 'Start import' }).click();
       await expect(page.getByRole('alert')).toContainText('Acknowledge the warnings');
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('job notification and the cancel confirmation (E06-T07)', async ({
+      page,
+      mock,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/jobs/job-bulk-7');
+      mock.jobs.update('job-idx-2', { status: 'failed' });
+      await expect(page.getByRole('region', { name: 'Notifications' })).toBeVisible({
+        timeout: 5000,
+      });
+      await page.getByRole('button', { name: 'Cancel job' }).click();
+      await expect(page.getByRole('alertdialog')).toBeVisible();
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 

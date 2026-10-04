@@ -1,0 +1,79 @@
+// Tree (ui/tree): one row per item, indented by level; the focus ring and selection sit on the row, not on the
+// item, which also contains its open group.
+
+:host {
+  display: block;
+}
+
+.tree,
+.tree__group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree__item {
+  display: block;
+}
+
+.tree__item:focus-visible {
+  outline: none;
+}
+
+.tree__row {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  min-height: var(--opp-row-height);
+  padding-block: var(--opp-space-0);
+  padding-inline: calc(var(--opp-space-1) + var(--tree-level, 0) * var(--opp-space-4))
+    var(--opp-space-2);
+  border-radius: var(--opp-radius-md);
+  cursor: pointer;
+}
+
+.tree__row:hover {
+  background: var(--opp-color-hover);
+}
+
+.tree__row.is-selected {
+  background: var(--opp-color-selected);
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.tree__item:focus-visible > .tree__row {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+.tree__toggle {
+  display: inline-flex;
+  flex: none;
+  width: 1.25rem;
+  justify-content: center;
+}
+
+.tree__icon {
+  flex: none;
+  color: var(--opp-color-text-muted);
+}
+
+.tree__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree__detail {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+}
+
+@media (forced-colors: active) {
+  .tree__row.is-selected {
+    outline: 1px solid Highlight;
+  }
+}

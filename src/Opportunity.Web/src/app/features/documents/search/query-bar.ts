@@ -330,6 +330,13 @@ export class QueryBar {
     this.check.set(null);
   }
 
+  /** Shows a query without searching or moving focus (a saved search being run or edited). */
+  load(query: string): void {
+    this.setText(query, query.length);
+    this.closePopup();
+    this.expanded.set(query.includes('\n'));
+  }
+
   /** Selects the span of a diagnostic in the textbox (empty spans place the caret). */
   protected goTo(diagnostic: QueryDiagnostic | undefined): void {
     const el = this.input().nativeElement;

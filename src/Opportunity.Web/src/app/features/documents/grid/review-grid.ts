@@ -63,6 +63,13 @@ import {
 export interface GridSearch {
   /** Query text; empty lists every document. A new object runs the search again. */
   readonly query: string;
+  /**
+   * The saved search `query` came from (E16-T11): without filters the list runs it by id, so the server re-parses
+   * the stored query and records the run and its hit count.
+   */
+  readonly savedSearchId?: string | null;
+  /** The page is still loading what to search (a saved search): show the loading state, run nothing yet. */
+  readonly deferred?: boolean;
 }
 
 /** A row opened with Enter, double-click (Review mode, E16-T03). */
@@ -160,6 +167,8 @@ export class ReviewGrid implements CursorSource {
   readonly selectionChange = output<ReadonlySet<string>>();
   /** The results were refreshed (Q-33): the server reopened its view, or the expired search ran again. */
   readonly refreshed = output<string>();
+  /** A search ran and its first page is shown (or it found nothing). */
+  readonly loaded = output<GridSearch>();
 
   private readonly api = inject(ReviewSearchApi);
   /** The reviewer's own saves search has not caught up with (E16-T05): their rows are marked until searchable. */
@@ -413,7 +422,7 @@ export class ReviewGrid implements CursorSource {
     }
 
     effect(() => {
-      this.search();
+      if (this.search().deferred) return;
       untracked(() => this.run());
     });
 
@@ -470,10 +479,14 @@ export class ReviewGrid implements CursorSource {
       this.selectionChange.emit(this._selected());
       this.announcer.announce('Selection of all results cleared: the search changed.');
     }
+    const search = this.search();
+    // Filters narrow a saved search ad hoc: then the list runs the combined query text instead of the id.
+    const savedSearchId =
+      search.savedSearchId && compiled.query === search.query ? search.savedSearchId : null;
     let page: SearchResultPage;
     try {
       page = await this.api.run({
-        query: compiled.query,
+        ...(savedSearchId ? { savedSearchId } : { query: compiled.query }),
         sort: sort ? [sort] : null,
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
@@ -511,6 +524,7 @@ export class ReviewGrid implements CursorSource {
     this.window.set(window);
     this.result.set(resultInfo(page.searchId, page));
     this.status.set(window.rows.length > 0 ? 'ready' : 'empty');
+    this.loaded.emit(search);
     const anchor = options.anchor ? window.indexOf(options.anchor) : -1;
     // A sort started from a header keeps focus there.
     if (this.focusRow() !== -1) this.focusRow.set(Math.max(0, anchor));
@@ -763,6 +777,13 @@ export class ReviewGrid implements CursorSource {
     this.filterErrors.set(new Map());
     void this.run();
     this.afterFilterRemoval(-1);
+  }
+
+  /** Drops the filters without running or moving focus: a new search (a saved search) is about to replace them. */
+  resetFilters(): void {
+    if (this._filters().size === 0) return;
+    this._filters.set(new Map());
+    this.filterErrors.set(new Map());
   }
 
   /** Keeps focus near a removed chip: the next chip, else the Filters button, else the list. */

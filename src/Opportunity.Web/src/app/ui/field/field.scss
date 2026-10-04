@@ -61,3 +61,10 @@ select.field__control {
   color: var(--opp-color-danger-text);
   font-weight: var(--opp-font-weight-medium);
 }
+
+// Chromium does not match :focus-visible on a date input while one of its segments has focus; like other text inputs,
+// date inputs always show the focus ring when focused.
+.field__control:is([type='date'], [type='datetime-local']):focus {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: var(--opp-focus-ring-offset);
+}

@@ -180,6 +180,27 @@ text ──Parse──► AST (syntax only) ──Bind(workspace fields, user zo
     report counts. Fuzzing (`E07-T06`, 100K inputs) asserts no crash and bounded parse time. A property test asserts
     the workspace filter survives every generated AST (`E07-T05`).
 
+### 9. Saved-search references (amendment, E07-T09 #71)
+
+A saved search is used as a criterion with the reserved field name `savedsearch` (case-insensitive) and the saved
+search's ID as the value, in GUID D or N form, optionally quoted: `savedsearch:0199a8a0-0000-7000-8000-000000000001
+AND NOT custodian:smith`. The grammar is unchanged (it is an ordinary `field_expr`); no workspace field may use the
+query name `savedsearch` (such a field would be shadowed; reserving the name in field creation is a follow-up).
+
+- **Expansion** happens after parsing and before binding: each reference is replaced by the referenced search's query,
+  **re-parsed now** (never a stored AST or result set), recursively. The inlined nodes take the span of the reference,
+  so binding errors inside it (e.g. a deleted field: `UNKNOWN_FIELD`) point at the reference and their message names
+  the saved search. The AST returned by validation and audited with the run is the text as written.
+- **Placement:** only at Boolean level (`AND`, `OR`, `NOT`, grouping); inside `W/n`, another field, or with a range,
+  wildcard or `*` value it is `SAVED_SEARCH_INVALID_REFERENCE`.
+- **Visibility:** references written by the caller must name a saved search the caller can see (own, shared with them
+  or one of their groups, any as Workspace Admin), else `SAVED_SEARCH_NOT_FOUND` (same answer as a missing one).
+  References stored inside a saved search are part of that search's criteria and resolve within the workspace when it
+  runs. Either way the results are filtered for the runner (ADR-015 D5.8: candidate sets, never grants).
+- **Cycles and depth:** a reference back to a search already on the expansion path, or to the search being saved, is
+  `SAVED_SEARCH_CYCLE` (checked on save and again at every run); more than 8 levels is `SAVED_SEARCH_TOO_DEEP`; a
+  nested search that no longer parses is `SAVED_SEARCH_INVALID`. All are positioned 400 errors like R15.
+
 ## Consequences
 
 - **Positive:** a small, precisely specified language that covers the §29 mix and every §9 example. Reproducible and

@@ -2,17 +2,39 @@ import { Location } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
+  linkedSignal,
   signal,
   untracked,
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { map } from 'rxjs';
+import { firstValueFrom, map } from 'rxjs';
+import { toApiError } from '../../core/api/problem-details';
 import { CommandRegionDirective, CommandRegistry } from '../../core/commands';
+import { PreferenceStorage } from '../../core/preferences/preference-storage';
+import { SessionService } from '../../core/session/session';
+import { Badge, Button, DialogService, Icon, IconButton, ToastService } from '../../ui';
+import {
+  HttpSavedSearchApi,
+  SavedSearch,
+  SavedSearchApi,
+  SavedSearchSummary,
+} from '../searches/saved-search-api';
+import type { SavedSearchDialogData } from '../searches/saved-search-dialog';
+import {
+  FILTERED_NOTICE,
+  LIVE_LABEL,
+  SAVED_SEARCH_PARAM,
+  THEN_PARAM,
+  savedSearchErrorText,
+} from '../searches/saved-search-model';
+import { SavedSearchBrowser } from './browser/saved-search-browser';
 import { GridOpenEvent, GridSearch, ReviewGrid } from './grid/review-grid';
 import { PendingCoding } from './review/coding/pending-coding';
 import { DocumentLoader } from './review/document-loader';
@@ -44,42 +66,117 @@ import { MassEditJobs } from './mass-edit/mass-edit-jobs';
  *
  * Mass Actions (E16-T06) sit in the list's header and act on its selection (Mass Edit: bulk coding job).
  *
+ * Saved searches (E16-T11): the browser pane on the left lists them for quick running and offers "Save current
+ * search"; `?savedSearch=<id>` runs one (by id, so the server re-parses it and records the run) and the search panel
+ * names it. `&then=massEdit` then selects all its results and opens Mass Edit (the Searches section's "Mass Edit
+ * results").
+ *
  * Keyboard (guide §4, command registry E15-T03): "Focus keyword search" (Alt+Shift+K, or `/` while single-key
- * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel and the list, or
- * between the review panes.
+ * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel, the list and the
+ * saved searches, or between the review panes.
  */
 const REVIEW_PARAM = 'view';
 const REVIEW_VALUE = 'review';
+/** Whether the browser pane is open (a user preference). */
+const BROWSER_KEY = 'pane.documentsBrowser';
 
 @Component({
   selector: 'opp-documents-page',
-  imports: [CommandRegionDirective, MassActions, QueryBar, ReviewGrid, ReviewWorkspace],
+  imports: [
+    Badge,
+    Button,
+    CommandRegionDirective,
+    Icon,
+    IconButton,
+    MassActions,
+    QueryBar,
+    ReviewGrid,
+    ReviewWorkspace,
+    SavedSearchBrowser,
+  ],
   template: `<h1 class="documents__title" [class.opp-visually-hidden]="reviewing()">Documents</h1>
-    <div class="documents__list" [hidden]="reviewing()">
-      <section
-        class="documents__search"
-        aria-labelledby="documents-search-heading"
-        oppCommandRegion
-      >
-        <h2 id="documents-search-heading" class="opp-visually-hidden">Search</h2>
-        <opp-query-bar (search)="onSearch($event)" />
-      </section>
-      <section aria-labelledby="documents-list-heading" oppCommandRegion>
-        <h2 id="documents-list-heading" class="opp-visually-hidden">Document list</h2>
-        <opp-review-grid
-          [search]="search()"
-          (open)="onOpen($event)"
-          (refreshed)="onRefreshed($event)"
+    <div class="documents__list" [class.is-browser-closed]="!browserOpen()" [hidden]="reviewing()">
+      @if (browserOpen()) {
+        <aside
+          id="documents-browser"
+          class="documents__browser"
+          aria-labelledby="documents-browser-heading"
+          oppCommandRegion
         >
-          <opp-mass-actions
-            gridActions
-            [target]="grid().selectionTarget()"
-            [listCount]="grid().countText()"
-            [fields]="grid().fieldCatalogue()"
-            [returnFocus]="listElement"
+          <opp-saved-search-browser
+            headingId="documents-browser-heading"
+            [activeId]="saved()?.savedSearchId ?? null"
+            (run)="runSaved($event)"
+            (save)="saveCurrent()"
           />
-        </opp-review-grid>
-      </section>
+          <button
+            type="button"
+            oppButton="ghost"
+            class="documents__browser-toggle"
+            aria-controls="documents-browser"
+            aria-expanded="true"
+            (click)="toggleBrowser()"
+          >
+            <opp-icon name="sidebar-collapse" />
+            Hide saved searches
+          </button>
+        </aside>
+      } @else {
+        <div class="documents__browser-closed">
+          <button
+            type="button"
+            oppIconButton
+            label="Show saved searches"
+            aria-expanded="false"
+            (click)="toggleBrowser()"
+          >
+            <opp-icon name="sidebar-expand" />
+          </button>
+        </div>
+      }
+      <div class="documents__main">
+        <section
+          class="documents__search"
+          aria-labelledby="documents-search-heading"
+          oppCommandRegion
+        >
+          <h2 id="documents-search-heading" class="opp-visually-hidden">Search</h2>
+          @if (saved(); as s) {
+            <div class="documents__saved" role="group" aria-label="Saved search">
+              <opp-badge tone="info" icon="refresh">{{ liveLabel }}</opp-badge>
+              <span class="opp-visually-hidden">: </span>
+              <strong>{{ s.name }}</strong>
+              @if (s.owner.userId !== myId()) {
+                <span class="documents__saved-note">
+                  Shared by {{ s.owner.displayName }}. {{ filteredNotice }}
+                </span>
+              }
+              <button type="button" oppButton="ghost" (click)="clearSaved()">
+                <opp-icon name="close" />
+                Clear saved search
+              </button>
+            </div>
+          }
+          <opp-query-bar (search)="onSearch($event)" />
+        </section>
+        <section aria-labelledby="documents-list-heading" oppCommandRegion>
+          <h2 id="documents-list-heading" class="opp-visually-hidden">Document list</h2>
+          <opp-review-grid
+            [search]="search()"
+            (open)="onOpen($event)"
+            (refreshed)="onRefreshed($event)"
+            (loaded)="onLoaded($event)"
+          >
+            <opp-mass-actions
+              gridActions
+              [target]="grid().selectionTarget()"
+              [listCount]="grid().countText()"
+              [fields]="grid().fieldCatalogue()"
+              [returnFocus]="listElement"
+            />
+          </opp-review-grid>
+        </section>
+      </div>
     </div>
     @if (reviewing()) {
       <opp-review-workspace
@@ -97,15 +194,22 @@ const REVIEW_VALUE = 'review';
     PendingCoding,
     { provide: BulkCodingApi, useClass: HttpBulkCodingApi },
     MassEditJobs,
+    { provide: SavedSearchApi, useClass: HttpSavedSearchApi },
   ],
   host: { '[class.is-reviewing]': 'reviewing()' },
 })
 export class DocumentsPage {
-  protected readonly search = signal<GridSearch>({ query: '' });
+  /** A link to a saved search runs only that search, not every document first. */
+  protected readonly search = signal<GridSearch>({
+    query: '',
+    deferred: inject(ActivatedRoute).snapshot.queryParamMap.has(SAVED_SEARCH_PARAM),
+  });
   protected readonly reviewing = signal(false);
   private readonly queryBar = viewChild.required(QueryBar);
   protected readonly grid = viewChild.required(ReviewGrid);
   private readonly review = viewChild(ReviewWorkspace);
+  private readonly massActions = viewChild(MassActions);
+  private readonly browser = viewChild(SavedSearchBrowser);
 
   /** The list as the cursor sees it (the grid is a view child, so it is read lazily). */
   private readonly source: CursorSource = {
@@ -127,9 +231,49 @@ export class DocumentsPage {
   /** Mass Actions dialogs return focus to the list. */
   protected readonly listElement = () => this.grid().focusTarget();
 
+  // Saved searches (E16-T11)
+  private readonly savedApi = inject(SavedSearchApi);
+  private readonly dialogs = inject(DialogService);
+  private readonly toasts = inject(ToastService);
+  private readonly injector = inject(Injector);
+  private readonly storage = inject(PreferenceStorage);
+  private readonly principal = inject(SessionService).principal;
+  protected readonly myId = computed(() => this.principal()?.userId ?? null);
+  protected readonly liveLabel = LIVE_LABEL;
+  protected readonly filteredNotice = FILTERED_NOTICE;
+  /** The saved search the list shows (run from the browser pane, a link, or just saved). */
+  protected readonly saved = signal<SavedSearch | null>(null);
+  /** The `?savedSearch=` id applied (or being applied), so the URL echo of our own change is ignored. */
+  private appliedId: string | null = null;
+  /** `?then=massEdit`: open Mass Edit over all results once this saved search has run. */
+  private pendingMassEdit: string | null = null;
+  private readonly params = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
+  protected readonly browserOpen = linkedSignal(
+    () => this.storage.read<{ open?: boolean }>(BROWSER_KEY)?.open !== false,
+  );
+
   constructor() {
     inject(CommandRegistry).handle('search.focus', () => this.queryBar().focus(), {
       enabled: () => !this.reviewing(),
+    });
+    // `?savedSearch=<id>` (a link from Searches, the browser pane, Back/Forward) runs that saved search.
+    effect(() => {
+      const params = this.params();
+      const id = params.get(SAVED_SEARCH_PARAM);
+      const then = params.get(THEN_PARAM);
+      untracked(() => {
+        if (id && then === 'massEdit') this.pendingMassEdit = id;
+        if (id && id !== this.appliedId) void this.applySaved(id);
+        else if (!id && this.appliedId) {
+          // Back from a saved search to the plain list.
+          this.saved.set(null);
+          this.appliedId = null;
+          this.queryBar().clear();
+          this.search.set({ query: '' });
+        }
+      });
     });
     // The list follows the cursor while it is hidden, so it comes back on the reviewed document.
     effect(() => {
@@ -150,7 +294,126 @@ export class DocumentsPage {
   }
 
   protected onSearch(submission: QuerySubmission): void {
+    const saved = this.saved();
+    if (saved && submission.query === saved.query) {
+      // Searching the saved query again keeps it a run of the saved search.
+      this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+      return;
+    }
+    if (saved) this.forgetSaved();
     this.search.set({ query: submission.query });
+  }
+
+  // ── Saved searches ──────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Runs a saved search from the browser pane: a history entry, like following a link to it. */
+  protected runSaved(summary: SavedSearchSummary): void {
+    if (summary.savedSearchId === this.appliedId) {
+      const saved = this.saved();
+      if (saved) this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+      return;
+    }
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { [SAVED_SEARCH_PARAM]: summary.savedSearchId, [THEN_PARAM]: null },
+      queryParamsHandling: 'merge',
+    });
+  }
+
+  /** Applies `?savedSearch=`: loads it, shows its query and runs it by id (filtered for the caller by the API). */
+  private async applySaved(id: string): Promise<void> {
+    this.appliedId = id;
+    let saved: SavedSearch;
+    try {
+      saved = await this.savedApi.get(id);
+    } catch (e) {
+      if (this.appliedId !== id) return;
+      this.appliedId = null;
+      this.pendingMassEdit = null;
+      this.toasts.show(savedSearchErrorText(toApiError(e)), { tone: 'error' });
+      this.setSavedInUrl(null, true);
+      if (this.search().deferred) this.search.set({ query: '' });
+      return;
+    }
+    if (this.appliedId !== id) return;
+    this.showSaved(saved);
+  }
+
+  /** The list shows `saved`: its name in the search panel, its query in the bar, run by id. */
+  private showSaved(saved: SavedSearch): void {
+    this.appliedId = saved.savedSearchId;
+    this.saved.set(saved);
+    this.queryBar().load(saved.query);
+    this.grid().resetFilters();
+    this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+  }
+
+  protected clearSaved(): void {
+    this.forgetSaved();
+    this.queryBar().clear();
+    this.search.set({ query: '' });
+  }
+
+  /** The list no longer shows the saved search (another query ran, or it was cleared). */
+  private forgetSaved(): void {
+    this.saved.set(null);
+    this.appliedId = null;
+    this.pendingMassEdit = null;
+    this.setSavedInUrl(null, true);
+  }
+
+  private setSavedInUrl(id: string | null, replaceUrl = false): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { [SAVED_SEARCH_PARAM]: id, [THEN_PARAM]: null },
+      queryParamsHandling: 'merge',
+      replaceUrl,
+    });
+  }
+
+  /** "Save current search": the list's query (keyword and filters) as a new saved search. */
+  protected async saveCurrent(): Promise<void> {
+    const query = this.grid().effectiveQuery();
+    const folders = await this.savedApi.folders().catch(() => []);
+    const { SavedSearchDialog } = await import('../searches/saved-search-dialog');
+    const ref = this.dialogs.open<SavedSearch, SavedSearchDialogData>(SavedSearchDialog, {
+      data: { mode: 'create', folders, query },
+      width: '44rem',
+      autoFocus: 'input',
+      injector: this.injector,
+    });
+    const result = await firstValueFrom(ref.closed);
+    if (!result) return;
+    this.toasts.show(`Saved search “${result.name}” created.`, { tone: 'success' });
+    void this.browser()?.reload();
+    // Same documents, run by id from now on, so its last run and hit count are recorded.
+    this.showSaved(result);
+    this.setSavedInUrl(result.savedSearchId, true);
+  }
+
+  protected onLoaded(search: GridSearch): void {
+    const id = this.pendingMassEdit;
+    if (!id || search.savedSearchId !== id) return;
+    this.pendingMassEdit = null;
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { [THEN_PARAM]: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+    this.grid().selectAllResults();
+    if (!this.grid().selectionTarget()) {
+      this.toasts.show('The saved search found no documents to edit.', { tone: 'info' });
+      return;
+    }
+    // Mass Actions reads the selection through its input: open the dialog once it is bound.
+    afterNextRender(() => void this.massActions()?.massEdit(), { injector: this.injector });
+  }
+
+  protected toggleBrowser(): void {
+    const open = !this.browserOpen();
+    this.browserOpen.set(open);
+    this.storage.write(BROWSER_KEY, { open });
   }
 
   protected onOpen(event: GridOpenEvent): void {
