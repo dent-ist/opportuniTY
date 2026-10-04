@@ -45,7 +45,14 @@ public sealed record SearchSessionRecord(
     long TotalValue,
     bool TotalExact,
     DateTimeOffset CreatedAt,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt)
+{
+    /// <summary>
+    /// The applied search watermark read before the point-in-time reader opened (Q-10). A page is current while the
+    /// workspace's generation counter still equals it. Null when unknown (older rows).
+    /// </summary>
+    public long? ServedGeneration { get; init; }
+}
 
 public enum SearchCursorDirection
 {

@@ -138,9 +138,11 @@ export interface FamilyMarker {
 }
 
 /**
- * `└A` for an attachment (the hit has a parent). Parent ("P") and duplicate ("D") markers need flags the search
- * page does not carry yet, so other rows show no marker.
+ * `└A` for an attachment (the hit has a parent), `P` for the top-level document of a family with attachments
+ * (`isFamilyParent`). Standalone documents show no marker; the duplicate ("D") marker needs a flag the search page does
+ * not carry yet.
  */
 export function familyMarker(hit: SearchHit): FamilyMarker | null {
-  return hit.parentDocumentId ? { symbol: '└A', label: 'Attachment' } : null;
+  if (hit.parentDocumentId) return { symbol: '└A', label: 'Attachment' };
+  return hit.isFamilyParent ? { symbol: 'P', label: 'Parent' } : null;
 }

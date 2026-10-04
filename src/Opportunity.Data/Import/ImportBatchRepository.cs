@@ -720,6 +720,9 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
             await bump.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        // New documents start at version 1 and changed overlays were bumped above, so the derived date needs no bump.
+        await DeriveDocumentDatesAsync(tx, [.. inserted, .. changed], cancellationToken).ConfigureAwait(false);
+
         // Q-31 coding values of the rows that made it, through the coding store (CodingEvents, version bumps).
         var coding = plan.Members.Select(m => (m.Row, m.DocumentId))
             .Concat(plan.Overlays.Select(o => (o.Row, o.DocumentId)))
@@ -777,6 +780,38 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
         }
 
         await InsertIssuesAsync(tx, batch.ImportBatchId, plan, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// ADR-009 R25: DocumentDate is derived from the document's stored dates (first non-null of DateSent, DateReceived,
+    /// DateLastModified, DateCreated; DocumentDateSource names which) after the chunk's inserts and overlays, so an
+    /// overlay that changes one date recomputes it from all of them. An upstream document date (source Upstream) is
+    /// kept as loaded. Rows whose derived value is already stored are not touched.
+    /// </summary>
+    private static async Task DeriveDocumentDatesAsync(WorkspaceTransaction tx, Guid[] documentIds, CancellationToken cancellationToken)
+    {
+        if (documentIds.Length == 0)
+        {
+            return;
+        }
+
+        await using var derive = tx.Command(
+            """
+            UPDATE opportunity.document d SET document_date = x.value, document_date_source = x.source
+            FROM (SELECT document_id,
+                         coalesce(date_sent, date_received, date_last_modified, date_created) AS value,
+                         CASE WHEN date_sent IS NOT NULL THEN 1 WHEN date_received IS NOT NULL THEN 2
+                              WHEN date_last_modified IS NOT NULL THEN 3 WHEN date_created IS NOT NULL THEN 4 END::smallint AS source
+                  FROM opportunity.document
+                  WHERE workspace_id = @ws AND document_id = ANY(@ids)
+                    AND document_date_source IS DISTINCT FROM @upstream) x
+            WHERE d.workspace_id = @ws AND d.document_id = x.document_id
+              AND (d.document_date, d.document_date_source) IS DISTINCT FROM (x.value, x.source)
+            """);
+        derive.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        derive.Parameters.AddWithValue("ids", documentIds);
+        derive.Parameters.AddWithValue("upstream", (short)DocumentDateSource.Upstream);
+        await derive.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

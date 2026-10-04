@@ -63,6 +63,9 @@ internal sealed class ChunkIndexHarness : IAsyncDisposable
 
     public IProjectionIndexWriter Writer => _services.GetRequiredService<IProjectionIndexWriter>();
 
+    /// <summary>The OpenSearch settings of this harness (same endpoint and index prefix), for a search service over its index.</summary>
+    public OpenSearchOptions OpenSearchOptions => _services.GetRequiredService<OpenSearchOptions>();
+
     public InMemoryAuditEventWriter Audit { get; } = new();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

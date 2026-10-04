@@ -13,6 +13,7 @@ using Opportunity.Core.QueryLanguage;
 using Opportunity.Core.Snapshots;
 using Opportunity.Core.Workspaces;
 using Opportunity.Data.Audit;
+using Opportunity.Data.SearchWork;
 
 namespace Opportunity.Data.Snapshots;
 
@@ -135,27 +136,9 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
     {
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, IsolationLevel.RepeatableRead, cancellationToken)
             .ConfigureAwait(false);
-        await using var command = tx.Command(
-            """
-            SELECT coalesce((SELECT g.value FROM opportunity.workspace_search_generation g WHERE g.workspace_id = @ws), 0),
-                   (SELECT min(o.search_generation) FROM opportunity.search_outbox o WHERE o.workspace_id = @ws AND o.status <> 4),
-                   (SELECT min(t.search_generation) FROM opportunity.index_chunk_task t
-                     WHERE t.workspace_id = @ws AND t.status <> 5 AND t.search_generation IS NOT NULL)
-            """);
-        command.Parameters.AddWithValue("ws", workspaceId);
-        long counter;
-        long? outbox, tasks;
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-        {
-            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-            counter = reader.GetInt64(0);
-            outbox = reader.IsDBNull(1) ? null : reader.GetInt64(1);
-            tasks = reader.IsDBNull(2) ? null : reader.GetInt64(2);
-        }
-
+        var watermark = await SearchWorkSql.ReadWatermarkAsync(tx, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        var oldestPending = Math.Min(outbox ?? long.MaxValue, tasks ?? long.MaxValue);
-        return new SearchWatermark(oldestPending == long.MaxValue ? counter : Math.Min(counter, oldestPending - 1), counter);
+        return watermark;
     }
 
     public async Task<bool> TryClaimAsync(Guid workspaceId, Guid snapshotId, string owner, TimeSpan lease, CancellationToken cancellationToken = default)

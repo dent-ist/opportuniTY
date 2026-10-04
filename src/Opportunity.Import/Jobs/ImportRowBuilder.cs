@@ -139,6 +139,10 @@ public static partial class ImportRowBuilder
             }
         }
 
+        // Derived File Type (ADR-003 §1) when the load file has none. Not a supplied column: an overlay never replaces
+        // a stored file type with a derived one.
+        document.FileType ??= FileTypes.Describe(document.FileExtension, document.MimeType, document.FileName);
+
         var relationships = ApplyUpstreamRelationships(mapping, mapped, document, supplied);
         issues.AddRange(relationships.Warnings.Select(w => new ImportRowIssue(ImportIssueSeverity.Warning, "relationship-adjusted", Truncate(w))));
         var failed = issues.Any(i => i.Severity == ImportIssueSeverity.Error) || mapped.ControlNumberNorm is null;

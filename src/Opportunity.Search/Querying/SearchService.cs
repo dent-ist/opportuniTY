@@ -38,6 +38,7 @@ internal sealed partial class SearchService(
     IAuthorizationService authorization,
     IAuditEventWriter audit,
     ISearchSessionStore sessions,
+    ISearchWatermarkReader watermarks,
     ISearchQueryTranslator translator,
     QueryLimits limits,
     OpenSearchOptions options,
@@ -83,11 +84,6 @@ internal sealed partial class SearchService(
             sort.Add(resolved);
         }
 
-        if (sort.Count == 0)
-        {
-            sort.Add(SortKey.Default);
-        }
-
         if (sort.Count > 5 || sort.Select(s => s.Field).Distinct(StringComparer.Ordinal).Count() != sort.Count)
         {
             return SearchOutcome.InvalidRequest("sort", "At most 5 distinct sort fields.");
@@ -117,8 +113,15 @@ internal sealed partial class SearchService(
             return SearchOutcome.InvalidQuery(errors);
         }
 
+        if (sort.Count == 0)
+        {
+            sort.Add(SortKey.DefaultFor(plan.Ast));
+        }
+
         plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, facets.Count) };
 
+        // Q-10: the watermark read before the reader opens is a lower bound of what the reader reflects.
+        var watermark = await watermarks.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
         var now = time.GetUtcNow();
         var search = new SearchSessionRecord(
             caller.WorkspaceId,
@@ -134,7 +137,11 @@ internal sealed partial class SearchService(
             TotalValue: 0,
             TotalExact: true,
             now,
-            now + Settings.SearchIdleTimeout);
+            now + Settings.SearchIdleTimeout)
+        {
+            ServedGeneration = watermark.Applied,
+        };
+        var freshness = new SearchFreshness(watermark.Applied, watermark.IsCurrent, now);
 
         if (placement is null)
         {
@@ -142,7 +149,7 @@ internal sealed partial class SearchService(
             await AuditExecutedAsync(caller, visibility.Filter!, search, plan, null, new TotalCount(0, TotalRelation.Eq), 0, 0, cancellationToken)
                 .ConfigureAwait(false);
             RecordDuration(started, plan.QueryClass, "ok");
-            return SearchOutcome.Ok(EmptyPage(plan.Normalized, pageSize, now));
+            return SearchOutcome.Ok(EmptyPage(plan.Normalized, pageSize, freshness));
         }
 
         var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
@@ -159,8 +166,9 @@ internal sealed partial class SearchService(
             return SearchOutcome.InvalidQuery(plan.Rejection(rejected.Code));
         }
 
-        var served = await ServeAsync(caller, search with { PointInTimeId = result.PointInTimeId }, placement, result, Navigation.First(), plan.Normalized, cancellationToken)
-            .ConfigureAwait(false);
+        var served = await ServeAsync(
+            caller, search with { PointInTimeId = result.PointInTimeId }, placement, visibility.Filter!, result, Navigation.First(), plan.Normalized,
+            freshness, cancellationToken).ConfigureAwait(false);
         await sessions.CreateAsync(
             search with { PointInTimeId = result.PointInTimeId, TotalValue = result.Total.Value, TotalExact = result.Total.Relation == TotalRelation.Eq },
             served.Cursors,
@@ -245,6 +253,7 @@ internal sealed partial class SearchService(
 
         var sort = SortKey.FromJson(search.SortJson);
         plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, 0) };
+        var watermark = await watermarks.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
         var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
         SearchResult result;
         try
@@ -257,7 +266,14 @@ internal sealed partial class SearchService(
             return SearchOutcome.InvalidQuery(plan.Rejection(rejected.Code));
         }
         var current = search with { PointInTimeId = result.PointInTimeId };
-        var served = await ServeAsync(caller, current, placement, result, navigation, plan.Normalized, cancellationToken).ConfigureAwait(false);
+
+        // The reader is as current as when it opened: unchanged while nothing was committed since its watermark. A
+        // reader reopened just now (Q-33) is as current as the watermark read before it.
+        var freshness = result.Refreshed
+            ? new SearchFreshness(watermark.Applied, watermark.IsCurrent, time.GetUtcNow())
+            : new SearchFreshness(search.ServedGeneration, search.ServedGeneration is { } g && watermark.Counter == g, time.GetUtcNow());
+        var served = await ServeAsync(caller, current, placement, visibility.Filter!, result, navigation, plan.Normalized, freshness, cancellationToken)
+            .ConfigureAwait(false);
 
         await sessions.TouchAsync(
             caller.WorkspaceId,
@@ -446,9 +462,11 @@ internal sealed partial class SearchService(
         SearchCaller caller,
         SearchSessionRecord search,
         Placement placement,
+        VisibilityFilter visibility,
         SearchResult result,
         Navigation navigation,
         string normalized,
+        SearchFreshness freshness,
         CancellationToken cancellationToken)
     {
         var size = search.PageSize;
@@ -500,6 +518,7 @@ internal sealed partial class SearchService(
         }
 
         var (items, dropped) = await PostFilterAsync(caller, placement, window, cancellationToken).ConfigureAwait(false);
+        items = await MarkFamilyParentsAsync(placement, visibility, result.PointInTimeId, items, cancellationToken).ConfigureAwait(false);
         var page = new SearchResultPage
         {
             SearchId = search.SearchId.ToString("N"),
@@ -507,7 +526,7 @@ internal sealed partial class SearchService(
             Items = items,
             Page = new SearchPageInfo(number, size, pageCount, IsFirst: !hasPrevious, IsLast: !hasNext),
             Total = result.Total,
-            Freshness = new SearchFreshness(ServedGeneration: null, Current: null, time.GetUtcNow()),
+            Freshness = freshness,
             NextCursor = next,
             PreviousCursor = previous,
             ResultsRefreshed = result.Refreshed,
@@ -567,6 +586,48 @@ internal sealed partial class SearchService(
 
         return (items, integrity + candidates.Count - items.Count);
     }
+
+    /// <summary>
+    /// Marks the page's family parents: top-level documents (no parent, sequence 0) of a family that has other members
+    /// in the index the caller's visibility filter lets through. One aggregation on the page's reader, so the flag is
+    /// as of the same point in time as the page. A standalone document is not a parent.
+    /// </summary>
+    private async Task<IReadOnlyList<SearchHit>> MarkFamilyParentsAsync(
+        Placement placement, VisibilityFilter visibility, string pointInTimeId, IReadOnlyList<SearchHit> items, CancellationToken cancellationToken)
+    {
+        var tops = items
+            .Where(h => h.ParentDocumentId is null && (h.FamilySequence ?? 0) == 0 && h.FamilyId is not null)
+            .Select(h => h.FamilyId!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (tops.Count == 0)
+        {
+            return items;
+        }
+
+        var familyTerms = Obj(("terms", Obj((ProjectionFields.FamilyId, new JsonArray([.. tops.Select(t => (JsonNode)t)])))));
+        var nonRoot = Obj(("range", Obj((ProjectionFields.FamilySequence, Obj(("gte", 1))))));
+        var members = Obj(("bool", Obj(("filter", new JsonArray(familyTerms, nonRoot)))));
+        var body = Obj(
+            ("size", 0),
+            ("track_total_hits", false),
+            ("query", SearchDsl.Query(placement.WorkspaceFilterValue, visibility, members)),
+            ("aggs", Obj((FamilyParentsAggregation, Obj(("terms", Obj(("field", ProjectionFields.FamilyId), ("size", tops.Count))))))),
+            ("timeout", string.Create(CultureInfo.InvariantCulture, $"{Math.Max(1, (long)Settings.QueryTimeout.TotalMilliseconds)}ms")),
+            ("pit", Obj(("id", pointInTimeId), ("keep_alive", SearchDsl.Seconds(Settings.PointInTimeKeepAlive)))));
+        var response = await connection.SendAsync(HttpMethod.Post, "_search", body, cancellationToken).ConfigureAwait(false);
+        var parents = (response.Body?["aggregations"]?[FamilyParentsAggregation]?["buckets"] as JsonArray ?? [])
+            .Select(b => b?["key"]?.GetValue<string>())
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+        return parents.Count == 0
+            ? items
+            : [.. items.Select(h => h.FamilyId is { } f && parents.Contains(f) && h.ParentDocumentId is null && (h.FamilySequence ?? 0) == 0
+                ? h with { IsFamilyParent = true }
+                : h)];
+    }
+
+    private const string FamilyParentsAggregation = "family_parents";
 
     private static SearchHit ToHit(JsonObject hit, Guid documentId)
     {
@@ -639,14 +700,14 @@ internal sealed partial class SearchService(
             .OfType<JsonObject>()
             .Select(b => new SearchFacetBucket(b["key"]?.ToString() ?? string.Empty, b["doc_count"]?.GetValue<long>() ?? 0))]))];
 
-    private static SearchResultPage EmptyPage(string normalized, int pageSize, DateTimeOffset now) => new()
+    private static SearchResultPage EmptyPage(string normalized, int pageSize, SearchFreshness freshness) => new()
     {
         SearchId = null,
         Normalized = normalized,
         Items = [],
         Page = new SearchPageInfo(1, pageSize, 1, IsFirst: true, IsLast: true),
         Total = new TotalCount(0, TotalRelation.Eq),
-        Freshness = new SearchFreshness(ServedGeneration: null, Current: null, now),
+        Freshness = freshness,
     };
 
     /// <summary>Search.Executed with the full query text in the restricted details (Q-16), before results are returned.</summary>

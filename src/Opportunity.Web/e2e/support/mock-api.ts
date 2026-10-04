@@ -62,6 +62,7 @@ function searchPage(docs: readonly number[], pageSize: number, number: number) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const exact = total <= 10_000;
   const first = (number - 1) * pageSize;
+  // Families of a parent and one attachment (n % 4 === 3 → n + 1), the rest standalone.
   const items = docs.slice(first, first + pageSize).map((n) => {
     const attachment = n % 4 === 0;
     return {
@@ -74,7 +75,8 @@ function searchPage(docs: readonly number[], pageSize: number, number: number) {
       fileExtension: attachment ? 'pdf' : 'msg',
       fileName: attachment ? `Attachment ${n}.pdf` : `RE: Quarterly terms ${n}.msg`,
       fileSize: 1024 * ((n * 37) % 900) + 512,
-      fileType: attachment ? 'PDF Document' : 'Email Message',
+      fileType: attachment ? 'PDF' : 'Email',
+      isFamilyParent: n % 4 === 3 && n < total,
       mimeType: attachment ? 'application/pdf' : 'application/vnd.ms-outlook',
       pageCount: (n % 7) + 1,
       snippets: [],
