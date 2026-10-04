@@ -32,6 +32,10 @@ const CODING_FIELD = {
   datePrecision: null,
   reducedCapabilities: false,
   capabilities: { sortable: true, filterable: true },
+  choices: [
+    { choiceId: 1, name: 'Responsive', isActive: true },
+    { choiceId: 2, name: 'Not Responsive', isActive: true },
+  ],
 };
 
 describe('Review mode (E16-T03)', () => {
@@ -91,7 +95,11 @@ describe('Review mode (E16-T03)', () => {
           body: {
             documentId: `doc-${n}`,
             documentVersion: '7',
-            values: n === 3 ? { responsiveness: 'Responsive' } : {},
+            projectedVersion: '7',
+            indexingState: 'indexed',
+            layoutId: null,
+            lastEditor: null,
+            fields: n === 3 ? [{ fieldId: 'f-resp', value: 1, editable: true }] : [],
           },
           headers: { ETag: '"7"' },
         });

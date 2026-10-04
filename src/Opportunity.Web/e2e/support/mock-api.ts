@@ -368,8 +368,25 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
           json: {
             documentId,
             documentVersion: '3',
-            values: n % 3 === 0 ? { responsiveness: 'Responsive' } : {},
-            indexState: 'searchable',
+            projectedVersion: '3',
+            layoutId: null,
+            lastEditor: null,
+            indexingState: 'indexed',
+            // Responsiveness (field 1000) = Responsive (choice 1) on every third document.
+            fields:
+              n % 3 === 0
+                ? [
+                    {
+                      fieldId: 1000,
+                      value: 1,
+                      editable: true,
+                      isSecurityAffecting: false,
+                      changedAtVersion: '3',
+                      changedBy: null,
+                      changedAt: null,
+                    },
+                  ]
+                : [],
           },
           headers: { ETag: '"3"' },
         });
