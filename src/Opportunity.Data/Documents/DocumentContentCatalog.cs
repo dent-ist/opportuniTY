@@ -28,7 +28,8 @@ public sealed class DocumentContentCatalog(NpgsqlDataSource dataSource) : IDocum
         """;
 
     private const string DocumentObjectSelect = """
-        SELECT d.control_number, d.file_extension, o.object_id, o.logical_key, o.sha256, o.size_bytes, o.state, NULL::smallint
+        SELECT d.control_number, d.file_extension, o.object_id, o.logical_key, o.sha256, o.size_bytes, o.state, NULL::smallint,
+               d.text_truncated, d.text_missing, d.text_encoding_warning
         FROM opportunity.document d
         LEFT JOIN opportunity.document_projection_state s
                ON s.workspace_id = d.workspace_id AND s.document_id = d.document_id
@@ -42,7 +43,8 @@ public sealed class DocumentContentCatalog(NpgsqlDataSource dataSource) : IDocum
         """;
 
     private const string PageImageSql = """
-        SELECT d.control_number, d.file_extension, o.object_id, o.logical_key, o.sha256, o.size_bytes, o.state, img.format
+        SELECT d.control_number, d.file_extension, o.object_id, o.logical_key, o.sha256, o.size_bytes, o.state, img.format,
+               d.text_truncated, d.text_missing, d.text_encoding_warning
         FROM opportunity.document d
         LEFT JOIN opportunity.document_projection_state s
                ON s.workspace_id = d.workspace_id AND s.document_id = d.document_id
@@ -88,7 +90,13 @@ public sealed class DocumentContentCatalog(NpgsqlDataSource dataSource) : IDocum
                         (StoredObjectState)reader.GetInt16(6) == StoredObjectState.Quarantined);
                 }
 
-                content = new DocumentContent(reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), location);
+                content = new DocumentContent(
+                    reader.GetString(0),
+                    reader.IsDBNull(1) ? null : reader.GetString(1),
+                    location,
+                    reader.GetBoolean(8),
+                    reader.GetBoolean(9),
+                    reader.GetBoolean(10));
             }
         }
 

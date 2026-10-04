@@ -774,6 +774,73 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}": {
+      "get": {
+        "tags": [
+          "Document content"
+        ],
+        "summary": "The document's fields with display hints and its artifacts (Document.View).",
+        "description": "Every field the caller may see (system, imported and coding fields) with its canonical value, a display value (instants in the workspace display time zone) and the raw imported string; plus whether text, page images and a native exist. purpose: display (default) or prefetch.",
+        "operationId": "GetDocument",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/fields": {
       "get": {
         "tags": [
@@ -1886,6 +1953,167 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/pages": {
+      "get": {
+        "tags": [
+          "Document content"
+        ],
+        "summary": "The pages of the document's active page set (Document.View).",
+        "description": "Page geometry (points), rotation and which review image and thumbnail can be fetched, in page order. limit: 1-500 (default 500). purpose: display (default) or prefetch.",
+        "operationId": "ListDocumentPages",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfDocumentPageResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/text/chunks/{chunkIndex}": {
+      "get": {
+        "tags": [
+          "Document content"
+        ],
+        "summary": "One fixed-size chunk of the extracted text (Document.View).",
+        "description": "Chunk n covers the characters that start in bytes [n * chunkSizeBytes, (n + 1) * chunkSizeBytes) of the stored UTF-8 text, so chunks never split a character and concatenate to the whole text. A document without text answers chunk 0 with missing: true. purpose: display (default) or prefetch.",
+        "operationId": "GetDocumentTextChunk",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chunkIndex",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTextChunkResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/documents/{documentId}/native": {
       "get": {
         "tags": [
@@ -2724,6 +2952,31 @@
           }
         }
       },
+      "CursorPageOfDocumentPageResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentPageResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfFieldResource": {
         "required": [
           "items",
@@ -2939,6 +3192,504 @@
             "type": "string"
           },
           "decimal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "DocumentFieldFormat": {
+        "enum": [
+          "text",
+          "longText",
+          "identifier",
+          "number",
+          "decimal",
+          "bytes",
+          "date",
+          "dateTime",
+          "boolean",
+          "choice",
+          "user"
+        ]
+      },
+      "DocumentFieldValueResource": {
+        "required": [
+          "fieldId",
+          "displayName",
+          "type",
+          "typeLabel",
+          "storage",
+          "format",
+          "multiValue",
+          "isSystem",
+          "isHidden",
+          "decimalScale",
+          "value",
+          "displayValue",
+          "rawValue",
+          "choices"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldResourceType"
+          },
+          "typeLabel": {
+            "type": "string"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/FieldResourceStorage"
+          },
+          "format": {
+            "$ref": "#/components/schemas/DocumentFieldFormat"
+          },
+          "multiValue": {
+            "type": "boolean"
+          },
+          "isSystem": {
+            "type": "boolean"
+          },
+          "isHidden": {
+            "type": "boolean"
+          },
+          "decimalScale": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "displayValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rawValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "choices": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/FieldChoiceResource"
+            }
+          }
+        }
+      },
+      "DocumentImagesInfo": {
+        "required": [
+          "available",
+          "incomplete",
+          "pageCount",
+          "source",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "incomplete": {
+            "type": "boolean"
+          },
+          "pageCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentPageSetSource"
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentPageSetStatus"
+              }
+            ]
+          }
+        }
+      },
+      "DocumentNativeInfo": {
+        "required": [
+          "available",
+          "missing",
+          "sizeBytes",
+          "fileExtension"
+        ],
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "fileExtension": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "DocumentPageColorMode": {
+        "enum": [
+          "bitonal",
+          "gray",
+          "color"
+        ]
+      },
+      "DocumentPageResource": {
+        "required": [
+          "pageNumber",
+          "widthPt",
+          "heightPt",
+          "rotation",
+          "colorMode",
+          "imageMissing",
+          "hasImage",
+          "imageContentType",
+          "imageWidthPx",
+          "imageHeightPx",
+          "hasThumbnail"
+        ],
+        "type": "object",
+        "properties": {
+          "pageNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "widthPt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "heightPt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "rotation": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "colorMode": {
+            "$ref": "#/components/schemas/DocumentPageColorMode"
+          },
+          "imageMissing": {
+            "type": "boolean"
+          },
+          "hasImage": {
+            "type": "boolean"
+          },
+          "imageContentType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imageWidthPx": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "imageHeightPx": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "hasThumbnail": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DocumentPageSetSource": {
+        "enum": [
+          "imported",
+          "rendered",
+          null
+        ]
+      },
+      "DocumentPageSetStatus": {
+        "enum": [
+          "pending",
+          "ready",
+          "incomplete",
+          "failed",
+          null
+        ]
+      },
+      "DocumentResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "documentVersion",
+          "displayTimeZone",
+          "familyId",
+          "parentDocumentId",
+          "text",
+          "native",
+          "images",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "documentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "displayTimeZone": {
+            "type": "string"
+          },
+          "familyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentDocumentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "text": {
+            "$ref": "#/components/schemas/DocumentTextInfo"
+          },
+          "native": {
+            "$ref": "#/components/schemas/DocumentNativeInfo"
+          },
+          "images": {
+            "$ref": "#/components/schemas/DocumentImagesInfo"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentFieldValueResource"
+            }
+          }
+        }
+      },
+      "DocumentTextChunkResource": {
+        "required": [
+          "chunkIndex",
+          "chunkCount",
+          "chunkSizeBytes",
+          "byteStart",
+          "byteEnd",
+          "totalBytes",
+          "isLast",
+          "text",
+          "truncated",
+          "missing",
+          "encodingWarning"
+        ],
+        "type": "object",
+        "properties": {
+          "chunkIndex": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "chunkCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "chunkSizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "byteStart": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "byteEnd": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "totalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "isLast": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "encodingWarning": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DocumentTextInfo": {
+        "required": [
+          "available",
+          "missing",
+          "truncated",
+          "encodingWarning",
+          "sizeBytes",
+          "length",
+          "chunkSizeBytes",
+          "chunkCount"
+        ],
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "encodingWarning": {
+            "type": "boolean"
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "length": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "chunkSizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "chunkCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -5517,6 +6268,9 @@
       "name": "Jobs"
     },
     {
+      "name": "Document content"
+    },
+    {
       "name": "Fields"
     },
     {
@@ -5524,9 +6278,6 @@
     },
     {
       "name": "Import"
-    },
-    {
-      "name": "Document content"
     },
     {
       "name": "Preferences"

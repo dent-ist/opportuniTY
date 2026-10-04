@@ -293,6 +293,101 @@ public sealed class DocumentAccessServiceTests
             ("Viewed", AuditOutcome.Denied, null));
     }
 
+    [Fact]
+    public async Task A_text_chunk_resolves_its_own_byte_range_and_is_audited_with_chunk_and_range()
+    {
+        Arrange([WorkspaceRole.Reviewer]);
+        var length = (2L * TextChunks.ChunkBytes) + 10;
+        _catalog.Location = Location(ObjectKeys.Text(Workspace, Document, Digest("text")), "text/plain; charset=utf-8", length: length);
+        _catalog.TextTruncated = true;
+
+        var result = await Service().OpenAsync(
+            Alice, new ContentRequest(Workspace, Document, ContentRendition.Text, ContentPurpose.Prefetch, TextChunk: 1), ObjectDeliveryMode.Stream, Ct);
+
+        result.Outcome.Should().Be(ContentAccessOutcome.Granted);
+        result.Grant!.Range.Should().Be(new ByteRange(TextChunks.ChunkBytes, TextChunks.ChunkBytes + TextChunks.MaxContinuationBytes));
+        result.Document!.TextTruncated.Should().BeTrue();
+        var e = _audit.Events.Should().ContainSingle().Subject;
+        e.Details["chunk"].Should().Be("1");
+        e.Details["purpose"].Should().Be("Prefetch");
+        e.Details["range"].Should().Be($"bytes={TextChunks.ChunkBytes}-{(2 * TextChunks.ChunkBytes) + 2}");
+
+        var last = await Service().OpenAsync(
+            Alice, new ContentRequest(Workspace, Document, ContentRendition.Text, ContentPurpose.Display, TextChunk: 2), ObjectDeliveryMode.Stream, Ct);
+        last.Grant!.Range.Should().Be(new ByteRange(2L * TextChunks.ChunkBytes, 10));
+
+        _audit.Clear();
+        var beyond = await Service().OpenAsync(
+            Alice, new ContentRequest(Workspace, Document, ContentRendition.Text, ContentPurpose.Display, TextChunk: 3), ObjectDeliveryMode.Stream, Ct);
+        beyond.Outcome.Should().Be(ContentAccessOutcome.RangeNotSatisfiable);
+        _audit.Events.Should().ContainSingle().Which.Should().Match<AuditEvent>(a => a.Outcome == AuditOutcome.Failure && a.ReasonCode == "RangeNotSatisfiable");
+    }
+
+    [Fact]
+    public async Task The_single_chunk_of_an_empty_text_reads_nothing_and_missing_text_reports_its_reason()
+    {
+        Arrange([WorkspaceRole.Reviewer]);
+        _catalog.Location = Location(ObjectKeys.Text(Workspace, Document, Digest(string.Empty)), "text/plain; charset=utf-8", length: 0);
+
+        var empty = await Service().OpenAsync(
+            Alice, new ContentRequest(Workspace, Document, ContentRendition.Text, ContentPurpose.Display, TextChunk: 0), ObjectDeliveryMode.Stream, Ct);
+        empty.Outcome.Should().Be(ContentAccessOutcome.Granted);
+        empty.Grant!.Range.Should().BeNull();
+
+        _catalog.Location = null;
+        var missing = await Service().OpenAsync(
+            Alice, new ContentRequest(Workspace, Document, ContentRendition.Text, ContentPurpose.Display, TextChunk: 0), ObjectDeliveryMode.Stream, Ct);
+        missing.Outcome.Should().Be(ContentAccessOutcome.Unavailable);
+        missing.Reason.Should().Be(DocumentAccessService.Reasons.RenditionUnavailable);
+        missing.Document.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Json_views_are_decided_loaded_and_audited_in_that_order()
+    {
+        Arrange([WorkspaceRole.Reviewer]);
+        var loads = 0;
+
+        var result = await Service().ReadAsync(
+            Alice,
+            new ContentRequest(Workspace, Document, ContentRendition.Metadata, ContentPurpose.Display),
+            _ =>
+            {
+                loads++;
+                _audit.Events.Should().BeEmpty("the audit event is written after the read, before the response");
+                return Task.FromResult<string?>("metadata");
+            },
+            Ct);
+
+        (result.Value, loads).Should().Be(("metadata", 1));
+        var e = _audit.Events.Should().ContainSingle().Subject;
+        (e.Action, e.Outcome, e.Details["rendition"], e.Details["permission"]).Should().Be(("Retrieved", AuditOutcome.Success, "Metadata", "Document.View"));
+        result.AuditEventId.Should().Be(e.EventId);
+
+        _audit.Clear();
+        var vanished = await Service().ReadAsync(
+            Alice, new ContentRequest(Workspace, Document, ContentRendition.PageList, ContentPurpose.Prefetch), _ => Task.FromResult<string?>(null), Ct);
+        vanished.Decision.Outcome.Should().Be(AuthorizationOutcome.NotFound);
+        _audit.Events.Should().ContainSingle().Which.ReasonCode.Should().Be(AuthorizationReasons.DocumentNotFound);
+    }
+
+    [Fact]
+    public async Task Json_views_of_a_walled_document_are_not_loaded()
+    {
+        Arrange([WorkspaceRole.Reviewer], walls: [Wall]);
+        _reader.Documents[Document] = PolicyEvaluatorTests.Doc(walls: [Wall]);
+
+        var result = await Service().ReadAsync<string>(
+            Alice,
+            new ContentRequest(Workspace, Document, ContentRendition.Metadata, ContentPurpose.Display),
+            _ => throw new InvalidOperationException("must not load"),
+            Ct);
+
+        result.Decision.Outcome.Should().Be(AuthorizationOutcome.NotFound);
+        result.Value.Should().BeNull();
+        _audit.Events.Should().ContainSingle().Which.ReasonCode.Should().Be(AuthorizationReasons.EthicalWall);
+    }
+
     private static Sha256Digest Digest(string content) => Sha256Digest.FromBytes(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
 
     private static ContentLocation Location(ObjectKey key, string contentType, bool quarantined = false, long length = 42) =>
@@ -330,13 +425,15 @@ public sealed class DocumentAccessServiceTests
 
         public ContentLocation? Location { get; set; }
 
+        public bool TextTruncated { get; set; }
+
         public int Calls { get; private set; }
 
         public Task<DocumentContent?> FindAsync(
             Guid workspaceId, Guid documentId, ContentRendition rendition, int? pageNumber, CancellationToken cancellationToken = default)
         {
             Calls++;
-            return Task.FromResult(Exists ? new DocumentContent(ControlNumber, FileExtension, Location) : null);
+            return Task.FromResult(Exists ? new DocumentContent(ControlNumber, FileExtension, Location, TextTruncated) : null);
         }
     }
 

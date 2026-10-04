@@ -110,6 +110,99 @@ public sealed partial class ProtectedContentGateway(
         return new StreamedContentResult(store, grant, request.Rendition == ContentRendition.Native, logger);
     }
 
+    /// <summary>
+    /// One fixed-size chunk of the extracted text as JSON (E11-T01): the access service resolves the chunk's byte range
+    /// and audits the retrieval (rendition Text, the chunk and range in the details) before the range is read. A
+    /// document without stored text answers chunk 0 with <c>missing: true</c>.
+    /// </summary>
+    public async Task<IResult> DeliverTextChunkAsync(HttpContext context, WorkspaceAccess workspace, ContentRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(request);
+        var chunk = request.TextChunk ?? throw new ArgumentException("A text chunk request names its chunk.", nameof(request));
+        var store = services.GetService<IObjectStore>();
+        if (store is null)
+        {
+            return Problems.Create(StatusCodes.Status503ServiceUnavailable, ProblemCodes.ServiceUnavailable, "Document content storage is not configured.");
+        }
+
+        var result = await access.OpenAsync(workspace.Principal, request, ObjectDeliveryMode.Stream, cancellationToken).ConfigureAwait(false);
+        switch (result.Outcome)
+        {
+            case ContentAccessOutcome.Denied:
+                return result.Decision.Outcome == AuthorizationOutcome.NotFound ? DocumentNotFound() : AuthorizationResults.Problem(result.Decision);
+            case ContentAccessOutcome.Unavailable
+                when chunk == 0 && result.Reason == DocumentAccessService.Reasons.RenditionUnavailable && result.Document is { } document:
+                context.Response.Headers.CacheControl = "no-store";
+                return TypedResults.Ok(new DocumentTextChunkResource(
+                    0, 0, TextChunks.ChunkBytes, 0, 0, 0, IsLast: true, string.Empty, document.TextTruncated, Missing: true, document.TextEncodingWarning));
+            case ContentAccessOutcome.Unavailable:
+                return Problems.Create(StatusCodes.Status404NotFound, ProblemCodes.ContentUnavailable, "This rendition is not available for the document.");
+            case ContentAccessOutcome.RangeNotSatisfiable:
+                return Problems.Create(StatusCodes.Status404NotFound, ProblemCodes.ContentUnavailable, "The text has no chunk with this index.");
+        }
+
+        var grant = result.Grant!;
+        var flags = result.Document!;
+        var bytes = Array.Empty<byte>();
+        long offset = 0;
+        if (grant.Range is { } range)
+        {
+            offset = range.Offset;
+            bytes = new byte[range.Length!.Value];
+            var source = await store.OpenReadAsync(grant.Key, range, cancellationToken).ConfigureAwait(false);
+            await using (source.ConfigureAwait(false))
+            {
+                await source.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        var decoded = TextChunks.Decode(bytes, offset);
+        var count = TextChunks.Count(grant.Length);
+        SetCommonHeaders(context.Response, grant.AuditEventId);
+        return TypedResults.Ok(new DocumentTextChunkResource(
+            chunk,
+            count,
+            TextChunks.ChunkBytes,
+            decoded.ByteStart,
+            decoded.ByteEnd,
+            grant.Length,
+            IsLast: chunk == count - 1,
+            decoded.Text,
+            flags.TextTruncated,
+            Missing: false,
+            flags.TextEncodingWarning));
+    }
+
+    /// <summary>
+    /// A JSON view of a document read from PostgreSQL (metadata, page list) under the gateway's contract: PDP decision,
+    /// durable <c>Document.Retrieved</c> event, then the response with the retrieval ID and <c>no-store</c>.
+    /// </summary>
+    public async Task<IResult> ReadAsync<T>(
+        HttpContext context,
+        WorkspaceAccess workspace,
+        ContentRequest request,
+        Func<CancellationToken, Task<T?>> load,
+        Func<T, IResult> respond,
+        CancellationToken cancellationToken)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(respond);
+        var result = await access.ReadAsync(workspace.Principal, request, load, cancellationToken).ConfigureAwait(false);
+        if (result.Value is not { } value)
+        {
+            return result.Decision.Outcome == AuthorizationOutcome.NotFound || result.Decision.IsAllowed
+                ? DocumentNotFound()
+                : AuthorizationResults.Problem(result.Decision);
+        }
+
+        SetCommonHeaders(context.Response, result.AuditEventId!.Value);
+        return respond(value);
+    }
+
     /// <summary>Parses a single <c>bytes</c> range; anything else (multiple ranges, other units, garbage) means the whole object.</summary>
     public static ContentRangeRequest? ParseRange(HttpRequest request)
     {

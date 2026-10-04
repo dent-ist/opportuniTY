@@ -75,6 +75,53 @@ internal sealed class ContentDatabase : IAsyncDisposable
         return new StoredDocument(documentId, controlNumber, native, text, png, thumbnail, nativeId, textId, pngId);
     }
 
+    /// <summary>A document with only the given artifacts (none when null), stored as import stores them; no page set.</summary>
+    public async Task<Guid> ArtifactDocumentAsync(Guid workspaceId, byte[]? text, byte[]? native = null)
+    {
+        var documentId = await Security.DocumentAsync(workspaceId, []);
+        if (native is not null)
+        {
+            var nativeId = await PutAsync(workspaceId, documentId, ObjectKeys.Native(workspaceId, documentId, Sha(native)), ObjectArea.Native, native);
+            await Security.Core.ExecuteAsync(
+                "UPDATE opportunity.document SET native_object_id = @n WHERE workspace_id = @ws AND document_id = @doc",
+                ("n", nativeId), ("ws", workspaceId), ("doc", documentId));
+        }
+
+        if (text is not null)
+        {
+            var textId = await PutAsync(workspaceId, documentId, ObjectKeys.Text(workspaceId, documentId, Sha(text)), ObjectArea.Text, text);
+            await Security.Core.ExecuteAsync(
+                "UPDATE opportunity.document SET text_object_id = @t WHERE workspace_id = @ws AND document_id = @doc",
+                ("t", textId), ("ws", workspaceId), ("doc", documentId));
+        }
+
+        return documentId;
+    }
+
+    /// <summary>Adds a page to the document's active page set, with an image registered for <paramref name="purpose"/> when given.</summary>
+    public async Task AddPageAsync(
+        Guid workspaceId, Guid documentId, int ordinal, PageImagePurpose? purpose = null, PageImageFormat format = PageImageFormat.Png, bool imageMissing = false)
+    {
+        var pageSet = await Security.Core.ScalarAsync<Guid>(
+            "SELECT active_page_set_id FROM opportunity.document WHERE workspace_id = @ws AND document_id = @doc", ("ws", workspaceId), ("doc", documentId));
+        await Security.Core.ExecuteAsync(
+            """
+            INSERT INTO opportunity.page (workspace_id, page_set_id, ordinal, document_id, width_pt, height_pt, rotation, color_mode, image_missing)
+            VALUES (@ws, @ps, @ord, @doc, 792, 612, 90, 1, @missing)
+            """,
+            ("ws", workspaceId), ("ps", pageSet), ("ord", ordinal), ("doc", documentId), ("missing", imageMissing));
+        if (purpose is { } p)
+        {
+            var bytes = Encoding.ASCII.GetBytes($"page {ordinal} of {documentId}");
+            var original = p == PageImagePurpose.Original;
+            var key = original
+                ? ObjectKeys.Image(workspaceId, documentId, Sha(bytes))
+                : ObjectKeys.Rendition(workspaceId, documentId, Guid.NewGuid(), $"p{ordinal:D6}.png");
+            var objectId = await PutAsync(workspaceId, documentId, key, original ? ObjectArea.Image : ObjectArea.Rendition, bytes);
+            await PageImageAsync(workspaceId, pageSet, p, objectId, format, ordinal);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await Security.DisposeAsync();
@@ -92,13 +139,13 @@ internal sealed class ContentDatabase : IAsyncDisposable
 
     private static byte[] Png(Guid documentId) => [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, .. documentId.ToByteArray()];
 
-    private Task PageImageAsync(Guid workspaceId, Guid pageSet, PageImagePurpose purpose, Guid objectId, PageImageFormat format) =>
+    private Task PageImageAsync(Guid workspaceId, Guid pageSet, PageImagePurpose purpose, Guid objectId, PageImageFormat format, int ordinal = 1) =>
         Security.Core.ExecuteAsync(
             """
             INSERT INTO opportunity.page_image (workspace_id, page_set_id, ordinal, purpose, object_id, width_px, height_px, dpi_x, dpi_y, format)
-            VALUES (@ws, @ps, 1, @purpose, @obj, 1275, 1650, 150, 150, @format)
+            VALUES (@ws, @ps, @ord, @purpose, @obj, 1275, 1650, 150, 150, @format)
             """,
-            ("ws", workspaceId), ("ps", pageSet), ("purpose", (short)purpose), ("obj", objectId), ("format", (short)format));
+            ("ws", workspaceId), ("ps", pageSet), ("ord", ordinal), ("purpose", (short)purpose), ("obj", objectId), ("format", (short)format));
 
     private async Task<Guid> PutAsync(
         Guid workspaceId, Guid documentId, ObjectKey key, ObjectArea area, byte[] bytes, StoredObjectState state = StoredObjectState.Committed)

@@ -9,7 +9,7 @@ public sealed class ProblemDetailsTests(ApiFactory factory) : IClassFixture<ApiF
 
     [Theory]
     [InlineData("/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/no-such-resource")]
-    [InlineData("/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/documents/doc-1")]
+    [InlineData("/api/v1/workspaces/0199a8a0-0000-7000-8000-0000000000a1/documents/doc-1/no-such-rendition")]
     [InlineData("/api/v1/no-such-resource")]
     [InlineData("/api/v2/workspaces/0199a8a0-0000-7000-8000-0000000000a1/test-items")]
     public async Task Unknown_routes_return_404_problem(string path)
