@@ -6,11 +6,13 @@ using Microsoft.Extensions.Options;
 
 using Opportunity.Api.Conventions;
 using Opportunity.Application.Authorization;
+using Opportunity.Application.Fields;
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Application.Workspaces;
 using Opportunity.Contracts.Api;
 using Opportunity.Core.Security;
 using Opportunity.Core.Workspaces;
+using Opportunity.Data.Fields;
 using Opportunity.Data.Search;
 using Opportunity.Data.Workspaces;
 using Opportunity.Hosting.Options;
@@ -137,6 +139,7 @@ public sealed class WorkspaceEndpoints : IApiEndpointModule
         IWorkspaceStore store,
         IAuthorizationService authorization,
         IOptions<WorkspaceApiOptions> options,
+        ILogger<WorkspaceEndpoints> logger,
         CancellationToken cancellationToken)
     {
         if (Validate(body, current: null, options.Value, out var settings) is { } invalid)
@@ -157,6 +160,7 @@ public sealed class WorkspaceEndpoints : IApiEndpointModule
             return problem;
         }
 
+        await WorkspaceProvisioning.EnsureAfterCreateAsync(context.RequestServices, workspaceId, logger, cancellationToken).ConfigureAwait(false);
         var resource = await ToResourceAsync(context, result.Workspace!, principal, authorization, cancellationToken).ConfigureAwait(false);
         context.Response.Headers.ETag = EntityTags.ForVersion(result.Workspace!.RowVersion);
         return TypedResults.Created($"{ApiRoutes.V1Prefix}{CollectionPath}/{workspaceId}", resource);
@@ -380,6 +384,7 @@ public static class WorkspaceEndpointRegistration
         ArgumentNullException.ThrowIfNull(configuration);
         services.AddValidatedOptions<WorkspaceApiOptions>(WorkspaceApiOptions.SectionName);
         services.AddPostgresWorkspaceStore();
+        services.TryAddSingleton<IFieldCatalogRepository, FieldCatalogRepository>();
         if (!string.IsNullOrWhiteSpace(configuration.GetConnectionString(OpenSearchOptions.ConnectionStringName))
             || configuration.GetSection(OpenSearchOptions.SectionName).GetValue<string>(nameof(OpenSearchOptions.Endpoint)) is { Length: > 0 })
         {

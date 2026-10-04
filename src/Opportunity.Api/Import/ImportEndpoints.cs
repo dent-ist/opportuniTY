@@ -2,15 +2,14 @@ using System.Buffers.Text;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
-
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Conventions.Idempotency;
 using Opportunity.Api.Jobs;
+using Opportunity.Api.Workspaces;
 using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
 using Opportunity.Application.Fields;
@@ -194,6 +193,9 @@ public sealed class ImportEndpoints : IApiEndpointModule
                 return AuthorizationResults.Problem(decision);
             }
         }
+
+        // The system fields must exist before the header is mapped (Control Number, file metadata).
+        await WorkspaceProvisioning.EnsureFieldsAsync(context.RequestServices, ws, cancellationToken).ConfigureAwait(false);
 
         // The header decides the mapping; validate it before anything is stored.
         var workspace = await workspaces.GetAsync(ws, cancellationToken).ConfigureAwait(false);

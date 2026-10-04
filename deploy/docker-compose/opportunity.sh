@@ -11,6 +11,9 @@
 #     logs [svc]  follow logs
 #     ps          service status
 #     seed        create the demo workspace (idempotent)
+#     demo-documents [file.dat]
+#                 import synthetic demo documents into the demo workspace through the real import API, signed in as
+#                 admin.dev (default: seed/demo-documents.dat, 10 generated documents; run after `up` and `seed`)
 #     compose ... any other docker compose command with the right files, e.g. `compose config`
 set -euo pipefail
 
@@ -182,6 +185,41 @@ cmd_seed() {
     <"$here/seed/demo-workspace.sql"
 }
 
+# Signs in through the BFF and Keycloak like a browser (the demo user's password is the realm's dev default), then
+# uploads the DAT to POST /api/v1/workspaces/{demo}/imports with the anti-forgery header. Developer profile only.
+cmd_demo_documents() {
+  command -v curl >/dev/null || die "curl is required"
+  local dat="${1:-$here/seed/demo-documents.dat}"
+  [[ -f "$dat" ]] || die "no such load file: $dat"
+  local origin="${OPPORTUNITY_PUBLIC_ORIGIN:-http://localhost:8080}"
+  local user="${DEMO_USER:-admin.dev}" password="${DEMO_PASSWORD:-opportunity}"
+  local workspace="00000000-0000-4000-8000-00000000d3e0"
+  local jar page action xsrf response
+  jar="$(mktemp)"
+  trap 'rm -f "$jar"' RETURN
+
+  # 1. /bff/login redirects to the Keycloak login form; 2. post the credentials; curl follows the callback home.
+  page="$(curl -fsSL -c "$jar" -b "$jar" "$origin/bff/login?returnUrl=/")" || die "cannot reach $origin (run ./opportunity.sh up)"
+  action="$(printf '%s' "$page" | grep -o 'id="kc-form-login"[^>]*action="[^"]*"' | sed 's/.*action="//; s/"$//; s/&amp;/\&/g')"
+  [[ -n "$action" ]] || die "the Keycloak login form was not found; is the demo realm loaded?"
+  curl -fsSL -c "$jar" -b "$jar" -o /dev/null --data-urlencode "username=$user" --data-urlencode "password=$password" \
+    "$action" || die "sign-in as $user failed"
+
+  # 3. The anti-forgery cookie comes with the first API call.
+  curl -fsS -c "$jar" -b "$jar" -o /dev/null "$origin/api/v1/me" || die "sign-in as $user did not create a session"
+  xsrf="$(awk '$6 ~ /opp-xsrf$/ { print $7 }' "$jar" | tail -n 1)"
+  [[ -n "$xsrf" ]] || die "no anti-forgery token after sign-in"
+
+  # 4. Append import with the default profile: known columns are auto-mapped, the rest are ignored.
+  response="$(curl -sS -c "$jar" -b "$jar" -w '\n%{http_code}' -H "Origin: $origin" -H "X-XSRF-TOKEN: $xsrf" \
+    -H "Idempotency-Key: demo-documents-$(date +%s)-$$" -F "file=@$dat;type=application/octet-stream" \
+    -F 'request={"name":"Demo documents"};type=application/json' \
+    "$origin/api/v1/workspaces/$workspace/imports")"
+  local status="${response##*$'\n'}"
+  [[ "$status" == 202 ]] || die "import was not accepted (HTTP $status): ${response%$'\n'*}"
+  echo "Import started. The documents appear in Documents within a minute: $origin/w/$workspace/documents"
+}
+
 command="${1:-}"
 [[ $# -gt 0 ]] && shift
 [[ -f "$versions_env" ]] || die "missing $versions_env"
@@ -198,6 +236,7 @@ case "$command" in
   logs) compose logs -f --tail 200 "$@" ;;
   ps) compose ps "$@" ;;
   seed) cmd_seed ;;
+  demo-documents) cmd_demo_documents "$@" ;;
   compose) compose "$@" ;;
   *) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; [[ -z "$command" || "$command" == help ]] || exit 2 ;;
 esac
