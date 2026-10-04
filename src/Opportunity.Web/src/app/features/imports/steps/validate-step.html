@@ -1,0 +1,168 @@
+<dl class="step__facts" aria-label="Import summary">
+  <div>
+    <dt>Load file</dt>
+    <dd>{{ store.datFile()?.name }}</dd>
+  </div>
+  <div>
+    <dt>OPT</dt>
+    <dd>{{ store.optFile()?.name ?? 'None' }}</dd>
+  </div>
+  <div>
+    <dt>Volume folder</dt>
+    <dd>{{ store.paths().volumeRoot?.trim() || 'Import share' }}</dd>
+  </div>
+  <div>
+    <dt>Mode</dt>
+    <dd>{{ modeLabels[store.mode()] }}</dd>
+  </div>
+  <div>
+    <dt>Columns imported</dt>
+    <dd>{{ mappedCount() }}</dd>
+  </div>
+</dl>
+
+<section
+  class="step__group"
+  aria-labelledby="validate-results"
+  [attr.aria-busy]="store.preflightStatus() === 'busy'"
+>
+  <div class="step__toolbar">
+    <h3 class="step__heading" id="validate-results">Validation</h3>
+    <button
+      type="button"
+      oppButton="secondary"
+      [busy]="store.preflightStatus() === 'busy'"
+      (click)="revalidate()"
+    >
+      <opp-icon name="refresh" />
+      Validate again
+    </button>
+  </div>
+  <p class="step__hint">
+    Reads the whole load file with these settings. Nothing is written until you start the import.
+  </p>
+
+  @if (store.preflightStatus() === 'busy') {
+    <opp-loading-state label="Validating the load file…" />
+  } @else if (store.preflightError(); as e) {
+    <opp-error-state [error]="e" (retry)="revalidate()" />
+  } @else if (result(); as r) {
+    <dl class="step__facts" aria-label="Validation result">
+      <div>
+        <dt>Rows read</dt>
+        <dd>{{ n().format(r.rowsRead) }}</dd>
+      </div>
+      <div>
+        <dt>Errors</dt>
+        <dd>{{ n().format(r.errorCount) }}</dd>
+      </div>
+      <div>
+        <dt>Warnings</dt>
+        <dd>{{ n().format(r.warningCount) }}</dd>
+      </div>
+    </dl>
+
+    @if (r.blocking) {
+      <div class="step__callout step__callout--danger" role="alert">
+        <opp-icon name="error" />
+        <p>
+          {{ n().format(r.errorCount) }} error(s) block this import. Fix the load file or the
+          settings, then validate again.
+        </p>
+      </div>
+    } @else if (r.warningCount === 0) {
+      <div class="step__callout step__callout--success" role="status">
+        <opp-icon name="success" />
+        <p>No errors or warnings. The import is ready to start.</p>
+      </div>
+    }
+
+    @if (r.issueCounts.length) {
+      <table class="step__table">
+        <caption>
+          Issues by type
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Severity</th>
+            <th scope="col">Issue</th>
+            <th scope="col">Rows</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (c of r.issueCounts; track c.code + c.severity) {
+            <tr>
+              <td>
+                <opp-badge
+                  [tone]="c.severity === 'error' ? 'danger' : 'warning'"
+                  [icon]="c.severity === 'error' ? 'error' : 'warning'"
+                  >{{ c.severity === 'error' ? 'Error' : 'Warning' }}</opp-badge
+                >
+              </td>
+              <td class="step__mono">{{ c.code }}</td>
+              <td>{{ n().format(c.count) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+
+    @if (r.issues.length) {
+      <div class="step__table-wrap" tabindex="0" role="region" aria-label="Issues">
+        <table class="step__table">
+          <caption>
+            First
+            {{
+              r.issues.length
+            }}
+            issues
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Row</th>
+              <th scope="col">Control Number</th>
+              <th scope="col">Column</th>
+              <th scope="col">Severity</th>
+              <th scope="col">Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (i of r.issues; track $index) {
+              <tr>
+                <td>{{ i.row || '' }}</td>
+                <td class="step__nowrap">{{ i.controlNumber ?? '' }}</td>
+                <td class="step__mono">{{ i.column ?? '' }}</td>
+                <td>{{ i.severity === 'error' ? 'Error' : 'Warning' }}</td>
+                <td>{{ i.message }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    @if (issuesUrl(); as url) {
+      @if (r.errorCount + r.warningCount > 0) {
+        <div class="step__toolbar">
+          <a oppButton="secondary" [href]="url" download>
+            <opp-icon name="download" />
+            Download all issues (CSV)
+          </a>
+        </div>
+      }
+    }
+
+    @if (!r.blocking && r.warningCount > 0) {
+      <opp-checkbox
+        [checked]="store.warningsAcknowledged()"
+        (checkedChange)="store.warningsAcknowledged.set($event)"
+        >I have reviewed the {{ n().format(r.warningCount) }} warning(s) and want to import
+        anyway</opp-checkbox
+      >
+    }
+  }
+
+  @if (store.startError(); as e) {
+    <opp-error-state [error]="e" />
+  }
+</section>

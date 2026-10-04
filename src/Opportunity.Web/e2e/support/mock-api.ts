@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { CODING_FIELDS, CodingMock } from './mock-coding';
 import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
+import { ImportsMock } from './mock-imports';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -28,6 +29,8 @@ export interface MockApiOptions {
   selectedWhileIndexing?: boolean;
   /** Document number whose extracted text is 10 MB (E16-T04 performance). */
   largeTextDocument?: number;
+  /** The import pre-flight reports a blocking error (E08-T08). */
+  preflightBlocking?: boolean;
 }
 
 /** A request the mock answered, with its JSON body and Idempotency-Key. */
@@ -62,6 +65,8 @@ export interface MockControl {
   readonly snapshots: MockRequest[];
   /** `POST …/bulk-coding` requests (Mass Edit jobs, the shape assumed for E10-T04). */
   readonly bulkCoding: MockRequest[];
+  /** Imports (E08-T08): previews, pre-flights and started imports received. */
+  readonly imports: ImportsMock;
 }
 
 /**
@@ -313,7 +318,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const bulkCoding: MockRequest[] = [];
   const frozen = new Map<string, number>();
   const jobs = new Map<string, { snapshotId: string; polls: number }>();
+  const imports = new ImportsMock({ preflightBlocking: options.preflightBlocking });
   const control: MockControl = {
+    imports,
     unhandled,
     audit,
     coding,
@@ -402,6 +409,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
           : Number(url.searchParams.get('page') ?? 1);
       return json(route, searchPage(docs, pageSize, n, lastQuery));
     }
+    // Imports (E08-T08): ./mock-imports.ts.
+    const imported = signedIn ? imports.handle(route, method, path) : undefined;
+    if (imported) return imported;
     // Coding and coding layouts (E10-T01, E04-T03): ./mock-coding.ts.
     const coded = signedIn ? coding.handle(route, method, path) : undefined;
     if (coded) return coded;

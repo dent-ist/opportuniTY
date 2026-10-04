@@ -1,0 +1,73 @@
+<div class="imports__header">
+  <h1 class="imports__title">Imports</h1>
+  <a oppButton="primary" routerLink="new">
+    <opp-icon name="import" />
+    New Import
+  </a>
+</div>
+
+@if (loading()) {
+  <opp-loading-state label="Loading imports…" />
+} @else if (error() && items().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else if (items().length === 0) {
+  <opp-empty-state
+    title="No imports yet"
+    message="Load a DAT load file with New Import. Its natives, text and images are read from the import share."
+  />
+} @else {
+  <div class="imports__table-wrap" tabindex="0" role="region" aria-label="Import history">
+    <table class="imports__table">
+      <caption class="opp-visually-hidden">
+        Import history, newest first
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Mode</th>
+          <th scope="col">Started</th>
+          <th scope="col">Status</th>
+          <th scope="col">Search</th>
+          <th scope="col" class="imports__num">Rows read</th>
+          <th scope="col" class="imports__num">Imported</th>
+          <th scope="col" class="imports__num">Overlaid</th>
+          <th scope="col" class="imports__num">Errors</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (i of items(); track i.importId) {
+          <tr>
+            <th scope="row" class="imports__name">
+              <a [routerLink]="i.importId">{{ i.name }}</a>
+              <span class="imports__muted">{{ i.sourceFileName }}</span>
+            </th>
+            <td>{{ modeLabels[i.mode] }}</td>
+            <td class="imports__nowrap">{{ date(i.createdAt) }}</td>
+            <td><opp-status-pill [status]="jobStatus[i.job.status]" /></td>
+            <td>
+              @if (i.job.indexed.state === 'current') {
+                <opp-badge tone="success" icon="success">Searchable</opp-badge>
+              } @else {
+                <opp-badge tone="info" icon="refresh">Indexing</opp-badge>
+              }
+            </td>
+            <td class="imports__num">{{ num(i.report.rowsRead) }}</td>
+            <td class="imports__num">{{ num(i.report.rowsImported) }}</td>
+            <td class="imports__num">{{ num(i.report.rowsOverlaid) }}</td>
+            <td class="imports__num">{{ num(i.report.rowsErrored) }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (error() && items().length) {
+    <opp-error-state [error]="error()!" (retry)="loadMore()" />
+  }
+  @if (nextCursor()) {
+    <div>
+      <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+        Load more imports
+      </button>
+    </div>
+  }
+}

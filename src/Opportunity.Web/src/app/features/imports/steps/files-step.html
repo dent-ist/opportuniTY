@@ -1,0 +1,70 @@
+<p class="step__intro">
+  Natives, extracted text and page images are read from <strong>{{ volume() }}</strong> on the
+  server.
+</p>
+
+<section class="step__group" aria-labelledby="files-paths">
+  <h3 class="step__heading" id="files-paths">Natives and extracted text</h3>
+  <div class="step__grid">
+    <opp-select
+      label="Native path column"
+      placeholder="No natives"
+      [options]="columnOptions()"
+      [value]="nativeColumn()"
+      (valueChange)="setColumn('nativePath', $event)"
+    />
+    <opp-select
+      label="Extracted text path column"
+      placeholder="No extracted text"
+      [options]="columnOptions()"
+      [value]="textColumn()"
+      (valueChange)="setColumn('textPath', $event)"
+    />
+    <opp-select
+      label="When a file is missing"
+      [options]="missingOptions"
+      [value]="store.paths().missingFiles"
+      (valueChange)="setPath('missingFiles', $event === 'error' ? 'error' : 'flag')"
+    />
+  </div>
+  <opp-checkbox
+    [checked]="store.paths().textInLoadFile"
+    (checkedChange)="setPath('textInLoadFile', $event)"
+    >The text column holds the extracted text itself, not a file path</opp-checkbox
+  >
+  <div class="step__grid">
+    <opp-text-field
+      label="Strip path prefix"
+      placeholder="D:\Processing\"
+      hint="Removed from the start of every native and text path before it is read."
+      [value]="store.paths().stripPrefix ?? ''"
+      (valueChange)="setPath('stripPrefix', $event)"
+    />
+  </div>
+  @if (example(); as e) {
+    <p class="step__hint">
+      Example: <span class="step__mono">{{ e.from }}</span> is read as
+      <span class="step__mono">{{ e.to }}</span>
+    </p>
+  }
+</section>
+
+<section class="step__group" aria-labelledby="files-images">
+  <h3 class="step__heading" id="files-images">Page images</h3>
+  @if (store.optFile(); as opt) {
+    <p class="step__hint">Page images come from {{ opt.name }}.</p>
+    <div class="step__grid">
+      <opp-select
+        label="Match OPT image keys by"
+        [options]="matchOptions"
+        [value]="store.imageMatchBy()"
+        (valueChange)="setMatch($event)"
+      />
+    </div>
+  } @else {
+    <p class="step__callout" role="note">
+      <opp-icon name="info" />
+      <span>No OPT file was chosen in step 1, so the documents get no page images.</span>
+    </p>
+  }
+</section>

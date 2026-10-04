@@ -1,0 +1,168 @@
+<div class="imports__heading-group">
+  <a class="imports__back-link" routerLink="..">
+    <opp-icon name="chevron-left" />
+    Imports
+  </a>
+  <h1 class="imports__title">{{ item()?.name ?? 'Import' }}</h1>
+  @if (item(); as i) {
+    <p class="imports__muted">
+      {{ modeLabels[i.mode] }} · {{ i.sourceFileName }}
+      @if (i.optFileName) {
+        + {{ i.optFileName }}
+      }
+    </p>
+  }
+</div>
+
+@if (!item()) {
+  @if (error(); as e) {
+    <opp-error-state [error]="e" (retry)="load()" />
+  } @else {
+    <opp-loading-state label="Loading the import…" />
+  }
+} @else {
+  @let i = item()!;
+  <section class="imports__panel" aria-labelledby="import-progress">
+    <h2 id="import-progress">Progress</h2>
+    <div class="imports__status">
+      <opp-status-pill [status]="status()" />
+      @if (!finished()) {
+        <span class="imports__note">You can leave this page: the import keeps running.</span>
+      }
+      <a [routerLink]="['../../jobs']" [queryParams]="{ job: i.job.jobId }">View in Jobs</a>
+    </div>
+    <div class="imports__phase">
+      <span class="imports__phase-label" id="import-saved-label">Saved</span>
+      @if (saved(); as s) {
+        <opp-progress label="Saved" [value]="s.value" [max]="s.max" />
+        <span class="imports__phase-value">{{
+          finished() ? 'Stored' : num(s.value) + ' of ' + num(s.max) + ' chunks'
+        }}</span>
+      } @else {
+        <opp-progress label="Saved" />
+        <span class="imports__phase-value">Reading the load file…</span>
+      }
+    </div>
+    <div class="imports__phase">
+      <span class="imports__phase-label">Searchable</span>
+      @if (searchable(); as s) {
+        <opp-progress label="Searchable" [value]="s.value" [max]="s.max" />
+        <span class="imports__phase-value">
+          @if (s.current) {
+            <opp-badge tone="success" icon="success">Searchable</opp-badge>
+          } @else if (finished()) {
+            Updating the search index…
+          } @else {
+            After saving
+          }
+        </span>
+      }
+    </div>
+    @if (i.job.statusReason) {
+      <p class="imports__note">{{ i.job.statusReason }}</p>
+    }
+    @if (error(); as e) {
+      <p class="imports__note" role="status">
+        Progress cannot be shown right now ({{ e.status || 'no connection' }}). Trying again.
+      </p>
+    }
+  </section>
+
+  <section class="imports__panel" aria-labelledby="import-report">
+    <h2 id="import-report">Report</h2>
+    <dl class="imports__facts">
+      <div>
+        <dt>Rows read</dt>
+        <dd>{{ num(i.report.rowsRead) }}</dd>
+      </div>
+      <div>
+        <dt>Imported</dt>
+        <dd>{{ num(i.report.rowsImported) }}</dd>
+      </div>
+      <div>
+        <dt>Overlaid</dt>
+        <dd>{{ num(i.report.rowsOverlaid) }}</dd>
+      </div>
+      <div>
+        <dt>Unchanged</dt>
+        <dd>{{ num(i.report.rowsSkipped) }}</dd>
+      </div>
+      <div>
+        <dt>Errors</dt>
+        <dd>{{ num(i.report.rowsErrored) }}</dd>
+      </div>
+      <div>
+        <dt>Fields created</dt>
+        <dd>{{ num(i.report.fieldsCreated) }}</dd>
+      </div>
+      <div>
+        <dt>Choices created</dt>
+        <dd>{{ num(i.report.choicesCreated) }}</dd>
+      </div>
+    </dl>
+    @if (finished()) {
+      <div class="imports__actions">
+        <a oppButton="secondary" [href]="api.reportCsvUrl(i.importId)" download>
+          <opp-icon name="download" />
+          Import report (CSV)
+        </a>
+        @if (errored() > 0) {
+          <a oppButton="secondary" [href]="api.errorFileUrl(i.importId)" download>
+            <opp-icon name="download" />
+            Error file
+          </a>
+          <a oppButton="ghost" [routerLink]="['../new']" [queryParams]="{ from: i.importId }">
+            Re-import corrected error file…
+          </a>
+        }
+      </div>
+      @if (errored() > 0) {
+        <p class="imports__note">
+          The error file holds the rows that were not loaded, in the same delimiters and encoding as
+          the load file, with an ImportError column. Fix them and import the file again.
+        </p>
+      }
+    } @else {
+      <p class="imports__note">The report downloads are available when the import finishes.</p>
+    }
+  </section>
+
+  @if (rowErrors().length) {
+    <section class="imports__panel" aria-labelledby="import-errors">
+      <h2 id="import-errors">Row errors</h2>
+      <div class="imports__table-wrap" tabindex="0" role="region" aria-label="First row errors">
+        <table class="imports__table">
+          <caption class="opp-visually-hidden">
+            First row errors of the import
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Row</th>
+              <th scope="col">Control Number</th>
+              <th scope="col">Column</th>
+              <th scope="col">Error</th>
+              <th scope="col">Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (e of rowErrors(); track $index) {
+              <tr>
+                <td>{{ e.row }}</td>
+                <td class="imports__nowrap">{{ e.controlNumber ?? '' }}</td>
+                <td>{{ e.column ?? '' }}</td>
+                <td>{{ e.code }}</td>
+                <td>{{ e.message }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (rowErrors().length < errored()) {
+        <p class="imports__note">
+          Showing the first {{ rowErrors().length }} of {{ num(errored()) }}; the import report
+          lists all of them.
+        </p>
+      }
+    </section>
+  }
+}

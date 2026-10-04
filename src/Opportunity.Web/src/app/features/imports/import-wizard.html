@@ -1,0 +1,93 @@
+<div class="wizard__header">
+  <a class="wizard__back-link" routerLink="..">
+    <opp-icon name="chevron-left" />
+    Imports
+  </a>
+  <h1 class="wizard__title">New Import</h1>
+  @if (reimportOf(); as previous) {
+    <p class="wizard__lead">
+      Re-importing the corrected error file of <strong>{{ previous }}</strong
+      >, with the same import profile and mode.
+    </p>
+  }
+</div>
+
+<div class="wizard">
+  <nav class="wizard__rail" aria-label="Import steps">
+    <ol>
+      @for (s of steps(); track s.id; let i = $index) {
+        <li
+          class="wizard__rail-item"
+          [class.wizard__rail-item--current]="s.id === current()"
+          [class.wizard__rail-item--done]="i < index()"
+        >
+          <button
+            type="button"
+            class="wizard__rail-button"
+            [attr.aria-current]="s.id === current() ? 'step' : null"
+            [disabled]="!reachable(i) || busy()"
+            (click)="goTo(s.id)"
+          >
+            <span class="wizard__rail-number" aria-hidden="true">{{ i + 1 }}</span>
+            <span>{{ s.label }}</span>
+            @if (i < index()) {
+              <span class="opp-visually-hidden">(visited)</span>
+            }
+          </button>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  <section class="wizard__body" aria-labelledby="import-step-heading">
+    <h2 id="import-step-heading" class="wizard__step-heading" tabindex="-1" #stepHeading>
+      <span class="wizard__step-count">Step {{ index() + 1 }} of {{ steps().length }}</span>
+      {{ step().label }}
+    </h2>
+
+    @if (store.profilesError(); as e) {
+      <opp-error-state [error]="e" (retry)="store.loadReferenceData()" />
+    }
+
+    @switch (current()) {
+      @case ('source') {
+        <opp-import-source-step />
+      }
+      @case ('format') {
+        <opp-import-format-step />
+      }
+      @case ('mapping') {
+        <opp-import-mapping-step />
+      }
+      @case ('overlay') {
+        <opp-import-overlay-step />
+      }
+      @case ('files') {
+        <opp-import-files-step />
+      }
+      @case ('validate') {
+        <opp-import-validate-step />
+      }
+    }
+
+    @if (blocked(); as reason) {
+      <p class="wizard__blocked" role="alert">
+        <opp-icon name="warning" />
+        {{ reason }}
+      </p>
+    }
+
+    <div class="wizard__footer">
+      <a oppButton="ghost" routerLink="..">Cancel</a>
+      <span class="wizard__spacer"></span>
+      @if (index() > 0) {
+        <button type="button" oppButton="secondary" [disabled]="busy()" (click)="back()">
+          Back
+        </button>
+      }
+      <button type="button" oppButton="primary" [busy]="busy()" (click)="next()">
+        {{ isLast() ? 'Start import' : 'Continue' }}
+      </button>
+    </div>
+  </section>
+</div>

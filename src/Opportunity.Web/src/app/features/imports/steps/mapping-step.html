@@ -1,0 +1,140 @@
+<div class="step__toolbar">
+  <button type="button" oppButton="secondary" (click)="autoMap()">Auto-map</button>
+  <button type="button" oppButton="secondary" (click)="clear()">Clear</button>
+  <button
+    type="button"
+    oppButton="secondary"
+    [attr.aria-expanded]="saveOpen()"
+    aria-controls="mapping-save-profile"
+    (click)="saveOpen.set(!saveOpen())"
+  >
+    Save as Import profile…
+  </button>
+</div>
+
+@if (saveOpen()) {
+  <div class="step__inline-form" id="mapping-save-profile">
+    <opp-text-field
+      label="Import profile name"
+      hint="Saves the format, mapping, mode, overlay and path settings for later loads."
+      [error]="saveError() ?? undefined"
+      [(value)]="profileName"
+    />
+    <button type="button" oppButton="primary" [busy]="saving()" (click)="save()">
+      Save profile
+    </button>
+    <button type="button" oppButton="ghost" (click)="saveOpen.set(false)">Cancel</button>
+  </div>
+}
+
+@if (store.previewError(); as e) {
+  <opp-error-state [error]="e" (retry)="store.runPreview(true)" />
+} @else if (!store.preview()) {
+  <opp-loading-state label="Mapping the columns…" />
+} @else {
+  @let preview = store.preview()!;
+  <p class="step__hint" role="status">
+    {{ columns().length - unmapped().length }} of {{ columns().length }} columns are imported.
+    @if (unmapped().length) {
+      Not imported: {{ unmappedNames() }}.
+    }
+  </p>
+  @if (preview.missingColumns.length) {
+    <div class="step__callout step__callout--warning" role="note">
+      <opp-icon name="warning" />
+      <p>
+        In the profile but not in this load file: {{ preview.missingColumns.join(', ') }}. Their
+        mappings are kept in the profile.
+      </p>
+    </div>
+  }
+  @if (store.profileId() && preview.newColumns.length) {
+    <div class="step__callout" role="note">
+      <opp-icon name="info" />
+      <p>New in this load file (not in the profile): {{ preview.newColumns.join(', ') }}.</p>
+    </div>
+  }
+  @if (preview.issues.length) {
+    <div
+      class="step__callout"
+      [class.step__callout--danger]="!preview.canImport"
+      [class.step__callout--warning]="preview.canImport"
+      role="note"
+    >
+      <opp-icon [name]="preview.canImport ? 'warning' : 'error'" />
+      <ul>
+        @for (issue of preview.issues; track $index) {
+          <li>
+            {{ issue.severity === 'error' ? 'Error' : 'Warning' }}:
+            @if (issue.column) {
+              {{ issue.column }} ·
+            }
+            {{ issue.message }}
+          </li>
+        }
+      </ul>
+    </div>
+  }
+
+  <div class="step__table-wrap" tabindex="0" role="region" aria-label="Field mapping">
+    <table class="step__table" [attr.aria-busy]="store.previewStatus() === 'busy'">
+      <caption class="opp-visually-hidden">
+        Load-file columns and the workspace fields they load into
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Load-file column</th>
+          <th scope="col">Sample values</th>
+          <th scope="col"><span class="opp-visually-hidden">Maps to</span></th>
+          <th scope="col">Workspace field</th>
+          <th scope="col">Type</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (column of columns(); track column.column) {
+          <tr [class.step__row--unmapped]="!mapped(column)">
+            <th scope="row" class="step__nowrap step__mono">{{ column.column }}</th>
+            <td>
+              <span class="step__cell-clip step__muted" [title]="samples(column)">{{
+                samples(column) || '(blank)'
+              }}</span>
+            </td>
+            <td aria-hidden="true"><opp-icon name="chevron-right" /></td>
+            <td>
+              <select
+                class="step__select"
+                [attr.aria-label]="'Workspace field for ' + column.column"
+                (change)="onSelect(column, $any($event.target).value)"
+              >
+                <option value="" [selected]="selection(column) === ''">Not mapped</option>
+                <option [value]="IGNORE" [selected]="selection(column) === IGNORE">
+                  Do not import
+                </option>
+                @if (selection(column) === SEVERAL) {
+                  <option [value]="SEVERAL" selected>{{ labels(column) }}</option>
+                }
+                @for (o of options(); track o.value) {
+                  <option
+                    [value]="o.value"
+                    [disabled]="o.disabled"
+                    [selected]="selection(column) === o.value"
+                  >
+                    {{ o.label }}
+                  </option>
+                }
+              </select>
+            </td>
+            <td class="step__nowrap">{{ mapped(column) ? types(column) : '' }}</td>
+            <td>
+              {{ status(column) }}
+              @if (errors(column)) {
+                <span class="step__muted">· {{ errors(column) }} unreadable in preview</span>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

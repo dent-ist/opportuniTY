@@ -1,0 +1,173 @@
+<section class="step__group" aria-labelledby="format-detected">
+  <h3 class="step__heading" id="format-detected">What the preview used</h3>
+  @if (file(); as f) {
+    <dl class="step__facts">
+      <div>
+        <dt>Column</dt>
+        <dd>{{ describe(f.column) }}</dd>
+      </div>
+      <div>
+        <dt>Quote</dt>
+        <dd>{{ describe(f.quote) }}</dd>
+      </div>
+      <div>
+        <dt>Newline in values</dt>
+        <dd>{{ describe(f.newline) }}</dd>
+      </div>
+      <div>
+        <dt>Multi-value</dt>
+        <dd>{{ describe(f.multiValue) }}</dd>
+      </div>
+      <div>
+        <dt>Encoding</dt>
+        <dd>{{ encodingText() }}</dd>
+      </div>
+      <div>
+        <dt>Columns</dt>
+        <dd>{{ f.header.length }}</dd>
+      </div>
+    </dl>
+    @if (detectedLabel(); as detected) {
+      <p class="step__hint">Detected delimiters: {{ detected }}.</p>
+    }
+  }
+</section>
+
+<section class="step__group" aria-labelledby="format-settings">
+  <h3 class="step__heading" id="format-settings">Settings</h3>
+  <div class="step__grid">
+    <opp-select
+      label="Delimiters"
+      [options]="presets"
+      [value]="store.loadFile().delimiters"
+      (valueChange)="set('delimiters', $event)"
+    />
+    <opp-select
+      label="Load file encoding"
+      [options]="encodings"
+      [value]="store.loadFile().datEncoding"
+      (valueChange)="set('datEncoding', $event)"
+    />
+    <opp-select
+      label="Extracted text encoding"
+      hint="Encoding of the text files the load file points to."
+      [options]="encodings"
+      [value]="store.loadFile().textEncoding"
+      (valueChange)="set('textEncoding', $event, false)"
+    />
+  </div>
+  @if (custom()) {
+    <div class="step__grid">
+      <opp-text-field
+        label="Column delimiter"
+        hint="The character, or its decimal code (20, 182, 44)."
+        [value]="store.loadFile().column ?? ''"
+        (valueChange)="set('column', $event, false)"
+      />
+      <opp-text-field
+        label="Quote"
+        hint="The character or decimal code (254, 34)."
+        [value]="store.loadFile().quote ?? ''"
+        (valueChange)="set('quote', $event, false)"
+      />
+      <opp-text-field
+        label="Newline in values"
+        hint="The character or decimal code (174)."
+        [value]="store.loadFile().newline ?? ''"
+        (valueChange)="set('newline', $event, false)"
+      />
+      <opp-text-field
+        label="Multi-value delimiter"
+        hint="The character or decimal code (59)."
+        [value]="store.loadFile().multiValue ?? ''"
+        (valueChange)="set('multiValue', $event, false)"
+      />
+    </div>
+  }
+  <div class="step__toolbar">
+    <opp-checkbox
+      [checked]="store.loadFile().firstLineContainsFieldNames"
+      (checkedChange)="set('firstLineContainsFieldNames', $event)"
+      >First line contains field names</opp-checkbox
+    >
+    <button
+      type="button"
+      oppButton="secondary"
+      [busy]="store.previewStatus() === 'busy'"
+      (click)="refresh()"
+    >
+      <opp-icon name="refresh" />
+      Refresh preview
+    </button>
+  </div>
+</section>
+
+<section
+  class="step__group"
+  aria-labelledby="format-preview"
+  [attr.aria-busy]="store.previewStatus() === 'busy'"
+>
+  <h3 class="step__heading" id="format-preview">Preview</h3>
+  @if (store.previewError(); as e) {
+    <opp-error-state [error]="e" (retry)="refresh()" />
+  } @else if (!store.preview()) {
+    <opp-loading-state label="Reading the load file…" />
+  } @else {
+    @if (file()?.misdecodeSuspected) {
+      <div class="step__callout step__callout--warning" role="note">
+        <opp-icon name="warning" />
+        <p>
+          Some characters look wrongly decoded (for example "Ã¾"). Choose the encoding the load file
+          was written in.
+        </p>
+      </div>
+    }
+    @if (file()?.parserIssues?.length) {
+      <div class="step__callout step__callout--warning" role="note">
+        <opp-icon name="warning" />
+        <ul>
+          @for (issue of file()!.parserIssues; track $index) {
+            <li>{{ issue.message }}</li>
+          }
+        </ul>
+      </div>
+    }
+    @if (unmappedCount()) {
+      <p class="step__hint">
+        {{ unmappedCount() }} column(s) are not mapped yet and are left out of this preview; the
+        next step lists them with their values.
+      </p>
+    }
+    <div class="step__table-wrap" tabindex="0" role="region" aria-label="Preview of the first rows">
+      <table class="step__table">
+        <caption class="opp-visually-hidden">
+          The first
+          {{
+            store.preview()!.rows.length
+          }}
+          rows of the load file
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Row</th>
+            @for (h of header(); track $index) {
+              <th scope="col">{{ h }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of store.preview()!.rows; track row.rowNumber) {
+            <tr>
+              <th scope="row" class="step__nowrap">{{ row.rowNumber }}</th>
+              @for (h of header(); track $index) {
+                <td>
+                  <span class="step__cell-clip">{{ cell(row, h) }}</span>
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
