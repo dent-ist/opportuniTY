@@ -1,3 +1,4 @@
+import { Location } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -8,6 +9,9 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
+import { map } from 'rxjs';
 import { CommandRegionDirective, CommandRegistry } from '../../core/commands';
 import { GridOpenEvent, GridSearch, ReviewGrid } from './grid/review-grid';
 import { PendingCoding } from './review/coding/pending-coding';
@@ -35,12 +39,18 @@ import { MassEditJobs } from './mass-edit/mass-edit-jobs';
  * the cursor walks, and "Back to list" returns to the same scroll position and selection, with the reviewed
  * document focused.
  *
+ * Review mode is a browser history entry (`?view=review`): the browser's Back button returns to the list like
+ * "Back to list" (asking about unsaved edits first), and Forward reopens the last reviewed document.
+ *
  * Mass Actions (E16-T06) sit in the list's header and act on its selection (Mass Edit: bulk coding job).
  *
  * Keyboard (guide §4, command registry E15-T03): "Focus keyword search" (Alt+Shift+K, or `/` while single-key
  * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel and the list, or
  * between the review panes.
  */
+const REVIEW_PARAM = 'view';
+const REVIEW_VALUE = 'review';
+
 @Component({
   selector: 'opp-documents-page',
   imports: [CommandRegionDirective, MassActions, QueryBar, ReviewGrid, ReviewWorkspace],
@@ -106,6 +116,14 @@ export class DocumentsPage {
     fetchMore: (direction) => this.grid().fetchMore(direction),
   };
   protected readonly cursor = new ReviewCursor(this.source);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly location = inject(Location);
+  /** `?view=review` in the URL: the history entry Review mode adds on top of the list. */
+  private readonly reviewInUrl = toSignal(
+    this.route.queryParamMap.pipe(map((p) => p.get(REVIEW_PARAM) === REVIEW_VALUE)),
+    { initialValue: false },
+  );
   /** Mass Actions dialogs return focus to the list. */
   protected readonly listElement = () => this.grid().focusTarget();
 
@@ -118,6 +136,17 @@ export class DocumentsPage {
       const id = this.cursor.documentId();
       if (id && this.reviewing()) untracked(() => this.grid().focusDocument(id));
     });
+    // Browser Back/Forward across the Review mode history entry.
+    let wasInUrl = false;
+    effect(() => {
+      const inUrl = this.reviewInUrl();
+      const changed = inUrl !== wasInUrl;
+      wasInUrl = inUrl;
+      untracked(() => {
+        if (!inUrl && changed && this.reviewing()) void this.onBrowserBack();
+        else if (inUrl && !this.reviewing()) this.onReviewEntry();
+      });
+    });
   }
 
   protected onSearch(submission: QuerySubmission): void {
@@ -127,11 +156,43 @@ export class DocumentsPage {
   protected onOpen(event: GridOpenEvent): void {
     this.cursor.open(event.hit.documentId);
     this.reviewing.set(true);
+    if (!this.reviewInUrl()) this.setReviewInUrl(true);
   }
 
+  /** "Back to list" (unsaved edits already saved or discarded): drops the Review mode history entry too. */
   protected closeReview(): void {
     this.reviewing.set(false);
     this.grid().restoreView();
+    if (this.reviewInUrl()) this.location.back();
+  }
+
+  /** The browser left the Review mode entry: close it, or put the entry back if the reviewer cancels. */
+  private async onBrowserBack(): Promise<void> {
+    const review = this.review();
+    if (review && !(await review.canLeave())) {
+      this.setReviewInUrl(true);
+      return;
+    }
+    this.reviewing.set(false);
+    this.grid().restoreView();
+  }
+
+  /**
+   * The URL says Review mode but the page is in List mode: Forward after leaving it reopens the last reviewed
+   * document; a reload or a pasted link (nothing to review yet) just shows the list.
+   */
+  private onReviewEntry(): void {
+    if (this.cursor.documentId()) this.reviewing.set(true);
+    else this.setReviewInUrl(false, true);
+  }
+
+  private setReviewInUrl(on: boolean, replaceUrl = false): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { [REVIEW_PARAM]: on ? REVIEW_VALUE : null },
+      queryParamsHandling: 'merge',
+      replaceUrl,
+    });
   }
 
   protected onRefreshed(message: string): void {

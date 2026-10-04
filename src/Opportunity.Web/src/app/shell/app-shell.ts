@@ -13,7 +13,7 @@ import {
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { filter, map, skip } from 'rxjs';
+import { distinctUntilChanged, filter, map, skip } from 'rxjs';
 import { CommandRegistry, cycleRegion } from '../core/commands';
 import { PreferenceStorage } from '../core/preferences/preference-storage';
 import { SessionService } from '../core/session/session';
@@ -142,9 +142,13 @@ export class AppShell {
     effect(() => {
       if (this.sessionEnded()) untracked(() => this.onSessionEnded());
     });
+    // A new page takes focus to its heading. A change of the query string only (a page's own state, such as
+    // Review mode on Documents) leaves focus to that page.
     this.router.events
       .pipe(
         filter((e) => e instanceof NavigationEnd),
+        map((e) => e.urlAfterRedirects.split(/[?#]/)[0]),
+        distinctUntilChanged(),
         skip(1), // Initial load: leave focus at the top of the document.
         takeUntilDestroyed(),
       )

@@ -1,4 +1,5 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { Location } from '@angular/common';
 import { HttpRequest } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -350,5 +351,61 @@ describe('Review mode (E16-T03)', () => {
     const active = grid().getAttribute('aria-activedescendant');
     expect(root().querySelector(`#${active}`)?.textContent?.trim()).toBe('ACM0000003');
     expect(root().textContent).toContain('Selected: 1');
+  });
+
+  /** Location, with the router following Back/Forward as in the app (the harness does not start that listener). */
+  function browserHistory(): Location {
+    TestBed.inject(Router).setUpLocationChangeListener();
+    return TestBed.inject(Location);
+  }
+
+  it('is a browser history entry: Back returns to the list, Forward reopens, "Back to list" drops the entry', async () => {
+    await setup();
+    const location = browserHistory();
+    await openRow(1);
+    expect(location.path()).toBe('/w/ws-1/documents?view=review');
+
+    location.back();
+    await settle();
+    expect(review()).toBeNull();
+    expect(location.path()).toBe('/w/ws-1/documents');
+    expect(document.activeElement).toBe(grid());
+
+    location.forward();
+    await settle();
+    expect(bar()).toContain('Doc 2 of 250');
+
+    button('Back to list').click();
+    await settle();
+    expect(review()).toBeNull();
+    expect(location.path()).toBe('/w/ws-1/documents');
+    location.back();
+    await settle();
+    expect(location.path()).not.toContain('view=review');
+  });
+
+  it('asks about unsaved coding on the browser Back button and stays in Review mode on Cancel', async () => {
+    await setup();
+    const location = browserHistory();
+    await openRow(0);
+    const coding = harness.fixture.debugElement.query(By.directive(ReviewCoding))
+      .componentInstance as ReviewCoding;
+    Object.assign(coding, { dirty: signal(true) });
+
+    location.back();
+    await settle();
+    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    [...dialog.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Cancel')!.click();
+    await settle();
+    expect(bar()).toContain('Doc 1 of 250');
+    expect(location.path()).toBe('/w/ws-1/documents?view=review');
+  });
+
+  it('shows the list when the page is loaded with the Review mode URL', async () => {
+    await setup();
+    await TestBed.inject(Router).navigateByUrl('/w/ws-1/documents?view=review');
+    await settle();
+    expect(review()).toBeNull();
+    expect(TestBed.inject(Location).path()).toBe('/w/ws-1/documents');
   });
 });

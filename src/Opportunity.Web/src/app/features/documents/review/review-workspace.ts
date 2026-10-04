@@ -184,6 +184,11 @@ export class ReviewWorkspace {
     if (await this.confirmLeave()) this.back.emit();
   }
 
+  /** The browser's Back button: asks about unsaved edits like "Back to list"; true when Review mode may close. */
+  canLeave(): Promise<boolean> {
+    return this.confirmLeave();
+  }
+
   private async step(direction: CursorDirection): Promise<void> {
     const cursor = this.cursor();
     // Related items never move the cursor: Previous/Next carry on from the cursor document.
