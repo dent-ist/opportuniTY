@@ -1,3 +1,4 @@
+using Opportunity.Application.Import;
 using Opportunity.Contracts.Import;
 using Opportunity.Core.Fields;
 using Opportunity.Import.Volumes;
@@ -206,7 +207,7 @@ public static class MappingCompiler
 
         if (!IsControlNumberKey(overlay))
         {
-            issues.Add(Error("overlay-key-not-unique",
+            issues.Add(Error(ImportKeyRules.KeyNotUnique,
                 $"'{overlay.KeyField ?? overlay.KeyFieldId?.ToString(System.Globalization.CultureInfo.InvariantCulture)}' cannot be the overlay key: only fields declared unique can, and today that is Control Number."));
         }
     }
@@ -623,15 +624,7 @@ public static class MappingCompiler
     public static bool IsControlNumberKey(OverlaySettings overlay)
     {
         ArgumentNullException.ThrowIfNull(overlay);
-        if (overlay.KeyFieldId is { } id)
-        {
-            return id == SystemFields.ControlNumber;
-        }
-
-        var name = overlay.KeyField?.Trim();
-        return string.IsNullOrEmpty(name)
-            || string.Equals(name.Replace(" ", string.Empty, StringComparison.Ordinal), OverlaySettings.ControlNumberKey, StringComparison.OrdinalIgnoreCase)
-            || name == SystemFields.ControlNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return ImportKeyRules.IsControlNumberKey(overlay.KeyField, overlay.KeyFieldId);
     }
 
     private static void BuildSettings(ColumnBinding column, ImportProfileDefinition profile, MappingOptions options, List<MappingIssue> issues)

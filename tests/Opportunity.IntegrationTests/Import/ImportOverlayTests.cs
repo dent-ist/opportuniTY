@@ -47,14 +47,14 @@ public sealed class ImportOverlayTests(MigrationPostgresFixture postgres)
         (await h.RunAsync(append)).Status.Should().Be(JobStatus.CompletedWithErrors);
         (await h.IssuesAsync(append)).Select(e => (e.RowNo, e.Code)).Should().Equal((1L, ImportKeyRules.KeyExists));
         (await h.BatchAsync(append)).RowsImported.Should().Be(1);
-        var appendCheck = await checker.CheckAsync(ws, ImportMode.Append, [new(1, "K-2", "K-2"), new(2, "K-4", "K-4")], Ct);
+        var appendCheck = await checker.CheckAsync(ws, ImportMode.Append, OverlaySettings.ControlNumberKey, [new(1, "K-2", "K-2"), new(2, "K-4", "K-4")], Ct);
         appendCheck.Collisions.Select(c => (c.RowNo, c.Issue.Code)).Should().Equal((1L, ImportKeyRules.KeyExists));
         (appendCheck.WillCreate, appendCheck.AlreadyExists).Should().Be((1L, 1L));
 
         var overlay = await h.StartAsync(ws, Dat(["BEGDOC", "CUSTODIAN"], ["K-1", "Smith-Jones"], ["K-9", "Nobody"]), mode: ImportMode.Overlay);
         (await h.RunAsync(overlay)).Status.Should().Be(JobStatus.CompletedWithErrors);
         (await h.IssuesAsync(overlay)).Select(e => (e.RowNo, e.Code)).Should().Equal((2L, ImportKeyRules.KeyMissing));
-        var overlayCheck = await checker.CheckAsync(ws, ImportMode.Overlay, [new(1, "K-1", "K-1"), new(2, "K-9", "K-9")], Ct);
+        var overlayCheck = await checker.CheckAsync(ws, ImportMode.Overlay, OverlaySettings.ControlNumberKey, [new(1, "K-1", "K-1"), new(2, "K-9", "K-9")], Ct);
         overlayCheck.Collisions.Select(c => (c.RowNo, c.Issue.Code)).Should().Equal((2L, ImportKeyRules.KeyMissing));
         (overlayCheck.WillUpdate, overlayCheck.NotFound).Should().Be((1L, 1L));
 
@@ -63,7 +63,9 @@ public sealed class ImportOverlayTests(MigrationPostgresFixture postgres)
         (await h.RunAsync(both)).Status.Should().Be(JobStatus.Completed);
         var report = await h.BatchAsync(both);
         (report.RowsImported, report.RowsOverlaid, report.RowsErrored).Should().Be((1L, 1L, 0L));
-        (await checker.CheckAsync(ws, ImportMode.AppendOverlay, probes, Ct)).Collisions.Should().BeEmpty();
+        (await checker.CheckAsync(ws, ImportMode.AppendOverlay, OverlaySettings.ControlNumberKey, probes, Ct)).Collisions.Should().BeEmpty();
+        await checker.Invoking(c => c.CheckAsync(ws, ImportMode.Overlay, "Custodian", probes, Ct))
+            .Should().ThrowAsync<ArgumentException>().WithMessage($"{ImportKeyRules.KeyNotUnique}*");
     }
 
     [Fact]

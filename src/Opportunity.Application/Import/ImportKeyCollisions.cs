@@ -1,4 +1,6 @@
+using System.Globalization;
 using Opportunity.Contracts.Import;
+using Opportunity.Core.Fields;
 
 namespace Opportunity.Application.Import;
 
@@ -31,6 +33,26 @@ public static class ImportKeyRules
 
     /// <summary>Overlay: no document has the row's key.</summary>
     public const string KeyMissing = "KEY_MISSING";
+
+    /// <summary>Profile error code when the key field is not declared unique (only Control Number is today).</summary>
+    public const string KeyNotUnique = "overlay-key-not-unique";
+
+    /// <summary>
+    /// True when the key field (by name, with or without the space, or by field id; null or blank means the default)
+    /// is Control Number: the only field declared unique today, so the only valid key (E08-T07).
+    /// </summary>
+    public static bool IsControlNumberKey(string? keyField, int? keyFieldId = null)
+    {
+        if (keyFieldId is { } id)
+        {
+            return id == SystemFields.ControlNumber;
+        }
+
+        var name = keyField?.Trim();
+        return string.IsNullOrEmpty(name)
+            || string.Equals(name.Replace(" ", string.Empty, StringComparison.Ordinal), OverlaySettings.ControlNumberKey, StringComparison.OrdinalIgnoreCase)
+            || name == SystemFields.ControlNumber.ToString(CultureInfo.InvariantCulture);
+    }
 
     public static ImportKeyDecision Decide(ImportMode mode, bool exists) => (mode, exists) switch
     {
@@ -80,10 +102,24 @@ public sealed class ImportKeyCollisionChecker(IImportBatchStore batches)
     /// <summary>Most keys looked up per database round trip.</summary>
     public const int LookupBatchSize = 1_000;
 
+    /// <summary>
+    /// Classifies a batch of key values for <paramref name="mode"/> against the workspace's documents and returns the
+    /// counts plus the colliding keys (<see cref="ImportKeyRules.KeyExists"/> / <see cref="ImportKeyRules.KeyMissing"/>).
+    /// <paramref name="keyField"/> is the profile's overlay key (null = Control Number); any key that is not declared
+    /// unique throws <see cref="ArgumentException"/> (the profile compiler reports it as
+    /// <see cref="ImportKeyRules.KeyNotUnique"/> first).
+    /// </summary>
     public async Task<ImportKeyCheck> CheckAsync(
-        Guid workspaceId, ImportMode mode, IReadOnlyList<ImportKeyProbe> probes, CancellationToken cancellationToken = default)
+        Guid workspaceId, ImportMode mode, string? keyField, IReadOnlyList<ImportKeyProbe> probes, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(probes);
+        if (!ImportKeyRules.IsControlNumberKey(keyField))
+        {
+            throw new ArgumentException(
+                $"{ImportKeyRules.KeyNotUnique}: key field '{keyField}' is not declared unique; only Control Number can identify documents.",
+                nameof(keyField));
+        }
+
         long create = 0, update = 0, exists = 0, missing = 0;
         var collisions = new List<ImportKeyCollision>();
         foreach (var page in probes.Chunk(LookupBatchSize))

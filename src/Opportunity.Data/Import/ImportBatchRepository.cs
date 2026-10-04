@@ -679,7 +679,9 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
             }
         }
 
-        // Existing documents with these numbers, locked in DocumentId order (the bulk lock order, ADR-010 §6).
+        // Existing documents with these numbers, locked in DocumentId order (the bulk lock order, ADR-010 §6). NO KEY UPDATE:
+        // the import never changes key columns, and a FOR UPDATE lock here would block the FK KEY SHARE that concurrent
+        // coding writes take on the document row while holding its projection-state lock (a lock-order deadlock).
         var existing = new Dictionary<string, (Guid DocumentId, bool Deleted)>(StringComparer.Ordinal);
         await using (var command = tx.Command(
             """
@@ -688,7 +690,7 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
             JOIN opportunity.document d ON d.workspace_id = @ws AND d.control_number_norm = normalize(u.n, NFC)
             JOIN opportunity.document_projection_state s ON s.workspace_id = d.workspace_id AND s.document_id = d.document_id
             ORDER BY d.document_id
-            FOR UPDATE OF d, s
+            FOR NO KEY UPDATE OF d, s
             """))
         {
             command.Parameters.AddWithValue("ws", ws);

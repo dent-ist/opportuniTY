@@ -49,6 +49,7 @@ public static class ImportWorkerModule
         services.TryAddSingleton<IRestrictionClassBinding>(NoRestrictionClassBinding.Instance);
         services.TryAddSingleton<IImportBatchStore>(sp => new ImportBatchRepository(
             sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IRestrictionClassBinding>()));
+        services.TryAddSingleton<ImportKeyCollisionChecker>();
         services.TryAddSingleton<IJobRepository>(sp => new JobRepository(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddPostgresJobChunkStore();
         services.TryAddSingleton<IFieldCatalogRepository>(sp => new FieldCatalogRepository(sp.GetRequiredService<NpgsqlDataSource>()));
