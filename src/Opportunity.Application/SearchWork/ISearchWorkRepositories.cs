@@ -1,4 +1,5 @@
 using Opportunity.Application.Jobs;
+using Opportunity.Core.Jobs;
 
 namespace Opportunity.Application.SearchWork;
 
@@ -70,9 +71,37 @@ public interface IIndexChunkTaskRepository
     /// <summary>Transient with attempts left → RetryWait with backoff; otherwise Failed (replayable, never cancelled).</summary>
     Task<IndexTaskFailureResult> FailAsync(IndexTaskLease lease, ChunkError failure, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Heartbeat and fence F2 of the index worker (ADR-010 §3.2, ADR-001 §4 R5): extends the lease by
+    /// <paramref name="leaseDuration"/> while the token still matches and the workspace is Active.
+    /// </summary>
+    Task<IndexTaskRenewal> RenewLeaseAsync(IndexTaskLease lease, TimeSpan leaseDuration, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Running → Pending without charging the attempt (worker shutdown): the dispatcher publishes the task again. False
+    /// when the lease was lost.
+    /// </summary>
+    Task<bool> ReleaseAsync(IndexTaskLease lease, CancellationToken cancellationToken = default);
+
     Task<IndexChunkTaskInfo?> GetAsync(Guid workspaceId, Guid taskId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<IndexChunkTaskInfo>> GetByJobAsync(Guid workspaceId, Guid jobId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Resolves the membership reference of an IndexChunkTask to document ids from authoritative state (§21 step 1,
+/// ADR-010 §4), one keyset page at a time in ascending DocumentId order. Identifiers only: the projection is read
+/// separately, in its own snapshot.
+/// </summary>
+public interface IIndexTaskMembershipReader
+{
+    /// <summary>
+    /// Up to <paramref name="limit"/> member ids greater than <paramref name="after"/> (null: from the start). An empty
+    /// page means the membership is exhausted. Throws <see cref="NotSupportedException"/> for a membership kind that
+    /// cannot be resolved by this build (a permanent task failure, replayable once it can).
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ReadPageAsync(
+        Guid workspaceId, ChunkMembership membership, Guid? after, int limit, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Housekeeping of both search work tables: redispatch, backlog, day partitions and retention.</summary>

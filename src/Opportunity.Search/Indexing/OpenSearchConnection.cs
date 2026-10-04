@@ -62,7 +62,62 @@ internal sealed class OpenSearchConnection : IDisposable
         throw new OpenSearchRequestException(method, path, response.StatusCode, ErrorType(json), Reason(json) ?? Truncate(text));
     }
 
+    /// <summary>
+    /// Sends an NDJSON body made of <paramref name="lines"/> (each already newline-terminated) without concatenating
+    /// them, and returns status and parsed body whatever the status: the bulk writer classifies every outcome itself.
+    /// </summary>
+    public async Task<OpenSearchResponse> SendNdjsonAsync(string path, IReadOnlyList<byte[]> lines, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(path, UriKind.Relative)) { Content = new NdjsonContent(lines) };
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        JsonNode? json = null;
+        if (!string.IsNullOrWhiteSpace(text) && response.Content.Headers.ContentType?.MediaType?.Contains("json", StringComparison.Ordinal) == true)
+        {
+            try
+            {
+                json = JsonNode.Parse(text);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // A truncated or non-JSON error page: the status alone classifies it.
+            }
+        }
+
+        return new OpenSearchResponse(response.StatusCode, json);
+    }
+
     public void Dispose() => _http.Dispose();
+
+    private sealed class NdjsonContent : HttpContent
+    {
+        private readonly IReadOnlyList<byte[]> _lines;
+        private readonly long _length;
+
+        public NdjsonContent(IReadOnlyList<byte[]> lines)
+        {
+            _lines = lines;
+            _length = lines.Sum(l => (long)l.Length);
+            Headers.ContentType = new MediaTypeHeaderValue("application/x-ndjson");
+        }
+
+        protected override async Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) =>
+            await SerializeToStreamAsync(stream, context, CancellationToken.None).ConfigureAwait(false);
+
+        protected override async Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context, CancellationToken cancellationToken)
+        {
+            foreach (var line in _lines)
+            {
+                await stream.WriteAsync(line, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = _length;
+            return true;
+        }
+    }
 
     internal static string? ErrorType(JsonNode? body) =>
         body?["error"] is JsonObject error ? error["type"]?.GetValue<string>() : null;

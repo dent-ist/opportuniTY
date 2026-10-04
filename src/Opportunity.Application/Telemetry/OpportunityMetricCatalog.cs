@@ -141,6 +141,21 @@ public static class OpportunityMetricCatalog
         "Age of the oldest IndexChunkTask per non-terminal status.",
         [TelemetryAttributes.Status, TelemetryAttributes.Lane], "E07-T06");
 
+    public static MetricDefinition IndexChunkTaskAttempts { get; } = new(
+        "opportunity.index.chunk_task.attempts", MetricKind.Counter, "{task}",
+        "IndexChunkTask deliveries handled by the chunk index worker, by lane and outcome (applied, retry, failed, skipped, released, rejected).",
+        [TelemetryAttributes.Lane, TelemetryAttributes.Outcome, TelemetryAttributes.ErrorType], "E07-T04");
+
+    public static MetricDefinition IndexChunkTaskDuration { get; } = new(
+        "opportunity.index.chunk_task.duration", MetricKind.Histogram, "s",
+        "Lease to settle duration of one IndexChunkTask attempt, by lane and outcome.",
+        [TelemetryAttributes.Lane, TelemetryAttributes.Outcome], "E07-T04", Buckets: DurationBuckets);
+
+    public static MetricDefinition IndexBulkItems { get; } = new(
+        "opportunity.index.bulk.items", MetricKind.Counter, "{document}",
+        "Documents written by the index workers' _bulk requests, by lane and outcome (applied, stale, transient, permanent).",
+        [TelemetryAttributes.Lane, TelemetryAttributes.Outcome], "E07-T04");
+
     public static MetricDefinition SearchRequestDuration { get; } = new(
         "opportunity.search.request.duration", MetricKind.Histogram, "s",
         "Search execution time by query class (§17: simple p95 < 1 s, complex p95 < 3 s).",
@@ -190,6 +205,7 @@ public static class OpportunityMetricCatalog
         OutboxPending, OutboxOldestAge, OutboxPublishLatency, DispatcherPublished, QueueDepth, QueueConsumers, DeadLetteredMessages,
         SearchGenerationCommitted, SearchGenerationIndexed, SearchIndexLag, SearchCommitToSearchable,
         SecurityProjectionLag, SearchStaleVersionRejections, IndexChunkTasks, IndexChunkTaskOldestAge,
+        IndexChunkTaskAttempts, IndexChunkTaskDuration, IndexBulkItems,
         SearchRequestDuration, SearchPostFilterDropped, Jobs, JobsActive, JobChunks, JobChunkDuration, AuditWriteDuration,
     ];
 }

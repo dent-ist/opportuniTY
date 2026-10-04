@@ -15,7 +15,7 @@ public static class SearchWorkStoreRegistration
 {
     /// <summary>
     /// The PostgreSQL search work store (V0011): <see cref="ISearchOutboxRepository"/>, <see cref="IIndexChunkTaskRepository"/>,
-    /// <see cref="ISearchWorkMaintenance"/> and the <c>LISTEN</c> wake-up channel (<see cref="ISearchWorkWakeUpListener"/>).
+    /// <see cref="ISearchWorkMaintenance"/>, <see cref="IIndexTaskMembershipReader"/> and the <c>LISTEN</c> wake-up channel (<see cref="ISearchWorkWakeUpListener"/>).
     /// The data source is resolved when a repository is first used.
     /// </summary>
     public static IServiceCollection AddPostgresSearchWorkStore(this IServiceCollection services)
@@ -24,6 +24,7 @@ public static class SearchWorkStoreRegistration
         services.TryAddSingleton<ISearchOutboxRepository>(sp => new SearchOutboxRepository(sp.GetRequiredService<NpgsqlDataSource>()));
         services.TryAddSingleton<IIndexChunkTaskRepository>(sp => new IndexChunkTaskRepository(sp.GetRequiredService<NpgsqlDataSource>()));
         services.TryAddSingleton<ISearchWorkMaintenance>(sp => new SearchWorkMaintenance(sp.GetRequiredService<NpgsqlDataSource>()));
+        services.TryAddSingleton<IIndexTaskMembershipReader>(sp => new IndexTaskMembershipReader(sp.GetRequiredService<NpgsqlDataSource>()));
         services.TryAddSingleton(new SearchWorkListenerOptions());
         services.TryAddSingleton<ISearchWorkWakeUpListener>(sp => new PostgresSearchWorkListener(
             sp.GetRequiredService<NpgsqlDataSource>(),

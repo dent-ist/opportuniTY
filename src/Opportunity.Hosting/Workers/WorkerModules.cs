@@ -35,6 +35,11 @@ public static class WorkerModuleCatalog
         {
             AddDispatcher(services, configuration);
         }
+
+        if (type == WorkerTypes.Indexing)
+        {
+            services.AddChunkIndexWorkerModule(configuration);
+        }
     }
 
     private static void AddDispatcher(IServiceCollection services, IConfiguration configuration)
