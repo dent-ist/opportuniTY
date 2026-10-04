@@ -6,6 +6,7 @@ using Microsoft.Net.Http.Headers;
 
 using Npgsql;
 
+using Opportunity.Api.Content;
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Conventions.Idempotency;
 using Opportunity.Application.Coding;
@@ -34,7 +35,9 @@ public sealed class CodingEndpoints : IApiEndpointModule
     public const string Path = "/documents/{documentId}/coding";
 
     private const string Tag = "Coding";
-    private const string NotFoundDetail = "The resource does not exist.";
+    // The document 404 of every document route (the content gateway's), so coding and content answer an unknown, hidden or
+    // malformed document identically.
+    private const string NotFoundDetail = ProtectedContentGateway.DocumentNotFoundDetail;
 
     public void MapEndpoints(ApiRouteGroups routes)
     {

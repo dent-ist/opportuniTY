@@ -302,7 +302,7 @@ public sealed class CodingApiTests(MigrationPostgresFixture postgres)
         foreach (var doc in new[] { restricted, walled, Guid.NewGuid() })
         {
             var missing = await (await GetAsync(client, CodingUrl(w.Id, doc), reviewer)).ShouldBeProblemAsync(HttpStatusCode.NotFound, "not-found");
-            missing.GetProperty("detail").GetString().Should().Be("The resource does not exist.");
+            missing.GetProperty("detail").GetString().Should().Be("The document does not exist.", "coding answers like every other document route");
             await (await PutAsync(client, CodingUrl(w.Id, doc), reviewer, Set(w.Responsive, true), "\"1\""))
                 .ShouldBeProblemAsync(HttpStatusCode.NotFound, "not-found");
         }
