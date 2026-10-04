@@ -10,7 +10,13 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using Opportunity.Application.Authorization;
+using Opportunity.Application.Fields;
 using Opportunity.Application.Storage;
+using Opportunity.Core.Fields;
+using Opportunity.Core.Jobs;
+using Opportunity.Core.Security;
+using Opportunity.Import.Jobs;
 using Opportunity.IntegrationTests.Api;
 using Opportunity.IntegrationTests.Migrations;
 
@@ -107,6 +113,143 @@ public sealed class ImportApiTests(MigrationPostgresFixture postgres)
         (await response.Content.ReadAsStringAsync(Ct)).Should().Contain("control-number-unmapped");
         (await h.CountAsync("SELECT count(*) FROM opportunity.import_batch WHERE workspace_id = @ws", ws)).Should().Be(0);
         (await h.CountAsync("SELECT count(*) FROM opportunity.job WHERE workspace_id = @ws", ws)).Should().Be(0);
+    }
+
+    private static readonly string[] NotesHeader = ["BEGDOC", "NOTES", "EXTRA"];
+
+    /// <summary>NOTES reuses the existing field "Reviewer Notes" by name (a new-field target whose name exists creates nothing).</summary>
+    private static object NotesColumn() =>
+        new { column = "NOTES", targets = new[] { new { kind = "newField", newField = new { name = "Reviewer Notes", type = "text" } } } };
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_field_renamed_or_deleted_after_a_start_without_ManageFields_is_not_created_and_the_import_fails(bool delete)
+    {
+        await using var h = await ImportHarness.CreateAsync(postgres);
+        var ws = await h.WorkspaceAsync();
+        var notes = (await h.Db.Fields.CreateFieldAsync(new NewField(ws, "Reviewer Notes", FieldType.Text, FieldStorage.Metadata), Ct)).Value!;
+        await using var factory = new ApiFactory();
+        var app = factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("ConnectionStrings:App", h.Db.AppConnectionString);
+            b.ConfigureTestServices(s =>
+            {
+                s.Replace(ServiceDescriptor.Singleton(h.Store));
+                PermissionsWithout(s, Permission.WorkspaceManageFields, Permission.ImportOverlay);
+            });
+        });
+        using var client = app.CreateClient();
+        var dat = ImportHarness.Utf8Bom(ImportHarness.Dat(NotesHeader[..2], ["TOC-1", "a note"], ["TOC-2", "another"]));
+
+        // The principal holds Import.Run but not Workspace.ManageFields: a mapping that creates a field is refused ...
+        using (var refused = await PostAsync(client, ws, ImportHarness.Utf8Bom(ImportHarness.Dat(NotesHeader, ["TOC-1", "a note", "x"])),
+            new { autoMap = true, profile = new { columns = new object[] { NotesColumn(), NewTextColumn("EXTRA", "Extra Field") } } }, "toc-refused"))
+        {
+            refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        }
+
+        // ... and one that only reuses existing fields is accepted.
+        using var response = await PostAsync(client, ws, dat, new { autoMap = true, profile = new { columns = new object[] { NotesColumn() } } }, "toc-1");
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync(Ct));
+        var importId = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct)).RootElement.GetProperty("importId").GetGuid();
+        var batch = (await h.Batches.GetAsync(ws, importId, Ct))!;
+        batch.MayCreateFields.Should().BeFalse();
+
+        // Between start and preparation the mapped field goes away: the recompiled mapping would now create it.
+        var changed = delete
+            ? await h.Db.Fields.DeleteFieldAsync(ws, notes.FieldId, Ct)
+            : await h.Db.Fields.UpdateFieldAsync(new FieldChange(ws, notes.FieldId) { Name = "Reviewer Notes (old)" }, Ct);
+        changed.Succeeded.Should().BeTrue();
+
+        (await h.PrepareAsync(batch)).Should().Be(ImportPreparationOutcome.Failed);
+
+        var catalog = await h.Db.Fields.GetCatalogAsync(ws, cancellationToken: Ct);
+        catalog.Fields.Where(f => !f.IsDeleted && f.Name == "Reviewer Notes").Should().BeEmpty("field creation was never authorized");
+        var job = (await h.Jobs.GetAsync(ws, batch.JobId, Ct))!;
+        job.Status.Should().Be(JobStatus.Failed);
+        job.StatusReason.Should().StartWith(ImportStartScope.FieldCreationNotAuthorized);
+        (await h.Db.ColumnAsync(
+            $"SELECT action || ':' || outcome || ':' || reason_code FROM audit.audit_event WHERE workspace_id = '{ws}' AND category = 'Import' AND action = 'Completed'"))
+            .Should().Equal("Completed:Failure:" + ImportStartScope.FieldCreationNotAuthorized);
+        (await h.CountAsync("SELECT count(*) FROM opportunity.document WHERE workspace_id = @ws", ws)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_start_authorized_to_create_fields_still_creates_a_mapped_field_renamed_before_preparation()
+    {
+        await using var h = await ImportHarness.CreateAsync(postgres);
+        var ws = await h.WorkspaceAsync();
+        var notes = (await h.Db.Fields.CreateFieldAsync(new NewField(ws, "Reviewer Notes", FieldType.Text, FieldStorage.Metadata), Ct)).Value!;
+        await using var factory = new ApiFactory();
+        var app = factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("ConnectionStrings:App", h.Db.AppConnectionString);
+            b.ConfigureTestServices(s => s.Replace(ServiceDescriptor.Singleton(h.Store)));
+        });
+        using var client = app.CreateClient();
+
+        var dat = ImportHarness.Utf8Bom(ImportHarness.Dat(NotesHeader, ["TOC-1", "a note", "x"], ["TOC-2", "another", "y"]));
+        using var response = await PostAsync(client, ws, dat,
+            new { autoMap = true, profile = new { columns = new object[] { NotesColumn(), NewTextColumn("EXTRA", "Extra Field") } } }, "toc-ok");
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync(Ct));
+        var importId = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct)).RootElement.GetProperty("importId").GetGuid();
+        var batch = (await h.Batches.GetAsync(ws, importId, Ct))!;
+        batch.MayCreateFields.Should().BeTrue();
+
+        (await h.Db.Fields.UpdateFieldAsync(new FieldChange(ws, notes.FieldId) { Name = "Reviewer Notes (old)" }, Ct)).Succeeded.Should().BeTrue();
+
+        (await h.RunAsync(batch)).Status.Should().Be(JobStatus.Completed);
+        var catalog = await h.Db.Fields.GetCatalogAsync(ws, cancellationToken: Ct);
+        catalog.Fields.Where(f => !f.IsDeleted).Select(f => f.Name).Should().Contain(["Reviewer Notes", "Reviewer Notes (old)", "Extra Field"]);
+        (await h.BatchAsync(batch)).Preparation!.FieldsCreated.Should().Be(2);
+    }
+
+    private static object NewTextColumn(string column, string name) =>
+        new { column, targets = new[] { new { kind = "newField", newField = new { name, type = "text" } } } };
+
+    /// <summary>The real PDP, except that the given workspace permissions are never granted.</summary>
+    private static void PermissionsWithout(IServiceCollection services, params Permission[] withheld)
+    {
+        var real = services.Last(d => d.ServiceType == typeof(IAuthorizationService));
+        services.RemoveAll<IAuthorizationService>();
+        services.AddScoped<IAuthorizationService>(sp => new WithheldPermissions(
+            (IAuthorizationService)(real.ImplementationType is { } type
+                ? ActivatorUtilities.CreateInstance(sp, type)
+                : real.ImplementationFactory!(sp)),
+            [.. withheld]));
+    }
+
+    private sealed class WithheldPermissions(IAuthorizationService inner, HashSet<Permission> withheld) : IAuthorizationService
+    {
+        public Task<AuthorizationDecision> AuthorizeAsync(
+            SecurityPrincipal principal, Guid workspaceId, Permission permission, CancellationToken cancellationToken = default) =>
+            withheld.Contains(permission)
+                ? Task.FromResult(AuthorizationDecision.Deny(AuthorizationReasons.PermissionNotGranted))
+                : inner.AuthorizeAsync(principal, workspaceId, permission, cancellationToken);
+
+        public Task<AuthorizationDecision> AuthorizeAsync(
+            SecurityPrincipal principal, Guid workspaceId, Permission permission, Guid documentId, CancellationToken cancellationToken = default) =>
+            withheld.Contains(permission)
+                ? Task.FromResult(AuthorizationDecision.Deny(AuthorizationReasons.PermissionNotGranted))
+                : inner.AuthorizeAsync(principal, workspaceId, permission, documentId, cancellationToken);
+
+        public Task<IReadOnlyDictionary<Guid, AuthorizationDecision>> AuthorizeManyAsync(
+            SecurityPrincipal principal, Guid workspaceId, Permission permission, IReadOnlyCollection<Guid> documentIds,
+            DenialAudit audit = DenialAudit.PerDocument, CancellationToken cancellationToken = default) =>
+            inner.AuthorizeManyAsync(principal, workspaceId, permission, documentIds, audit, cancellationToken);
+
+        public Task<AuthorizationDecision> AuthorizeMembershipAsync(
+            SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default) =>
+            inner.AuthorizeMembershipAsync(principal, workspaceId, cancellationToken);
+
+        public Task<EffectivePermissions> GetEffectivePermissionsAsync(
+            SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default) =>
+            inner.GetEffectivePermissionsAsync(principal, workspaceId, cancellationToken);
+
+        public Task<VisibilityResult> GetVisibilityAsync(
+            SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default) =>
+            inner.GetVisibilityAsync(principal, workspaceId, cancellationToken);
     }
 
     private static async Task<HttpResponseMessage> PostAsync(HttpClient client, Guid ws, byte[] dat, object request, string key)

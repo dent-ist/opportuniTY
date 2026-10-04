@@ -105,7 +105,7 @@ internal sealed class ImportHarness : IAsyncDisposable
     /// <summary>What the API does on start: freeze the auto-mapped profile, upload the DAT, create batch and job.</summary>
     public async Task<ImportBatchRecord> StartAsync(
         Guid ws, byte[] dat, ImportProfileDefinition? profile = null, ImportMode mode = ImportMode.Append,
-        IReadOnlyList<int>? codingFields = null, string name = "volume.dat")
+        IReadOnlyList<int>? codingFields = null, string name = "volume.dat", bool? mayCreateFields = null)
     {
         codingFields ??= [];
         profile = (profile ?? new ImportProfileDefinition()) with { Mode = mode };
@@ -140,6 +140,9 @@ internal sealed class ImportHarness : IAsyncDisposable
             SourceSize = dat.Length,
             ProfileJson = ImportProfileRules.Serialize(mapping.EffectiveProfile),
             CodingOverlayFieldIds = codingFields,
+            // Like the API: granted exactly when the start-time mapping creates fields or choices (Workspace.ManageFields).
+            MayCreateFields = mayCreateFields
+                ?? (mapping.Targets.Any(t => t.CreatesField is not null) || mapping.Columns.Any(c => c.Parsing?.CreateMissingChoices == true)),
             InitiatedBy = User,
             AuditTemplate = new AuditEvent
             {

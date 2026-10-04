@@ -272,6 +272,8 @@ public sealed class ImportEndpoints : IApiEndpointModule
             ProfileVersion = profileVersion,
             ProfileJson = ImportProfileRules.Serialize(mapping.EffectiveProfile),
             CodingOverlayFieldIds = codingFields,
+            // Only what was authorized above; the worker refuses to create fields or choices without it.
+            MayCreateFields = createsFields,
             InitiatedBy = principal.UserId,
             ClientIdempotencyKey = context.Request.Headers[IdempotencyMiddleware.HeaderName].ToString() is { Length: > 0 } clientKey ? clientKey : null,
             CorrelationId = principal.CorrelationId,

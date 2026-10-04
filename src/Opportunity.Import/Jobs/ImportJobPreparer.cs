@@ -95,7 +95,7 @@ public sealed partial class ImportJobPreparer(
             {
                 LogFailed(logger, importBatchId, failure);
                 await jobs.FailAsync(workspaceId, job.JobId, failure, cancellationToken).ConfigureAwait(false);
-                await batches.RecordCompletedAsync(workspaceId, importBatchId, cancellationToken).ConfigureAwait(false);
+                await batches.RecordCompletedAsync(workspaceId, importBatchId, scan.FailureCode, cancellationToken).ConfigureAwait(false);
                 return ImportPreparationOutcome.Failed;
             }
 
@@ -115,7 +115,7 @@ public sealed partial class ImportJobPreparer(
             .ConfigureAwait(false);
         if (started.Status is { } status && JobStateMachine.IsFinished(status))
         {
-            await batches.RecordCompletedAsync(workspaceId, importBatchId, cancellationToken).ConfigureAwait(false);
+            await batches.RecordCompletedAsync(workspaceId, importBatchId, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         LogStarted(logger, importBatchId, plans.Count);
@@ -171,6 +171,21 @@ public sealed partial class ImportJobPreparer(
                     + string.Join(" ", mapping.Issues.Where(i => i.Severity == MappingIssueSeverity.Error).Select(i => i.Message)));
             }
 
+            // The start authorized what ITS compilation asked for; the catalog may have changed since (a field the
+            // profile reuses by name was renamed or deleted), so the recompiled mapping must stay within that scope.
+            if (!batch.MayCreateFields && ImportStartScope.FieldsToCreate(mapping) is { Count: > 0 } newFields)
+            {
+                return ScanResult.Fail(ImportStartScope.FieldCreationNotAuthorized,
+                    $"The mapping now creates field(s) {string.Join(", ", newFields.Select(n => "'" + n + "'"))}, which the start of this import did not "
+                    + "authorize (a field it mapped was renamed or deleted since). Creating fields needs Workspace.ManageFields; start the import again.");
+            }
+
+            if (ImportStartScope.CodingFieldsNotEnabled(mapping, batch.CodingOverlayFieldIds) is { Count: > 0 } coding)
+            {
+                return ScanResult.Fail(ImportStartScope.CodingFieldNotEnabled,
+                    $"The mapping now loads coding or privilege field(s) {string.Join(", ", coding)} that this import did not enable (Q-31); start the import again.");
+            }
+
             var chunks = new List<ImportChunkRange>();
             var keys = new List<ImportKey>(options.KeyBatchSize);
             var missingChoices = new Dictionary<string, (TargetBinding Target, HashSet<string> Names)>(StringComparer.Ordinal);
@@ -224,6 +239,12 @@ public sealed partial class ImportJobPreparer(
             }
 
             await FlushKeysAsync(batch, keys, cancellationToken).ConfigureAwait(false);
+            if (!batch.MayCreateFields && missingChoices.Count > 0)
+            {
+                return ScanResult.Fail(ImportStartScope.FieldCreationNotAuthorized,
+                    "The load file needs new choices, which the start of this import did not authorize. Creating choices needs Workspace.ManageFields; start the import again.");
+            }
+
             var (fieldsCreated, choicesCreated) = await CreateFieldsAndChoicesAsync(ws, mapping, missingChoices, cancellationToken).ConfigureAwait(false);
             var encoding = reader.Encoding;
             return new ScanResult(
@@ -236,6 +257,7 @@ public sealed partial class ImportJobPreparer(
                     fieldsCreated,
                     choicesCreated),
                 chunks,
+                null,
                 null);
         }
     }
@@ -312,9 +334,16 @@ public sealed partial class ImportJobPreparer(
         return (createdFields, createdChoices);
     }
 
-    private sealed record ScanResult(ImportPreparation? Preparation, IReadOnlyList<ImportChunkRange> Chunks, string? Failure)
+    private sealed record ScanResult(ImportPreparation? Preparation, IReadOnlyList<ImportChunkRange> Chunks, string? Failure, string? FailureCode)
     {
-        public static ScanResult Fail(string reason) => new(null, [], reason.Length <= 2000 ? reason : reason[..2000]);
+        public static ScanResult Fail(string reason) => Fail(null, reason);
+
+        /// <summary>A failure with a code: the job's reason starts with it and the Import.Completed audit carries it.</summary>
+        public static ScanResult Fail(string? code, string reason)
+        {
+            var text = code is null ? reason : code + ": " + reason;
+            return new(null, [], text.Length <= 2000 ? text : text[..2000], code);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Import {ImportBatchId} prepared: {Chunks} chunks planned")]

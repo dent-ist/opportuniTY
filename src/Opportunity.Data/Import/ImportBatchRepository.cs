@@ -43,7 +43,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         workspace_id, import_batch_id, job_id, name, mode, source_file_name, source_object_key, source_sha256, source_size,
         profile_id, profile_version, profile::text, coding_overlay_field_ids, header::text, dat_encoding, dat_encoding_fallback,
         data_offset, rows_total, fields_created, choices_created, prepared_at, rows_imported, rows_overlaid, rows_skipped,
-        rows_errored, created_by, created_at, completed_at
+        rows_errored, created_by, created_at, completed_at, may_create_fields
         """;
 
     // Overlay may set these document columns; identity, family and artifact columns belong to other tickets.
@@ -93,8 +93,9 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             $"""
             INSERT INTO opportunity.import_batch
                 (workspace_id, import_batch_id, job_id, name, mode, source_file_name, source_object_key, source_sha256, source_size,
-                 profile_id, profile_version, profile, coding_overlay_field_ids, created_by)
-            VALUES (@ws, @id, @job, @name, @mode, @file, @key, @sha, @size, @profile_id, @profile_version, @profile::jsonb, @coding, @by)
+                 profile_id, profile_version, profile, coding_overlay_field_ids, may_create_fields, created_by)
+            VALUES (@ws, @id, @job, @name, @mode, @file, @key, @sha, @size, @profile_id, @profile_version, @profile::jsonb, @coding,
+                    @may_create_fields, @by)
             RETURNING {Columns}
             """))
         {
@@ -111,6 +112,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             insert.Parameters.Add(Nullable("profile_version", NpgsqlDbType.Bigint, batch.ProfileVersion));
             insert.Parameters.AddWithValue("profile", batch.ProfileJson);
             insert.Parameters.AddWithValue("coding", batch.CodingOverlayFieldIds.Distinct().Order().ToArray());
+            insert.Parameters.AddWithValue("may_create_fields", batch.MayCreateFields);
             insert.Parameters.AddWithValue("by", batch.InitiatedBy);
             await using var reader = await insert.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
@@ -127,6 +129,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             ["SourceSize"] = Invariant(record.SourceSize),
             ["ProfileId"] = record.ProfileId?.ToString(),
             ["CodingOverlayFields"] = string.Join(',', record.CodingOverlayFieldIds),
+            ["MayCreateFields"] = record.MayCreateFields ? "true" : "false",
         };
         await AuditSql.InsertAsync(tx, batch.AuditTemplate with
         {
@@ -429,7 +432,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         return new ImportChunkResult(commit, 0, 0, 0, 0, null);
     }
 
-    public async Task RecordCompletedAsync(Guid workspaceId, Guid importBatchId, CancellationToken cancellationToken = default)
+    public async Task RecordCompletedAsync(Guid workspaceId, Guid importBatchId, string? reasonCode = null, CancellationToken cancellationToken = default)
     {
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         var batch = await ReadAsync(tx, workspaceId, importBatchId, cancellationToken).ConfigureAwait(false);
@@ -447,7 +450,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await AuditCompletedAsync(tx, batch, job.Status, job.CorrelationId, cancellationToken).ConfigureAwait(false);
+        await AuditCompletedAsync(tx, batch, job.Status, job.CorrelationId, cancellationToken, reasonCode).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -962,7 +965,8 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
     }
 
     private static Task AuditCompletedAsync(
-        WorkspaceTransaction tx, ImportBatchRecord batch, JobStatus status, string? correlationId, CancellationToken cancellationToken) =>
+        WorkspaceTransaction tx, ImportBatchRecord batch, JobStatus status, string? correlationId, CancellationToken cancellationToken,
+        string? reasonCode = null) =>
         AuditSql.InsertAsync(tx, new AuditEvent
         {
             WorkspaceId = batch.WorkspaceId,
@@ -976,7 +980,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             ResourceType = "ImportBatch",
             ResourceId = batch.ImportBatchId.ToString(),
             Outcome = status == JobStatus.Completed ? AuditOutcome.Success : AuditOutcome.Failure,
-            ReasonCode = status == JobStatus.Completed ? null : status.ToString(),
+            ReasonCode = status == JobStatus.Completed ? null : reasonCode ?? status.ToString(),
             CorrelationId = string.IsNullOrEmpty(correlationId) ? null : correlationId,
             JobId = batch.JobId,
             Details = new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -1072,6 +1076,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             CreatedBy = reader.GetGuid(25),
             CreatedAt = reader.GetFieldValue<DateTimeOffset>(26),
             CompletedAt = reader.IsDBNull(27) ? null : reader.GetFieldValue<DateTimeOffset>(27),
+            MayCreateFields = reader.GetBoolean(28),
         };
     }
 

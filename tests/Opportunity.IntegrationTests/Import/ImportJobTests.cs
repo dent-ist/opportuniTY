@@ -246,6 +246,36 @@ public sealed class ImportJobTests(MigrationPostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Coding_fields_a_start_did_not_enable_cannot_be_loaded_after_the_catalog_changes()
+    {
+        await using var h = await ImportHarness.CreateAsync(postgres);
+        var ws = await h.WorkspaceAsync();
+        var responsive = (await h.Db.Fields.CreateFieldAsync(new NewField(ws, "Responsive", FieldType.SingleChoice, FieldStorage.Coding), Ct)).Value!;
+        await h.Db.Fields.AddChoiceAsync(ws, responsive.FieldId, "Yes", Ct);
+        var topic = (await h.Db.Fields.CreateFieldAsync(new NewField(ws, "Topic", FieldType.Text, FieldStorage.Metadata), Ct)).Value!;
+        var dat = ImportHarness.Utf8Bom(ImportHarness.Dat(["BEGDOC", "RESPONSIVE", "TOPIC"], ["Q31-1", "Yes", "Yes"]));
+        var profile = new ImportProfileDefinition
+        {
+            Columns =
+            [
+                new ColumnMapping { Column = "RESPONSIVE", Targets = [new MappingTarget { Kind = MappingTargetKind.Field, FieldId = responsive.FieldId, FieldName = "Responsive" }] },
+                new ColumnMapping { Column = "TOPIC", Targets = [new MappingTarget { Kind = MappingTargetKind.Field, FieldId = topic.FieldId, FieldName = "Topic" }] },
+            ],
+        };
+        var batch = await h.StartAsync(ws, dat, profile, ImportMode.AppendOverlay, codingFields: [responsive.FieldId]);
+
+        // After the start, "Topic" now names a second coding field (mappings resolve by name first).
+        (await h.Db.Fields.UpdateFieldAsync(new FieldChange(ws, topic.FieldId) { Name = "Topic (old)" }, Ct)).Succeeded.Should().BeTrue();
+        var privileged = (await h.Db.Fields.CreateFieldAsync(new NewField(ws, "Topic", FieldType.SingleChoice, FieldStorage.Coding), Ct)).Value!;
+
+        (await h.PrepareAsync(batch)).Should().Be(ImportPreparationOutcome.Failed);
+        var job = (await h.Jobs.GetAsync(ws, batch.JobId, Ct))!;
+        job.Status.Should().Be(JobStatus.Failed);
+        job.StatusReason.Should().StartWith(ImportStartScope.CodingFieldNotEnabled).And.Contain(privileged.FieldId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        (await h.CountAsync("SELECT count(*) FROM opportunity.document WHERE workspace_id = @ws", ws)).Should().Be(0);
+    }
+
+    [Fact]
     public async Task A_preparation_that_dies_mid_file_is_taken_over_and_resumes_without_duplicates()
     {
         await using var h = await ImportHarness.CreateAsync(postgres, rowsPerChunk: 500);

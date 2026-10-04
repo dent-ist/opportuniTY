@@ -28,6 +28,9 @@ CREATE TABLE opportunity.import_batch (
     profile                 jsonb       NOT NULL,
     -- Q-31: coding/privilege fields an administrator enabled for overlay by this import; empty when none.
     coding_overlay_field_ids integer[]  NOT NULL DEFAULT '{}',
+    -- Workspace.ManageFields was checked and granted at start because the mapping creates fields or choices; the
+    -- preparation pass (which recompiles the mapping against the then-current catalog) creates none without it.
+    may_create_fields       boolean     NOT NULL DEFAULT false,
 
     -- Facts of the preparation pass, fixed before the job starts.
     prepare_claimed_by      text        NULL,

@@ -67,6 +67,13 @@ public sealed class ImportChunkExecutor(
         }
 
         var codingFields = batch.CodingOverlayFieldIds.ToHashSet();
+        if (ImportStartScope.CodingFieldsNotEnabled(mapping, codingFields) is { Count: > 0 } notEnabled)
+        {
+            // The catalog changed after the start; only the fields the start enabled may be loaded (Q-31).
+            throw new PermanentChunkException("CodingFieldNotEnabled",
+                $"The mapping now loads coding or privilege field(s) {string.Join(", ", notEnabled)} that this import did not enable (Q-31).");
+        }
+
         var rows = new List<ImportRow>(checked((int)(range.RowTo - range.RowFrom + 1)));
         var stream = ImportSource.OpenChunk(store, batch, range);
         var reader = await DatReader.OpenAsync(stream, readerOptions, leaveOpen: false, cancellationToken).ConfigureAwait(false);

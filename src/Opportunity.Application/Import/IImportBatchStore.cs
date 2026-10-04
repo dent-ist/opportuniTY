@@ -55,8 +55,11 @@ public interface IImportBatchStore
     /// </summary>
     Task<ImportChunkResult> ApplyChunkAsync(ClaimedChunk chunk, ImportChunkWrite write, CancellationToken cancellationToken = default);
 
-    /// <summary>Writes <c>Import.Completed</c> once, for a job that finished without a chunk commit (an empty file).</summary>
-    Task RecordCompletedAsync(Guid workspaceId, Guid importBatchId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Writes <c>Import.Completed</c> once, for a job that finished without a chunk commit (an empty file, or a
+    /// preparation that failed; <paramref name="reasonCode"/> then names why).
+    /// </summary>
+    Task RecordCompletedAsync(Guid workspaceId, Guid importBatchId, string? reasonCode = null, CancellationToken cancellationToken = default);
 
     /// <summary>Row errors and warnings in row order, keyset-paged.</summary>
     Task<IReadOnlyList<ImportRowIssueRecord>> GetRowIssuesAsync(
@@ -94,6 +97,12 @@ public sealed record NewImportBatch
 
     /// <summary>Q-31: coding/privilege fields enabled for overlay by this import.</summary>
     public IReadOnlyList<int> CodingOverlayFieldIds { get; init; } = [];
+
+    /// <summary>
+    /// <c>Workspace.ManageFields</c> was granted at start for a mapping that creates fields or choices. Without it the
+    /// preparation pass refuses to create any, whatever the recompiled mapping asks for.
+    /// </summary>
+    public bool MayCreateFields { get; init; }
 
     public required Guid InitiatedBy { get; init; }
 
@@ -138,6 +147,9 @@ public sealed record ImportBatchRecord
     public required string ProfileJson { get; init; }
 
     public IReadOnlyList<int> CodingOverlayFieldIds { get; init; } = [];
+
+    /// <summary>Field and choice creation was authorized at start (<see cref="NewImportBatch.MayCreateFields"/>).</summary>
+    public bool MayCreateFields { get; init; }
 
     /// <summary>Null until the preparation pass completed.</summary>
     public ImportPreparation? Preparation { get; init; }
