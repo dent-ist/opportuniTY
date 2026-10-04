@@ -1,5 +1,8 @@
 # opportuniTY
 
+<img width="1340" height="805" alt="opportuniTY-logo-white-bg" src="https://github.com/user-attachments/assets/828c71de-ea8c-4d35-a9e4-f985b5aba19e" />
+
+
 An open-source, self-hosted, horizontally scalable eDiscovery document review platform.
 Organizations install and run opportuniTY in their own environment; it is not offered as a hosted service.
 
