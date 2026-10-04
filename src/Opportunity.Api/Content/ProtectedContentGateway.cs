@@ -222,6 +222,14 @@ public sealed partial class ProtectedContentGateway(
         return new ContentRangeRequest(range.From, range.To);
     }
 
+    /// <summary>
+    /// Streams one granted object as an attachment with the D12.2 headers and single-range support, a full read
+    /// re-verified against the registry hash. For grants issued outside <see cref="IDocumentAccessService"/> after their
+    /// own PDP decision and durable audit event (export packages).
+    /// </summary>
+    internal static IResult StreamAttachment(IObjectStore store, ContentGrant grant, ILogger logger) =>
+        new StreamedContentResult(store, grant, attachment: true, logger);
+
     private static void SetCommonHeaders(HttpResponse response, Guid auditEventId)
     {
         response.Headers.CacheControl = "no-store";

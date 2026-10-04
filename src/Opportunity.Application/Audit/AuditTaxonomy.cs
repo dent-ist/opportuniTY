@@ -57,6 +57,22 @@ public static class AuditTaxonomy
         public const string Completed = "Completed";
     }
 
+    /// <summary>Load-file exports of a frozen set (E12-T01, ADR-013 §5).</summary>
+    public static class Export
+    {
+        public const string Category = "Export";
+        public const string Created = "Created";
+        public const string Completed = "Completed";
+
+        /// <summary>Members a chunk left out after the Q-15 access re-check, with the precise reason per document.</summary>
+        public const string DocumentsExcluded = "DocumentsExcluded";
+
+        public const string Downloaded = "Downloaded";
+
+        /// <summary>The audit resource type of export events.</summary>
+        public const string ResourceType = "Export";
+    }
+
     public static class Security
     {
         public const string Category = "Security";

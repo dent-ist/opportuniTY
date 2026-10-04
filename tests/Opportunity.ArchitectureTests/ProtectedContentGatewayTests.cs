@@ -90,7 +90,10 @@ public sealed class ProtectedContentGatewayTests
                     offenders.Add($"{route}: gateway endpoint outside a workspace");
                 }
 
-                if (endpoint.Metadata.GetMetadata<DocumentPermissionMetadata>() is not { Permissions.Count: > 0 })
+                // Document content declares the per-document permission the gateway decides; export packages declare the
+                // workspace permission PEP-1 enforces (Export.Download).
+                if (endpoint.Metadata.GetMetadata<DocumentPermissionMetadata>() is not { Permissions.Count: > 0 }
+                    && endpoint.Metadata.GetMetadata<RequiredPermissionMetadata>() is null)
                 {
                     offenders.Add($"{route}: gateway endpoint without a declared document permission");
                 }
@@ -107,6 +110,8 @@ public sealed class ProtectedContentGatewayTests
             "/api/v1/workspaces/{workspaceId}/documents/{documentId}/text",
             "/api/v1/workspaces/{workspaceId}/documents/{documentId}/pages/{pageNumber}/image",
             "/api/v1/workspaces/{workspaceId}/documents/{documentId}/pages/{pageNumber}/thumbnail",
+            "/api/v1/workspaces/{workspaceId}/exports/{exportId}/files/{fileId}/content",
+            "/api/v1/workspaces/{workspaceId}/exports/{exportId}/package",
         ]);
     }
 
