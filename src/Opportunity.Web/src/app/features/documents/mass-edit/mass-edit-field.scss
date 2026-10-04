@@ -1,0 +1,110 @@
+:host {
+  display: block;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-inline-start-width: calc(3 * var(--opp-border-width));
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+:host(.is-on) {
+  border-inline-start-color: var(--opp-color-accent);
+  background: var(--opp-color-surface-raised);
+}
+
+.mf__note {
+  margin-block: var(--opp-space-1) 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.mf__field-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--opp-space-2);
+}
+
+.mf__field-name {
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.mf__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  margin-block-start: var(--opp-space-2);
+  padding-inline-start: var(--opp-space-5);
+}
+
+.mf__modes,
+.mf__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-1) var(--opp-space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mf__choices {
+  flex-direction: column;
+}
+
+.mf__mode {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  min-block-size: var(--opp-target-min);
+  cursor: pointer;
+}
+
+.mf__mode input {
+  margin: 0;
+  accent-color: var(--opp-color-accent);
+}
+
+.mf__choice-table {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(10rem, auto);
+  gap: var(--opp-space-1) var(--opp-space-3);
+}
+
+.mf__choice {
+  display: contents;
+}
+
+.mf__choice span {
+  align-self: center;
+}
+
+.mf__choice select {
+  min-block-size: var(--opp-control-height);
+  padding-inline: var(--opp-control-padding-x);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font: inherit;
+}
+
+.mf__choice select:focus-visible {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: var(--opp-focus-ring-offset);
+}
+
+.mf__error {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  margin: 0;
+  color: var(--opp-color-danger-text);
+  font-size: var(--opp-font-size-sm);
+}
+
+@media (forced-colors: active) {
+  :host(.is-on) {
+    border-color: Highlight;
+  }
+}
