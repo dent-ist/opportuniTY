@@ -121,5 +121,97 @@ for (const { path, interact } of PAGES) {
   });
 }
 
-// Grid scroll frame budget (ADR-018 §14: ≥ 50 fps with 10k loaded rows). Enable when the review grid exists.
-test.fixme('the review grid scrolls 10k loaded rows at ≥ 50 fps (E16-T02)', async () => {});
+// Grid scroll frame budget (ADR-018 §14: ≥ 50 fps with 10k loaded rows), with the same CPU slowdown as the page budgets.
+test.describe('review grid', () => {
+  test.use({ api: { documents: 10_000 } });
+
+  test('the review grid scrolls 10k loaded rows at ≥ 50 fps (E16-T02)', async ({
+    page,
+  }, testInfo) => {
+    // 500 rows per cursor page (the reviewer's page-size preference), so 10k rows are 20 pages.
+    await page.addInitScript(() => localStorage.setItem('opp.pref.grid.pageSize', '500'));
+    await openPage(page, '/w/ws-1/documents');
+    const grid = page.getByRole('grid', { name: 'Documents' });
+    await expect(grid).toBeVisible();
+    const rowPx = await grid.evaluate(
+      (el) =>
+        el.querySelector<HTMLElement>('[role="rowgroup"] + [role="rowgroup"] [role="row"]')!
+          .offsetHeight,
+    );
+
+    // Load every page by scrolling to the end of what is loaded (cursor paging, never from offset 0).
+    const loadedRows = () =>
+      grid.evaluate(
+        (el, px) => Math.round(el.querySelector<HTMLElement>('.grid__body')!.offsetHeight / px),
+        rowPx,
+      );
+    for (let i = 0; i < 100 && (await loadedRows()) < 10_000; i++) {
+      await grid.evaluate((el) => (el.scrollTop = el.scrollHeight));
+      await page.waitForTimeout(50);
+    }
+    expect(await loadedRows()).toBe(10_000);
+    // The last loaded row is reachable.
+    await grid.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(grid.getByRole('gridcell', { name: 'ACM0010000', exact: true })).toBeAttached();
+
+    // A fast fling through the loaded rows with real scroll input (a mouse-wheel gesture at 10 rows per frame),
+    // timed frame by frame after a warm-up.
+    const box = (await grid.boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    const fling = async (fromRow: number, rows: number) => {
+      await grid.evaluate((el, top) => (el.scrollTop = top), fromRow * rowPx);
+      await page.evaluate(() => {
+        const w = window as unknown as { __frames: number[]; __rows: number; __stop: boolean };
+        w.__frames = [];
+        w.__rows = 0;
+        w.__stop = false;
+        const tick = (t: number) => {
+          w.__frames.push(t);
+          w.__rows = Math.max(
+            w.__rows,
+            document.querySelectorAll('[role="grid"] [role="row"]').length,
+          );
+          if (!w.__stop) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      await cdp.send('Input.synthesizeScrollGesture', {
+        x: Math.round(box.x + box.width / 2),
+        y: Math.round(box.y + box.height / 2),
+        yDistance: -rows * rowPx,
+        speed: 10 * rowPx * 60,
+        gestureSourceType: 'mouse',
+        preventFling: true,
+      });
+      return page.evaluate(() => {
+        const w = window as unknown as { __frames: number[]; __rows: number; __stop: boolean };
+        w.__stop = true;
+        const times = w.__frames;
+        const deltas = times.slice(1).map((v, i) => v - times[i]);
+        return {
+          fps: (1000 * deltas.length) / (times[times.length - 1] - times[0]),
+          slowFrames: deltas.filter((d) => d > 1000 / 30).length,
+          maxRowsInDom: w.__rows,
+          scrolledTo: document.querySelector('[role="grid"]')!.scrollTop,
+        };
+      });
+    };
+    await fling(0, 600);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: budget.cpuSlowdown });
+    const result = await fling(3_000, 3_000);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+
+    results.push(
+      `| review grid, 10k rows | ${result.fps.toFixed(1)} fps | ${result.slowFrames} frames > 33 ms | ${result.maxRowsInDom} rows in DOM | |`,
+    );
+    await testInfo.attach('grid-scroll', {
+      body: JSON.stringify(result, null, 2),
+      contentType: 'application/json',
+    });
+    expect(result.scrolledTo, 'the gesture scrolled through the rows').toBeGreaterThan(
+      5_000 * rowPx,
+    );
+    expect(result.maxRowsInDom, 'only visible rows plus a buffer are rendered').toBeLessThan(100);
+    expect(result.fps, 'scroll frame rate').toBeGreaterThanOrEqual(50);
+  });
+});

@@ -1,0 +1,233 @@
+@switch (status()) {
+  @case ('loading') {
+    <opp-loading-state label="Loading documents…" />
+  }
+  @case ('error') {
+    <opp-error-state [error]="error()!" (retry)="retry()" />
+  }
+  @case ('not-indexed') {
+    <opp-empty-state
+      title="No documents to list yet"
+      message="Documents appear here once they have been imported and made searchable."
+    />
+  }
+  @case ('empty') {
+    <opp-empty-state
+      title="No documents match"
+      message="Change the query, or clear it and search to list every document."
+    />
+  }
+  @default {
+    <div class="grid__header">
+      <p class="grid__count">
+        <strong>{{ countText() }}</strong> documents
+        <span class="grid__freshness">· {{ freshnessText() }}</span>
+      </p>
+      @if (approximateTotal()) {
+        <button type="button" oppButton="ghost" [busy]="busy()" (click)="countExactly()">
+          Count exactly
+        </button>
+      }
+      <p class="grid__selected">Selected: {{ selection().size }}</p>
+      <ng-content select="[gridActions]" />
+    </div>
+    @if (notice(); as message) {
+      <div class="grid__notice" role="status">
+        <opp-icon name="refresh" />
+        <span>{{ message }}</span>
+        <button type="button" oppButton="ghost" (click)="notice.set(null)">Dismiss</button>
+      </div>
+    }
+    <div
+      #viewport
+      class="grid__viewport"
+      role="grid"
+      tabindex="0"
+      aria-label="Documents"
+      aria-multiselectable="true"
+      oppCommandScope="grid"
+      [attr.aria-rowcount]="ariaRowCount()"
+      [attr.aria-colcount]="colCount()"
+      [attr.aria-activedescendant]="activeDescendant()"
+      [attr.aria-busy]="busy() || loadingMore() ? true : null"
+      [style.--grid-columns]="gridTemplate()"
+      [style.--grid-min-width]="gridMinWidth()"
+      [class.is-wide]="wide()"
+      (scroll)="onScroll()"
+      (keydown)="onKeydown($event)"
+    >
+      <div class="grid__head" role="rowgroup">
+        <div class="grid__row grid__row--head" role="row" aria-rowindex="1">
+          <div
+            class="grid__cell grid__cell--select"
+            role="columnheader"
+            aria-colindex="1"
+            [id]="headerCellId(COL_SELECT)"
+            [class.is-active]="focusRow() === -1 && focusCol() === COL_SELECT"
+          >
+            <input
+              type="checkbox"
+              tabindex="-1"
+              aria-label="Select all on this page"
+              [checked]="selectedOnPage().all"
+              [indeterminate]="selectedOnPage().some"
+              (mousedown)="$event.preventDefault()"
+              (click)="onHeaderClick(COL_SELECT)"
+            />
+          </div>
+          <ng-container
+            *ngTemplateOutlet="
+              header;
+              context: { $implicit: columns().controlNumber, col: COL_CONTROL }
+            "
+          />
+          <div
+            class="grid__cell grid__cell--family"
+            role="columnheader"
+            aria-colindex="3"
+            [id]="headerCellId(2)"
+            [class.is-active]="focusRow() === -1 && focusCol() === 2"
+          >
+            <span class="opp-visually-hidden">Family</span>
+          </div>
+          @for (column of columns().view; track column.queryName; let i = $index) {
+            <ng-container
+              *ngTemplateOutlet="header; context: { $implicit: column, col: FIXED_COLUMNS + i }"
+            />
+          }
+        </div>
+      </div>
+      <div class="grid__body" role="rowgroup" [style.height.px]="rows().length * rowHeight()">
+        <div
+          class="grid__slice"
+          role="none"
+          [style.transform]="'translateY(' + range().start * rowHeight() + 'px)'"
+        >
+          <!-- Rows are recycled by slot: scrolling rebinds them instead of rebuilding the DOM. -->
+          @for (hit of visibleRows(); track $index; let i = $index) {
+            @let index = range().start + i;
+            @let selected = isSelected(hit);
+            @let marker = familyMarker(hit);
+            @let cells = rowCells(hit);
+            <div
+              class="grid__row"
+              role="row"
+              [attr.aria-rowindex]="rowIndex(index)"
+              [attr.aria-selected]="selected"
+              [class.is-selected]="selected"
+              [class.is-focused]="focusRow() === index"
+              (click)="onRowClick(index, focusCol())"
+              (dblclick)="openRow(index)"
+            >
+              <div
+                class="grid__cell grid__cell--select"
+                role="gridcell"
+                [id]="cellId(index, COL_SELECT)"
+                [class.is-active]="focusRow() === index && focusCol() === COL_SELECT"
+              >
+                <input
+                  type="checkbox"
+                  tabindex="-1"
+                  [attr.aria-label]="'Select ' + hit.controlNumber"
+                  [checked]="selected"
+                  (mousedown)="$event.preventDefault()"
+                  (click)="
+                    $event.stopPropagation(); onRowClick(index, COL_SELECT); toggleRow(index)
+                  "
+                />
+              </div>
+              <div
+                class="grid__cell grid__cell--control"
+                role="gridcell"
+                [id]="cellId(index, COL_CONTROL)"
+                [class.is-active]="focusRow() === index && focusCol() === COL_CONTROL"
+              >
+                {{ hit.controlNumber }}
+              </div>
+              <div
+                class="grid__cell grid__cell--family"
+                role="gridcell"
+                [id]="cellId(index, 2)"
+                [class.is-active]="focusRow() === index && focusCol() === 2"
+              >
+                @if (marker) {
+                  <span aria-hidden="true">{{ marker.symbol }}</span>
+                  <span class="opp-visually-hidden">{{ marker.label }}</span>
+                }
+              </div>
+              @for (column of columns().view; track column.queryName; let c = $index) {
+                <div
+                  class="grid__cell"
+                  role="gridcell"
+                  [class.grid__cell--numeric]="
+                    column.format === 'size' || column.format === 'number'
+                  "
+                  [id]="cellId(index, FIXED_COLUMNS + c)"
+                  [class.is-active]="focusRow() === index && focusCol() === FIXED_COLUMNS + c"
+                >
+                  {{ cells[c] }}
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+    @if (loadError(); as message) {
+      <div class="grid__notice grid__notice--error" role="alert">
+        <span>{{ message }}</span>
+        <button type="button" oppButton="ghost" (click)="retryLoad()">Try again</button>
+      </div>
+    }
+    <div class="grid__footer">
+      <p class="grid__rows" aria-live="off">{{ rowsText() }}</p>
+      <label class="grid__size">
+        Rows per page
+        <select (change)="setPageSize($event)">
+          @for (size of PAGE_SIZES; track size) {
+            <option [value]="size" [selected]="size === pageSize()">{{ size }}</option>
+          }
+        </select>
+      </label>
+      <nav class="grid__pager" aria-label="Pages">
+        <button type="button" oppButton="ghost" [disabled]="!canGoBack()" (click)="goFirst()">
+          First
+        </button>
+        <button type="button" oppButton="ghost" [disabled]="!canGoBack()" (click)="goPrevious()">
+          <opp-icon name="chevron-left" />Previous
+        </button>
+        <span class="grid__page">{{ pageText() }}</span>
+        <button type="button" oppButton="ghost" [disabled]="!canGoForward()" (click)="goNext()">
+          Next<opp-icon name="chevron-right" />
+        </button>
+        <button type="button" oppButton="ghost" [disabled]="!canGoForward()" (click)="goLast()">
+          Last
+        </button>
+      </nav>
+    </div>
+  }
+}
+
+<ng-template #header let-column let-col="col">
+  <div
+    class="grid__cell"
+    role="columnheader"
+    [class.grid__cell--control]="col === COL_CONTROL"
+    [class.grid__cell--sortable]="!!column.sortField"
+    [class.is-active]="focusRow() === -1 && focusCol() === col"
+    [id]="headerCellId(col)"
+    [attr.aria-colindex]="col + 1"
+    [attr.aria-sort]="ariaSort(column)"
+    (click)="onHeaderClick(col)"
+  >
+    {{ column.label }}
+    @switch (ariaSort(column)) {
+      @case ('ascending') {
+        <span class="grid__sort" aria-hidden="true">▲</span>
+      }
+      @case ('descending') {
+        <span class="grid__sort" aria-hidden="true">▼</span>
+      }
+    }
+  </div>
+</ng-template>

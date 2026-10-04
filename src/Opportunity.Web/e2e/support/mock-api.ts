@@ -12,7 +12,88 @@ export interface MockApiOptions {
   permissions?: readonly string[];
   /** The signed-in user's stored preferences (`/api/v1/me/preferences`); starts empty. */
   preferences?: Record<string, unknown>;
+  /** Documents every search of the mock finds (the document list); default 250. */
+  documents?: number;
 }
+
+/** A search result page of the document list (`SearchResultPage`); cursors encode the page number (`p<n>`). */
+function searchPage(total: number, pageSize: number, number: number) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const exact = total <= 10_000;
+  const first = (number - 1) * pageSize + 1;
+  const count = Math.max(0, Math.min(pageSize, total - first + 1));
+  const items = Array.from({ length: count }, (_, i) => {
+    const n = first + i;
+    const attachment = n % 4 === 0;
+    return {
+      documentId: `doc-${n}`,
+      controlNumber: `ACM${String(n).padStart(7, '0')}`,
+      documentDate: new Date(Date.UTC(2024, 0, 1) + n * 3_600_000).toISOString(),
+      familyId: `doc-${attachment ? n - 1 : n}`,
+      familySequence: attachment ? 1 : 0,
+      parentDocumentId: attachment ? `doc-${n - 1}` : null,
+      fileExtension: attachment ? 'pdf' : 'msg',
+      fileName: attachment ? `Attachment ${n}.pdf` : `RE: Quarterly terms ${n}.msg`,
+      fileSize: 1024 * ((n * 37) % 900) + 512,
+      fileType: attachment ? 'PDF Document' : 'Email Message',
+      mimeType: attachment ? 'application/pdf' : 'application/vnd.ms-outlook',
+      pageCount: (n % 7) + 1,
+      snippets: [],
+    };
+  });
+  return {
+    searchId: 'search-1',
+    normalized: '',
+    items,
+    page: {
+      number,
+      size: pageSize,
+      pageCount: exact ? pageCount : null,
+      isFirst: number === 1,
+      isLast: number >= pageCount,
+    },
+    total: { value: exact ? total : 10_000, relation: exact ? 'eq' : 'gte' },
+    freshness: { asOf: '2026-10-03T10:42:00Z', current: true, servedGeneration: null },
+    nextCursor: number < pageCount ? `p${number + 1}` : null,
+    previousCursor: number > 1 ? `p${number - 1}` : null,
+    resultsRefreshed: false,
+  };
+}
+
+/** The structural columns of the review grid. */
+const SYSTEM_FIELDS = [
+  ['controlnumber', 'Control Number'],
+  ['date', 'Document Date'],
+  ['filename', 'File Name'],
+  ['filetype', 'File Type'],
+  ['extension', 'File Extension'],
+  ['filesize', 'File Size'],
+  ['pagecount', 'Page Count'],
+].map(([queryName, displayName], i) => ({
+  fieldId: i + 1,
+  queryName,
+  displayName,
+  type: 'keyword',
+  storage: 'column',
+  multiValue: false,
+  isSystem: true,
+  isHidden: false,
+  isSecurityAffecting: false,
+  datePrecision: null,
+  reducedCapabilities: false,
+  capabilities: {
+    sortable: true,
+    filterable: true,
+    aggregatable: false,
+    fullText: false,
+    highlightable: false,
+    wildcard: true,
+    leadingWildcard: false,
+    rangeable: false,
+    exists: true,
+  },
+  choices: null,
+}));
 
 export const ALL_PERMISSIONS = [
   // The #47 permission catalogue (docs/security/permission-matrix.md).
@@ -77,23 +158,9 @@ const CAPABILITIES = {
   exists: true,
 };
 
-/** `GET /api/v1/workspaces/{id}/fields` items: a structural field and the custom fields of the review template. */
+/** `GET /api/v1/workspaces/{id}/fields` items: the grid's structural fields and a custom field of the review template. */
 export const FIELDS = [
-  {
-    fieldId: 1,
-    displayName: 'Control Number',
-    queryName: 'controlnumber',
-    type: 'keyword',
-    storage: 'column',
-    multiValue: false,
-    isSystem: true,
-    isHidden: false,
-    isSecurityAffecting: false,
-    datePrecision: null,
-    capabilities: CAPABILITIES,
-    reducedCapabilities: false,
-    choices: null,
-  },
+  ...SYSTEM_FIELDS,
   {
     fieldId: 1000,
     displayName: 'Responsiveness',
@@ -112,7 +179,7 @@ export const FIELDS = [
       { choiceId: 2, name: 'Not Responsive', isActive: true },
     ],
   },
-] as const;
+];
 
 function problem(status: number, title: string) {
   return {
@@ -124,7 +191,8 @@ function problem(status: number, title: string) {
 
 /** Installs the mock; returns the list it fills with requests it had no answer for. */
 export async function mockApi(page: Page, options: MockApiOptions = {}): Promise<string[]> {
-  const { signedIn = true, permissions = ALL_PERMISSIONS } = options;
+  const { signedIn = true, permissions = ALL_PERMISSIONS, documents = 250 } = options;
+  let pageSize = 100;
   // The "server" copy of the preferences outlives reloads of the page, like the real profile.
   const preferences: Record<string, unknown> = { ...options.preferences };
   // Likewise the user's query history per workspace (newest first, distinct, at most 50).
@@ -184,6 +252,20 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         );
         return route.fulfill({ status: 204 });
       }
+    }
+    if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches$/.test(path) && method === 'POST') {
+      pageSize = Number((route.request().postDataJSON() as { pageSize?: number })?.pageSize ?? 100);
+      return json(route, searchPage(documents, pageSize, 1));
+    }
+    if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches\/[^/]+\/pages$/.test(path)) {
+      const cursor = url.searchParams.get('cursor');
+      const last = url.searchParams.get('last') === 'true';
+      const n = cursor
+        ? Number(cursor.slice(1))
+        : last
+          ? Math.max(1, Math.ceil(documents / pageSize))
+          : Number(url.searchParams.get('page') ?? 1);
+      return json(route, searchPage(documents, pageSize, n));
     }
     if (signedIn && path === '/api/v1/workspaces')
       return json(route, {
