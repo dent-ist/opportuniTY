@@ -87,6 +87,8 @@ Run from this directory (`deploy/docker-compose`). `make <target>` does the same
 | `./opportunity.sh reset [-y]` | Removes containers **and all volumes** (database, index, queues, objects) |
 | `./opportunity.sh compose …` | Any other Compose command with the right files, e.g. `compose config`, `compose build api` |
 
+**Import share owned by root?** If `demo-documents` says the import share is not writable, Docker created `import-share/` before the script did (older versions of this script): run `sudo chown -R "$USER": deploy/docker-compose/import-share` once. The script now creates the folder itself before starting containers.
+
 Without the script:
 
 ```bash

@@ -35,6 +35,8 @@ die() { red "error: $*"; exit 1; }
 
 compose() {
   local files=(-f "$here/compose.yaml")
+  # Create the import share as the current user first: a bind-mount source Docker has to create is owned by root.
+  mkdir -p "$(import_share)" 2>/dev/null || true
   case "$images" in
     local) ;;
     ghcr)
@@ -209,6 +211,9 @@ cmd_demo_documents() {
     # The demo volume (load file + extracted text) goes into the import share; the import reads the text from there.
     local share
     share="$(import_share)"
+    if [[ -d "$share" && ! -w "$share" ]]; then
+      die "the import share $share is not writable by $(id -un) (Docker created it as root); run: sudo chown -R \"\$USER\": \"$share\""
+    fi
     mkdir -p "$share" && rm -rf "$share/demo-volume" && cp -R "$here/seed/demo-volume" "$share/demo-volume" ||
       die "cannot copy the demo volume into the import share $share"
     dat="$share/demo-volume/DATA/DEMO001.dat"
