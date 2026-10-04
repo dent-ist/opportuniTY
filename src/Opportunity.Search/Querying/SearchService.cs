@@ -54,6 +54,9 @@ internal sealed partial class SearchService(
     /// <summary>ReasonCode of a search handle replayed by another user or session (audited, answered 404).</summary>
     internal const string HandleMismatchReason = "SearchHandleMismatch";
 
+    /// <summary>ReasonCode of a cursor that is not one of the (caller's own) handle's live cursors (audited, answered 404).</summary>
+    internal const string CursorMismatchReason = "SearchCursorMismatch";
+
     private SearchServiceOptions Settings => options.Search;
 
     public async Task<SearchOutcome> SearchAsync(SearchCaller caller, SearchRequest request, CancellationToken cancellationToken = default)
@@ -214,6 +217,9 @@ internal sealed partial class SearchService(
             if (!Guid.TryParseExact(raw, "N", out var cursorId)
                 || await sessions.GetCursorAsync(caller.WorkspaceId, id, cursorId, cancellationToken).ConfigureAwait(false) is not { } cursor)
             {
+                // Not one of this handle's live cursors: a tampered, expired or replayed (another user's) cursor. Same 404,
+                // audited like a replayed handle (Q-62).
+                await AuditHandleMismatchAsync(caller, id, cancellationToken, CursorMismatchReason).ConfigureAwait(false);
                 return SearchOutcome.NotFound;
             }
 
@@ -768,11 +774,11 @@ internal sealed partial class SearchService(
             null,
             cancellationToken);
 
-    private Task AuditHandleMismatchAsync(SearchCaller caller, Guid searchId, CancellationToken cancellationToken)
+    private Task AuditHandleMismatchAsync(SearchCaller caller, Guid searchId, CancellationToken cancellationToken, string reason = HandleMismatchReason)
     {
         LogHandleMismatch(logger, caller.WorkspaceId, caller.Principal.UserId);
         return WriteAuditAsync(caller, false, AuditTaxonomy.AuthZ.Category, AuditTaxonomy.AuthZ.Denied, searchId,
-            new Dictionary<string, string?> { ["permission"] = "Search.Execute" }, null, cancellationToken, AuditOutcome.Denied, HandleMismatchReason);
+            new Dictionary<string, string?> { ["permission"] = "Search.Execute" }, null, cancellationToken, AuditOutcome.Denied, reason);
     }
 
     private async Task WriteAuditAsync(

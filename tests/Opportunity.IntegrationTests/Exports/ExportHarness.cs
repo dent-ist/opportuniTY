@@ -69,6 +69,9 @@ internal sealed class ExportHarness : IAsyncDisposable
     public static async Task<ExportHarness> CreateAsync(MigrationPostgresFixture postgres, int documentsPerChunk = 7, int importRowsPerChunk = 500) =>
         new(await ImportHarness.CreateAsync(postgres, rowsPerChunk: importRowsPerChunk), documentsPerChunk);
 
+    /// <summary>The export pipeline over another harness's import pipeline (its database and object store).</summary>
+    public static ExportHarness Over(ImportHarness import, int documentsPerChunk = 7) => new(import, documentsPerChunk);
+
     /// <summary>A user with <paramref name="role"/> in the workspace (and an installation user record with groups).</summary>
     public async Task<Guid> UserAsync(Guid ws, WorkspaceRole role, Guid? userId = null)
     {
