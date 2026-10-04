@@ -83,6 +83,8 @@ export type { GetImport$Params as GetImport$Params } from './fn/import/get-impor
 export { getImport as getImport } from './fn/import/get-import';
 export type { ListImportErrors$Params as ListImportErrors$Params } from './fn/import/list-import-errors';
 export { listImportErrors as listImportErrors } from './fn/import/list-import-errors';
+export type { ListImportFamilyIssues$Params as ListImportFamilyIssues$Params } from './fn/import/list-import-family-issues';
+export { listImportFamilyIssues as listImportFamilyIssues } from './fn/import/list-import-family-issues';
 export type { GetUserPreferences$Params as GetUserPreferences$Params } from './fn/preferences/get-user-preferences';
 export { getUserPreferences as getUserPreferences } from './fn/preferences/get-user-preferences';
 export type { SetUserPreference$Params as SetUserPreference$Params } from './fn/preferences/set-user-preference';

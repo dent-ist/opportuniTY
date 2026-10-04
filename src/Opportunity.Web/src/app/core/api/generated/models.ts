@@ -15,6 +15,7 @@ export type { ColumnStatus } from './models/column-status';
 export type { CreateSnapshotRequest } from './models/create-snapshot-request';
 export type { CursorPageOfDocumentPageResource } from './models/cursor-page-of-document-page-resource';
 export type { CursorPageOfFieldResource } from './models/cursor-page-of-field-resource';
+export type { CursorPageOfImportFamilyIssueResource } from './models/cursor-page-of-import-family-issue-resource';
 export type { CursorPageOfImportProfileSummary } from './models/cursor-page-of-import-profile-summary';
 export type { CursorPageOfImportResource } from './models/cursor-page-of-import-resource';
 export type { CursorPageOfImportRowIssueResource } from './models/cursor-page-of-import-row-issue-resource';
@@ -46,6 +47,9 @@ export type { HttpValidationProblemDetails } from './models/http-validation-prob
 export type { IFormFile } from './models/i-form-file';
 export type { ImageMatchField } from './models/image-match-field';
 export type { ImageSettings } from './models/image-settings';
+export type { ImportFamilyIssueKind } from './models/import-family-issue-kind';
+export type { ImportFamilyIssueResource } from './models/import-family-issue-resource';
+export type { ImportFamilyStatus } from './models/import-family-status';
 export type { ImportFieldType } from './models/import-field-type';
 export type { ImportIssueFile } from './models/import-issue-file';
 export type { ImportMode } from './models/import-mode';

@@ -91,7 +91,26 @@ public interface IImportBatchStore
     Task<IReadOnlyList<ImportRowIssueRecord>> GetRowIssuesAsync(
         Guid workspaceId, Guid importBatchId, ImportIssueSeverity? severity, ImportRowIssueCursor? after, int limit,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The current family report lines (ADR-009 R10) of the documents this import created or overlaid, in row order,
+    /// keyset-paged. Lines change as later chunks or imports complete a family.
+    /// </summary>
+    Task<IReadOnlyList<ImportFamilyIssueRecord>> GetFamilyIssuesAsync(
+        Guid workspaceId, Guid importBatchId, ImportRowIssueCursor? after, int limit, CancellationToken cancellationToken = default);
 }
+
+/// <summary>One family report line of an import's document; <see cref="IssueNo"/> numbers the lines of the document.</summary>
+public sealed record ImportFamilyIssueRecord(
+    long RowNo,
+    int IssueNo,
+    Guid DocumentId,
+    string ControlNumber,
+    Opportunity.Core.Documents.FamilyIssueKind Kind,
+    Opportunity.Core.Documents.FamilyStatus Status,
+    string Message,
+    IReadOnlyList<string> Related,
+    long? MissingCount);
 
 /// <summary>A batch to create together with its Import job.</summary>
 public sealed record NewImportBatch

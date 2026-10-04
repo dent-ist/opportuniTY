@@ -91,8 +91,20 @@ public sealed record RelationshipConsistencyReport(
     public RelationshipFinding Finding(RelationshipFindingKind kind) => Findings.Single(f => f.Kind == kind);
 }
 
+/// <param name="Documents">Documents resolved.</param>
+/// <param name="ChangedDocuments">Documents whose family columns changed; each got a new DocumentVersion and search work.</param>
+/// <param name="Issues">Family report lines now recorded for the workspace.</param>
+public sealed record FamilyResolutionSummary(int Documents, int ChangedDocuments, int Issues);
+
 public interface IDocumentRelationshipRepository
 {
+    /// <summary>
+    /// Re-resolves every family of the workspace from the stored sources (ADR-009 §2, E09-T01) and rewrites the family
+    /// report; changed documents get a new DocumentVersion and SearchOutbox rows, and their duplicate groups are
+    /// recomputed. Import chunks do the same incrementally; on a consistent workspace this changes nothing.
+    /// </summary>
+    Task<FamilyResolutionSummary> ResolveFamiliesAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Records groups and threads and recomputes their member counts, primaries and primary flags in one transaction;
     /// changed documents outside <see cref="RelationshipSync.CoveredDocumentIds"/> get SearchOutbox rows.

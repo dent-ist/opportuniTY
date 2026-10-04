@@ -10,7 +10,7 @@ public static class ImportTargetCatalog
         [SystemFields.ControlNumber, SystemFields.BegBates, SystemFields.EndBates, SystemFields.BegAttach, SystemFields.EndAttach];
 
     private static readonly StructuralTarget[] LeadingStructural =
-        [StructuralTarget.ParentId, StructuralTarget.GroupId, StructuralTarget.NativePath, StructuralTarget.TextPath, StructuralTarget.FolderPath];
+        [StructuralTarget.ParentId, StructuralTarget.GroupId, StructuralTarget.AttachmentIds, StructuralTarget.NativePath, StructuralTarget.TextPath, StructuralTarget.FolderPath];
 
     private static readonly int[] Hashes = [SystemFields.Md5, SystemFields.Sha1, SystemFields.Sha256];
 

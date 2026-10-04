@@ -309,7 +309,7 @@ public sealed class CompiledMapping
             return Cell(result.Status, JsonValue.Create(hash), result.KeepRaw || hash != original, null, null);
         }
 
-        if (target.Structural is StructuralTarget.DuplicateGroupId or StructuralTarget.EmailThreadId && result.Value is not null
+        if (target.Structural is StructuralTarget.DuplicateGroupId or StructuralTarget.EmailThreadId or StructuralTarget.GroupId && result.Value is not null
             && result.Value.GetValue<string>().Length > RelationshipIds.MaxUpstreamValueLength)
         {
             return Cell(CoercionStatus.Error, null, false, null,

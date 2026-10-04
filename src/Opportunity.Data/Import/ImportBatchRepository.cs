@@ -393,6 +393,8 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
         ChunkCommitResult commit;
         await using (var tx = await WorkspaceTransaction.BeginAsync(dataSource, lease.WorkspaceId, cancellationToken).ConfigureAwait(false))
         {
+            // Family resolution sees every chunk committed before it (E09-T01); taken before any row lock of the chunk.
+            await FamilyWriter.LockAsync(tx, cancellationToken).ConfigureAwait(false);
             var batch = await ReadAsync(tx, lease.WorkspaceId, write.ImportBatchId, cancellationToken).ConfigureAwait(false);
             if (batch is null || batch.JobId != lease.JobId)
             {
@@ -503,6 +505,49 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
                     reader.GetString(6),
                     reader.GetString(7),
                     (ImportIssueSource)reader.GetInt16(8)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return issues;
+    }
+
+    public async Task<IReadOnlyList<ImportFamilyIssueRecord>> GetFamilyIssuesAsync(
+        Guid workspaceId, Guid importBatchId, ImportRowIssueCursor? after, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            """
+            SELECT m.row_no, i.issue_no, d.document_id, d.control_number, i.kind, d.family_status, i.message, i.related, i.missing_count
+            FROM opportunity.import_batch_member m
+            JOIN opportunity.family_issue i ON i.workspace_id = m.workspace_id AND i.document_id = m.document_id
+            JOIN opportunity.document d ON d.workspace_id = m.workspace_id AND d.document_id = m.document_id
+            WHERE m.workspace_id = @ws AND m.import_batch_id = @id
+              AND (@after_row::bigint IS NULL OR (m.row_no, i.issue_no) > (@after_row, @after_issue))
+            ORDER BY m.row_no, i.issue_no
+            LIMIT @limit
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("id", importBatchId);
+        command.Parameters.Add(Nullable("after_row", NpgsqlDbType.Bigint, after?.RowNo));
+        command.Parameters.Add(Nullable("after_issue", NpgsqlDbType.Smallint, (short?)after?.IssueNo));
+        command.Parameters.AddWithValue("limit", limit);
+        var issues = new List<ImportFamilyIssueRecord>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                issues.Add(new ImportFamilyIssueRecord(
+                    reader.GetInt64(0),
+                    reader.GetInt16(1),
+                    reader.GetGuid(2),
+                    reader.GetString(3),
+                    (FamilyIssueKind)reader.GetInt16(4),
+                    (FamilyStatus)reader.GetInt16(5),
+                    reader.GetString(6),
+                    reader.GetFieldValue<string[]>(7),
+                    reader.IsDBNull(8) ? null : reader.GetInt64(8)));
             }
         }
 
@@ -753,7 +798,14 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
         }
 
         var covered = plan.Members.Select(m => m.DocumentId).Concat(plan.Overlays.Select(o => o.DocumentId)).ToHashSet();
-        plan.OtherChangedDocuments.AddRange(await SyncRelationshipsAsync(tx, plan, covered, cancellationToken).ConfigureAwait(false));
+
+        // Families of the chunk's documents, before the duplicate groups: a group's primary depends on FamilyId/FamilyDate.
+        var families = await FamilyWriter.ResolveAsync(
+            tx, [.. covered], plan.Members.Select(m => m.DocumentId).ToHashSet(), cancellationToken).ConfigureAwait(false);
+        plan.FamiliesChanged = families.ChangedDocuments.Any(covered.Contains);
+        plan.OtherChangedDocuments.AddRange(families.ChangedDocuments.Where(d => !covered.Contains(d)));
+        plan.OtherChangedDocuments.AddRange(
+            await SyncRelationshipsAsync(tx, plan, covered, families.DuplicateGroupIds, cancellationToken).ConfigureAwait(false));
 
         // OPT page sets (E08-T05) of the documents the chunk created or overlaid; a replaced page set is an overlay change.
         var pagesChanged = await WritePageSetsAsync(tx, batch, plan, changed, cancellationToken).ConfigureAwait(false);
@@ -818,17 +870,19 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
     /// Duplicate groups and email threads of the chunk's documents (E09-T02), after the document writes and before the
     /// search work, through <see cref="RelationshipWriter"/>: the group and thread rows the documents now reference (the
     /// deferred foreign keys need them at commit), plus, for overlays, the ones they referenced before, so every touched
-    /// group is recounted and its primary re-elected. Documents outside the chunk whose primary flag changed are returned:
+    /// group is recounted and its primary re-elected, and the groups of documents whose family changed (the primary is
+    /// family-level). Documents outside the chunk whose primary flag changed are returned:
     /// they get search work of their own (<see cref="RelationshipTasks"/>).
     /// </summary>
     private static async Task<IReadOnlyList<Guid>> SyncRelationshipsAsync(
-        WorkspaceTransaction tx, ChunkPlan plan, IReadOnlySet<Guid> coveredDocumentIds, CancellationToken cancellationToken)
+        WorkspaceTransaction tx, ChunkPlan plan, IReadOnlySet<Guid> coveredDocumentIds, IReadOnlyList<Guid> familyChangedGroups,
+        CancellationToken cancellationToken)
     {
         var rows = plan.Members.Select(m => m.Row).Concat(plan.Overlays.Select(o => o.Row)).ToList();
         var previous = plan.Overlays.Select(o => plan.PreviousRelationships.GetValueOrDefault(o.DocumentId)).ToList();
         var groups = rows.Select(r => r.DuplicateGroup).OfType<DuplicateGroupKey>().DistinctBy(g => g.DuplicateGroupId).ToList();
         var threads = rows.Select(r => r.EmailThread).OfType<EmailThreadKey>().DistinctBy(t => t.EmailThreadId).ToList();
-        var previousGroups = previous.Select(p => p.DuplicateGroupId).OfType<Guid>().Distinct().ToList();
+        var previousGroups = previous.Select(p => p.DuplicateGroupId).OfType<Guid>().Concat(familyChangedGroups).Distinct().ToList();
         var previousThreads = previous.Select(p => p.EmailThreadId).OfType<Guid>().Distinct().ToList();
         if (groups.Count == 0 && threads.Count == 0 && previousGroups.Count == 0 && previousThreads.Count == 0)
         {
@@ -1221,8 +1275,11 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) :
 
         public int Errored => ErroredRows.Count;
 
+        public bool FamiliesChanged { get; set; }
+
         public SearchChangeMask ChangeMask =>
             SearchChangeMask.Content | SearchChangeMask.Metadata
+            | (FamiliesChanged ? SearchChangeMask.Relationships : SearchChangeMask.None)
             | (CodingChanged ? SearchChangeMask.Coding : SearchChangeMask.None)
             | (SecurityChanged ? SearchChangeMask.Security : SearchChangeMask.None);
 

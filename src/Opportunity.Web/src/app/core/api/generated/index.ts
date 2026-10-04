@@ -21,6 +21,7 @@ export type { ColumnStatus } from './models/column-status';
 export type { CreateSnapshotRequest } from './models/create-snapshot-request';
 export type { CursorPageOfDocumentPageResource } from './models/cursor-page-of-document-page-resource';
 export type { CursorPageOfFieldResource } from './models/cursor-page-of-field-resource';
+export type { CursorPageOfImportFamilyIssueResource } from './models/cursor-page-of-import-family-issue-resource';
 export type { CursorPageOfImportProfileSummary } from './models/cursor-page-of-import-profile-summary';
 export type { CursorPageOfImportResource } from './models/cursor-page-of-import-resource';
 export type { CursorPageOfImportRowIssueResource } from './models/cursor-page-of-import-row-issue-resource';
@@ -52,6 +53,9 @@ export type { HttpValidationProblemDetails } from './models/http-validation-prob
 export type { IFormFile } from './models/i-form-file';
 export type { ImageMatchField } from './models/image-match-field';
 export type { ImageSettings } from './models/image-settings';
+export type { ImportFamilyIssueKind } from './models/import-family-issue-kind';
+export type { ImportFamilyIssueResource } from './models/import-family-issue-resource';
+export type { ImportFamilyStatus } from './models/import-family-status';
 export type { ImportFieldType } from './models/import-field-type';
 export type { ImportIssueFile } from './models/import-issue-file';
 export type { ImportMode } from './models/import-mode';
@@ -214,6 +218,8 @@ export type { GetImport$Params as GetImport$Params } from './fn/import/get-impor
 export { getImport as getImport } from './fn/import/get-import';
 export type { ListImportErrors$Params as ListImportErrors$Params } from './fn/import/list-import-errors';
 export { listImportErrors as listImportErrors } from './fn/import/list-import-errors';
+export type { ListImportFamilyIssues$Params as ListImportFamilyIssues$Params } from './fn/import/list-import-family-issues';
+export { listImportFamilyIssues as listImportFamilyIssues } from './fn/import/list-import-family-issues';
 export type { GetUserPreferences$Params as GetUserPreferences$Params } from './fn/preferences/get-user-preferences';
 export { getUserPreferences as getUserPreferences } from './fn/preferences/get-user-preferences';
 export type { SetUserPreference$Params as SetUserPreference$Params } from './fn/preferences/set-user-preference';

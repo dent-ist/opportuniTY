@@ -2153,6 +2153,94 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/imports/{importId}/family-issues": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Family report of an import: orphan attachments, range gaps, documents claimed by two families, invalid ranges, cycles.",
+        "operationId": "ListImportFamilyIssues",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "importId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfImportFamilyIssueResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/documents/{documentId}/pages": {
       "get": {
         "tags": [
@@ -3334,6 +3422,31 @@
           }
         }
       },
+      "CursorPageOfImportFamilyIssueResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportFamilyIssueResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfImportProfileSummary": {
         "required": [
           "items",
@@ -4340,6 +4453,80 @@
             "$ref": "#/components/schemas/ImageMatchField"
           }
         }
+      },
+      "ImportFamilyIssueKind": {
+        "enum": [
+          "parentMissing",
+          "rangeGap",
+          "claimedByTwoFamilies",
+          "invalidRange",
+          "cycle",
+          "attachmentListMismatch"
+        ]
+      },
+      "ImportFamilyIssueResource": {
+        "required": [
+          "row",
+          "documentId",
+          "controlNumber",
+          "kind",
+          "familyStatus",
+          "message",
+          "related",
+          "missingCount"
+        ],
+        "type": "object",
+        "properties": {
+          "row": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ImportFamilyIssueKind"
+          },
+          "familyStatus": {
+            "$ref": "#/components/schemas/ImportFamilyStatus"
+          },
+          "message": {
+            "type": "string"
+          },
+          "related": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missingCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ImportFamilyStatus": {
+        "enum": [
+          "unresolved",
+          "resolved",
+          "conflict",
+          "parentMissing",
+          "gap",
+          "invalidRange"
+        ]
       },
       "ImportFieldType": {
         "enum": [
@@ -6350,6 +6537,7 @@
           "dedupeHash",
           "emailThreadId",
           "emailHash",
+          "attachmentIds",
           null
         ]
       },
