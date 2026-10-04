@@ -5,8 +5,24 @@
   padding: var(--opp-space-5);
 }
 
+// Review mode uses the whole main region.
+:host(.is-reviewing) {
+  gap: 0;
+  padding: 0;
+}
+
 .documents__title {
   font-size: var(--opp-font-size-2xl);
+}
+
+.documents__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+}
+
+.documents__list[hidden] {
+  display: none;
 }
 
 .documents__search {

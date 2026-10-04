@@ -14,16 +14,55 @@ export interface MockApiOptions {
   preferences?: Record<string, unknown>;
   /** Documents every search of the mock finds (the document list); default 250. */
   documents?: number;
+  /** Delay of the document content gateway (`GET …/documents/{id}/text`), to make prefetch measurable. */
+  contentDelayMs?: number;
 }
 
-/** A search result page of the document list (`SearchResultPage`); cursors encode the page number (`p<n>`). */
-function searchPage(total: number, pageSize: number, number: number) {
+/** One protected-content gateway audit record of the mock, as ADR-013 defines them. */
+export interface MockAuditEvent {
+  action: 'Retrieved' | 'Viewed';
+  documentId: string;
+  purpose?: 'display' | 'prefetch';
+  retrievalId?: string | null;
+}
+
+/** Test-side handle on the mock's state ("server" side of the scenario). */
+export interface MockControl {
+  /** Requests to endpoints the mock had no answer for. */
+  readonly unhandled: string[];
+  /** Gateway audit log: `Retrieved` per content delivery (with its purpose), `Viewed` per view beacon. */
+  readonly audit: MockAuditEvent[];
+  /** Running searches expire: page requests answer 404 until the next search runs (Q-33). */
+  expireSearches(): void;
+  /** Documents (1-based numbers) that no longer match any search, e.g. after a recode. */
+  removeDocuments(...numbers: number[]): void;
+}
+
+/** Extracted text of mock document `n`: a few paragraphs, so the viewer shows something realistic. */
+function documentText(n: number): string {
+  const cn = `ACM${String(n).padStart(7, '0')}`;
+  return [
+    `Document ${cn}`,
+    '',
+    `Subject: Quarterly terms ${n}`,
+    '',
+    'Please find the revised supply terms attached. The pricing schedule applies from the start of the next ' +
+      'quarter, and either party may end the agreement with thirty days of written notice.',
+    '',
+    'Regards,',
+    'A. Sender',
+  ].join('\n');
+}
+/**
+ * A search result page of the document list (`SearchResultPage`) over document numbers `docs` (in order);
+ * cursors encode the page number (`p<n>`).
+ */
+function searchPage(docs: readonly number[], pageSize: number, number: number) {
+  const total = docs.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const exact = total <= 10_000;
-  const first = (number - 1) * pageSize + 1;
-  const count = Math.max(0, Math.min(pageSize, total - first + 1));
-  const items = Array.from({ length: count }, (_, i) => {
-    const n = first + i;
+  const first = (number - 1) * pageSize;
+  const items = docs.slice(first, first + pageSize).map((n) => {
     const attachment = n % 4 === 0;
     return {
       documentId: `doc-${n}`,
@@ -189,17 +228,34 @@ function problem(status: number, title: string) {
   };
 }
 
-/** Installs the mock; returns the list it fills with requests it had no answer for. */
-export async function mockApi(page: Page, options: MockApiOptions = {}): Promise<string[]> {
-  const { signedIn = true, permissions = ALL_PERMISSIONS, documents = 250 } = options;
+/** Installs the mock; returns its control handle (unanswered requests, audit log, scenario switches). */
+export async function mockApi(page: Page, options: MockApiOptions = {}): Promise<MockControl> {
+  const {
+    signedIn = true,
+    permissions = ALL_PERMISSIONS,
+    documents = 250,
+    contentDelayMs = 0,
+  } = options;
   let pageSize = 100;
   let total = documents;
+  const removed = new Set<number>();
+  let expired = false;
+  let retrievals = 0;
+  const audit: MockAuditEvent[] = [];
+  const matching = () =>
+    Array.from({ length: total }, (_, i) => i + 1).filter((n) => !removed.has(n));
   // The "server" copy of the preferences outlives reloads of the page, like the real profile.
   const preferences: Record<string, unknown> = { ...options.preferences };
   // Likewise the user's query history per workspace (newest first, distinct, at most 50).
   const history = new Map<string, { query: string; ranAt: string }[]>();
   const json = (route: Route, body: unknown) => route.fulfill({ json: body });
   const unhandled: string[] = [];
+  const control: MockControl = {
+    unhandled,
+    audit,
+    expireSearches: () => (expired = true),
+    removeDocuments: (...numbers) => numbers.forEach((n) => removed.add(n)),
+  };
 
   await page.route(/\/(api|bff)\//, (route) => {
     const url = new URL(route.request().url());
@@ -259,17 +315,65 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       pageSize = Number(body?.pageSize ?? 100);
       // A fielded query (the filter row) narrows the list, so filtering is visible end to end.
       total = body?.query?.includes(':') ? Math.min(documents, 12) : documents;
-      return json(route, searchPage(total, pageSize, 1));
+      expired = false;
+      return json(route, searchPage(matching(), pageSize, 1));
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches\/[^/]+\/pages$/.test(path)) {
+      if (expired) return route.fulfill(problem(404, 'Not found'));
+      const docs = matching();
       const cursor = url.searchParams.get('cursor');
       const last = url.searchParams.get('last') === 'true';
       const n = cursor
         ? Number(cursor.slice(1))
         : last
-          ? Math.max(1, Math.ceil(total / pageSize))
+          ? Math.max(1, Math.ceil(docs.length / pageSize))
           : Number(url.searchParams.get('page') ?? 1);
-      return json(route, searchPage(total, pageSize, n));
+      return json(route, searchPage(docs, pageSize, n));
+    }
+    // Protected-content gateway (E05-T04 / E11-T01): the first chunk of extracted text, audited per delivery
+    // with its purpose; only the view beacon records `Viewed` (ADR-013).
+    const content =
+      /^\/api\/v1\/workspaces\/[^/]+\/documents\/doc-(\d+)\/(text|views|coding)$/.exec(path);
+    if (signedIn && content) {
+      const documentId = `doc-${content[1]}`;
+      if (content[2] === 'text' && method === 'GET') {
+        const purpose = url.searchParams.get('purpose') === 'prefetch' ? 'prefetch' : 'display';
+        const retrievalId = `retrieval-${++retrievals}`;
+        audit.push({ action: 'Retrieved', documentId, purpose, retrievalId });
+        const text = documentText(Number(content[1]));
+        const respond = () =>
+          route.fulfill({
+            status: 206,
+            contentType: 'text/plain; charset=utf-8',
+            headers: {
+              'Content-Range': `bytes 0-${text.length - 1}/${text.length}`,
+              'X-Opportunity-Retrieval-Id': retrievalId,
+              'Cache-Control': 'no-store',
+            },
+            body: text,
+          });
+        return contentDelayMs > 0
+          ? new Promise<void>((r) => setTimeout(r, contentDelayMs)).then(respond)
+          : respond();
+      }
+      if (content[2] === 'views' && method === 'POST') {
+        const body = route.request().postDataJSON() as { retrievalId?: string | null };
+        audit.push({ action: 'Viewed', documentId, retrievalId: body?.retrievalId ?? null });
+        return route.fulfill({ status: 204 });
+      }
+      if (content[2] === 'coding' && method === 'GET') {
+        // E10-T01: current coding with the DocumentVersion as ETag.
+        const n = Number(content[1]);
+        return route.fulfill({
+          json: {
+            documentId,
+            documentVersion: '3',
+            values: n % 3 === 0 ? { responsiveness: 'Responsive' } : {},
+            indexState: 'searchable',
+          },
+          headers: { ETag: '"3"' },
+        });
+      }
     }
     if (signedIn && path === '/api/v1/workspaces')
       return json(route, {
@@ -290,5 +394,5 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     unhandled.push(`${route.request().method()} ${path}`);
     return route.fulfill(problem(404, 'Not found'));
   });
-  return unhandled;
+  return control;
 }

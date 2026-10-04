@@ -11,7 +11,6 @@ import { CommandRegistry } from '../../../core/commands';
 import { DocumentsPage } from '../documents-page';
 import { FILTER_DEBOUNCE_MS } from './grid-filter';
 import { PERMISSIONS } from '../../../core/workspace/sections';
-import { ToastService } from '../../../ui';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
 import { FakeResultOptions, fakePage } from './grid-fixtures.testing';
 
@@ -275,6 +274,35 @@ describe('Review grid (Documents list)', () => {
     expect(activeText()).toBe('ACM0000006');
   });
 
+  it('runs an expired search again on the page of the focused row beyond the first (Q-33, E16-T03)', async () => {
+    let expired = false;
+    await setup({
+      search: () => {
+        expired = false;
+        return { body: fakePage(result, 1) };
+      },
+      page: (req) =>
+        expired
+          ? { status: 404, body: { title: 'Not found', status: 404 } }
+          : {
+              body: fakePage(
+                result,
+                Number(req.params.get('cursor')?.slice(1) ?? req.params.get('page')),
+              ),
+            },
+    });
+    button('Next').click();
+    await settle();
+    expect(activeText()).toBe('ACM0000101');
+    expired = true;
+    button('Next').click();
+    await settle();
+    expect(searches()).toHaveLength(2);
+    expect(pageRequests()).toContain(`${PAGES}?page=2`);
+    expect(activeText()).toBe('ACM0000101');
+    expect(text()).toContain('Results refreshed: the search had expired and was run again.');
+  });
+
   it('shows "results refreshed" when the server reopened its view', async () => {
     await setup({
       page: (req) => ({
@@ -373,9 +401,9 @@ describe('Review grid (Documents list)', () => {
 
     press('Enter');
     await settle();
-    expect(TestBed.inject(ToastService).toasts().at(-1)?.message).toBe(
-      'Review mode is not available yet (ACM0000002).',
-    );
+    // Review mode (E16-T03) opens on the focused document; the list stays behind it.
+    expect(root().querySelector('opp-review-workspace')?.textContent).toContain('ACM0000002');
+    expect(root().querySelector('.documents__list')?.hasAttribute('hidden')).toBe(true);
   });
 
   it('shows no-access, nothing-indexed, no-match and error states', async () => {
