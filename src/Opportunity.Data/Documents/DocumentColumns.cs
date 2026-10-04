@@ -62,6 +62,14 @@ internal static class DocumentColumns
         Projected("text_encoding_warning", NpgsqlDbType.Boolean, d => d.TextEncodingWarning),
         Projected("metadata", NpgsqlDbType.Jsonb, d => d.Metadata),
 
+        // Family sources (ADR-009 §2): inputs of family resolution, which writes the projected family columns above.
+        Source("beg_attach_norm", NpgsqlDbType.Text, d => d.BegAttachNorm),
+        Source("end_attach_norm", NpgsqlDbType.Text, d => d.EndAttachNorm),
+        Source("parent_id_norm", NpgsqlDbType.Text, d => d.ParentIdNorm),
+        Source("group_identifier", NpgsqlDbType.Text, d => d.GroupIdentifier),
+        Source("attachment_ids_norm", NpgsqlDbType.Array | NpgsqlDbType.Text, d => d.AttachmentIdsNorm),
+        Source("upstream_family_date", NpgsqlDbType.TimestampTz, d => Utc(d.UpstreamFamilyDate)),
+
         // Raw strings are shown by the viewer and overlay diffs but never searched (ADR-003 R9).
         new("metadata_raw", NpgsqlDbType.Jsonb, d => d.MetadataRaw, Mutable: true, Projected: false),
     ];
@@ -83,6 +91,9 @@ internal static class DocumentColumns
 
     private static Column Projected(string name, NpgsqlDbType type, Func<Document, object?> get) =>
         new(name, type, get, Mutable: true, Projected: true);
+
+    private static Column Source(string name, NpgsqlDbType type, Func<Document, object?> get) =>
+        new(name, type, get, Mutable: true, Projected: false);
 
     // Npgsql writes timestamptz from UTC values only.
     private static DateTimeOffset? Utc(DateTimeOffset? value) => value?.ToUniversalTime();

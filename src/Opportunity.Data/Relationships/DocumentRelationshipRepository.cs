@@ -23,6 +23,40 @@ public sealed class DocumentRelationshipRepository(NpgsqlDataSource dataSource) 
         return result;
     }
 
+    public async Task<FamilyResolutionSummary> ResolveFamiliesAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var families = await FamilyWriter.ResolveAllAsync(tx, cancellationToken).ConfigureAwait(false);
+        var groups = families.DuplicateGroupIds.Count == 0
+            ? null
+            : await RelationshipWriter.SyncAsync(tx, new RelationshipSync([], [], families.ChangedDocuments, families.DuplicateGroupIds), cancellationToken)
+                .ConfigureAwait(false);
+        var changed = families.Bumped.ToDictionary(b => b.DocumentId, b => b.DocumentVersion);
+        foreach (var (documentId, version) in groups?.OtherChangedDocuments ?? [])
+        {
+            changed[documentId] = version;
+        }
+
+        // Duplicate flags of the changed documents themselves bumped them again: take the latest version.
+        if (changed.Count > 0)
+        {
+            await using var versions = tx.Command(
+                "SELECT document_id, document_version FROM opportunity.document_projection_state WHERE workspace_id = @ws AND document_id = ANY(@ids)");
+            versions.Parameters.AddWithValue("ws", workspaceId);
+            versions.Parameters.AddWithValue("ids", changed.Keys.ToArray());
+            await using var reader = await versions.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                changed[reader.GetGuid(0)] = reader.GetInt64(1);
+            }
+        }
+
+        await CommitWithSearchWorkAsync(
+            tx, new RelationshipSyncResult(0, 0, changed.Count, [.. changed.Select(c => (c.Key, c.Value)).OrderBy(c => c.Key)]), cancellationToken)
+            .ConfigureAwait(false);
+        return new FamilyResolutionSummary(families.Documents, families.ChangedDocuments.Count, families.Issues);
+    }
+
     public async Task<RelationshipSyncResult> RecomputeAllAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);

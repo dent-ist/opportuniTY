@@ -29,6 +29,24 @@ public sealed class Document
 
     public string? EndAttach { get; set; }
 
+    // Family sources (ADR-009 §2), normalized like ControlNumberNorm (import prefix included) so family resolution can
+    // always be re-run from the stored inputs. The received strings stay in BegAttach/EndAttach and MetadataRaw.
+
+    /// <summary>Normalized BegAttach (Mode A range start = the parent's control number).</summary>
+    public string? BegAttachNorm { get; set; }
+
+    /// <summary>Normalized EndAttach (Mode A range end).</summary>
+    public string? EndAttachNorm { get; set; }
+
+    /// <summary>Normalized control number of the immediate parent (Mode B ParentID).</summary>
+    public string? ParentIdNorm { get; set; }
+
+    /// <summary>Group / family identifier shared by a family's members (Mode C), trimmed, otherwise verbatim.</summary>
+    public string? GroupIdentifier { get; set; }
+
+    /// <summary>Normalized control numbers a parent lists as attachments (Mode B cross-validation only).</summary>
+    public string[]? AttachmentIdsNorm { get; set; }
+
     /// <summary>DocumentId of the top-level parent; equals <see cref="DocumentId"/> for a standalone document.</summary>
     public Guid FamilyId { get; set; }
 
@@ -84,7 +102,11 @@ public sealed class Document
 
     public DocumentDateSource? DocumentDateSource { get; set; }
 
+    /// <summary>Derived by family resolution (ADR-009 R25): the top-level parent's upstream FamilyDate, else its DocumentDate.</summary>
     public DateTimeOffset? FamilyDate { get; set; }
+
+    /// <summary>A mapped upstream FamilyDate; family resolution copies the parent's value to every member.</summary>
+    public DateTimeOffset? UpstreamFamilyDate { get; set; }
 
     /// <summary>StoredObject (ADR-011) holding the native; must be registered for this document.</summary>
     public Guid? NativeObjectId { get; set; }

@@ -5,6 +5,7 @@ using NpgsqlTypes;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
 using Opportunity.Application.SearchWork;
+using Opportunity.Application.Snapshots;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.SearchWork;
 using Opportunity.Data.Jobs;
@@ -30,6 +31,35 @@ internal static class SearchWorkSql
         ON CONFLICT (workspace_id) DO UPDATE SET value = s.value + 1, last_outbox_id = s.last_outbox_id + @n
         RETURNING s.value, s.last_outbox_id, clock_timestamp() AS committed_at
         """;
+    /// <summary>
+    /// The applied search watermark and the generation counter (ADR-001 §7.2), read in the caller's transaction (use
+    /// REPEATABLE READ for one snapshot): every change with a generation at or below <c>Applied</c> is applied to the
+    /// index. Not refresh-aware yet (E07-T08).
+    /// </summary>
+    public static async Task<SearchWatermark> ReadWatermarkAsync(WorkspaceTransaction tx, CancellationToken cancellationToken)
+    {
+        await using var command = tx.Command(
+            """
+            SELECT coalesce((SELECT g.value FROM opportunity.workspace_search_generation g WHERE g.workspace_id = @ws), 0),
+                   (SELECT min(o.search_generation) FROM opportunity.search_outbox o WHERE o.workspace_id = @ws AND o.status <> 4),
+                   (SELECT min(t.search_generation) FROM opportunity.index_chunk_task t
+                     WHERE t.workspace_id = @ws AND t.status <> 5 AND t.search_generation IS NOT NULL)
+            """);
+        command.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        long counter;
+        long? outbox, tasks;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            counter = reader.GetInt64(0);
+            outbox = reader.IsDBNull(1) ? null : reader.GetInt64(1);
+            tasks = reader.IsDBNull(2) ? null : reader.GetInt64(2);
+        }
+
+        var oldestPending = Math.Min(outbox ?? long.MaxValue, tasks ?? long.MaxValue);
+        return new SearchWatermark(oldestPending == long.MaxValue ? counter : Math.Min(counter, oldestPending - 1), counter);
+    }
+
     /// <summary>
     /// One SearchOutbox row per document (interactive edits). Returns the stamped SearchGeneration. Wakes the dispatcher
     /// with <c>pg_notify</c>, delivered at commit.

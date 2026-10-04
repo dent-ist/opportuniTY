@@ -170,6 +170,9 @@ public class SearchWorkRulesTests
 
         public Task<SearchOutboxRow?> GetAsync(Guid workspaceId, long outboxId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<DocumentOutboxState> GetDocumentStateAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeTasks(IReadOnlyList<ClaimedIndexTask> claimable) : IIndexChunkTaskRepository

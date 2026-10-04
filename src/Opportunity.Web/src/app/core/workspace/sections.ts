@@ -9,6 +9,7 @@
 export const PERMISSIONS = {
   documentView: 'Document.View',
   searchExecute: 'Search.Execute',
+  codingWrite: 'Coding.Write',
   productionCreate: 'Production.Create',
   importRun: 'Import.Run',
   exportCreate: 'Export.Create',

@@ -86,6 +86,28 @@ for (const theme of THEMES) {
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
+    test('review mode, with the start-of-list notice and both panes hidden', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      await page.getByRole('grid', { name: 'Documents' }).focus();
+      await page.keyboard.press('Enter');
+      const viewer = page.getByRole('region', { name: 'Viewer' });
+      await expect(viewer.getByLabel('Extracted text of ACM0000001')).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Coding' })).toContainText('Responsiveness');
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await page.keyboard.press('Alt+Shift+Comma');
+      await expect(page.getByRole('status').getByText('Start of list.')).toBeVisible();
+      await page.getByRole('button', { name: 'Coding', exact: true }).click();
+      await page.getByRole('button', { name: 'Related Items', exact: true }).click();
+      await expect(page.getByRole('separator', { name: 'Resize coding pane' })).toHaveAttribute(
+        'aria-valuenow',
+        '0',
+      );
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
     for (const popup of POPUPS) {
       test(`${popup.name} open`, async ({ page }, testInfo) => {
         await openPage(page, popup.path);

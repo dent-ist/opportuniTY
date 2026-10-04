@@ -165,8 +165,9 @@ public class AutoMapTests
         var catalog = Catalog(Custom(1000, "Responsive", FieldType.SingleChoice, storage: FieldStorage.Coding), Custom(1001, "Custodian", FieldType.Keyword));
         var targets = ImportTargetCatalog.List(catalog);
 
-        targets.Take(10).Select(t => t.Label).Should().Equal(
-            "Control Number", "Beg Bates", "End Bates", "Beg Attach", "End Attach", "Parent ID", "Family/Group ID", "Native Path", "Extracted Text Path", "Folder Path");
+        targets.Take(11).Select(t => t.Label).Should().Equal(
+            "Control Number", "Beg Bates", "End Bates", "Beg Attach", "End Attach", "Parent ID", "Family/Group ID", "Attachment IDs", "Native Path",
+            "Extracted Text Path", "Folder Path");
         targets.Single(t => t.Label == "Responsive").Should().Match<ImportTargetResource>(t => t.IsCodingField && !t.AutoMapEligible);
         targets.Single(t => t.Label == "Custodian").Aliases.Should().Contain("CustodianName");
         targets.Single(t => t.Label == "Control Number").Aliases.Should().Contain("BEGDOC");

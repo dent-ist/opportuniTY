@@ -774,6 +774,73 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}": {
+      "get": {
+        "tags": [
+          "Document content"
+        ],
+        "summary": "The document's fields with display hints and its artifacts (Document.View).",
+        "description": "Every field the caller may see (system, imported and coding fields) with its canonical value, a display value (instants in the workspace display time zone) and the raw imported string; plus whether text, page images and a native exist. purpose: display (default) or prefetch.",
+        "operationId": "GetDocument",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/fields": {
       "get": {
         "tags": [
@@ -805,6 +872,206 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/coding": {
+      "get": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "A document's current coding, by layout, with its version (ETag) and indexing state.",
+        "description": "Lists the coding fields of the layout (every coding field without layoutId) that you may see, with value, editability and last change. projectedVersion reaches documentVersion when search has caught up.",
+        "operationId": "GetDocumentCoding",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "layoutId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCodingResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "Save coding changes with optimistic concurrency (If-Match: the ETag last read).",
+        "description": "All changes apply together or not at all, as one DocumentVersion. 412 version-conflict when the document changed since it was read: the problem carries currentVersion, lastEditor and current (the coding now). Security-affecting fields also need Coding.WritePrivilege. A retry with the same Idempotency-Key returns the original result (header Idempotent-Replayed) and writes nothing.",
+        "operationId": "SaveDocumentCoding",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocumentCodingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCodingResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1558,7 +1825,7 @@
         "tags": [
           "Import"
         ],
-        "summary": "Start an import: upload the DAT with a saved or ad-hoc import profile; 202 with the import and its job.",
+        "summary": "Start an import: upload the DAT (and/or an OPT) with a saved or ad-hoc import profile; 202 with the import and its job.",
         "operationId": "StartImport",
         "parameters": [
           {
@@ -1796,7 +2063,7 @@
         "tags": [
           "Import"
         ],
-        "summary": "Row-level errors (and warnings with includeWarnings=true) of an import, in row order.",
+        "summary": "Row-level errors (and warnings with includeWarnings=true) of an import, DAT rows then OPT rows, in row order.",
         "operationId": "ListImportErrors",
         "parameters": [
           {
@@ -1869,6 +2136,255 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/imports/{importId}/family-issues": {
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Family report of an import: orphan attachments, range gaps, documents claimed by two families, invalid ranges, cycles.",
+        "operationId": "ListImportFamilyIssues",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "importId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfImportFamilyIssueResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/pages": {
+      "get": {
+        "tags": [
+          "Document content"
+        ],
+        "summary": "The pages of the document's active page set (Document.View).",
+        "description": "Page geometry (points), rotation and which review image and thumbnail can be fetched, in page order. limit: 1-500 (default 500). purpose: display (default) or prefetch.",
+        "operationId": "ListDocumentPages",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfDocumentPageResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/text/chunks/{chunkIndex}": {
+      "get": {
+        "tags": [
+          "Document content"
+        ],
+        "summary": "One fixed-size chunk of the extracted text (Document.View).",
+        "description": "Chunk n covers the characters that start in bytes [n * chunkSizeBytes, (n + 1) * chunkSizeBytes) of the stored UTF-8 text, so chunks never split a character and concatenate to the whole text. A document without text answers chunk 0 with missing: true. purpose: display (default) or prefetch.",
+        "operationId": "GetDocumentTextChunk",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chunkIndex",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTextChunkResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -2502,6 +3018,138 @@
           }
         }
       },
+      "CodingChangeRequest": {
+        "required": [
+          "fieldId",
+          "operation"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/CodingOperationResource"
+          },
+          "value": { }
+        }
+      },
+      "CodingEditorResource": {
+        "required": [
+          "userId",
+          "displayName",
+          "changedAt",
+          "documentVersion",
+          "jobId"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "changedAt": {
+            "format": "date-time"
+          },
+          "documentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "CodingFieldValueResource": {
+        "required": [
+          "fieldId",
+          "value",
+          "editable",
+          "isSecurityAffecting",
+          "changedAtVersion",
+          "changedBy",
+          "changedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "editable": {
+            "type": "boolean"
+          },
+          "isSecurityAffecting": {
+            "type": "boolean"
+          },
+          "changedAtVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "changedBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "changedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "CodingIndexingStateResource": {
+        "enum": [
+          "indexed",
+          "pending",
+          "failed"
+        ]
+      },
+      "CodingOperationResource": {
+        "enum": [
+          "set",
+          "addChoices",
+          "removeChoices"
+        ]
+      },
       "ColumnMapping": {
         "type": "object",
         "properties": {
@@ -2724,6 +3372,31 @@
           }
         }
       },
+      "CursorPageOfDocumentPageResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentPageResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfFieldResource": {
         "required": [
           "items",
@@ -2736,6 +3409,31 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/FieldResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfImportFamilyIssueResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportFamilyIssueResource"
             }
           },
           "nextCursor": {
@@ -2939,6 +3637,564 @@
             "type": "string"
           },
           "decimal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "DocumentCodingResource": {
+        "required": [
+          "documentId",
+          "documentVersion",
+          "projectedVersion",
+          "indexingState",
+          "layoutId",
+          "fields",
+          "lastEditor"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "documentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "projectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexingState": {
+            "$ref": "#/components/schemas/CodingIndexingStateResource"
+          },
+          "layoutId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingFieldValueResource"
+            }
+          },
+          "lastEditor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CodingEditorResource"
+              }
+            ]
+          }
+        }
+      },
+      "DocumentFieldFormat": {
+        "enum": [
+          "text",
+          "longText",
+          "identifier",
+          "number",
+          "decimal",
+          "bytes",
+          "date",
+          "dateTime",
+          "boolean",
+          "choice",
+          "user"
+        ]
+      },
+      "DocumentFieldValueResource": {
+        "required": [
+          "fieldId",
+          "displayName",
+          "type",
+          "typeLabel",
+          "storage",
+          "format",
+          "multiValue",
+          "isSystem",
+          "isHidden",
+          "decimalScale",
+          "value",
+          "displayValue",
+          "rawValue",
+          "choices"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FieldResourceType"
+          },
+          "typeLabel": {
+            "type": "string"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/FieldResourceStorage"
+          },
+          "format": {
+            "$ref": "#/components/schemas/DocumentFieldFormat"
+          },
+          "multiValue": {
+            "type": "boolean"
+          },
+          "isSystem": {
+            "type": "boolean"
+          },
+          "isHidden": {
+            "type": "boolean"
+          },
+          "decimalScale": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "displayValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rawValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "choices": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/FieldChoiceResource"
+            }
+          }
+        }
+      },
+      "DocumentImagesInfo": {
+        "required": [
+          "available",
+          "incomplete",
+          "pageCount",
+          "source",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "incomplete": {
+            "type": "boolean"
+          },
+          "pageCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentPageSetSource"
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentPageSetStatus"
+              }
+            ]
+          }
+        }
+      },
+      "DocumentNativeInfo": {
+        "required": [
+          "available",
+          "missing",
+          "sizeBytes",
+          "fileExtension"
+        ],
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "fileExtension": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "DocumentPageColorMode": {
+        "enum": [
+          "bitonal",
+          "gray",
+          "color"
+        ]
+      },
+      "DocumentPageResource": {
+        "required": [
+          "pageNumber",
+          "widthPt",
+          "heightPt",
+          "rotation",
+          "colorMode",
+          "imageMissing",
+          "hasImage",
+          "imageContentType",
+          "imageWidthPx",
+          "imageHeightPx",
+          "hasThumbnail"
+        ],
+        "type": "object",
+        "properties": {
+          "pageNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "widthPt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "heightPt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "rotation": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "colorMode": {
+            "$ref": "#/components/schemas/DocumentPageColorMode"
+          },
+          "imageMissing": {
+            "type": "boolean"
+          },
+          "hasImage": {
+            "type": "boolean"
+          },
+          "imageContentType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imageWidthPx": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "imageHeightPx": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "hasThumbnail": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DocumentPageSetSource": {
+        "enum": [
+          "imported",
+          "rendered",
+          null
+        ]
+      },
+      "DocumentPageSetStatus": {
+        "enum": [
+          "pending",
+          "ready",
+          "incomplete",
+          "failed",
+          null
+        ]
+      },
+      "DocumentResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "documentVersion",
+          "displayTimeZone",
+          "familyId",
+          "parentDocumentId",
+          "text",
+          "native",
+          "images",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "documentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "displayTimeZone": {
+            "type": "string"
+          },
+          "familyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentDocumentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "text": {
+            "$ref": "#/components/schemas/DocumentTextInfo"
+          },
+          "native": {
+            "$ref": "#/components/schemas/DocumentNativeInfo"
+          },
+          "images": {
+            "$ref": "#/components/schemas/DocumentImagesInfo"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentFieldValueResource"
+            }
+          }
+        }
+      },
+      "DocumentTextChunkResource": {
+        "required": [
+          "chunkIndex",
+          "chunkCount",
+          "chunkSizeBytes",
+          "byteStart",
+          "byteEnd",
+          "totalBytes",
+          "isLast",
+          "text",
+          "truncated",
+          "missing",
+          "encodingWarning"
+        ],
+        "type": "object",
+        "properties": {
+          "chunkIndex": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "chunkCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "chunkSizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "byteStart": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "byteEnd": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "totalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "isLast": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "encodingWarning": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DocumentTextInfo": {
+        "required": [
+          "available",
+          "missing",
+          "truncated",
+          "encodingWarning",
+          "sizeBytes",
+          "length",
+          "chunkSizeBytes",
+          "chunkCount"
+        ],
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "encodingWarning": {
+            "type": "boolean"
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "length": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "chunkSizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "chunkCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -3184,6 +4440,94 @@
         "type": "string",
         "format": "binary"
       },
+      "ImageMatchField": {
+        "enum": [
+          "controlNumber",
+          "begBates"
+        ]
+      },
+      "ImageSettings": {
+        "type": "object",
+        "properties": {
+          "matchBy": {
+            "$ref": "#/components/schemas/ImageMatchField"
+          }
+        }
+      },
+      "ImportFamilyIssueKind": {
+        "enum": [
+          "parentMissing",
+          "rangeGap",
+          "claimedByTwoFamilies",
+          "invalidRange",
+          "cycle",
+          "attachmentListMismatch"
+        ]
+      },
+      "ImportFamilyIssueResource": {
+        "required": [
+          "row",
+          "documentId",
+          "controlNumber",
+          "kind",
+          "familyStatus",
+          "message",
+          "related",
+          "missingCount"
+        ],
+        "type": "object",
+        "properties": {
+          "row": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ImportFamilyIssueKind"
+          },
+          "familyStatus": {
+            "$ref": "#/components/schemas/ImportFamilyStatus"
+          },
+          "message": {
+            "type": "string"
+          },
+          "related": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missingCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ImportFamilyStatus": {
+        "enum": [
+          "unresolved",
+          "resolved",
+          "conflict",
+          "parentMissing",
+          "gap",
+          "invalidRange"
+        ]
+      },
       "ImportFieldType": {
         "enum": [
           "text",
@@ -3196,6 +4540,13 @@
           "singleChoice",
           "multiChoice"
         ]
+      },
+      "ImportIssueFile": {
+        "enum": [
+          "dat",
+          "opt"
+        ],
+        "default": "dat"
       },
       "ImportMode": {
         "enum": [
@@ -3229,6 +4580,9 @@
           },
           "paths": {
             "$ref": "#/components/schemas/PathSettings"
+          },
+          "images": {
+            "$ref": "#/components/schemas/ImageSettings"
           },
           "unmappedColumns": {
             "$ref": "#/components/schemas/UnmappedColumnPolicy"
@@ -3534,6 +4888,16 @@
           },
           "completedAt": {
             "format": "date-time"
+          },
+          "optFileName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imagesOnly": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -3586,6 +4950,9 @@
           },
           "message": {
             "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/ImportIssueFile"
           }
         }
       },
@@ -3599,7 +4966,24 @@
         "type": "object",
         "properties": {
           "file": {
-            "$ref": "#/components/schemas/IFormFile"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IFormFile"
+              }
+            ]
+          },
+          "opt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IFormFile"
+              }
+            ]
           },
           "request": {
             "type": [
@@ -4200,6 +5584,12 @@
           }
         }
       },
+      "MissingFilePolicy": {
+        "enum": [
+          "flag",
+          "error"
+        ]
+      },
       "NewFieldPreview": {
         "required": [
           "name",
@@ -4330,6 +5720,12 @@
               "null",
               "string"
             ]
+          },
+          "textInLoadFile": {
+            "type": "boolean"
+          },
+          "missingFiles": {
+            "$ref": "#/components/schemas/MissingFilePolicy"
           }
         }
       },
@@ -4733,6 +6129,10 @@
             "items": {
               "$ref": "#/components/schemas/SearchSnippet"
             }
+          },
+          "isFamilyParent": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -5149,6 +6549,7 @@
           "dedupeHash",
           "emailThreadId",
           "emailHash",
+          "attachmentIds",
           null
         ]
       },
@@ -5256,6 +6657,27 @@
           "ignore",
           "createTextField"
         ]
+      },
+      "UpdateDocumentCodingRequest": {
+        "required": [
+          "changes"
+        ],
+        "type": "object",
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingChangeRequest"
+            }
+          },
+          "layoutId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
       },
       "UserPreferencesResource": {
         "required": [
@@ -5517,16 +6939,19 @@
       "name": "Jobs"
     },
     {
+      "name": "Document content"
+    },
+    {
       "name": "Fields"
+    },
+    {
+      "name": "Coding"
     },
     {
       "name": "Snapshots"
     },
     {
       "name": "Import"
-    },
-    {
-      "name": "Document content"
     },
     {
       "name": "Preferences"

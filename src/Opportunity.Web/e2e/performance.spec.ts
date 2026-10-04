@@ -219,3 +219,107 @@ test.describe('review grid', () => {
     expect(result.fps, 'scroll frame rate').toBeGreaterThanOrEqual(strict ? 50 : 20);
   });
 });
+
+// Review mode (E16-T03): opening a document stays within the page budgets, and with prefetch the next document is
+// on screen within ADR-018 §14's 500 ms (p95) although every content response takes 300 ms.
+test.describe('review mode', () => {
+  test.use({ api: { contentDelayMs: 300 } });
+
+  test('opening Review mode stays within the page budgets', async ({ page }, testInfo) => {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: budget.cpuSlowdown });
+    await observeVitals(page);
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByLabel('Extracted text of ACM0000001')).toBeVisible();
+    const v = await readVitals(page);
+    results.push(
+      `| review mode | ${v.lcp.toFixed(0)} ms | ${v.cls.toFixed(3)} | ${v.tbt.toFixed(0)} ms | ${v.interaction.toFixed(0)} ms |`,
+    );
+    await testInfo.attach('vitals', {
+      body: JSON.stringify(v, null, 2),
+      contentType: 'application/json',
+    });
+    expect.soft(v.lcp, 'Largest Contentful Paint (ms)').toBeLessThanOrEqual(budget.lcpMs);
+    expect.soft(v.cls, 'Cumulative Layout Shift').toBeLessThanOrEqual(budget.cls);
+    expect.soft(v.tbt, 'Total Blocking Time (ms)').toBeLessThanOrEqual(budget.totalBlockingTimeMs);
+    expect
+      .soft(v.interaction, 'Interaction to next paint (ms)')
+      .toBeLessThanOrEqual(budget.interactionMs);
+  });
+
+  test('the next document is visible within 500 ms p95 when prefetched (E16-T03)', async ({
+    page,
+    mock,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    // Prefetches that completed, and any reported failed (such a document may be fetched for display instead).
+    const prefetched = new Set<string>();
+    const failed = new Set<string>();
+    const prefetchOf = (url: string) =>
+      /\/documents\/(doc-\d+)\/text\?purpose=prefetch/.exec(url)?.[1];
+    page.on('requestfinished', (r) => prefetchOf(r.url()) && prefetched.add(prefetchOf(r.url())!));
+    page.on('requestfailed', (r) => {
+      const id = prefetchOf(r.url());
+      if (id) [prefetched, failed].forEach((s) => s.add(id));
+    });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: budget.cpuSlowdown });
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByLabel('Extracted text of ACM0000001')).toBeVisible();
+    const samples: number[] = [];
+    for (let n = 2; n <= 21; n++) {
+      // The reviewer reads the document; meanwhile the next one has been prefetched.
+      await expect.poll(() => prefetched.has(`doc-${n}`), { timeout: 15_000 }).toBe(true);
+      // Timed in the page: from the key press to the frame after the next document's text is in the viewer.
+      await page.evaluate((id) => {
+        const w = window as unknown as { __next: Promise<number> };
+        w.__next = new Promise<number>((resolve) => {
+          let start = -1;
+          document.addEventListener('keydown', (e) => (start = e.timeStamp), {
+            capture: true,
+            once: true,
+          });
+          const shown = () =>
+            document.querySelector(
+              `[data-viewer-document="${id}"][data-state="ready"] .viewer__text`,
+            );
+          const observer = new MutationObserver(() => {
+            if (start < 0 || !shown()) return;
+            observer.disconnect();
+            requestAnimationFrame(() => resolve(performance.now() - start));
+          });
+          observer.observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            characterData: true,
+          });
+        });
+      }, `doc-${n}`);
+      await page.keyboard.press('BracketRight');
+      samples.push(
+        await page.evaluate(() => (window as unknown as { __next: Promise<number> }).__next),
+      );
+    }
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+
+    const sorted = [...samples].sort((a, b) => a - b);
+    const p95 = sorted[Math.ceil(0.95 * sorted.length) - 1];
+    results.push(`| review mode, next document (prefetched) | p95 ${p95.toFixed(0)} ms | | | |`);
+    await testInfo.attach('next-document', {
+      body: JSON.stringify({ samples, p95 }, null, 2),
+      contentType: 'application/json',
+    });
+    // Every document after the first came from its prefetch (unless that request failed): no display request.
+    const displays = mock.audit.filter((e) => e.action === 'Retrieved' && e.purpose === 'display');
+    expect(displays[0]?.documentId).toBe('doc-1');
+    expect(displays.slice(1).filter((e) => !failed.has(e.documentId))).toEqual([]);
+    // ADR-018 §14 target; shared runners record it and fail only on clear breakage (Q-44, as for the grid).
+    const strict = process.env['OPPORTUNITY_STRICT_LATENCY'] === '1';
+    expect(p95, 'next document visible, p95 (ms)').toBeLessThanOrEqual(strict ? 500 : 1_000);
+  });
+});

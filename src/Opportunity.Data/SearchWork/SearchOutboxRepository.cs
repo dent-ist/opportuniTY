@@ -159,6 +159,28 @@ public sealed class SearchOutboxRepository(NpgsqlDataSource dataSource) : ISearc
         return status is short value ? (SearchOutboxStatus)value : null;
     }
 
+    public async Task<DocumentOutboxState> GetDocumentStateAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            """
+            SELECT min(document_version), coalesce(bool_or(status = 5), false)
+            FROM opportunity.search_outbox
+            WHERE workspace_id = @ws AND document_id = @doc AND status <> 4
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("doc", documentId);
+        DocumentOutboxState state;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            state = new DocumentOutboxState(reader.IsDBNull(0) ? null : reader.GetInt64(0), reader.GetBoolean(1));
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return state;
+    }
+
     public async Task<SearchOutboxRow?> GetAsync(Guid workspaceId, long outboxId, CancellationToken cancellationToken = default)
     {
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);

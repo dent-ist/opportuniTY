@@ -1,0 +1,146 @@
+// Review mode fills the main region below the banner; the panes scroll on their own.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: calc(100dvh - 3rem);
+  min-block-size: 24rem;
+  background: var(--opp-color-bg);
+}
+
+.review__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2) var(--opp-space-4);
+  padding: var(--opp-space-2) var(--opp-space-4);
+  background: var(--opp-color-surface);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.review__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  padding-inline: var(--opp-space-1);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-pill);
+}
+
+.review__position {
+  min-inline-size: 9rem;
+  font-weight: var(--opp-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.review__identity {
+  display: flex;
+  flex: 1 1 12rem;
+  align-items: baseline;
+  gap: var(--opp-space-2);
+  min-inline-size: 0;
+  margin: 0;
+}
+
+.review__control {
+  font-family: var(--opp-font-family-mono);
+}
+
+.review__name {
+  overflow: hidden;
+  color: var(--opp-color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review__toggles {
+  display: flex;
+  gap: var(--opp-space-1);
+  margin-inline-start: auto;
+}
+
+// A shown pane's toggle carries an accent underline; a hidden pane's is muted.
+.review__toggles [aria-expanded='true'] {
+  border-block-end: 2px solid var(--opp-color-accent);
+}
+
+.review__toggles [aria-expanded='false'] {
+  color: var(--opp-color-text-muted);
+}
+
+// Where the reviewer is in the set: a thin line under the bar (the text says the same).
+.review__progress {
+  block-size: 3px;
+  background: var(--opp-color-surface-sunken);
+}
+
+.review__progress-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--opp-color-accent);
+  transition: inline-size var(--opp-motion-duration) var(--opp-motion-easing);
+}
+
+.review__notices:not(:empty) {
+  display: grid;
+  gap: var(--opp-space-1);
+  padding: var(--opp-space-2) var(--opp-space-4) 0;
+}
+
+.review__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-1) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-info-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+}
+
+.review__notice--warning {
+  border-color: var(--opp-color-warning-border);
+  background: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+}
+
+.review__layout {
+  flex: 1;
+  min-block-size: 0;
+  padding: var(--opp-space-2) var(--opp-space-4) var(--opp-space-4);
+}
+
+.review__main {
+  block-size: 100%;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.pane:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+.pane__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--opp-space-2);
+  min-block-size: 2.25rem;
+  padding: var(--opp-space-1) var(--opp-space-2) var(--opp-space-1) var(--opp-space-3);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  border-inline-start: 3px solid var(--opp-color-accent);
+}
+
+.pane__title {
+  font-size: var(--opp-font-size-md);
+}

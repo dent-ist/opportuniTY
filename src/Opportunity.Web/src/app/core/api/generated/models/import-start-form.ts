@@ -3,6 +3,7 @@
 
 import { IFormFile } from '../models/i-form-file';
 export interface ImportStartForm {
-  file?: IFormFile;
+  file?: null | IFormFile;
+  opt?: null | IFormFile;
   request?: string | null;
 }

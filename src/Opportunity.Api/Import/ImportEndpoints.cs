@@ -32,7 +32,8 @@ using Opportunity.Security.Authorization;
 namespace Opportunity.Api.Import;
 
 /// <summary>
-/// Start and monitor load-file imports (E08-T03): <c>POST …/imports</c> uploads the DAT with a saved or ad-hoc import
+/// Start and monitor load-file imports (E08-T03): <c>POST …/imports</c> uploads the DAT (and optionally its OPT image
+/// cross-reference, E08-T05; an OPT alone re-loads the pages of existing documents) with a saved or ad-hoc import
 /// profile and answers <c>202 Accepted</c> with the import and its job; the import worker prepares and runs it in
 /// chunks. Progress is the job's (committed / indexed) plus the import report counters; row-level errors download as
 /// CSV. Append needs <c>Import.Run</c>; overlay modes and Q-31 coding-field overlay need <c>Import.Overlay</c>; creating
@@ -53,7 +54,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
         group.MapPost(string.Empty, StartAsync)
             .WithName("StartImport")
             .WithTags("Import")
-            .WithSummary("Start an import: upload the DAT with a saved or ad-hoc import profile; 202 with the import and its job.")
+            .WithSummary("Start an import: upload the DAT (and/or an OPT) with a saved or ad-hoc import profile; 202 with the import and its job.")
             .DisableAntiforgery()
             .Accepts<ImportStartForm>("multipart/form-data")
             .RequireIdempotencyKey()
@@ -83,7 +84,15 @@ public sealed class ImportEndpoints : IApiEndpointModule
         group.MapGet("/{importId}/errors", ListErrorsAsync)
             .WithName("ListImportErrors")
             .WithTags("Import")
-            .WithSummary("Row-level errors (and warnings with includeWarnings=true) of an import, in row order.")
+            .WithSummary("Row-level errors (and warnings with includeWarnings=true) of an import, DAT rows then OPT rows, in row order.")
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{importId}/family-issues", ListFamilyIssuesAsync)
+            .WithName("ListImportFamilyIssues")
+            .WithTags("Import")
+            .WithSummary("Family report of an import: orphan attachments, range gaps, documents claimed by two families, invalid ranges, cycles.")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -121,18 +130,23 @@ public sealed class ImportEndpoints : IApiEndpointModule
 
         // Bound by hand: the form carries a file larger than any buffer, and the JSON part needs the API's options.
         var form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
-        if (form.Files.GetFile("file") is not { Length: > 0 } file)
+        var file = form.Files.GetFile("file") is { Length: > 0 } dat ? dat : null;
+        var opt = form.Files.GetFile("opt") is { Length: > 0 } optFile ? optFile : null;
+        if (file is null && opt is null)
         {
-            return Validation("file", "The DAT file is required.");
+            return Validation("file", "The DAT file is required (or an OPT alone, to re-load the pages of existing documents).");
         }
 
         var requestJson = form["request"].ToString();
 
-        if (file.Length > options.Value.MaxDatBytes)
+        if (file?.Length > options.Value.MaxDatBytes || opt?.Length > options.Value.MaxDatBytes)
         {
             return Problems.Create(StatusCodes.Status413PayloadTooLarge, ProblemCodes.PayloadTooLarge,
-                $"A DAT of at most {options.Value.MaxDatBytes} bytes can be uploaded.");
+                $"A DAT or OPT of at most {options.Value.MaxDatBytes} bytes can be uploaded.");
         }
+
+        // An OPT without a DAT replaces the pages of existing documents (ticket review E08-T05): an overlay.
+        var imagesOnly = file is null;
 
         ImportStartRequest request;
         try
@@ -146,8 +160,13 @@ public sealed class ImportEndpoints : IApiEndpointModule
             return Validation("request", $"Not a valid import request: {ex.Message}");
         }
 
-        var fileName = Path.GetFileName(file.FileName ?? string.Empty).Trim();
-        fileName = string.IsNullOrEmpty(fileName) || fileName.Any(char.IsControl) ? "loadfile.dat" : fileName[..Math.Min(fileName.Length, 255)];
+        var fileName = SafeFileName(file?.FileName, "loadfile.dat");
+        var optFileName = SafeFileName(opt?.FileName, "images.opt");
+        if (imagesOnly)
+        {
+            fileName = optFileName;
+        }
+
         var name = string.IsNullOrWhiteSpace(request.Name)
             ? $"{fileName} {DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
             : request.Name.Trim();
@@ -181,6 +200,21 @@ public sealed class ImportEndpoints : IApiEndpointModule
             profile = profile with { Mode = mode };
         }
 
+        if (imagesOnly)
+        {
+            if (request.Mode is ImportMode.Append or ImportMode.AppendOverlay)
+            {
+                return Validation("mode", "An OPT without a DAT replaces the pages of existing documents: use mode overlay.");
+            }
+
+            if (request.CodingOverlayFieldIds.Count > 0)
+            {
+                return Validation("codingOverlayFieldIds", "An OPT-only load loads no field values.");
+            }
+
+            profile = profile with { Mode = ImportMode.Overlay };
+        }
+
         var codingFields = request.CodingOverlayFieldIds.Distinct().Order().ToList();
         profile = profile with { Overlay = profile.Overlay with { AllowCodingFieldOverlay = codingFields.Count > 0 } };
 
@@ -207,8 +241,14 @@ public sealed class ImportEndpoints : IApiEndpointModule
             return MappingProblem(settingsIssues);
         }
 
+        if (imagesOnly)
+        {
+            return await StartImagesOnlyAsync(context, access, batches, sources, opt!, name, optFileName, profile, request, profileVersion, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         CompiledMapping mapping;
-        var sample = file.OpenReadStream();
+        var sample = file!.OpenReadStream();
         await using (sample.ConfigureAwait(false))
         {
             var reader = await DatReader.OpenAsync(sample, readerOptions, leaveOpen: true, cancellationToken).ConfigureAwait(false);
@@ -258,6 +298,12 @@ public sealed class ImportEndpoints : IApiEndpointModule
         // Content-addressed upload (ADR-011): a retried start stores nothing new.
         var importId = Guid.CreateVersion7();
         var source = await sources.StoreAsync(ws, importId, file.OpenReadStream, file.Length, cancellationToken).ConfigureAwait(false);
+        ImportOptSource? optSource = null;
+        if (opt is not null)
+        {
+            var storedOpt = await sources.StoreAsync(ws, importId, opt.OpenReadStream, opt.Length, cancellationToken).ConfigureAwait(false);
+            optSource = new ImportOptSource(optFileName, storedOpt.ObjectKey, storedOpt.Sha256, storedOpt.Size);
+        }
 
         var principal = access.Principal;
         var creation = await batches.CreateAsync(new NewImportBatch
@@ -270,6 +316,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
             SourceObjectKey = source.ObjectKey,
             SourceSha256 = source.Sha256,
             SourceSize = file.Length,
+            Opt = optSource,
             ProfileId = request.ProfileId,
             ProfileVersion = profileVersion,
             ProfileJson = ImportProfileRules.Serialize(mapping.EffectiveProfile),
@@ -279,23 +326,65 @@ public sealed class ImportEndpoints : IApiEndpointModule
             InitiatedBy = principal.UserId,
             ClientIdempotencyKey = context.Request.Headers[IdempotencyMiddleware.HeaderName].ToString() is { Length: > 0 } clientKey ? clientKey : null,
             CorrelationId = principal.CorrelationId,
-            AuditTemplate = new AuditEvent
-            {
-                OccurredAt = DateTimeOffset.UtcNow,
-                Category = AuditTaxonomy.Import.Category,
-                Action = AuditTaxonomy.Import.Started,
-                ActorType = AuditActorType.User,
-                ActorId = principal.UserId.ToString(),
-                ActorDisplay = string.IsNullOrEmpty(principal.DisplayName) ? principal.UserId.ToString() : principal.DisplayName,
-                ClientIp = principal.ClientIp,
-                UserAgent = principal.UserAgent,
-                Outcome = AuditOutcome.Success,
-                CorrelationId = principal.CorrelationId,
-            },
+            AuditTemplate = StartedAudit(principal),
         }, cancellationToken).ConfigureAwait(false);
 
         var resource = ToResource(creation.Batch, creation.Job);
         return ApiResults.JobAccepted(ws.ToString(), creation.Job.JobId.ToString(), resource);
+    }
+
+    /// <summary>An OPT alone: stored as the import's source; its documents overlay the pages of existing documents.</summary>
+    private static async Task<Results<Accepted<ImportResource>, ValidationProblem, ProblemHttpResult>> StartImagesOnlyAsync(
+        HttpContext context, WorkspaceAccess access, IImportBatchStore batches, IImportSourceStore sources, IFormFile opt, string name,
+        string optFileName, ImportProfileDefinition profile, ImportStartRequest request, long? profileVersion, CancellationToken cancellationToken)
+    {
+        var ws = access.WorkspaceId;
+        var importId = Guid.CreateVersion7();
+        var stored = await sources.StoreAsync(ws, importId, opt.OpenReadStream, opt.Length, cancellationToken).ConfigureAwait(false);
+        var principal = access.Principal;
+        var creation = await batches.CreateAsync(new NewImportBatch
+        {
+            WorkspaceId = ws,
+            ImportBatchId = importId,
+            Name = name,
+            Mode = ImportMode.Overlay,
+            SourceFileName = optFileName,
+            SourceObjectKey = stored.ObjectKey,
+            SourceSha256 = stored.Sha256,
+            SourceSize = stored.Size,
+            Opt = new ImportOptSource(optFileName, stored.ObjectKey, stored.Sha256, stored.Size),
+            ImagesOnly = true,
+            ProfileId = request.ProfileId,
+            ProfileVersion = profileVersion,
+            ProfileJson = ImportProfileRules.Serialize(profile),
+            InitiatedBy = principal.UserId,
+            ClientIdempotencyKey = context.Request.Headers[IdempotencyMiddleware.HeaderName].ToString() is { Length: > 0 } clientKey ? clientKey : null,
+            CorrelationId = principal.CorrelationId,
+            AuditTemplate = StartedAudit(principal),
+        }, cancellationToken).ConfigureAwait(false);
+
+        var resource = ToResource(creation.Batch, creation.Job);
+        return ApiResults.JobAccepted(ws.ToString(), creation.Job.JobId.ToString(), resource);
+    }
+
+    private static AuditEvent StartedAudit(SecurityPrincipal principal) => new()
+    {
+        OccurredAt = DateTimeOffset.UtcNow,
+        Category = AuditTaxonomy.Import.Category,
+        Action = AuditTaxonomy.Import.Started,
+        ActorType = AuditActorType.User,
+        ActorId = principal.UserId.ToString(),
+        ActorDisplay = string.IsNullOrEmpty(principal.DisplayName) ? principal.UserId.ToString() : principal.DisplayName,
+        ClientIp = principal.ClientIp,
+        UserAgent = principal.UserAgent,
+        Outcome = AuditOutcome.Success,
+        CorrelationId = principal.CorrelationId,
+    };
+
+    private static string SafeFileName(string? uploaded, string fallback)
+    {
+        var name = Path.GetFileName(uploaded ?? string.Empty).Trim();
+        return string.IsNullOrEmpty(name) || name.Any(char.IsControl) ? fallback : name[..Math.Min(name.Length, 255)];
     }
 
     internal static async Task<Results<Ok<CursorPage<ImportResource>>, ValidationProblem, ProblemHttpResult>> ListAsync(
@@ -386,11 +475,51 @@ public sealed class ImportEndpoints : IApiEndpointModule
             .ConfigureAwait(false);
         var items = issues.Take(limit).Select(i => new ImportRowIssueResource(
             i.RowNo, i.LineNo, i.Severity == ImportIssueSeverity.Error ? ImportRowIssueSeverity.Error : ImportRowIssueSeverity.Warning,
-            i.ControlNumber, i.Column, i.Code, i.Message)).ToList();
+            i.ControlNumber, i.Column, i.Code, i.Message, i.Source == ImportIssueSource.Opt ? ImportIssueFile.Opt : ImportIssueFile.Dat)).ToList();
+        var next = issues.Count > limit
+            ? Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                $"{issues[limit - 1].RowNo}|{issues[limit - 1].IssueNo}|{(short)issues[limit - 1].Source}")))
+            : null;
+        return TypedResults.Ok(new CursorPage<ImportRowIssueResource>(
+            items, next, new TotalCount(items.Count, next is null && after is null ? TotalRelation.Eq : TotalRelation.Gte)));
+    }
+
+    internal static async Task<Results<Ok<CursorPage<ImportFamilyIssueResource>>, ValidationProblem, ProblemHttpResult>> ListFamilyIssuesAsync(
+        string workspaceId, string importId, [AsParameters] PageQuery page, HttpContext context, IImportBatchStore batches,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (context.GetWorkspaceAccess() is not { } access || !Guid.TryParse(importId, out var id)
+            || await batches.GetAsync(access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { } record)
+        {
+            return Problems.NotFound("No such import.");
+        }
+
+        if (page.Validate() is { } invalid)
+        {
+            return invalid;
+        }
+
+        ImportRowIssueCursor? after = null;
+        if (page.Cursor is { } cursor)
+        {
+            if (DecodeIssueCursor(cursor) is not { } decoded)
+            {
+                return Validation("cursor", "The cursor is not valid.");
+            }
+
+            after = decoded;
+        }
+
+        var limit = page.EffectiveLimit;
+        var issues = await batches.GetFamilyIssuesAsync(access.WorkspaceId, record.ImportBatchId, after, limit + 1, cancellationToken).ConfigureAwait(false);
+        var items = issues.Take(limit).Select(i => new ImportFamilyIssueResource(
+            i.RowNo, i.DocumentId, i.ControlNumber, (ImportFamilyIssueKind)((int)i.Kind - 1), (ImportFamilyStatus)(int)i.Status, i.Message, i.Related,
+            i.MissingCount)).ToList();
         var next = issues.Count > limit
             ? Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{issues[limit - 1].RowNo}|{issues[limit - 1].IssueNo}")))
             : null;
-        return TypedResults.Ok(new CursorPage<ImportRowIssueResource>(
+        return TypedResults.Ok(new CursorPage<ImportFamilyIssueResource>(
             items, next, new TotalCount(items.Count, next is null && after is null ? TotalRelation.Eq : TotalRelation.Gte)));
     }
 
@@ -398,10 +527,14 @@ public sealed class ImportEndpoints : IApiEndpointModule
     {
         try
         {
+            // row|issue (DAT) or row|issue|source.
             var parts = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(cursor)).Split('|');
-            return parts.Length == 2 && long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var row)
+            var source = ImportIssueSource.Dat;
+            return parts.Length is 2 or 3 && long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var row)
                 && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var issue)
-                    ? new ImportRowIssueCursor(row, issue)
+                && (parts.Length == 2 || (short.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var s)
+                    && Enum.IsDefined((ImportIssueSource)s) && (source = (ImportIssueSource)s) == source))
+                    ? new ImportRowIssueCursor(row, issue, source)
                     : null;
         }
         catch (FormatException)
@@ -430,7 +563,9 @@ public sealed class ImportEndpoints : IApiEndpointModule
             record.Preparation?.ChoicesCreated ?? 0),
         JobEndpoints.ToResource(job),
         record.CreatedAt,
-        record.CompletedAt);
+        record.CompletedAt,
+        record.Opt?.FileName,
+        record.ImagesOnly);
 
     private static string EncodeCursor(ImportBatchCursor cursor) =>
         Base64Url.EncodeToString(Encoding.UTF8.GetBytes(
@@ -466,10 +601,15 @@ public sealed class ImportEndpoints : IApiEndpointModule
             "The import profile does not fit the load file.");
 }
 
-/// <summary>Form of <c>POST …/imports</c>: <c>file</c> (the DAT) and <c>request</c> (JSON <see cref="ImportStartRequest"/>).</summary>
+/// <summary>
+/// Form of <c>POST …/imports</c>: <c>file</c> (the DAT), <c>opt</c> (an optional OPT image cross-reference; alone, an
+/// OPT-only page re-load) and <c>request</c> (JSON <see cref="ImportStartRequest"/>).
+/// </summary>
 public sealed class ImportStartForm
 {
-    public IFormFile File { get; set; } = null!;
+    public IFormFile? File { get; set; }
+
+    public IFormFile? Opt { get; set; }
 
     public string? Request { get; set; }
 }

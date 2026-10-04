@@ -7,7 +7,10 @@ namespace Opportunity.Contracts.Search;
 /// workspace comes from the route and the caller's membership, never from the body.
 /// </summary>
 /// <param name="Query">Query-language text; empty means every document the caller may see.</param>
-/// <param name="Sort">Sort keys in order; default relevance. <c>documentId</c> is always appended as the tie-breaker.</param>
+/// <param name="Sort">
+/// Sort keys in order. Default: relevance when the query has a keyword, else Control Number ascending (an empty query or
+/// filters only). <c>documentId</c> is always appended as the tie-breaker.
+/// </param>
 /// <param name="PageSize">1–500, default 50.</param>
 /// <param name="CountExact">Q-32 "count exactly": the total is exact instead of capped at 10,000 (audited).</param>
 /// <param name="Highlight">Return bounded snippets of the matching text (default true).</param>
@@ -90,9 +93,11 @@ public sealed record SearchResultPage
 public sealed record SearchPageInfo(int? Number, int Size, long? PageCount, bool IsFirst, bool IsLast);
 
 /// <summary>
-/// Q-10 freshness. <see cref="ServedGeneration"/> is the search generation the page was served from (populated by
-/// E07-T08; null until then, in which case counts are always labelled approximate). Raw generations are shown to
-/// admins and support only; reviewers see "current as of <see cref="AsOf"/>".
+/// Q-10 freshness. <see cref="ServedGeneration"/> is the applied search generation the page's reader was opened at;
+/// <see cref="Current"/> is true when every change committed in the workspace was applied to the index by then and
+/// nothing was committed since (interim, not yet refresh-aware: E07-T08). Null means unknown, in which case counts are
+/// labelled approximate. Raw generations are shown to admins and support only; reviewers see "current as of
+/// <see cref="AsOf"/>".
 /// </summary>
 public sealed record SearchFreshness(long? ServedGeneration, bool? Current, DateTimeOffset AsOf);
 
@@ -100,6 +105,11 @@ public sealed record SearchFreshness(long? ServedGeneration, bool? Current, Date
 /// A result row: grid fields and bounded snippets only, never full text (ADR-015 D8.5). Further columns come from the
 /// projection mapping (E07-T02) and the field catalogue.
 /// </summary>
+/// <param name="ParentDocumentId">The immediate parent; set exactly for attachments (family members other than the top).</param>
+/// <param name="IsFamilyParent">
+/// The top-level document of a family with at least one other member the caller's search can see (the grid's parent
+/// marker). False for standalone documents and attachments.
+/// </param>
 public sealed record SearchHit(
     Guid DocumentId,
     string ControlNumber,
@@ -113,7 +123,8 @@ public sealed record SearchHit(
     int? FamilySequence,
     long? FileSize,
     int? PageCount,
-    IReadOnlyList<SearchSnippet> Snippets);
+    IReadOnlyList<SearchSnippet> Snippets,
+    bool IsFamilyParent = false);
 
 /// <summary>A snippet as plain text with the matched ranges (UTF-16 offsets), so clients never render markup from the index.</summary>
 public sealed record SearchSnippet(string Text, IReadOnlyList<TextSpan> Highlights);

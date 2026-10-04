@@ -122,6 +122,11 @@ public static class ImportTargets
                 "GroupID", "Group ID", "Group Identifier", "GroupIdentifier", "FamilyID", "Family ID", "Family_ID", "Family Group",
                 "FamilyGroup", "Attachment Group", "AttachmentGroup",
             ],
+            [StructuralTarget.AttachmentIds] =
+            [
+                "AttachmentIDs", "Attachment IDs", "AttachIDs", "Attach IDs", "AttachmentDocIDs",
+                "Attachment Doc IDs", "ChildIDs", "Child IDs", "Attachment Control Numbers",
+            ],
             [StructuralTarget.NativePath] =
             [
                 "NativePath", "Native Path", "NativeLink", "Native Link", "NativeFile", "Native File", "Native File Path",
@@ -174,18 +179,26 @@ public static class ImportTargets
         StructuralTarget.DedupeHash => "Dedupe Hash",
         StructuralTarget.EmailThreadId => "Email Thread ID",
         StructuralTarget.EmailHash => "Email Hash",
+        StructuralTarget.AttachmentIds => "Attachment IDs",
         _ => target.ToString(),
     };
 
-    /// <summary>The definition used to coerce a structural value: identifiers are Keywords, paths are Text.</summary>
-    public static FieldDefinition Definition(StructuralTarget target) => new()
+    /// <summary>
+    /// The definition used to coerce a structural value: identifiers are Keywords, paths and the attachment list (split
+    /// by the family resolution input builder) are Text.
+    /// </summary>
+    public static FieldDefinition Definition(StructuralTarget target)
     {
-        Name = Label(target),
-        Type = target is StructuralTarget.NativePath or StructuralTarget.TextPath or StructuralTarget.FolderPath ? FieldType.Text : FieldType.Keyword,
-        Storage = FieldStorage.Column,
-        IsSystem = true,
-        TextAnalysis = target is StructuralTarget.NativePath or StructuralTarget.TextPath or StructuralTarget.FolderPath ? TextAnalysis.Identifier : null,
-    };
+        var text = target is StructuralTarget.NativePath or StructuralTarget.TextPath or StructuralTarget.FolderPath or StructuralTarget.AttachmentIds;
+        return new()
+        {
+            Name = Label(target),
+            Type = text ? FieldType.Text : FieldType.Keyword,
+            Storage = FieldStorage.Column,
+            IsSystem = true,
+            TextAnalysis = text ? TextAnalysis.Identifier : null,
+        };
+    }
 
     /// <summary>Header comparison key ignoring case, spaces, underscores and punctuation (<c>Date_Sent</c> = <c>DATESENT</c>).</summary>
     public static string NormalizeName(string name)

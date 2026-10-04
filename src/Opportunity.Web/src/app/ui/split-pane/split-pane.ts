@@ -55,6 +55,8 @@ export class SplitPane {
   readonly storageKey = input<string>();
 
   protected readonly collapsed = signal(false);
+  /** The sized pane is collapsed (a button elsewhere can show it again with `toggleCollapsed`). */
+  readonly isCollapsed = this.collapsed.asReadonly();
   protected readonly dragging = signal(false);
   protected readonly sizedId = inject(_IdGenerator).getId('opp-split-pane-');
   protected readonly effectiveSize = computed(() => (this.collapsed() ? 0 : this.size()));
@@ -102,10 +104,7 @@ export class SplitPane {
         this.setSize(this.max());
         break;
       case 'Enter':
-        if (this.collapsible()) {
-          this.collapsed.update((c) => !c);
-          this.persist();
-        }
+        this.toggleCollapsed();
         break;
       default:
         return;
@@ -140,6 +139,13 @@ export class SplitPane {
     if (!this.dragging()) return;
     (event.target as HTMLElement).releasePointerCapture?.(event.pointerId);
     this.dragging.set(false);
+    this.persist();
+  }
+
+  /** Collapses or restores the sized pane (when `collapsible`); the state persists with the size. */
+  toggleCollapsed(collapsed = !this.collapsed()): void {
+    if (!this.collapsible() || collapsed === this.collapsed()) return;
+    this.collapsed.set(collapsed);
     this.persist();
   }
 

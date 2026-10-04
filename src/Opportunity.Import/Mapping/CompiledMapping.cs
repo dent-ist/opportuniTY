@@ -213,6 +213,13 @@ public sealed class CompiledMapping
 
     private MappedCell MapCell(ColumnBinding column, TargetBinding target, string raw, string? time)
     {
+        if (target.Structural == StructuralTarget.TextPath && EffectiveProfile.Paths?.TextInLoadFile == true)
+        {
+            // The column holds the extracted text itself: stored as a text object by the chunk (E08-T04), never coerced
+            // as a field value or kept as a raw metadata string.
+            return new MappedCell(column, target, null, string.IsNullOrEmpty(raw) ? CoercionStatus.Absent : CoercionStatus.Value, null, false, null, null, [], []);
+        }
+
         var definition = target.Definition;
         var input = raw;
         var warnings = new List<string>();
@@ -309,7 +316,7 @@ public sealed class CompiledMapping
             return Cell(result.Status, JsonValue.Create(hash), result.KeepRaw || hash != original, null, null);
         }
 
-        if (target.Structural is StructuralTarget.DuplicateGroupId or StructuralTarget.EmailThreadId && result.Value is not null
+        if (target.Structural is StructuralTarget.DuplicateGroupId or StructuralTarget.EmailThreadId or StructuralTarget.GroupId && result.Value is not null
             && result.Value.GetValue<string>().Length > RelationshipIds.MaxUpstreamValueLength)
         {
             return Cell(CoercionStatus.Error, null, false, null,

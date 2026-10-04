@@ -1,0 +1,182 @@
+@let current = hit();
+<div class="review__bar">
+  <button type="button" oppButton="ghost" (click)="leave()">
+    <opp-icon name="back-to-list" />Back to list
+  </button>
+  <div class="review__nav" role="group" aria-label="Document navigation">
+    <button
+      type="button"
+      oppIconButton
+      label="Previous document"
+      [disabled]="!cursor().hasPrevious()"
+      (click)="navigate('previous')"
+    >
+      <opp-icon name="chevron-left" />
+    </button>
+    <span class="review__position">{{ positionText() }}</span>
+    <button
+      type="button"
+      oppIconButton
+      label="Next document"
+      [disabled]="!cursor().hasNext()"
+      (click)="navigate('next')"
+    >
+      <opp-icon name="chevron-right" />
+    </button>
+  </div>
+  @if (current) {
+    <p class="review__identity">
+      <strong class="review__control">{{ current.controlNumber }}</strong>
+      @if (current.fileName) {
+        <span class="review__name">{{ current.fileName }}</span>
+      }
+    </p>
+  }
+  <div class="review__toggles" role="group" aria-label="Panes">
+    <button
+      #codingToggle
+      type="button"
+      oppButton="ghost"
+      aria-controls="review-coding"
+      [attr.aria-expanded]="!codingSplit.isCollapsed()"
+      (click)="togglePane('coding')"
+    >
+      <opp-icon name="pane-right" />Coding
+    </button>
+    <button
+      #relatedToggle
+      type="button"
+      oppButton="ghost"
+      aria-controls="review-related"
+      [attr.aria-expanded]="!relatedSplit.isCollapsed()"
+      (click)="togglePane('related')"
+    >
+      <opp-icon name="pane-bottom" />Related Items
+    </button>
+  </div>
+</div>
+<div class="review__progress" aria-hidden="true">
+  <span class="review__progress-fill" [style.inline-size.%]="progress()"></span>
+</div>
+<div class="review__notices" role="status">
+  @if (cursor().related(); as related) {
+    <div class="review__notice">
+      <span
+        >Viewing related item <strong>{{ related.controlNumber }}</strong></span
+      >
+      <button type="button" oppButton="ghost" (click)="returnToCursor()">
+        Return to {{ cursor().hit()?.controlNumber }}
+      </button>
+    </div>
+  }
+  @if (cursor().left()) {
+    <div class="review__notice review__notice--warning">
+      <opp-icon name="warning" />
+      <span>{{ current?.controlNumber }} is no longer in the results. The list was refreshed.</span>
+      <button type="button" oppButton="secondary" (click)="continueFromNext()">
+        Continue from next
+      </button>
+    </div>
+  }
+  @if (notice(); as n) {
+    <div class="review__notice">
+      <opp-icon [name]="n.kind === 'refreshed' ? 'refresh' : 'info'" />
+      <span>{{ n.message }}</span>
+      @if (n.kind === 'end') {
+        <button type="button" oppButton="secondary" (click)="leave()">Back to list</button>
+      }
+      <button type="button" oppButton="ghost" (click)="notice.set(null)">Dismiss</button>
+    </div>
+  }
+</div>
+<opp-split-pane
+  #codingSplit
+  class="review__layout"
+  direction="row"
+  sizedPane="end"
+  [size]="28"
+  min="18"
+  max="50"
+  collapsible
+  label="Resize coding pane"
+  storageKey="review.coding"
+>
+  <div oppSplitStart class="review__main">
+    <opp-split-pane
+      #relatedSplit
+      direction="column"
+      sizedPane="end"
+      [size]="30"
+      min="12"
+      max="70"
+      collapsible
+      label="Resize Related Items pane"
+      storageKey="review.related"
+    >
+      <section
+        #viewerRegion
+        oppSplitStart
+        class="pane"
+        aria-labelledby="review-viewer-title"
+        oppCommandRegion="1"
+        data-command-scope="viewer"
+      >
+        <header class="pane__header">
+          <h2 id="review-viewer-title" class="pane__title">Viewer</h2>
+        </header>
+        @if (viewer(); as doc) {
+          <opp-review-viewer [document]="doc" />
+        }
+      </section>
+      <section
+        #relatedRegion
+        id="review-related"
+        oppSplitEnd
+        class="pane"
+        aria-labelledby="review-related-title"
+        oppCommandRegion="3"
+        data-command-scope="related"
+      >
+        <header class="pane__header">
+          <h2 id="review-related-title" class="pane__title">Related Items</h2>
+          <button
+            type="button"
+            oppIconButton
+            label="Hide Related Items"
+            (click)="togglePane('related')"
+          >
+            <opp-icon name="chevron-down" />
+          </button>
+        </header>
+        @if (current) {
+          <opp-review-related [hit]="current" />
+        }
+      </section>
+    </opp-split-pane>
+  </div>
+  <section
+    #codingRegion
+    id="review-coding"
+    oppSplitEnd
+    class="pane"
+    aria-labelledby="review-coding-title"
+    oppCommandRegion="2"
+    data-command-scope="coding"
+  >
+    <header class="pane__header">
+      <h2 id="review-coding-title" class="pane__title">Coding</h2>
+      <button type="button" oppIconButton label="Hide coding pane" (click)="togglePane('coding')">
+        <opp-icon name="chevron-right" />
+      </button>
+    </header>
+    @if (current) {
+      <opp-review-coding
+        [documentId]="current.documentId"
+        [fields]="fields()"
+        [coding]="coding()"
+        [canCode]="canCode"
+        (move)="saveAndMove($event)"
+      />
+    }
+  </section>
+</opp-split-pane>

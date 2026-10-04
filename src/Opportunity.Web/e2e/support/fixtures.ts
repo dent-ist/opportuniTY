@@ -1,12 +1,14 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import type { Theme } from '../../src/app/core/preferences/ui-preferences';
-import { mockApi, type MockApiOptions } from './mock-api';
+import { mockApi, type MockApiOptions, type MockControl } from './mock-api';
 
 export { expect };
 
 interface Fixtures {
   /** Per-test API mock options (`test.use({ api: { signedIn: false } })`). */
   api: MockApiOptions;
+  /** The mocked API's state: audit log and scenario switches (`mock.expireSearches()`). */
+  mock: MockControl;
   /** API paths the mock had no answer for; the test fails if any were requested. */
   unhandledApi: string[];
   consoleErrors: string[];
@@ -18,14 +20,16 @@ interface Fixtures {
  */
 export const test = base.extend<Fixtures>({
   api: [{}, { option: true }],
-  unhandledApi: [
+  mock: [
     async ({ page, api }, use) => {
-      const unhandled = await mockApi(page, api);
-      await use(unhandled);
+      const control = await mockApi(page, api);
+      await use(control);
+      const { unhandled } = control;
       expect(unhandled, `Unmocked API requests: ${unhandled.join(', ')}`).toEqual([]);
     },
     { auto: true },
   ],
+  unhandledApi: async ({ mock }, use) => use(mock.unhandled),
   consoleErrors: [
     async ({ page }, use) => {
       const errors: string[] = [];

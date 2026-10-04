@@ -15,12 +15,14 @@ using Opportunity.Contracts.Import;
 using Opportunity.Core.Documents;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.SearchWork;
+using Opportunity.Core.Storage;
 using Opportunity.Data.Audit;
 using Opportunity.Data.Coding;
 using Opportunity.Data.Documents;
 using Opportunity.Data.Jobs;
 using Opportunity.Data.Relationships;
 using Opportunity.Data.SearchWork;
+using Opportunity.Data.Storage;
 
 namespace Opportunity.Data.Import;
 
@@ -29,7 +31,7 @@ namespace Opportunity.Data.Import;
 /// The chunk write follows the bulk-coding pattern (<c>CodingRepository.ApplyChunkAsync</c>): every write of the chunk,
 /// fence F3 and the chunk's one IndexChunkTask (the transaction's last statement) commit together or not at all.
 /// </summary>
-public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImportBatchStore
+public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource) : IImportBatchStore
 {
     /// <summary>Actor of chunk-level audit events: the import worker, on behalf of the job's initiator.</summary>
     public const string ImportWorkerActor = "service:import";
@@ -43,13 +45,15 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         workspace_id, import_batch_id, job_id, name, mode, source_file_name, source_object_key, source_sha256, source_size,
         profile_id, profile_version, profile::text, coding_overlay_field_ids, header::text, dat_encoding, dat_encoding_fallback,
         data_offset, rows_total, fields_created, choices_created, prepared_at, rows_imported, rows_overlaid, rows_skipped,
-        rows_errored, created_by, created_at, completed_at, may_create_fields
+        rows_errored, created_by, created_at, completed_at, may_create_fields, opt_file_name, opt_object_key, opt_sha256, opt_size,
+        images_only, opt_rows_total
         """;
 
-    // Overlay may set these document columns; identity, family and artifact columns belong to other tickets.
+    // Overlay may set these document columns; identity, family and page-set columns belong to other tickets. A new
+    // native or text (E08-T04) replaces the reference; the earlier object stays registered (ADR-011 §4.2).
     private static readonly Dictionary<string, DocumentColumns.Column> OverlayColumns = DocumentColumns.MutableColumns
         .Where(c => c.Name is not ("metadata" or "metadata_raw" or "family_id" or "parent_document_id" or "family_sequence"
-            or "family_status" or "native_object_id" or "text_object_id" or "active_page_set_id"))
+            or "family_status" or "active_page_set_id"))
         .ToDictionary(c => c.Name, StringComparer.Ordinal);
 
     public async Task<ImportBatchCreation> CreateAsync(NewImportBatch batch, CancellationToken cancellationToken = default)
@@ -93,9 +97,10 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             $"""
             INSERT INTO opportunity.import_batch
                 (workspace_id, import_batch_id, job_id, name, mode, source_file_name, source_object_key, source_sha256, source_size,
-                 profile_id, profile_version, profile, coding_overlay_field_ids, may_create_fields, created_by)
+                 profile_id, profile_version, profile, coding_overlay_field_ids, may_create_fields, created_by,
+                 opt_file_name, opt_object_key, opt_sha256, opt_size, images_only)
             VALUES (@ws, @id, @job, @name, @mode, @file, @key, @sha, @size, @profile_id, @profile_version, @profile::jsonb, @coding,
-                    @may_create_fields, @by)
+                    @may_create_fields, @by, @opt_file, @opt_key, @opt_sha, @opt_size, @images_only)
             RETURNING {Columns}
             """))
         {
@@ -114,6 +119,11 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             insert.Parameters.AddWithValue("coding", batch.CodingOverlayFieldIds.Distinct().Order().ToArray());
             insert.Parameters.AddWithValue("may_create_fields", batch.MayCreateFields);
             insert.Parameters.AddWithValue("by", batch.InitiatedBy);
+            insert.Parameters.Add(Nullable("opt_file", NpgsqlDbType.Text, batch.Opt?.FileName));
+            insert.Parameters.Add(Nullable("opt_key", NpgsqlDbType.Text, batch.Opt?.ObjectKey));
+            insert.Parameters.Add(Nullable("opt_sha", NpgsqlDbType.Bytea, batch.Opt?.Sha256));
+            insert.Parameters.Add(Nullable("opt_size", NpgsqlDbType.Bigint, batch.Opt?.Size));
+            insert.Parameters.AddWithValue("images_only", batch.ImagesOnly);
             await using var reader = await insert.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
             record = Read(reader);
@@ -130,6 +140,9 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             ["ProfileId"] = record.ProfileId?.ToString(),
             ["CodingOverlayFields"] = string.Join(',', record.CodingOverlayFieldIds),
             ["MayCreateFields"] = record.MayCreateFields ? "true" : "false",
+            ["OptFileName"] = record.Opt is { } opt ? Truncate(opt.FileName, 255) : null,
+            ["OptSha256"] = record.Opt is { } o ? Convert.ToHexStringLower(o.Sha256) : null,
+            ["ImagesOnly"] = record.ImagesOnly ? "true" : null,
         };
         await AuditSql.InsertAsync(tx, batch.AuditTemplate with
         {
@@ -295,7 +308,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             """
             UPDATE opportunity.import_batch
             SET header = @header::jsonb, dat_encoding = @encoding, dat_encoding_fallback = @fallback, data_offset = @offset,
-                rows_total = @rows, fields_created = @fields, choices_created = @choices, prepared_at = now()
+                rows_total = @rows, fields_created = @fields, choices_created = @choices, opt_rows_total = @opt_rows, prepared_at = now()
             WHERE workspace_id = @ws AND import_batch_id = @id AND prepared_at IS NULL
             """))
         {
@@ -308,6 +321,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             update.Parameters.AddWithValue("rows", preparation.RowsTotal);
             update.Parameters.AddWithValue("fields", preparation.FieldsCreated);
             update.Parameters.AddWithValue("choices", preparation.ChoicesCreated);
+            update.Parameters.Add(Nullable("opt_rows", NpgsqlDbType.Bigint, preparation.OptRowsTotal));
             if (await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
             {
                 return false;
@@ -361,6 +375,37 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         return range;
     }
 
+    public async Task<IReadOnlyDictionary<string, Guid>> FindDocumentIdsAsync(
+        Guid workspaceId, IReadOnlyCollection<string> controlNumberNorms, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(controlNumberNorms);
+        var ids = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        if (controlNumberNorms.Count == 0)
+        {
+            return ids;
+        }
+
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using (var command = tx.Command(
+            """
+            SELECT u.n, d.document_id
+            FROM unnest(@norms) AS u(n)
+            JOIN opportunity.document d ON d.workspace_id = @ws AND d.control_number_norm = normalize(u.n, NFC)
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("norms", controlNumberNorms.ToArray());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                ids[reader.GetString(0)] = reader.GetGuid(1);
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return ids;
+    }
+
     public async Task<ImportChunkResult> ApplyChunkAsync(ClaimedChunk chunk, ImportChunkWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunk);
@@ -382,6 +427,8 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         ChunkCommitResult commit;
         await using (var tx = await WorkspaceTransaction.BeginAsync(dataSource, lease.WorkspaceId, cancellationToken).ConfigureAwait(false))
         {
+            // Family resolution sees every chunk committed before it (E09-T01); taken before any row lock of the chunk.
+            await FamilyWriter.LockAsync(tx, cancellationToken).ConfigureAwait(false);
             var batch = await ReadAsync(tx, lease.WorkspaceId, write.ImportBatchId, cancellationToken).ConfigureAwait(false);
             if (batch is null || batch.JobId != lease.JobId)
             {
@@ -462,12 +509,12 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         await using var command = tx.Command(
             """
-            SELECT row_no, issue_no, severity, line_no, control_number, column_name, code, message
+            SELECT row_no, issue_no, severity, line_no, control_number, column_name, code, message, source
             FROM opportunity.import_row_issue
             WHERE workspace_id = @ws AND import_batch_id = @id
               AND (@severity::smallint IS NULL OR severity = @severity)
-              AND (@after_row::bigint IS NULL OR (row_no, issue_no) > (@after_row, @after_issue))
-            ORDER BY row_no, issue_no
+              AND (@after_row::bigint IS NULL OR (source, row_no, issue_no) > (@after_source, @after_row, @after_issue))
+            ORDER BY source, row_no, issue_no
             LIMIT @limit
             """);
         command.Parameters.AddWithValue("ws", workspaceId);
@@ -475,6 +522,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         command.Parameters.Add(Nullable("severity", NpgsqlDbType.Smallint, (short?)severity));
         command.Parameters.Add(Nullable("after_row", NpgsqlDbType.Bigint, after?.RowNo));
         command.Parameters.Add(Nullable("after_issue", NpgsqlDbType.Integer, after?.IssueNo));
+        command.Parameters.Add(Nullable("after_source", NpgsqlDbType.Smallint, (short?)after?.Source));
         command.Parameters.AddWithValue("limit", limit);
         var issues = new List<ImportRowIssueRecord>();
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
@@ -489,7 +537,51 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
                     reader.IsDBNull(4) ? null : reader.GetString(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5),
                     reader.GetString(6),
-                    reader.GetString(7)));
+                    reader.GetString(7),
+                    (ImportIssueSource)reader.GetInt16(8)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return issues;
+    }
+
+    public async Task<IReadOnlyList<ImportFamilyIssueRecord>> GetFamilyIssuesAsync(
+        Guid workspaceId, Guid importBatchId, ImportRowIssueCursor? after, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            """
+            SELECT m.row_no, i.issue_no, d.document_id, d.control_number, i.kind, d.family_status, i.message, i.related, i.missing_count
+            FROM opportunity.import_batch_member m
+            JOIN opportunity.family_issue i ON i.workspace_id = m.workspace_id AND i.document_id = m.document_id
+            JOIN opportunity.document d ON d.workspace_id = m.workspace_id AND d.document_id = m.document_id
+            WHERE m.workspace_id = @ws AND m.import_batch_id = @id
+              AND (@after_row::bigint IS NULL OR (m.row_no, i.issue_no) > (@after_row, @after_issue))
+            ORDER BY m.row_no, i.issue_no
+            LIMIT @limit
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("id", importBatchId);
+        command.Parameters.Add(Nullable("after_row", NpgsqlDbType.Bigint, after?.RowNo));
+        command.Parameters.Add(Nullable("after_issue", NpgsqlDbType.Smallint, (short?)after?.IssueNo));
+        command.Parameters.AddWithValue("limit", limit);
+        var issues = new List<ImportFamilyIssueRecord>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                issues.Add(new ImportFamilyIssueRecord(
+                    reader.GetInt64(0),
+                    reader.GetInt16(1),
+                    reader.GetGuid(2),
+                    reader.GetString(3),
+                    (FamilyIssueKind)reader.GetInt16(4),
+                    (FamilyStatus)reader.GetInt16(5),
+                    reader.GetString(6),
+                    reader.GetFieldValue<string[]>(7),
+                    reader.IsDBNull(8) ? null : reader.GetInt64(8)));
             }
         }
 
@@ -535,6 +627,7 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         }
 
         rows.RemoveAll(r => done.Contains(r.RowNo));
+        plan.DoneRows.UnionWith(done);
         foreach (var row in done)
         {
             plan.Issues.Remove(row);
@@ -629,6 +722,12 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
                     plan.Error(row, "control-number-exists",
                         $"A document with control number {row.ControlNumber} already exists; Append loads new documents only.");
                 }
+                else if (row.Objects.Any(o => o.DocumentId != document.DocumentId))
+                {
+                    // The chunk stored this row's files before the document existed (another load created it since).
+                    plan.Error(row, "document-changed",
+                        $"The document with control number {row.ControlNumber} was created by another load while its files were stored; load the row again.");
+                }
                 else
                 {
                     plan.Overlays.Add((row, document.DocumentId));
@@ -679,7 +778,11 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             d.FirstImportBatchId = batch.ImportBatchId;
             return d;
         }).ToList();
+
+        // Natives and text first (E08-T04): a document references registry rows of its own (ADR-011 §2.4).
+        await LinkObjectsAsync(tx, chunk, plan.Inserts.Select(r => (r, r.Document!.DocumentId)).Concat(plan.Overlays), cancellationToken).ConfigureAwait(false);
         var inserted = await DocumentRepository.InsertNewAsync(tx, documents, cancellationToken).ConfigureAwait(false);
+        var notInserted = new List<Guid>();
         foreach (var row in plan.Inserts)
         {
             if (inserted.Contains(row.Document!.DocumentId))
@@ -688,9 +791,16 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             }
             else
             {
+                if (row.Objects.Count > 0)
+                {
+                    notInserted.Add(row.Document.DocumentId);
+                }
+
                 plan.Error(row, "control-number-exists", $"A document with control number {row.ControlNumber} was created by another load meanwhile.");
             }
         }
+
+        await StoredObjectSql.UnregisterDocumentsAsync(tx, notInserted, cancellationToken).ConfigureAwait(false);
 
         // Overlays: only the supplied values; a blank value never overwrites (overlay options are E08-T07).
         var changed = await OverlayAsync(tx, plan.Overlays, cancellationToken).ConfigureAwait(false);
@@ -705,6 +815,9 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             bump.Parameters.AddWithValue("ids", changed.ToArray());
             await bump.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        // New documents start at version 1 and changed overlays were bumped above, so the derived date needs no bump.
+        await DeriveDocumentDatesAsync(tx, [.. inserted, .. changed], cancellationToken).ConfigureAwait(false);
 
         // Q-31 coding values of the rows that made it, through the coding store (CodingEvents, version bumps).
         var coding = plan.Members.Select(m => (m.Row, m.DocumentId))
@@ -736,11 +849,22 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         }
 
         var covered = plan.Members.Select(m => m.DocumentId).Concat(plan.Overlays.Select(o => o.DocumentId)).ToHashSet();
-        plan.OtherChangedDocuments.AddRange(await SyncRelationshipsAsync(tx, plan, covered, cancellationToken).ConfigureAwait(false));
+
+        // Families of the chunk's documents, before the duplicate groups: a group's primary depends on FamilyId/FamilyDate.
+        var families = await FamilyWriter.ResolveAsync(
+            tx, [.. covered], plan.Members.Select(m => m.DocumentId).ToHashSet(), cancellationToken).ConfigureAwait(false);
+        plan.FamiliesChanged = families.ChangedDocuments.Any(covered.Contains);
+        plan.OtherChangedDocuments.AddRange(families.ChangedDocuments.Where(d => !covered.Contains(d)));
+        plan.OtherChangedDocuments.AddRange(
+            await SyncRelationshipsAsync(tx, plan, covered, families.DuplicateGroupIds, cancellationToken).ConfigureAwait(false));
+
+        // OPT page sets (E08-T05) of the documents the chunk created or overlaid; a replaced page set is an overlay change.
+        var pagesChanged = await WritePageSetsAsync(tx, batch, plan, changed, cancellationToken).ConfigureAwait(false);
 
         foreach (var (row, documentId) in plan.Overlays)
         {
-            plan.Members.Add((row, documentId, changed.Contains(documentId) || codingChanged.Contains(documentId) ? ActionOverlaid : ActionSkipped));
+            plan.Members.Add((row, documentId,
+                changed.Contains(documentId) || codingChanged.Contains(documentId) || pagesChanged.Contains(documentId) ? ActionOverlaid : ActionSkipped));
         }
 
         if (plan.Members.Count > 0)
@@ -762,20 +886,91 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
     }
 
     /// <summary>
+    /// ADR-009 R25: DocumentDate is derived from the document's stored dates (first non-null of DateSent, DateReceived,
+    /// DateLastModified, DateCreated; DocumentDateSource names which) after the chunk's inserts and overlays, so an
+    /// overlay that changes one date recomputes it from all of them. An upstream document date (source Upstream) is
+    /// kept as loaded. Rows whose derived value is already stored are not touched.
+    /// </summary>
+    private static async Task DeriveDocumentDatesAsync(WorkspaceTransaction tx, Guid[] documentIds, CancellationToken cancellationToken)
+    {
+        if (documentIds.Length == 0)
+        {
+            return;
+        }
+
+        await using var derive = tx.Command(
+            """
+            UPDATE opportunity.document d SET document_date = x.value, document_date_source = x.source
+            FROM (SELECT document_id,
+                         coalesce(date_sent, date_received, date_last_modified, date_created) AS value,
+                         CASE WHEN date_sent IS NOT NULL THEN 1 WHEN date_received IS NOT NULL THEN 2
+                              WHEN date_last_modified IS NOT NULL THEN 3 WHEN date_created IS NOT NULL THEN 4 END::smallint AS source
+                  FROM opportunity.document
+                  WHERE workspace_id = @ws AND document_id = ANY(@ids)
+                    AND document_date_source IS DISTINCT FROM @upstream) x
+            WHERE d.workspace_id = @ws AND d.document_id = x.document_id
+              AND (d.document_date, d.document_date_source) IS DISTINCT FROM (x.value, x.source)
+            """);
+        derive.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        derive.Parameters.AddWithValue("ids", documentIds);
+        derive.Parameters.AddWithValue("upstream", (short)DocumentDateSource.Upstream);
+        await derive.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Registers the rows' stored files (<see cref="ImportRow.Objects"/>) and points each document at its native and
+    /// text object, before the document rows are written (their foreign keys are not deferred).
+    /// </summary>
+    private static async Task LinkObjectsAsync(
+        WorkspaceTransaction tx, ClaimedChunk chunk, IEnumerable<(ImportRow Row, Guid DocumentId)> rows, CancellationToken cancellationToken)
+    {
+        var linked = rows.Where(r => r.Row.Objects.Count > 0).ToList();
+        if (linked.Count == 0)
+        {
+            return;
+        }
+
+        if (linked.Any(r => r.Row.Objects.Any(o => o.DocumentId != r.DocumentId)))
+        {
+            throw new ArgumentException("A row's stored objects belong to another document.", nameof(rows));
+        }
+
+        var ids = await StoredObjectSql.RegisterAsync(tx, [.. linked.SelectMany(r => r.Row.Objects)], chunk.Lease.JobId, cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var (row, _) in linked)
+        {
+            foreach (var o in row.Objects)
+            {
+                switch (o.Area)
+                {
+                    case ObjectArea.Native:
+                        row.Document!.NativeObjectId = ids[o.LogicalKey];
+                        break;
+                    case ObjectArea.Text:
+                        row.Document!.TextObjectId = ids[o.LogicalKey];
+                        break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Duplicate groups and email threads of the chunk's documents (E09-T02), after the document writes and before the
     /// search work, through <see cref="RelationshipWriter"/>: the group and thread rows the documents now reference (the
     /// deferred foreign keys need them at commit), plus, for overlays, the ones they referenced before, so every touched
-    /// group is recounted and its primary re-elected. Documents outside the chunk whose primary flag changed are returned:
+    /// group is recounted and its primary re-elected, and the groups of documents whose family changed (the primary is
+    /// family-level). Documents outside the chunk whose primary flag changed are returned:
     /// they get search work of their own (<see cref="RelationshipTasks"/>).
     /// </summary>
     private static async Task<IReadOnlyList<Guid>> SyncRelationshipsAsync(
-        WorkspaceTransaction tx, ChunkPlan plan, IReadOnlySet<Guid> coveredDocumentIds, CancellationToken cancellationToken)
+        WorkspaceTransaction tx, ChunkPlan plan, IReadOnlySet<Guid> coveredDocumentIds, IReadOnlyList<Guid> familyChangedGroups,
+        CancellationToken cancellationToken)
     {
         var rows = plan.Members.Select(m => m.Row).Concat(plan.Overlays.Select(o => o.Row)).ToList();
         var previous = plan.Overlays.Select(o => plan.PreviousRelationships.GetValueOrDefault(o.DocumentId)).ToList();
         var groups = rows.Select(r => r.DuplicateGroup).OfType<DuplicateGroupKey>().DistinctBy(g => g.DuplicateGroupId).ToList();
         var threads = rows.Select(r => r.EmailThread).OfType<EmailThreadKey>().DistinctBy(t => t.EmailThreadId).ToList();
-        var previousGroups = previous.Select(p => p.DuplicateGroupId).OfType<Guid>().Distinct().ToList();
+        var previousGroups = previous.Select(p => p.DuplicateGroupId).OfType<Guid>().Concat(familyChangedGroups).Distinct().ToList();
         var previousThreads = previous.Select(p => p.EmailThreadId).OfType<Guid>().Distinct().ToList();
         if (groups.Count == 0 && threads.Count == 0 && previousGroups.Count == 0 && previousThreads.Count == 0)
         {
@@ -880,6 +1075,41 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
 
     private static async Task InsertIssuesAsync(WorkspaceTransaction tx, Guid importBatchId, ChunkPlan plan, CancellationToken cancellationToken)
     {
+        // (file, row) -> issues in order: DAT rows, the OPT rows of OPT-only documents, then the OPT rows' own warnings.
+        var entries = new SortedDictionary<(short Source, long Row), (long? Line, string? ControlNumber, List<ImportRowIssue> Issues)>();
+        void Add(ImportIssueSource source, long rowNo, long? line, string? controlNumber, ImportRowIssue issue)
+        {
+            if (!entries.TryGetValue(((short)source, rowNo), out var entry))
+            {
+                entry = (line, controlNumber, []);
+                entries[((short)source, rowNo)] = entry;
+            }
+
+            entry.Issues.Add(issue);
+        }
+
+        foreach (var (rowNo, issues) in plan.Issues)
+        {
+            var row = plan.Rows.GetValueOrDefault(rowNo);
+            foreach (var issue in issues)
+            {
+                if (row?.OptRowNo is { } optRow)
+                {
+                    Add(ImportIssueSource.Opt, optRow, row.LineNo, row.ControlNumber, issue);
+                }
+                else
+                {
+                    Add(ImportIssueSource.Dat, rowNo, row?.LineNo, row?.ControlNumber, issue);
+                }
+            }
+        }
+
+        foreach (var issue in plan.Rows.Values.Where(r => !plan.DoneRows.Contains(r.RowNo)).SelectMany(r => r.OptIssues).Concat(plan.OptIssues))
+        {
+            Add(ImportIssueSource.Opt, issue.OptRow, issue.LineNo, issue.ImageKey, issue.Issue);
+        }
+
+        var sources = new List<short>();
         var rows = new List<long>();
         var numbers = new List<int>();
         var severities = new List<short>();
@@ -888,16 +1118,16 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         var columns = new List<string?>();
         var codes = new List<string>();
         var messages = new List<string>();
-        foreach (var (rowNo, issues) in plan.Issues.OrderBy(i => i.Key))
+        foreach (var ((source, rowNo), (line, controlNumber, issues)) in entries)
         {
-            var row = plan.Rows.GetValueOrDefault(rowNo);
             for (var i = 0; i < issues.Count; i++)
             {
+                sources.Add(source);
                 rows.Add(rowNo);
                 numbers.Add(i + 1);
                 severities.Add((short)issues[i].Severity);
-                lines.Add(row?.LineNo);
-                controlNumbers.Add(Truncate(row?.ControlNumber, 1000));
+                lines.Add(line);
+                controlNumbers.Add(Truncate(controlNumber, 1000));
                 columns.Add(Truncate(issues[i].Column, 1000));
                 codes.Add(Truncate(issues[i].Code, ImportRowIssue.MaxCodeLength)!);
                 messages.Add(Truncate(issues[i].Message, ImportRowIssue.MaxMessageLength)!);
@@ -912,13 +1142,14 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         await using var command = tx.Command(
             """
             INSERT INTO opportunity.import_row_issue
-                (workspace_id, import_batch_id, row_no, issue_no, severity, line_no, control_number, column_name, code, message)
-            SELECT @ws, @id, u.row_no, u.issue_no, u.severity, u.line_no, u.control_number, u.column_name, u.code, u.message
-            FROM unnest(@rows, @numbers, @severities, @lines, @control_numbers, @columns, @codes, @messages)
-                AS u(row_no, issue_no, severity, line_no, control_number, column_name, code, message)
+                (workspace_id, import_batch_id, source, row_no, issue_no, severity, line_no, control_number, column_name, code, message)
+            SELECT @ws, @id, u.source, u.row_no, u.issue_no, u.severity, u.line_no, u.control_number, u.column_name, u.code, u.message
+            FROM unnest(@sources, @rows, @numbers, @severities, @lines, @control_numbers, @columns, @codes, @messages)
+                AS u(source, row_no, issue_no, severity, line_no, control_number, column_name, code, message)
             """);
         command.Parameters.AddWithValue("ws", tx.WorkspaceId);
         command.Parameters.AddWithValue("id", importBatchId);
+        command.Parameters.AddWithValue("sources", sources.ToArray());
         command.Parameters.AddWithValue("rows", rows.ToArray());
         command.Parameters.AddWithValue("numbers", numbers.ToArray());
         command.Parameters.AddWithValue("severities", severities.ToArray());
@@ -1049,7 +1280,8 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
                 reader.GetInt64(16),
                 reader.GetInt64(17),
                 reader.GetInt32(18),
-                reader.GetInt32(19));
+                reader.GetInt32(19),
+                reader.IsDBNull(34) ? null : reader.GetInt64(34));
         }
 
         return new ImportBatchRecord
@@ -1077,6 +1309,10 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
             CreatedAt = reader.GetFieldValue<DateTimeOffset>(26),
             CompletedAt = reader.IsDBNull(27) ? null : reader.GetFieldValue<DateTimeOffset>(27),
             MayCreateFields = reader.GetBoolean(28),
+            Opt = reader.IsDBNull(30)
+                ? null
+                : new ImportOptSource(reader.GetString(29), reader.GetString(30), reader.GetFieldValue<byte[]>(31), reader.GetInt64(32)),
+            ImagesOnly = reader.GetBoolean(33),
         };
     }
 
@@ -1094,6 +1330,12 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
         public Dictionary<long, List<ImportRowIssue>> Issues { get; } = [];
 
         public Dictionary<long, ImportRow> Rows { get; } = [];
+
+        /// <summary>Rows an earlier committed attempt already wrote.</summary>
+        public HashSet<long> DoneRows { get; } = [];
+
+        /// <summary>OPT warnings the chunk itself found (images of rows that were not loaded).</summary>
+        public List<ImportOptIssue> OptIssues { get; } = [];
 
         public List<ImportRow> Inserts { get; } = [];
 
@@ -1121,8 +1363,11 @@ public sealed class ImportBatchRepository(NpgsqlDataSource dataSource) : IImport
 
         public int Errored => ErroredRows.Count;
 
+        public bool FamiliesChanged { get; set; }
+
         public SearchChangeMask ChangeMask =>
             SearchChangeMask.Content | SearchChangeMask.Metadata
+            | (FamiliesChanged ? SearchChangeMask.Relationships : SearchChangeMask.None)
             | (CodingChanged ? SearchChangeMask.Coding : SearchChangeMask.None)
             | (SecurityChanged ? SearchChangeMask.Security : SearchChangeMask.None);
 

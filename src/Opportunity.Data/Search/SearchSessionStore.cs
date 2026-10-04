@@ -19,7 +19,7 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
     private const string SessionColumns =
         """
         workspace_id, search_id, user_id, session_id, query_text, sort_keys::text, page_size, count_exact, highlight,
-        pit_id, total_value, total_exact, created_at, expires_at
+        pit_id, total_value, total_exact, created_at, expires_at, served_generation
         """;
 
     /// <summary>Expired searches removed per create, so cleanup cost stays bounded.</summary>
@@ -47,8 +47,9 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
             """
             INSERT INTO opportunity.search_session
                 (workspace_id, search_id, user_id, session_id, query_text, sort_keys, page_size, count_exact, highlight,
-                 pit_id, total_value, total_exact, created_at, expires_at)
-            VALUES (@ws, @id, @user, @session, @query, @sort, @size, @exact, @highlight, @pit, @total, @totalExact, @created, @expires)
+                 pit_id, total_value, total_exact, created_at, expires_at, served_generation)
+            VALUES (@ws, @id, @user, @session, @query, @sort, @size, @exact, @highlight, @pit, @total, @totalExact, @created, @expires,
+                    @served)
             """))
         {
             insert.Parameters.AddWithValue("ws", search.WorkspaceId);
@@ -65,6 +66,7 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
             insert.Parameters.AddWithValue("totalExact", search.TotalExact);
             insert.Parameters.AddWithValue("created", search.CreatedAt);
             insert.Parameters.AddWithValue("expires", search.ExpiresAt);
+            insert.Parameters.AddWithValue("served", NpgsqlDbType.Bigint, (object?)search.ServedGeneration ?? DBNull.Value);
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -98,7 +100,10 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
                     reader.GetInt64(10),
                     reader.GetBoolean(11),
                     reader.GetFieldValue<DateTimeOffset>(12),
-                    reader.GetFieldValue<DateTimeOffset>(13));
+                    reader.GetFieldValue<DateTimeOffset>(13))
+                {
+                    ServedGeneration = reader.IsDBNull(14) ? null : reader.GetInt64(14),
+                };
             }
         }
 
@@ -206,11 +211,15 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
 
 public static class SearchSessionStoreRegistration
 {
-    /// <summary>Registers the PostgreSQL <see cref="ISearchSessionStore"/> (needs an <see cref="NpgsqlDataSource"/>).</summary>
+    /// <summary>
+    /// Registers the PostgreSQL <see cref="ISearchSessionStore"/> and <see cref="ISearchWatermarkReader"/> (need an
+    /// <see cref="NpgsqlDataSource"/>).
+    /// </summary>
     public static IServiceCollection AddPostgresSearchSessionStore(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<ISearchSessionStore, SearchSessionStore>();
+        services.TryAddSingleton<ISearchWatermarkReader, SearchWatermarkReader>();
         return services;
     }
 }

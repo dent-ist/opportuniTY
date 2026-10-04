@@ -11,4 +11,7 @@ public interface IUserDirectory
 
     /// <summary>Replaces the group snapshot after a principal refresh.</summary>
     Task UpdateGroupsAsync(Guid userId, IReadOnlyList<string> groups, DateTimeOffset now, CancellationToken cancellationToken = default);
+
+    /// <summary>Display names of known users (absent or unnamed users are omitted), e.g. the last editor of a document.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> GetDisplayNamesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken = default);
 }

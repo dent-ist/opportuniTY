@@ -11,4 +11,5 @@ export type StructuralTarget =
   | 'dedupeHash'
   | 'emailThreadId'
   | 'emailHash'
+  | 'attachmentIds'
   | null;

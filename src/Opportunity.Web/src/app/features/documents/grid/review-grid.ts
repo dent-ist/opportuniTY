@@ -49,6 +49,7 @@ import { ActiveFilter, FilterSummary } from './filter-summary';
 import { CellFormatter, countLabel, freshnessLabel } from './grid-format';
 import { PageRequest, ReviewSearchApi } from './review-search';
 import { LoadedPage, ResultWindow, toLoadedPage } from './result-window';
+import type { CursorSource } from '../review/review-cursor';
 
 /** What the document list shows. */
 export interface GridSearch {
@@ -93,6 +94,8 @@ interface QueryError {
 
 interface RunOptions {
   anchor?: string | null;
+  /** Where `anchor` was in the whole result: when it is not on the first page, its page is loaded instead. */
+  anchorPosition?: number | null;
   notice?: string;
   /** A filter was added or changed: selected documents that left the results are deselected. */
   narrowed?: boolean;
@@ -140,10 +143,12 @@ interface ResultInfo {
   styleUrl: './review-grid.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ReviewGrid {
+export class ReviewGrid implements CursorSource {
   readonly search = input.required<GridSearch>();
   readonly open = output<GridOpenEvent>();
   readonly selectionChange = output<ReadonlySet<string>>();
+  /** The results were refreshed (Q-33): the server reopened its view, or the expired search ran again. */
+  readonly refreshed = output<string>();
 
   private readonly api = inject(ReviewSearchApi);
   private readonly context = inject(WorkspaceContext);
@@ -162,6 +167,8 @@ export class ReviewGrid {
 
   // Columns
   private readonly fields = signal<FieldResource[] | null>(null);
+  /** The workspace's field catalogue once loaded (Review mode's coding pane, E16-T05). */
+  readonly fieldCatalogue = this.fields.asReadonly();
   protected readonly columns = computed(() => defaultColumns(this.fields()));
   protected readonly colCount = computed(() => FIXED_COLUMNS + this.columns().view.length);
   protected readonly gridTemplate = computed(() =>
@@ -240,7 +247,8 @@ export class ReviewGrid {
   protected readonly status = signal<Status>('loading');
   protected readonly error = signal<ApiError | UserFacingError | null>(null);
   protected readonly window = signal(ResultWindow.EMPTY);
-  protected readonly rows = computed(() => this.window().rows);
+  /** The loaded rows in list order (the review cursor walks these, E16-T03). */
+  readonly rows = computed(() => this.window().rows);
   protected readonly result = signal<ResultInfo | null>(null);
   protected readonly sort = signal<SearchSortKey | null>(null);
   protected readonly busy = signal(false);
@@ -253,6 +261,8 @@ export class ReviewGrid {
   private countExact = false;
   /** Bumped by every new search or jump; responses for an older value are dropped. */
   private seq = 0;
+  /** The cursor page being fetched at either end, shared by scrolling and the review cursor. */
+  private more: { direction: 'next' | 'previous'; promise: Promise<boolean> } | null = null;
 
   // Focus and selection
   protected readonly focusRow = signal(0);
@@ -279,7 +289,7 @@ export class ReviewGrid {
   });
 
   // Labels
-  protected readonly countText = computed(() => {
+  readonly countText = computed(() => {
     const r = this.result();
     return r ? countLabel(r.total, r.freshness, this.prefs.locale()) : '';
   });
@@ -447,7 +457,18 @@ export class ReviewGrid {
       this.status.set('not-indexed');
       return;
     }
-    const window = ResultWindow.of(toLoadedPage(page), this.pageSize());
+    let window = ResultWindow.of(toLoadedPage(page), this.pageSize());
+    const anchorPage = Math.ceil((options.anchorPosition ?? 0) / this.pageSize());
+    if (options.anchor && window.indexOf(options.anchor) < 0 && anchorPage > 1 && page.nextCursor) {
+      // The anchor was further down: load its page, so the list (and the review cursor) carries on from there.
+      try {
+        const there = await this.api.page(page.searchId, { page: anchorPage });
+        if (seq !== this.seq) return;
+        if (there.items.length > 0) window = ResultWindow.of(toLoadedPage(there), this.pageSize());
+      } catch {
+        if (seq !== this.seq) return; // the first page stays
+      }
+    }
     this.window.set(window);
     this.result.set(resultInfo(page.searchId, page));
     this.status.set(window.rows.length > 0 ? 'ready' : 'empty');
@@ -458,6 +479,7 @@ export class ReviewGrid {
     const notice = options.notice ?? (page.resultsRefreshed ? REFRESHED : null);
     this.notice.set(notice);
     this.announcer.announce(notice ?? `${this.countText()} documents`);
+    if (notice) this.refreshed.emit(notice);
     if (options.narrowed) void this.pruneSelection(window, compiled, seq);
   }
 
@@ -522,7 +544,7 @@ export class ReviewGrid {
     void this.run({ anchor: this.focusedId() });
   }
 
-  /** Header click or Enter on a header: ascending → descending → back to relevance. */
+  /** Header click or Enter on a header: ascending → descending → back to the default order (relevance with a keyword, else Control Number). */
   protected toggleSort(column: GridColumn): void {
     if (!column.sortField) return;
     const current = this.sort();
@@ -543,11 +565,19 @@ export class ReviewGrid {
   }
 
   /** Fetches the page after the last (or before the first) loaded page by cursor. */
-  private async loadMore(direction: 'next' | 'previous'): Promise<boolean> {
+  private loadMore(direction: 'next' | 'previous'): Promise<boolean> {
+    if (this.more)
+      return this.more.direction === direction ? this.more.promise : Promise.resolve(false);
+    const promise = this.fetchPage(direction).finally(() => (this.more = null));
+    this.more = { direction, promise };
+    return promise;
+  }
+
+  private async fetchPage(direction: 'next' | 'previous'): Promise<boolean> {
     const window = this.window();
     const result = this.result();
     const cursor = direction === 'next' ? window.last?.next : window.first?.previous;
-    if (!cursor || !result || this.loadingMore() || this.busy()) return false;
+    if (!cursor || !result || this.busy()) return false;
     const seq = this.seq;
     this.loadingMore.set(direction);
     this.loadError.set(null);
@@ -557,14 +587,19 @@ export class ReviewGrid {
     } catch (e) {
       if (seq !== this.seq) return false;
       this.loadingMore.set(null);
-      this.pageFailed(toApiError(e));
+      const error = toApiError(e);
+      if (error.status === 404) {
+        await this.runExpired();
+        return false;
+      }
+      this.pageFailed(error);
       return false;
     }
     this.loadingMore.set(null);
     if (seq !== this.seq || this.window() !== window) return false;
     const loaded = toLoadedPage(page);
     this.result.set(resultInfo(result.searchId, page));
-    if (page.resultsRefreshed) this.refreshed();
+    if (page.resultsRefreshed) this.onRefreshed();
     if (direction === 'next') {
       this.window.set(window.append(loaded));
     } else {
@@ -595,7 +630,7 @@ export class ReviewGrid {
     const loaded = toLoadedPage(page);
     const window = this.window();
     this.result.set(resultInfo(result.searchId, page));
-    if (page.resultsRefreshed) this.refreshed();
+    if (page.resultsRefreshed) this.onRefreshed();
     if (adjacent(window.last, loaded)) {
       // Last is the page after the loaded ones: keep them (the cache) and add it.
       this.window.set(window.append(loaded));
@@ -610,10 +645,19 @@ export class ReviewGrid {
     }
   }
 
+  /** The search expired (idle timeout) or its handle is gone: run it again, back at the focused row (Q-33). */
+  private runExpired(): Promise<void> {
+    const row = this.focusRow();
+    return this.run({
+      anchor: this.focusedId(),
+      anchorPosition: row >= 0 ? this.window().position(row) : null,
+      notice: EXPIRED,
+    });
+  }
+
   private pageFailed(error: ApiError): void {
     if (error.status === 404) {
-      // The search expired (idle timeout) or its handle is gone: run it again from the top (Q-33).
-      void this.run({ anchor: this.focusedId(), notice: EXPIRED });
+      void this.runExpired();
       return;
     }
     this.loadError.set(
@@ -626,9 +670,10 @@ export class ReviewGrid {
     this.maybeLoadMore();
   }
 
-  private refreshed(): void {
+  private onRefreshed(): void {
     this.notice.set(REFRESHED);
     this.announcer.announce(REFRESHED);
+    this.refreshed.emit(REFRESHED);
   }
 
   // ── Filters (#191) ───────────────────────────────────────────────────────────────────────────────────────
@@ -889,7 +934,8 @@ export class ReviewGrid {
 
   private measure(): void {
     const el = this.viewport()?.nativeElement;
-    if (!el) return;
+    // Hidden while Review mode is open: keep the last layout (and scroll row) for the way back.
+    if (!el || el.closest('[hidden]')) return;
     const style = getComputedStyle(el);
     const value = style.getPropertyValue('--opp-row-height').trim();
     const rootPx = parseFloat(getComputedStyle(el.ownerDocument.documentElement).fontSize) || 16;
@@ -998,6 +1044,55 @@ export class ReviewGrid {
 
   private focusedId(): string | null {
     return this.rows()[this.focusRow()]?.documentId ?? null;
+  }
+
+  // ── Review cursor source (E16-T03) ───────────────────────────────────────────────────────────────────────
+
+  /** 1-based position of loaded row `index` in the whole result, when known. */
+  positionOf(index: number): number | null {
+    return this.window().position(index);
+  }
+
+  /** More rows can be fetched beyond the loaded ones in `direction`. */
+  hasMore(direction: 'next' | 'previous'): boolean {
+    const w = this.window();
+    return direction === 'next' ? w.hasNext : w.hasPrevious;
+  }
+
+  /** Fetches the neighbouring cursor page; true when it was added. An expired search runs again (new rows). */
+  fetchMore(direction: 'next' | 'previous'): Promise<boolean> {
+    return this.status() === 'ready' ? this.loadMore(direction) : Promise.resolve(false);
+  }
+
+  /**
+   * Makes `documentId` the focused row, scrolled into view when the list is shown again (the review cursor
+   * keeps the hidden list in step; it fetches pages itself).
+   */
+  focusDocument(documentId: string): void {
+    const index = this.window().indexOf(documentId);
+    if (index < 0) return;
+    this.focusRow.set(index);
+    const top = this.scrollRow();
+    const visible = this.visibleCount();
+    if (index < top) this.scrollRow.set(index);
+    else if (index > top + visible - 1) this.scrollRow.set(index - visible + 1);
+  }
+
+  /** Back from Review mode: the list scrolls to where it was and takes focus; the selection never changed. */
+  restoreView(): void {
+    afterNextRender(
+      {
+        write: () => {
+          const el = this.viewport()?.nativeElement;
+          if (!el) return;
+          el.scrollTop = this.scrollRow() * this.rowHeight();
+          this.measure();
+          el.focus({ preventScroll: true });
+          this.maybeLoadMore();
+        },
+      },
+      { injector: this.injector },
+    );
   }
 
   // ── Selection ────────────────────────────────────────────────────────────────────────────────────────────
