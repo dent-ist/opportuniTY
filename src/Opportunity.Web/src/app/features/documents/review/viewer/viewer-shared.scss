@@ -1,0 +1,98 @@
+// Shared by the viewer modes: the mode fills the viewer panel; its tools sit in one wrapping row above the content.
+
+:host {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+.viewer-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-1) var(--opp-space-4);
+}
+
+.viewer-tools__group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-1);
+}
+
+.viewer-tools__search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  min-block-size: var(--opp-control-height);
+  padding-inline: var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text-muted);
+}
+
+.viewer-tools__search:focus-within {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+  outline-offset: var(--opp-focus-ring-offset);
+}
+
+.viewer-tools__input {
+  inline-size: 12rem;
+  min-inline-size: 0;
+  border: 0;
+  background: transparent;
+  color: var(--opp-color-text);
+  font: inherit;
+  font-size: var(--opp-font-size-control);
+}
+
+.viewer-tools__input:focus {
+  outline: none;
+}
+
+.viewer-tools__input::placeholder {
+  color: var(--opp-color-text-muted);
+  opacity: 1;
+}
+
+.viewer-tools__count {
+  min-inline-size: 4rem;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-tools__value {
+  min-inline-size: 3.5rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.viewer-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: var(--opp-space-1) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-info-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+  font-size: var(--opp-font-size-sm);
+}
+
+.viewer-banner--warning {
+  border-color: var(--opp-color-warning-border);
+  background: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+}
+
+@media (forced-colors: active) {
+  .viewer-tools__search:focus-within {
+    outline-color: Highlight;
+  }
+}

@@ -8,77 +8,12 @@ import {
   signal,
 } from '@angular/core';
 import type { FieldResource, SearchHit } from '../../../core/api/generated/models';
-import { Button, EmptyState, Icon, LoadingState } from '../../../ui';
-import type { CodingValue, DocumentCoding, TextChunk } from './review-ports';
+import { Button, Icon, LoadingState } from '../../../ui';
+import type { CodingValue, DocumentCoding } from './review-ports';
 
-// The three regions of Review mode (familiarity guide §3.2). Each is a placeholder with the typed inputs its
-// ticket builds on: the viewer modes (E16-T04, #130), the coding pane (E16-T05, #131) and Related Items
-// (E16-T10). Their regions, landmarks, sizes and keyboard commands belong to the review workspace (E16-T03).
-
-/** What the viewer shows: the displayed document and its first text chunk once loaded. */
-export interface ViewerDocument {
-  readonly hit: SearchHit;
-  readonly state: 'loading' | 'ready' | 'unavailable';
-  readonly text: TextChunk | null;
-}
-
-/**
- * The document viewer (E16-T04 replaces the body with the viewer modes). Until then it shows the start of the
- * extracted text, delivered through the protected-content gateway like every viewer request.
- */
-@Component({
-  selector: 'opp-review-viewer',
-  imports: [EmptyState, Icon, LoadingState],
-  template: `@let doc = document();
-    <p class="pane__note">
-      <opp-icon name="info" />
-      <span
-        >Viewer modes (Extracted Text, Image, Native, Production, Metadata) are coming soon. The
-        start of the extracted text is shown.</span
-      >
-    </p>
-    <div
-      class="viewer__body"
-      [attr.data-viewer-document]="doc.hit.documentId"
-      [attr.data-state]="doc.state"
-      [attr.aria-busy]="doc.state === 'loading' ? true : null"
-    >
-      @switch (doc.state) {
-        @case ('loading') {
-          <opp-loading-state label="Loading document…" />
-        }
-        @case ('unavailable') {
-          <opp-empty-state
-            title="This document cannot be shown"
-            message="Its content is not available. Move to the next document or go back to the list."
-          />
-        }
-        @default {
-          @if (doc.text?.text) {
-            <pre
-              class="viewer__text"
-              tabindex="0"
-              [attr.aria-label]="'Extracted text of ' + doc.hit.controlNumber"
-              >{{ doc.text!.text }}</pre>
-            @if (doc.text!.partial) {
-              <p class="pane__muted">More text follows in the full viewer.</p>
-            }
-          } @else {
-            <opp-empty-state
-              title="No extracted text"
-              message="This document has no extracted text."
-            />
-          }
-        }
-      }
-    </div>`,
-  styleUrl: './review-regions.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'pane__content' },
-})
-export class ReviewViewer {
-  readonly document = input.required<ViewerDocument>();
-}
+// Regions of Review mode (familiarity guide §3.2) that are still placeholders with the typed inputs their ticket
+// builds on: the coding pane (E16-T05, #131) and Related Items (E16-T10). The viewer is viewer/document-viewer.ts
+// (E16-T04). Their regions, landmarks, sizes and keyboard commands belong to the review workspace (E16-T03).
 
 /**
  * What Review mode needs from the coding pane (E16-T05): whether it holds unsaved edits, and saving or

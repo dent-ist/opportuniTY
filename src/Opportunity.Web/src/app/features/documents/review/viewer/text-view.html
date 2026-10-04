@@ -1,0 +1,142 @@
+@switch (state()) {
+  @case ('loading') {
+    <opp-loading-state label="Loading extracted text…" />
+  }
+  @case ('error') {
+    <opp-error-state [error]="error()!" (retry)="retry()" />
+  }
+  @case ('missing') {
+    <opp-empty-state
+      title="No extracted text for this document"
+      [message]="otherModes().length ? 'It can be viewed in the other modes it has.' : ''"
+    >
+      @for (m of otherModes(); track m.mode) {
+        <button type="button" oppButton="secondary" (click)="modeRequest.emit(m.mode)">
+          Show {{ m.label }}
+        </button>
+      }
+    </opp-empty-state>
+  }
+  @default {
+    <div class="viewer-tools">
+      <div class="viewer-tools__group" role="group" aria-label="Find in document">
+        <span class="viewer-tools__search">
+          <opp-icon name="search" />
+          <input
+            #findInput
+            type="search"
+            class="viewer-tools__input"
+            aria-label="Find in document"
+            aria-keyshortcuts="Control+F"
+            placeholder="Find in document"
+            autocomplete="off"
+            [attr.aria-describedby]="query() ? 'viewer-find-count' : null"
+            (input)="onFindInput($event)"
+            (keydown)="onFindKey($event)"
+          />
+        </span>
+        <span id="viewer-find-count" class="viewer-tools__count">{{ findLabel() }}</span>
+        <button
+          type="button"
+          oppIconButton
+          label="Previous match"
+          [disabled]="!findCount()"
+          (click)="stepFind(-1)"
+        >
+          <opp-icon name="chevron-up" />
+        </button>
+        <button
+          type="button"
+          oppIconButton
+          label="Next match"
+          [disabled]="!findCount()"
+          (click)="stepFind(1)"
+        >
+          <opp-icon name="chevron-down" />
+        </button>
+        @if (query().trim() && !complete()) {
+          <button
+            type="button"
+            oppButton="ghost"
+            [busy]="loadingAll() !== null"
+            (click)="loadAll()"
+          >
+            Search whole document
+          </button>
+        }
+      </div>
+      @if (hasTerms()) {
+        <div class="viewer-tools__group" role="group" aria-label="Search hits">
+          <opp-checkbox [checked]="showHits()" (checkedChange)="toggleHits()"
+            >Highlight hits</opp-checkbox
+          >
+          <span class="viewer-tools__count">{{ hitLabel() }}</span>
+          <button
+            type="button"
+            oppIconButton
+            label="Previous hit"
+            [disabled]="!showHits() || !hitCount()"
+            (click)="stepHit(-1)"
+          >
+            <opp-icon name="chevron-left" />
+          </button>
+          <button
+            type="button"
+            oppIconButton
+            label="Next hit"
+            [disabled]="!showHits() || !hitCount()"
+            (click)="stepHit(1)"
+          >
+            <opp-icon name="chevron-right" />
+          </button>
+        </div>
+      }
+    </div>
+    @if (truncated()) {
+      <p class="viewer-banner">
+        <opp-icon name="info" />
+        <span>Text truncated for search after 10 M characters; full text shown.</span>
+      </p>
+    }
+    @if (encodingWarning()) {
+      <p class="viewer-banner viewer-banner--warning">
+        <opp-icon name="warning" />
+        <span>Some characters of this text could not be decoded and may show as �.</span>
+      </p>
+    }
+    @if (loadingAll(); as all) {
+      <p class="viewer-banner" role="status">
+        Loading the rest of the text to search it: part {{ all.loaded }} of {{ all.total }}…
+      </p>
+    }
+    <div
+      #scroller
+      class="viewer__text"
+      role="document"
+      tabindex="0"
+      [attr.aria-label]="'Extracted text of ' + controlNumber()"
+      [attr.data-viewer-content]="segments().length ? documentId() : null"
+    >
+      @for (segment of segments(); track segment.id) {
+        <div class="text__segment" [attr.data-segment]="segment.id">{{ segment.text }}</div>
+      }
+      @if (!complete()) {
+        <div #sentinel class="text__more">
+          @switch (more()) {
+            @case ('loading') {
+              <opp-loading-state label="Loading more text…" />
+            }
+            @case ('error') {
+              <span>The next part of the text could not be loaded.</span>
+              <button type="button" oppButton="secondary" (click)="loadNext()">Try again</button>
+            }
+            @default {
+              <span class="text__progress">{{ progressText() }}</span>
+              <button type="button" oppButton="ghost" (click)="loadNext()">Show more text</button>
+            }
+          }
+        </div>
+      }
+    </div>
+  }
+}

@@ -28,6 +28,16 @@ const PATHS = {
   'pane-right': 'M4 4.5h16v15H4zM14.5 4.5v15',
   'pane-bottom': 'M4 4.5h16v15H4zM4 14.5h16',
   fold: 'M8 4.5l4 4 4-4M8 19.5l4-4 4 4',
+  // Viewer: find, zoom, fit, rotate, pages, native file.
+  'chevron-up': 'M6 14.5l6-6 6 6',
+  'zoom-in': 'M10.5 17.5a7 7 0 100-14 7 7 0 000 14zM15.5 15.5L21 21M7.5 10.5h6M10.5 7.5v6',
+  'zoom-out': 'M10.5 17.5a7 7 0 100-14 7 7 0 000 14zM15.5 15.5L21 21M7.5 10.5h6',
+  'fit-width': 'M3.5 5v14M20.5 5v14M7 12h10M9.5 9.5L7 12l2.5 2.5M14.5 9.5L17 12l-2.5 2.5',
+  'fit-page': 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  rotate: 'M20 12a8 8 0 11-2.3-5.6M20 4v4h-4',
+  thumbnails: 'M4 4.5h6v6H4zM14 4.5h6v6h-6zM4 13.5h6v6H4zM14 13.5h6v6h-6z',
+  file: 'M7 3.5h7l4 4v13H7zM14 3.5v4h4',
+  download: 'M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M4 16.5V20h16v-3.5',
   // Workspace navigation (sidebar).
   documents: 'M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 12h6M9.5 15.5h6',
   report: 'M5 20V11M10 20V5M15 20v-6M20 20V8',

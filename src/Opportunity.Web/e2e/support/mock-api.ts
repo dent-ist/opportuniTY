@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -14,15 +15,19 @@ export interface MockApiOptions {
   preferences?: Record<string, unknown>;
   /** Documents every search of the mock finds (the document list); default 250. */
   documents?: number;
-  /** Delay of the document content gateway (`GET …/documents/{id}/text`), to make prefetch measurable. */
+  /** Delay of the document content gateway (`GET …/documents/{id}/…`), to make prefetch measurable. */
   contentDelayMs?: number;
+  /** Document number whose extracted text is 10 MB (E16-T04 performance). */
+  largeTextDocument?: number;
 }
 
 /** One protected-content gateway audit record of the mock, as ADR-013 defines them. */
 export interface MockAuditEvent {
   action: 'Retrieved' | 'Viewed';
   documentId: string;
-  purpose?: 'display' | 'prefetch';
+  /** What was delivered (content API, E11-T01); absent for the first-chunk `GET …/text`. */
+  rendition?: Rendition;
+  purpose?: 'display' | 'prefetch' | 'download';
   retrievalId?: string | null;
 }
 
@@ -38,26 +43,11 @@ export interface MockControl {
   removeDocuments(...numbers: number[]): void;
 }
 
-/** Extracted text of mock document `n`: a few paragraphs, so the viewer shows something realistic. */
-function documentText(n: number): string {
-  const cn = `ACM${String(n).padStart(7, '0')}`;
-  return [
-    `Document ${cn}`,
-    '',
-    `Subject: Quarterly terms ${n}`,
-    '',
-    'Please find the revised supply terms attached. The pricing schedule applies from the start of the next ' +
-      'quarter, and either party may end the agreement with thirty days of written notice.',
-    '',
-    'Regards,',
-    'A. Sender',
-  ].join('\n');
-}
 /**
  * A search result page of the document list (`SearchResultPage`) over document numbers `docs` (in order);
  * cursors encode the page number (`p<n>`).
  */
-function searchPage(docs: readonly number[], pageSize: number, number: number) {
+function searchPage(docs: readonly number[], pageSize: number, number: number, query = '') {
   const total = docs.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const exact = total <= 10_000;
@@ -79,7 +69,7 @@ function searchPage(docs: readonly number[], pageSize: number, number: number) {
       isFamilyParent: n % 4 === 3 && n < total,
       mimeType: attachment ? 'application/pdf' : 'application/vnd.ms-outlook',
       pageCount: (n % 7) + 1,
-      snippets: [],
+      snippets: snippetsFor(n, query),
     };
   });
   return {
@@ -242,6 +232,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   let total = documents;
   const removed = new Set<number>();
   let expired = false;
+  let lastQuery = '';
   let retrievals = 0;
   const audit: MockAuditEvent[] = [];
   const matching = () =>
@@ -318,7 +309,8 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       // A fielded query (the filter row) narrows the list, so filtering is visible end to end.
       total = body?.query?.includes(':') ? Math.min(documents, 12) : documents;
       expired = false;
-      return json(route, searchPage(matching(), pageSize, 1));
+      lastQuery = String(body?.query ?? '');
+      return json(route, searchPage(matching(), pageSize, 1, lastQuery));
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches\/[^/]+\/pages$/.test(path)) {
       if (expired) return route.fulfill(problem(404, 'Not found'));
@@ -330,8 +322,23 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         : last
           ? Math.max(1, Math.ceil(docs.length / pageSize))
           : Number(url.searchParams.get('page') ?? 1);
-      return json(route, searchPage(docs, pageSize, n));
+      return json(route, searchPage(docs, pageSize, n, lastQuery));
     }
+    // Document content API (E16-T04 viewer): metadata, text chunks, pages, page images, natives.
+    const served =
+      signedIn &&
+      serveContent(
+        route,
+        path,
+        url,
+        { contentDelayMs, largeTextDocument: options.largeTextDocument },
+        (d) => {
+          const retrievalId = `retrieval-${++retrievals}`;
+          audit.push({ action: 'Retrieved', ...d, retrievalId });
+          return retrievalId;
+        },
+      );
+    if (served) return served;
     // Protected-content gateway (E05-T04 / E11-T01): the first chunk of extracted text, audited per delivery
     // with its purpose; only the view beacon records `Viewed` (ADR-013).
     const content =
