@@ -26,6 +26,12 @@ public sealed class SearchServiceOptions
 
     public int FacetBuckets { get; set; } = 25;
 
+    /// <summary>Keep-alive of the reader a snapshot selection pages under, renewed by every page (ADR-002 §2 Materialization).</summary>
+    public TimeSpan SelectionKeepAlive { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>Largest selection page (IDs per OpenSearch request; bounded by the index's max result window).</summary>
+    public int MaxSelectionPageSize { get; set; } = 10_000;
+
     internal void Validate(string section)
     {
         Require(DefaultPageSize >= 1 && DefaultPageSize <= MaxPageSize, section, nameof(DefaultPageSize));
@@ -37,6 +43,8 @@ public sealed class SearchServiceOptions
         Require(SnippetFragmentSize is >= 20 and <= 1000, section, nameof(SnippetFragmentSize));
         Require(SnippetsPerHit is >= 0 and <= 10, section, nameof(SnippetsPerHit));
         Require(FacetBuckets is >= 1 and <= 200, section, nameof(FacetBuckets));
+        Require(SelectionKeepAlive >= TimeSpan.FromSeconds(10) && SelectionKeepAlive <= TimeSpan.FromHours(1), section, nameof(SelectionKeepAlive));
+        Require(MaxSelectionPageSize is >= 1 and <= 10_000, section, nameof(MaxSelectionPageSize));
     }
 
     private static void Require(bool condition, string section, string setting)

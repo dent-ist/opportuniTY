@@ -13,6 +13,14 @@
    bound to (user, session, workspace). Mismatches answer 404 and are audited (`AuthZ.Denied`, `SearchHandleMismatch`).
 7. **Audit** `Search.Executed` with the full text in restricted details (Q-16); later pages `Search.ResultsPageServed`.
 
+## Snapshot selection (E10-T02)
+
+`SelectAsync` enumerates every matching document ID for snapshot materialization (ADR-002 §5.1): optional index
+refresh, one point-in-time reader (`SelectionKeepAlive`), sort by `documentId` only, `_source: false`, the same outer
+filter, an exact count first (`TooManyHits` above the caller's bound), and the Q-12 PostgreSQL re-check of every page
+(one summary `AuthZ.Denied` per selection). A lost reader returns `ReaderLost`; partial or timed-out pages abort the
+selection. No search handle is stored; `DocumentSetSnapshotService` audits the selection with what it froze.
+
 ## Plug-in points for parallel tickets
 
 - **Planner (E07-T07, #69)** – replace `BasicSearchQueryTranslator` by registering another `ISearchQueryTranslator`
