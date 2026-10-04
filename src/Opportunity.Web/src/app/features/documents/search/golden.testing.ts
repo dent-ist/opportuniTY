@@ -57,7 +57,10 @@ function parse(name: string, yaml: string): GoldenCase {
   const astAt = lines.indexOf('ast: |');
   let ast: GoldenAstNode | undefined;
   if (astAt >= 0) {
-    const body = lines.slice(astAt + 1).filter((l) => l.startsWith('  ') || l === '');
+    // The block ends at the next top-level key (e.g. the planner's expected OpenSearch query).
+    const rest = lines.slice(astAt + 1);
+    const end = rest.findIndex((l) => l !== '' && !l.startsWith('  '));
+    const body = end < 0 ? rest : rest.slice(0, end);
     ast = (JSON.parse(body.join('\n')) as { root: GoldenAstNode }).root;
   }
 
