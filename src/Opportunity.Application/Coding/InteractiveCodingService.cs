@@ -282,7 +282,7 @@ public sealed class InteractiveCodingService(
         return null;
     }
 
-    private static FieldError? Canonicalize(FieldDefinition field, CodingChange change, IReadOnlyList<Choice> choices, out JsonNode? canonical)
+    internal static FieldError? Canonicalize(FieldDefinition field, CodingChange change, IReadOnlyList<Choice> choices, out JsonNode? canonical)
     {
         canonical = null;
         switch (change.Kind)

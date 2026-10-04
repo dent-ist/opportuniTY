@@ -68,4 +68,17 @@ public sealed class PostgresUserDirectory(NpgsqlDataSource dataSource) : IUserDi
 
         return names;
     }
+
+    public async Task<DirectoryUser?> GetAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var command = dataSource.CreateCommand("SELECT display_name, groups FROM opportunity.app_user WHERE user_id = @id");
+        command.Parameters.AddWithValue("id", userId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return new DirectoryUser(userId, reader.IsDBNull(0) ? null : reader.GetString(0), reader.GetFieldValue<string[]>(1));
+    }
 }

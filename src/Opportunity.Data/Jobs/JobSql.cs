@@ -289,7 +289,44 @@ internal static class JobSql
                 AuditOutcome.Failure, "ChunksFailed", CountDetails(counters)).ConfigureAwait(false);
         }
 
+        // ADR-013 §5: a bulk coding job's summary event, one per completion (never per document).
+        if (locked.Job.JobType == JobType.BulkCoding && status is JobStatus.Completed or JobStatus.CompletedWithErrors
+            && status != locked.Job.Status)
+        {
+            await AuditSql.InsertAsync(tx, BulkCompletedEvent(locked.Job, counters, status), cancellationToken).ConfigureAwait(false);
+        }
+
         return status;
+    }
+
+    /// <summary><c>Coding.BulkCompleted</c> (ADR-013 §5): the job's final counts, by the job engine for its initiator.</summary>
+    private static AuditEvent BulkCompletedEvent(JobInfo job, JobCounters counters, JobStatus status)
+    {
+        var details = CountDetails(counters);
+        details["Status"] = status.ToString();
+        details["ItemsUnchanged"] = counters.ItemsUnchanged.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        details["ItemsSkippedConcurrentEdit"] = counters.ItemsSkippedConcurrentEdit.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        details["ItemsExcludedNoAccess"] = counters.ItemsExcludedNoAccess.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        details["IndexTasksTotal"] = counters.IndexTasksTotal.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return new AuditEvent
+        {
+            WorkspaceId = job.WorkspaceId,
+            OccurredAt = DateTimeOffset.UtcNow,
+            Category = AuditTaxonomy.Coding.Category,
+            Action = AuditTaxonomy.Coding.BulkCompleted,
+            ActorType = AuditActorType.Service,
+            ActorId = JobEngineActor,
+            ActorDisplay = "Job engine",
+            OnBehalfOf = job.InitiatedBy,
+            ResourceType = "Job",
+            ResourceId = job.JobId.ToString(),
+            Outcome = status == JobStatus.Completed ? AuditOutcome.Success : AuditOutcome.Failure,
+            ReasonCode = status == JobStatus.Completed ? null : "CompletedWithErrors",
+            CorrelationId = string.IsNullOrEmpty(job.CorrelationId) ? null : job.CorrelationId,
+            JobId = job.JobId,
+            SnapshotId = job.TargetSnapshotId,
+            Details = details,
+        };
     }
 
     /// <summary>Service identity of job-engine actions taken on behalf of the job's initiator (ADR-013 §4).</summary>

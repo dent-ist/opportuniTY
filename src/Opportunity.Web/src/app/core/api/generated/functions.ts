@@ -55,6 +55,10 @@ export type { GetDocumentCoding$Params as GetDocumentCoding$Params } from './fn/
 export { getDocumentCoding as getDocumentCoding } from './fn/coding/get-document-coding';
 export type { SaveDocumentCoding$Params as SaveDocumentCoding$Params } from './fn/coding/save-document-coding';
 export { saveDocumentCoding as saveDocumentCoding } from './fn/coding/save-document-coding';
+export type { SubmitBulkCoding$Params as SubmitBulkCoding$Params } from './fn/coding/submit-bulk-coding';
+export { submitBulkCoding as submitBulkCoding } from './fn/coding/submit-bulk-coding';
+export type { GetBulkCodingReport$Params as GetBulkCodingReport$Params } from './fn/coding/get-bulk-coding-report';
+export { getBulkCodingReport as getBulkCodingReport } from './fn/coding/get-bulk-coding-report';
 export type { ListSnapshots$Params as ListSnapshots$Params } from './fn/snapshots/list-snapshots';
 export { listSnapshots as listSnapshots } from './fn/snapshots/list-snapshots';
 export type { CreateSnapshot$Params as CreateSnapshot$Params } from './fn/snapshots/create-snapshot';

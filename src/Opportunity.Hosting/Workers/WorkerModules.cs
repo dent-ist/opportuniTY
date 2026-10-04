@@ -45,6 +45,11 @@ public static class WorkerModuleCatalog
         {
             services.AddChunkIndexWorkerModule(configuration);
         }
+
+        if (type == WorkerTypes.BulkCoding)
+        {
+            services.AddBulkCodingWorker(configuration);
+        }
     }
 
     private static void AddDispatcher(IServiceCollection services, IConfiguration configuration)

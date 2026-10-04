@@ -14,4 +14,14 @@ public interface IUserDirectory
 
     /// <summary>Display names of known users (absent or unnamed users are omitted), e.g. the last editor of a document.</summary>
     Task<IReadOnlyDictionary<Guid, string>> GetDisplayNamesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The stored identity of a user (display name and the latest IdP group snapshot), or null when unknown. Workers
+    /// rebuild a job initiator's principal from it at every chunk (ADR-015 D9.4).
+    /// </summary>
+    Task<DirectoryUser?> GetAsync(Guid userId, CancellationToken cancellationToken = default);
 }
+
+/// <param name="DisplayName">Null when the IdP supplied none.</param>
+/// <param name="Groups">The IdP group snapshot as last refreshed (D3.4/D3.5).</param>
+public sealed record DirectoryUser(Guid UserId, string? DisplayName, IReadOnlyList<string> Groups);
