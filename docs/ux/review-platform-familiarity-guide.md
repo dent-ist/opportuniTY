@@ -1,5 +1,8 @@
 # Review-Platform Familiarity Guide
 
+> **Binding companion:** [ai-ui-guidelines.md](ai-ui-guidelines.md) (product owner) — *copy the workflow, not the
+> pixels*. Where this guide and the AI UI guidelines differ, the AI UI guidelines win.
+
 **Status:** Binding for all UI tickets and for import, export, review and production work (decision **Q-47**).
 **Owner:** eDiscovery workflow / UX specialist. Changes need the UI lead and, where a Q-decision is touched, the product owner.
 **Companion:** [ticket-review.md](ticket-review.md) holds per-ticket acceptance-criteria changes that apply this guide.
