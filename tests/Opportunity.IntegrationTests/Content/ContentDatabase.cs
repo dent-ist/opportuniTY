@@ -42,6 +42,12 @@ internal sealed class ContentDatabase : IAsyncDisposable
         return new ContentDatabase(await AuthorizationDatabase.CreateAsync(postgres), root, store);
     }
 
+    /// <summary>
+    /// Content helpers over a database and object store another harness owns: do not dispose the result (it would
+    /// dispose the database and delete the store root).
+    /// </summary>
+    public static ContentDatabase Over(AuthorizationDatabase security, string root, IObjectStore store) => new(security, root, store);
+
     /// <summary>A document with a native, extracted text and one imported page set holding page 1 (PNG review image, WebP thumbnail).</summary>
     public async Task<StoredDocument> DocumentAsync(Guid workspaceId, string[]? classes = null, StoredObjectState nativeState = StoredObjectState.Committed)
     {
