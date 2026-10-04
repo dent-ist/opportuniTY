@@ -502,3 +502,111 @@ test('keeps reviewing when the results refresh and offers Continue from next whe
   await expect(position).toHaveText('Doc 100 of 249');
   await expect(page.locator('.review__control')).toHaveText('ACM0000101');
 });
+
+// Mass Actions (E16-T06): selection across pages, Mass Edit, the frozen-target confirmation and the job.
+
+test('selects all results and mass edits them with the keyboard only; focus returns to the list (E16-T06)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await tabTo(page, grid);
+  const live = page.locator('.cdk-live-announcer-element');
+  await page.keyboard.press('Space');
+  await expect(page.getByText('Selected: 1', { exact: true })).toBeVisible();
+  await page.keyboard.press('Control+KeyA');
+  await expect(page.getByText('Selected: 100', { exact: true })).toBeVisible();
+  await expect(page.getByText('All 100 documents on this page are selected.')).toBeVisible();
+  await expect(live).toHaveText('100 documents selected.');
+  // All results: the whole search, not only the loaded page.
+  await page.keyboard.press('Alt+Shift+KeyA');
+  await expect(page.getByText('Selected: all 250 results')).toBeVisible();
+  await expect(live).toHaveText('All 250 results selected.');
+
+  await page.keyboard.press('Alt+Shift+KeyE');
+  const dialog = page.getByRole('dialog', { name: 'Mass Edit' });
+  await expect(dialog).toBeVisible();
+  await tabTo(page, dialog.getByRole('checkbox', { name: 'Change Responsiveness' }));
+  await page.keyboard.press('Space');
+  const value = dialog.getByRole('combobox', { name: 'Responsiveness value' });
+  await tabTo(page, value);
+  await page.keyboard.press('ArrowDown');
+  await expect(value).toHaveValue('1');
+  await tabTo(page, dialog.getByRole('checkbox', { name: 'Change Issues' }));
+  await page.keyboard.press('Space');
+  const pricing = dialog.getByRole('combobox', { name: 'Pricing' });
+  await tabTo(page, pricing);
+  await page.keyboard.press('ArrowDown');
+  await expect(pricing).toHaveValue('add');
+  await tabTo(page, dialog.getByRole('button', { name: 'Continue' }));
+  await page.keyboard.press('Enter');
+
+  // The frozen target: count, time and generation (admin here), the Q-07 rule; focus on the frozen set.
+  const heading = dialog.getByRole('heading', { name: 'Frozen set' });
+  await expect(heading).toBeFocused();
+  await expect(dialog).toContainText('250 documents');
+  await expect(dialog).toContainText(/Frozen at 10:42.* · generation 18,432/);
+  await expect(dialog).toContainText('The list showed 250 documents.');
+  await expect(dialog).toContainText(
+    'Documents whose changed fields are edited by someone else after this job starts will be skipped and listed.',
+  );
+  expect(mock.snapshots).toHaveLength(1);
+  expect(mock.snapshots[0].body).toEqual({ purpose: 'bulkCoding', query: '' });
+  expect(mock.snapshots[0].idempotencyKey).toBeTruthy();
+
+  await tabTo(page, dialog.getByRole('button', { name: 'Apply to 250 documents' }));
+  await page.keyboard.press('Enter');
+  await expect(dialog.getByRole('heading', { name: 'Mass Edit finished' })).toBeVisible();
+  await expect(dialog.getByRole('definition').first()).toHaveText('248');
+  await expect(live).toHaveText('Mass Edit finished. Updated 248 · Skipped 2 · Failed 0');
+  expect(mock.bulkCoding[0].body).toEqual({
+    snapshotId: 'snapshot-1',
+    changes: [
+      { fieldId: '1000', operation: 'set', value: 1 },
+      { fieldId: '1001', operation: 'addChoices', value: [11] },
+    ],
+  });
+  expect(mock.bulkCoding[0].idempotencyKey).toBeTruthy();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(grid).toBeFocused();
+});
+
+test.describe('a large selection', () => {
+  test.use({ api: { documents: 12_000, snapshotsMaterialize: true, selectedWhileIndexing: true } });
+
+  test('asks for the count above 10,000 documents and warns about documents selected while indexing (E16-T06)', async ({
+    page,
+    mock,
+  }) => {
+    await openPage(page, '/w/ws-1/documents');
+    await page.getByRole('grid', { name: 'Documents' }).focus();
+    await page.keyboard.press('Alt+Shift+KeyA');
+    await expect(page.getByText('Selected: all ≥ 10,000 (approx.) results')).toBeVisible();
+    await page.keyboard.press('Alt+Shift+KeyE');
+    const dialog = page.getByRole('dialog', { name: 'Mass Edit' });
+    await tabTo(page, dialog.getByRole('checkbox', { name: 'Change Responsiveness' }));
+    await page.keyboard.press('Space');
+    await tabTo(page, dialog.getByRole('radio', { name: 'Set to' }));
+    await page.keyboard.press('ArrowDown'); // Clear the value
+    await expect(dialog.getByRole('radio', { name: 'Clear the value' })).toBeChecked();
+    await tabTo(page, dialog.getByRole('button', { name: 'Continue' }));
+    await page.keyboard.press('Enter');
+
+    const typed = dialog.getByRole('textbox', { name: 'Type 12000 to confirm' });
+    await expect(typed).toBeFocused();
+    await expect(dialog).toContainText('Required for more than 10,000 documents.');
+    await expect(dialog).toContainText(
+      'were selected while recent changes to them were still being indexed',
+    );
+    const apply = dialog.getByRole('button', { name: 'Apply to 12,000 documents' });
+    await expect(apply).toBeDisabled();
+    await page.keyboard.type('12,000');
+    await expect(apply).toBeEnabled();
+    await page.keyboard.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Mass Edit finished' })).toBeVisible();
+    expect(mock.bulkCoding[0].body['changes']).toEqual([{ fieldId: '1000', operation: 'clear' }]);
+  });
+});

@@ -108,6 +108,41 @@ for (const theme of THEMES) {
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
+    test('mass edit: selection banner, Mass Actions menu, fields, frozen confirmation and progress', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      await page.getByRole('grid', { name: 'Documents' }).focus();
+      await page.keyboard.press('Control+KeyA');
+      await expect(page.getByRole('button', { name: 'Select all 250 results' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('button', { name: 'Select all 250 results' }).click();
+      await page.getByRole('button', { name: 'Mass Actions' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Mass Edit…' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('menuitem', { name: 'Mass Edit…' }).click();
+
+      const dialog = page.getByRole('dialog', { name: 'Mass Edit' });
+      await dialog.getByRole('checkbox', { name: 'Change Responsiveness' }).check();
+      await dialog.getByRole('checkbox', { name: 'Change Issues' }).check();
+      await dialog.getByRole('checkbox', { name: 'Change Privilege' }).check();
+      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await expect(dialog.getByText('Choose a value.').first()).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await dialog.getByRole('combobox', { name: 'Responsiveness value' }).selectOption('1');
+      await dialog.getByRole('combobox', { name: 'Termination' }).selectOption('remove');
+      await dialog.getByRole('combobox', { name: 'Privilege value' }).selectOption('21');
+      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await expect(dialog.getByRole('textbox', { name: 'Type 250 to confirm' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await dialog.getByRole('textbox', { name: 'Type 250 to confirm' }).fill('250');
+      await dialog.getByRole('button', { name: 'Apply to 250 documents' }).click();
+      await expect(dialog.getByRole('heading', { name: 'Mass Edit finished' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
     for (const popup of POPUPS) {
       test(`${popup.name} open`, async ({ page }, testInfo) => {
         await openPage(page, popup.path);

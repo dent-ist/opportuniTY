@@ -1,0 +1,154 @@
+<form (submit)="step() === 'confirm' ? apply($event) : $event.preventDefault()">
+  <opp-dialog-layout title="Mass Edit">
+    <ol class="me__steps" aria-label="Steps">
+      @for (s of steps; track s.step; let i = $index) {
+        <li
+          class="me__stepper"
+          [class.is-current]="step() === s.step"
+          [class.is-done]="stepIndex(step()) > i"
+          [attr.aria-current]="step() === s.step ? 'step' : null"
+        >
+          <span class="me__step-number" aria-hidden="true">{{ i + 1 }}</span
+          >{{ s.label }}
+        </li>
+      }
+    </ol>
+
+    @switch (step()) {
+      @case ('edit') {
+        <h3 class="me__heading" tabindex="-1" data-step-heading>Choose the fields to change</h3>
+        <p class="me__lead">
+          Selected:
+          <strong>
+            @if (data.target.kind === 'all') {
+              all {{ data.listCount }} results
+            } @else {
+              {{ n().format(data.target.documentIds.length) }} documents
+            }
+          </strong>
+          — frozen when you continue. Fields left unticked are not touched.
+        </p>
+        @if (fields.length === 0) {
+          <p class="me__note">This workspace has no coding fields to change yet.</p>
+        }
+        <div class="me__fields">
+          @for (f of fields; track f.fieldId) {
+            <opp-mass-edit-field
+              [field]="f"
+              [edit]="edit(f.fieldId)"
+              [problem]="shownProblems().get(f.fieldId)"
+              (patch)="update(f, $event)"
+            />
+          }
+        </div>
+        @if (busy() === 'freezing') {
+          <opp-loading-state label="Freezing the selection…" />
+        }
+      }
+
+      @case ('confirm') {
+        @if (frozen(); as set) {
+          <section class="me__frozen" [attr.aria-labelledby]="ids + '-frozen'">
+            <h3 class="me__heading" [id]="ids + '-frozen'" tabindex="-1" data-step-heading>
+              Frozen set
+            </h3>
+            <p class="me__count">
+              <strong>{{ n().format(count()) }}</strong>
+              {{ count() === 1 ? 'document' : 'documents' }}
+            </p>
+            <p class="me__frozen-at"><opp-icon name="clock" />{{ frozenLine() }}</p>
+            <p class="me__note">{{ difference() }}</p>
+            @if (set.selectedWhileIndexing) {
+              <div class="me__callout me__callout--warning" role="note">
+                <opp-icon name="warning" />
+                <p>
+                  Some documents were selected while recent changes to them were still being
+                  indexed. They were frozen by what the search knew then, so a few may be included
+                  or left out by their earlier values. Search again later if that matters.
+                </p>
+              </div>
+            }
+          </section>
+          @if (count() === 0) {
+            <div class="me__callout me__callout--warning" role="alert">
+              <opp-icon name="warning" />
+              <p>None of the selected documents can be mass edited by you. Nothing will change.</p>
+            </div>
+          }
+          <section class="me__changes" [attr.aria-labelledby]="ids + '-changes'">
+            <h3 class="me__subheading" [id]="ids + '-changes'">Changes</h3>
+            <ul class="me__summary">
+              @for (line of summary(); track $index) {
+                <li>{{ line }}</li>
+              }
+            </ul>
+          </section>
+          <div class="me__callout" role="note">
+            <opp-icon name="info" />
+            <p>
+              <strong>{{ skipRule }}</strong>
+              Family members are not added. Mass edits cannot be undone.
+            </p>
+          </div>
+          @if (needsTyping() && count() > 0) {
+            <div class="me__typed" data-typed>
+              <opp-text-field
+                [label]="confirmLabel()"
+                [hint]="typingReason()"
+                [required]="true"
+                [(value)]="typed"
+              />
+            </div>
+          }
+        }
+      }
+
+      @case ('progress') {
+        <opp-mass-edit-progress [tracked]="tracked()!" [count]="count()" />
+      }
+    }
+
+    @if (error(); as e) {
+      <div class="me__callout me__callout--error" role="alert">
+        <opp-icon name="error" />
+        <p>
+          <strong>{{ e.title }}.</strong> {{ e.detail }}
+          @if (e.reference) {
+            Reference: <code>{{ e.reference }}</code>
+          }
+        </p>
+      </div>
+    }
+
+    <ng-container dialogActions>
+      @switch (step()) {
+        @case ('edit') {
+          <button type="button" oppButton="ghost" (click)="ref.close(false)">Cancel</button>
+          <button
+            type="button"
+            oppButton="primary"
+            [busy]="busy() === 'freezing'"
+            (click)="continue()"
+          >
+            Continue
+          </button>
+        }
+        @case ('confirm') {
+          <button type="button" oppButton="ghost" (click)="back()">Back</button>
+          <button type="button" oppButton="ghost" (click)="ref.close(false)">Cancel</button>
+          <button
+            type="submit"
+            oppButton="primary"
+            [busy]="busy() === 'submitting'"
+            [disabled]="!canApply()"
+          >
+            Apply to {{ n().format(count()) }} {{ count() === 1 ? 'document' : 'documents' }}
+          </button>
+        }
+        @case ('progress') {
+          <button type="button" oppButton="primary" (click)="ref.close(true)">Close</button>
+        }
+      }
+    </ng-container>
+  </opp-dialog-layout>
+</form>

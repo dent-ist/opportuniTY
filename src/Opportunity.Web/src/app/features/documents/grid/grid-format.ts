@@ -33,7 +33,8 @@ export function freshnessLabel(
     : `Current as of ${time}`;
 }
 
-function formatTime(iso: string, locale: string, timeZone: string): string {
+/** "10:42" in the workspace display time zone ("—" for a missing or invalid time). */
+export function formatTime(iso: string, locale: string, timeZone: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '—';
   try {
