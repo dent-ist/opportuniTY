@@ -1,0 +1,299 @@
+<div class="ss__header">
+  <div class="ss__heading-group">
+    <h1 class="ss__title">Saved Searches</h1>
+    <p class="ss__muted">
+      <opp-badge tone="info" icon="refresh">Live</opp-badge>
+      Saved searches are live. {{ liveExplanation }}
+    </p>
+  </div>
+  @if (canCreate) {
+    <div class="ss__actions">
+      <button type="button" oppButton="secondary" (click)="newFolder()">
+        <opp-icon name="folder" />
+        New folder
+      </button>
+      <button type="button" oppButton="primary" (click)="create()">
+        <opp-icon name="plus" />
+        New saved search
+      </button>
+    </div>
+  }
+</div>
+
+@if (loading() && searches().length === 0) {
+  <opp-loading-state label="Loading saved searches…" />
+} @else if (error() && searches().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else {
+  <div class="ss__layout">
+    <section class="ss__folders" aria-labelledby="ss-folders-heading">
+      <h2 id="ss-folders-heading" class="ss__subtitle">Folders</h2>
+      <opp-tree
+        label="Saved search folders"
+        [nodes]="treeNodes()"
+        [selected]="node()"
+        (activate)="selectNode($event)"
+      />
+      @if (selectedFolder(); as folder) {
+        <div class="ss__folder-actions" role="group" [attr.aria-label]="'Folder ' + folder.name">
+          <button type="button" oppButton="ghost" (click)="editFolder(folder)">
+            <opp-icon name="pencil" />
+            Rename or move folder
+          </button>
+          <button type="button" oppButton="ghost" (click)="deleteFolder(folder)">
+            <opp-icon name="trash" />
+            Delete folder
+          </button>
+        </div>
+      }
+    </section>
+
+    <div class="ss__list">
+      <div class="ss__toolbar">
+        <h2 id="ss-list-heading" class="ss__subtitle">{{ listTitle() }}</h2>
+        @if (!showingFrozen()) {
+          <opp-text-field
+            class="ss__filter"
+            type="search"
+            label="Filter by name"
+            [(value)]="filter"
+          />
+        }
+      </div>
+
+      @if (showingFrozen()) {
+        <p class="ss__muted">
+          <opp-badge tone="neutral" icon="snapshot">Frozen</opp-badge>
+          A frozen set (snapshot) keeps the documents it had when it was frozen, for Mass Edit,
+          exports and productions. It never changes, unlike a saved search.
+        </p>
+        @if (frozenError(); as e) {
+          <opp-error-state [error]="e" (retry)="loadFrozen()" />
+        } @else if (frozen() === null) {
+          <opp-loading-state label="Loading frozen sets…" />
+        } @else if (frozenRows().length === 0) {
+          <opp-empty-state
+            title="No frozen sets"
+            message="A frozen set is made when you run Mass Edit, an export or a production."
+          />
+        } @else {
+          <div class="ss__table-wrap" tabindex="0" role="region" aria-label="Frozen sets">
+            <table class="ss__table">
+              <caption class="opp-visually-hidden">
+                Frozen sets, newest first
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Type</th>
+                  <th scope="col" class="ss__num">Documents</th>
+                  <th scope="col">Frozen</th>
+                  <th scope="col">By</th>
+                  <th scope="col">Used for</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (r of frozenRows(); track r.f.snapshotId) {
+                  <tr>
+                    <th scope="row" class="ss__name">
+                      {{ r.f.name }}
+                      <span class="opp-visually-hidden">{{ r.label }}</span>
+                    </th>
+                    <td>
+                      <opp-badge tone="neutral" icon="snapshot">Frozen set</opp-badge>
+                    </td>
+                    <td class="ss__num">{{ r.count }}</td>
+                    <td class="ss__nowrap">{{ r.at }}</td>
+                    <td>{{ r.by }}</td>
+                    <td>{{ r.purpose }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      } @else if (rows().length === 0) {
+        <opp-empty-state
+          [title]="filter() ? 'No saved searches match' : 'No saved searches here'"
+          [message]="
+            filter()
+              ? 'Change the filter, or pick another folder.'
+              : 'Create one with New saved search, or use Save current search in Documents.'
+          "
+        />
+      } @else {
+        <div class="ss__table-wrap" tabindex="0" role="region" [attr.aria-label]="listTitle()">
+          <table class="ss__table" [attr.aria-busy]="loading() || null">
+            <caption class="opp-visually-hidden">
+              {{
+                listTitle()
+              }}. Each is a
+              {{
+                liveLabel
+              }}.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Folder</th>
+                <th scope="col">Owner</th>
+                <th scope="col">Sharing</th>
+                <th scope="col">Last run</th>
+                <th scope="col" class="ss__num">Hits</th>
+                <th scope="col">Modified</th>
+                <th scope="col"><span class="opp-visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of rows(); track r.s.savedSearchId) {
+                <tr>
+                  <th scope="row" class="ss__name">
+                    <a
+                      [routerLink]="['/w', workspaceId, 'documents']"
+                      [queryParams]="runParams(r.s)"
+                      [attr.title]="'Run ' + r.s.name + ' in Documents'"
+                      >{{ r.s.name }}</a
+                    >
+                  </th>
+                  <td>{{ r.folder }}</td>
+                  <td>{{ r.owner }}</td>
+                  <td>
+                    @if (r.s.scope === 'shared') {
+                      <span class="ss__sharing">
+                        <opp-icon name="share" />
+                        {{ r.sharing }}
+                      </span>
+                      @if (!r.mine) {
+                        <span class="ss__muted ss__small">Results filtered for you</span>
+                      }
+                    } @else {
+                      {{ r.sharing }}
+                    }
+                  </td>
+                  <td class="ss__nowrap">{{ r.lastRun }}</td>
+                  <td class="ss__num">
+                    {{ r.hits }}
+                    @if (r.freshness) {
+                      <span class="ss__muted ss__small ss__nowrap">{{ r.freshness }}</span>
+                    }
+                  </td>
+                  <td class="ss__nowrap">{{ r.modified }}</td>
+                  <td class="ss__row-actions">
+                    <button
+                      type="button"
+                      oppIconButton
+                      [label]="'Actions for ' + r.s.name"
+                      [cdkMenuTriggerFor]="menu"
+                    >
+                      <opp-icon name="more" />
+                    </button>
+                    <ng-template #menu>
+                      <div cdkMenu class="opp-menu" [attr.aria-label]="'Actions for ' + r.s.name">
+                        <button
+                          type="button"
+                          cdkMenuItem
+                          class="opp-menu__item"
+                          (cdkMenuItemTriggered)="run(r.s)"
+                        >
+                          <opp-icon name="play" /> Run in Documents
+                        </button>
+                        @if (r.actions.edit) {
+                          <button
+                            type="button"
+                            cdkMenuItem
+                            class="opp-menu__item"
+                            (cdkMenuItemTriggered)="open('edit', r.s)"
+                          >
+                            <opp-icon name="pencil" /> Edit…
+                          </button>
+                          <button
+                            type="button"
+                            cdkMenuItem
+                            class="opp-menu__item"
+                            (cdkMenuItemTriggered)="open('rename', r.s)"
+                          >
+                            <opp-icon name="pencil" /> Rename…
+                          </button>
+                          <button
+                            type="button"
+                            cdkMenuItem
+                            class="opp-menu__item"
+                            (cdkMenuItemTriggered)="open('move', r.s)"
+                          >
+                            <opp-icon name="move" /> Move…
+                          </button>
+                        }
+                        <button
+                          type="button"
+                          cdkMenuItem
+                          class="opp-menu__item"
+                          (cdkMenuItemTriggered)="open('copy', r.s)"
+                        >
+                          <opp-icon name="copy" /> Copy…
+                        </button>
+                        @if (r.actions.share) {
+                          <button
+                            type="button"
+                            cdkMenuItem
+                            class="opp-menu__item"
+                            (cdkMenuItemTriggered)="share(r.s)"
+                          >
+                            <opp-icon name="share" /> Share…
+                          </button>
+                        }
+                        @if (r.actions.delete) {
+                          <button
+                            type="button"
+                            cdkMenuItem
+                            class="opp-menu__item"
+                            (cdkMenuItemTriggered)="remove(r.s)"
+                          >
+                            <opp-icon name="trash" /> Delete…
+                          </button>
+                        }
+                        <div class="opp-menu__separator" role="separator"></div>
+                        @if (r.actions.massEdit) {
+                          <button
+                            type="button"
+                            cdkMenuItem
+                            class="opp-menu__item"
+                            (cdkMenuItemTriggered)="run(r.s, 'massEdit')"
+                          >
+                            Mass Edit results…
+                          </button>
+                        }
+                        <button
+                          type="button"
+                          cdkMenuItem
+                          class="opp-menu__item"
+                          aria-disabled="true"
+                          (cdkMenuItemTriggered)="notAvailable('Export from a saved search')"
+                        >
+                          Export results…
+                          <span class="opp-menu__detail">Not available yet</span>
+                        </button>
+                        <button
+                          type="button"
+                          cdkMenuItem
+                          class="opp-menu__item"
+                          aria-disabled="true"
+                          (cdkMenuItemTriggered)="notAvailable('Search Terms Reports')"
+                        >
+                          Add to new Search Terms Report…
+                          <span class="opp-menu__detail">Not available yet</span>
+                        </button>
+                      </div>
+                    </ng-template>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="ss__muted ss__small">
+          A shared search shows each person only the documents they may see.
+        </p>
+      }
+    </div>
+  </div>
+}

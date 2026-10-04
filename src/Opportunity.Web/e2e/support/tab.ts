@@ -17,6 +17,9 @@ export async function tabTo(page: Page, target: Locator, maxStops = 40): Promise
       // A composite control may draw the ring on a close wrapper via :focus-within (e.g. the query bar's textarea
       // sits over its highlight layer); that is still a visible indicator for this stop.
       let visible = ring(el);
+      // A tree item draws its ring on its own row (it also contains its open group): `data-focus-indicator`.
+      const own = el.querySelector(':scope > [data-focus-indicator]');
+      if (!visible && own) visible = ring(own);
       for (
         let up = el.parentElement, depth = 0;
         !visible && up && depth < 3;

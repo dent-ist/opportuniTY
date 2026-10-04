@@ -1,0 +1,46 @@
+// Documents browser pane: Saved Searches.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  font-size: var(--opp-font-size-sm);
+}
+
+.ssb__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--opp-space-2);
+}
+
+.ssb__title {
+  font-size: var(--opp-font-size-md);
+}
+
+.ssb__manage {
+  font-size: var(--opp-font-size-sm);
+}
+
+.ssb__save {
+  align-self: stretch;
+}
+
+.ssb__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-1);
+  margin: 0;
+  color: var(--opp-color-text-muted);
+}
+
+.ssb__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--opp-color-accent-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

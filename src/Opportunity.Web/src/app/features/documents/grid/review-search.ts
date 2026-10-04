@@ -12,6 +12,10 @@ import type {
 } from '../../../core/api/generated/models';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 
+/** `POST …/searches`: a query, or a saved search by id (it runs the stored query, filtered for the caller). */
+export type GridSearchRequest = Omit<SearchRequest, 'query'> &
+  ({ query: string | null } | { savedSearchId: string });
+
 /** Which page of a running search to fetch (exactly one; `GET …/searches/{id}/pages`, Q-49). */
 export type PageRequest = { cursor: string } | { page: number } | { last: true };
 
@@ -25,8 +29,10 @@ export class ReviewSearchApi {
   private readonly rootUrl = inject(ApiConfiguration).rootUrl;
   private readonly workspaceId = inject(WorkspaceContext).workspaceId;
 
-  /** Runs a search and returns its first page. */
-  run(body: SearchRequest): Promise<SearchResultPage> {
+  /** Runs a search (a query, or a saved search by id) and returns its first page. */
+  run(request: GridSearchRequest): Promise<SearchResultPage> {
+    // `savedSearchId` instead of `query` is the wave-9 saved-search contract (#71); the generated type follows it.
+    const body = request as unknown as SearchRequest;
     return firstValueFrom(
       runSearch(this.http, this.rootUrl, { workspaceId: this.workspaceId, body }).pipe(
         map((r) => r.body),

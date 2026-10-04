@@ -94,6 +94,8 @@ const PAGES = [
   { path: '/w/ws-1/admin/fields', interact: { role: 'button', name: /User menu/ } },
   { path: '/w/ws-1/imports', interact: { role: 'button', name: /User menu/ } },
   { path: '/w/ws-1/imports/new', interact: { role: 'button', name: /User menu/ } },
+  { path: '/w/ws-1/searches/saved', interact: { role: 'button', name: /User menu/ } },
+  { path: '/w/ws-1/documents?savedSearch=ss-1', interact: { role: 'button', name: /User menu/ } },
 ] as const;
 
 for (const { path, interact } of PAGES) {

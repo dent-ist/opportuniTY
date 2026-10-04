@@ -2,6 +2,7 @@ import type { Page, Route } from '@playwright/test';
 import { CODING_FIELDS, CodingMock } from './mock-coding';
 import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
 import { ImportsMock } from './mock-imports';
+import { SavedSearchesMock } from './mock-saved-searches';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -67,6 +68,8 @@ export interface MockControl {
   readonly bulkCoding: MockRequest[];
   /** Imports (E08-T08): previews, pre-flights and started imports received. */
   readonly imports: ImportsMock;
+  /** Saved searches (E16-T11): folders, searches, writes received and runs by id. */
+  readonly savedSearches: SavedSearchesMock;
 }
 
 /**
@@ -319,8 +322,10 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const frozen = new Map<string, number>();
   const jobs = new Map<string, { snapshotId: string; polls: number }>();
   const imports = new ImportsMock({ preflightBlocking: options.preflightBlocking });
+  const savedSearches = new SavedSearchesMock();
   const control: MockControl = {
     imports,
+    savedSearches,
     unhandled,
     audit,
     coding,
@@ -387,15 +392,27 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       const body = route.request().postDataJSON() as {
         pageSize?: number;
         query?: string;
+        savedSearchId?: string;
         highlight?: boolean | null;
       };
       pageSize = Number(body?.pageSize ?? 100);
+      if (body?.savedSearchId) {
+        // A saved search runs its stored query (wave-9 contract): unknown or not visible → 404.
+        const stored = savedSearches.queryOf(body.savedSearchId);
+        if (stored === null) return route.fulfill(problem(404, 'Not found'));
+        body.query = stored;
+      }
       // A fielded query (the filter row) narrows the list, so filtering is visible end to end.
       total = body?.query?.includes(':') ? Math.min(documents, 12) : documents;
       expired = false;
       // Like the API, snippets come only with highlighting (on by default); the search keeps the setting for its pages.
       lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
-      return json(route, searchPage(matching(), pageSize, 1, lastQuery));
+      if (!body?.savedSearchId) return json(route, searchPage(matching(), pageSize, 1, lastQuery));
+      savedSearches.run(body.savedSearchId, matching().length);
+      return json(route, {
+        ...searchPage(matching(), pageSize, 1, lastQuery),
+        savedSearchId: body.savedSearchId,
+      });
     }
     if (signedIn && /^\/api\/v1\/workspaces\/[^/]+\/searches\/[^/]+\/pages$/.test(path)) {
       if (expired) return route.fulfill(problem(404, 'Not found'));
@@ -409,6 +426,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
           : Number(url.searchParams.get('page') ?? 1);
       return json(route, searchPage(docs, pageSize, n, lastQuery));
     }
+    // Saved searches (E16-T11): ./mock-saved-searches.ts.
+    const savedSearch = signedIn ? savedSearches.handle(route, method, path, url) : undefined;
+    if (savedSearch) return savedSearch;
     // Imports (E08-T08): ./mock-imports.ts.
     const imported = signedIn ? imports.handle(route, method, path) : undefined;
     if (imported) return imported;
