@@ -52,14 +52,18 @@ internal sealed record WorkspaceResources(
     Guid SpareProfileId,
     Guid BulkCodingJobId,
     Guid LayoutId,
-    Guid PreflightId)
+    Guid PreflightId,
+    Guid SavedSearchFolderId,
+    Guid SpareFolderId,
+    Guid SavedSearchId,
+    Guid SpareSavedSearchId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
         "unknown", Guid.CreateVersion7(), Guid.CreateVersion7(), fields, Guid.CreateVersion7(), "ZZ-0000001", Guid.CreateVersion7(),
         Guid.NewGuid().ToString("N"), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -67,7 +71,7 @@ internal sealed record WorkspaceResources(
         Guid[] ids =
         [
             WorkspaceId, DocumentId, SearchId, BulkSnapshotId, ExportSnapshotId, ExportId, ExportFileId, ImportId, ImportJobId, ImportProfileId,
-            SpareProfileId, BulkCodingJobId, LayoutId, PreflightId,
+            SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -230,6 +234,16 @@ internal sealed class AttackWorld : IAsyncDisposable
             preflightId = body.RootElement.GetProperty("preflightId").GetGuid();
         }
 
+        // Saved searches (E07-T09): a folder holding a saved search over every document, and spares for the delete probes.
+        var folder = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/saved-search-folders", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"Folder {name}" });
+        var spareFolder = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/saved-search-folders", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"Spare folder {name}" });
+        var savedSearch = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/saved-searches", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"Everything {name}", ["query"] = "", ["folderId"] = folder.GetProperty("folderId").GetString() });
+        var spareSearch = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/saved-searches", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"Spare search {name}", ["query"] = "memo" });
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -252,7 +266,11 @@ internal sealed class AttackWorld : IAsyncDisposable
             spare.GetProperty("profileId").GetGuid(),
             bulkJob.GetProperty("jobId").GetGuid(),
             layout,
-            preflightId);
+            preflightId,
+            folder.GetProperty("folderId").GetGuid(),
+            spareFolder.GetProperty("folderId").GetGuid(),
+            savedSearch.GetProperty("savedSearchId").GetGuid(),
+            spareSearch.GetProperty("savedSearchId").GetGuid());
     }
 
     /// <summary>Sends a request as <paramref name="user"/> (null: anonymous) with a fresh Idempotency-Key on writes.</summary>

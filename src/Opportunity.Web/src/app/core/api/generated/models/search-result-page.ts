@@ -15,6 +15,7 @@ export interface SearchResultPage {
   page: SearchPageInfo;
   previousCursor?: string | null;
   resultsRefreshed?: boolean;
+  savedSearchId?: string | null;
   searchId?: string | null;
   total: TotalCount;
 }

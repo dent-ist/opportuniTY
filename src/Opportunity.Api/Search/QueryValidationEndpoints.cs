@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Options;
 using Opportunity.Api.Conventions;
 using Opportunity.Application.Search;
+using Opportunity.Application.Search.SavedSearches;
 using Opportunity.Contracts.Search;
 using Opportunity.Core.QueryLanguage;
 using Opportunity.Core.Security;
@@ -89,16 +90,26 @@ public sealed class QueryValidationEndpoints : IApiEndpointModule
                 }
 
                 var parsed = validator.Validate(request.Query);
-                if (!parsed.Valid || context.RequestServices.GetService<IQueryBinder>() is not { } binder)
+                var binder = context.RequestServices.GetService<IQueryBinder>();
+                // Saved-search references need PostgreSQL; resolve that service only for a query that has one.
+                var savedSearches = parsed.Valid && QueryParser.Parse(request.Query, validator.Limits).Ast is { } ast
+                    && SavedSearchReferences.Collect(ast).Count > 0
+                    ? context.RequestServices.GetService<ISavedSearchQueries>()
+                    : null;
+                if (!parsed.Valid || (binder is null && savedSearches is null))
                 {
                     return TypedResults.Ok(parsed);
                 }
 
-                return TypedResults.Ok(await validator.ValidateAsync(request.Query, access.WorkspaceId, binder, cancellationToken)
-                    .ConfigureAwait(false));
+                return TypedResults.Ok(await validator.ValidateAsync(request.Query, access.WorkspaceId, binder, savedSearches, access.Principal,
+                    cancellationToken).ConfigureAwait(false));
             })
             .WithName("ValidateQuery")
             .WithSummary("Parse query-language text and return its AST, normalized form and positioned errors.")
+            .WithDescription(
+                "Also checks saved-search references (savedsearch:<savedSearchId>): each must be a saved search you can see, and nested " +
+                "saved searches must not form a loop (SAVED_SEARCH_NOT_FOUND, SAVED_SEARCH_CYCLE, SAVED_SEARCH_TOO_DEEP, " +
+                "SAVED_SEARCH_INVALID, SAVED_SEARCH_INVALID_REFERENCE); errors inside a referenced search point at the reference.")
             .Produces<QueryValidationResult>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)

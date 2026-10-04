@@ -44,7 +44,8 @@ internal sealed partial class SearchService(
     OpenSearchOptions options,
     TimeProvider time,
     ILogger<SearchService> logger,
-    OpportunityMetrics? metrics = null) : ISearchService
+    OpportunityMetrics? metrics = null,
+    ISavedSearchQueries? savedSearches = null) : ISearchService
 {
     private const string ResourceType = "Search";
     private const string CorrelationTag = "opportunity.correlation_id";
@@ -71,13 +72,32 @@ internal sealed partial class SearchService(
             return SearchOutcome.InvalidRequest("pageSize", $"pageSize must be between 1 and {Settings.MaxPageSize}.");
         }
 
-        if (request.Query is null)
+        SavedSearchRunSource? saved = null;
+        if (request.SavedSearchId is { } savedSearchId)
+        {
+            if (request.Query is not null)
+            {
+                return SearchOutcome.InvalidRequest("query", "Give either query or savedSearchId, not both.");
+            }
+
+            // A saved search the caller cannot see is indistinguishable from one that does not exist (Q-65).
+            if (savedSearches is null
+                || await savedSearches.FindForRunAsync(caller.Principal, caller.WorkspaceId, savedSearchId, cancellationToken).ConfigureAwait(false)
+                    is not { } source)
+            {
+                return SearchOutcome.NotFound;
+            }
+
+            saved = source;
+        }
+        else if (request.Query is null)
         {
             return SearchOutcome.InvalidRequest("query", "The query text is required (it may be empty).");
         }
 
+        var queryText = saved?.QueryText ?? request.Query!;
         var sort = new List<SortKey>();
-        foreach (var key in request.Sort ?? [])
+        foreach (var key in request.Sort ?? saved?.Sort ?? [])
         {
             if (key is null || SortKey.Resolve(key.Field, key.Direction) is not { } resolved)
             {
@@ -110,7 +130,8 @@ internal sealed partial class SearchService(
         }
 
         var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
-        var plan = await PlanAsync(caller.WorkspaceId, request.Query, placement?.Generation, cancellationToken).ConfigureAwait(false);
+        // Text the caller typed may only reference saved searches they can see; a saved search's own references are its criteria.
+        var plan = await PlanAsync(caller, queryText, placement?.Generation, saved is null, cancellationToken).ConfigureAwait(false);
         if (plan.Errors is { } errors)
         {
             return SearchOutcome.InvalidQuery(errors);
@@ -131,7 +152,7 @@ internal sealed partial class SearchService(
             Guid.NewGuid(),
             caller.Principal.UserId,
             caller.SessionId,
-            request.Query,
+            queryText,
             SortKey.ToJson(sort),
             pageSize,
             request.CountExact == true,
@@ -149,10 +170,11 @@ internal sealed partial class SearchService(
         if (placement is null)
         {
             // Nothing was ever indexed for this workspace: an empty first page, no handle to page through.
-            await AuditExecutedAsync(caller, visibility.Filter!, search, plan, null, new TotalCount(0, TotalRelation.Eq), 0, 0, cancellationToken)
-                .ConfigureAwait(false);
+            await AuditExecutedAsync(caller, visibility.Filter!, search, plan, null, new TotalCount(0, TotalRelation.Eq), 0, 0, cancellationToken,
+                saved?.SavedSearchId).ConfigureAwait(false);
+            await RecordSavedRunAsync(caller, saved, new TotalCount(0, TotalRelation.Eq), freshness, cancellationToken).ConfigureAwait(false);
             RecordDuration(started, plan.QueryClass, "ok");
-            return SearchOutcome.Ok(EmptyPage(plan.Normalized, pageSize, freshness));
+            return SearchOutcome.Ok(EmptyPage(plan.Normalized, pageSize, freshness) with { SavedSearchId = saved?.SavedSearchId });
         }
 
         var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
@@ -177,12 +199,14 @@ internal sealed partial class SearchService(
             served.Cursors,
             cancellationToken).ConfigureAwait(false);
         await AuditExecutedAsync(caller, visibility.Filter!, search, plan, search.SearchId, result.Total, served.Page.Items.Count,
-            served.Dropped, cancellationToken).ConfigureAwait(false);
+            served.Dropped, cancellationToken, saved?.SavedSearchId).ConfigureAwait(false);
+        await RecordSavedRunAsync(caller, saved, served.Page.Total, freshness, cancellationToken).ConfigureAwait(false);
 
         RecordDuration(started, plan.QueryClass, "ok");
         return SearchOutcome.Ok(served.Page with
         {
             Facets = Facets(result.Aggregations, facets),
+            SavedSearchId = saved?.SavedSearchId,
         });
     }
 
@@ -250,7 +274,7 @@ internal sealed partial class SearchService(
         }
 
         var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
-        var plan = await PlanAsync(caller.WorkspaceId, search.QueryText, placement?.Generation, cancellationToken).ConfigureAwait(false);
+        var plan = await PlanAsync(caller, search.QueryText, placement?.Generation, false, cancellationToken).ConfigureAwait(false);
         if (placement is null || plan.Errors is not null)
         {
             // The workspace lost its placement, or the stored query no longer binds (e.g. a field was deleted).
@@ -317,21 +341,37 @@ internal sealed partial class SearchService(
         }
     }
 
-    private async Task<QueryPlan> PlanAsync(Guid workspaceId, string text, int? generation, CancellationToken cancellationToken)
+    /// <summary>
+    /// Parses <paramref name="text"/>, expands saved-search references (E07-T09; direct ones must be visible to the caller
+    /// when <paramref name="checkReferences"/>) and translates the result. The plan keeps the AST as written.
+    /// </summary>
+    private async Task<QueryPlan> PlanAsync(SearchCaller caller, string text, int? generation, bool checkReferences, CancellationToken cancellationToken)
     {
+        var workspaceId = caller.WorkspaceId;
         var parsed = QueryParser.Parse(text, limits);
         if (parsed.Ast is not { } ast)
         {
             return QueryPlan.Failed(parsed.Errors);
         }
 
+        var expansion = SavedSearchExpansion.Unchanged(ast);
+        if (savedSearches is not null)
+        {
+            expansion = await savedSearches.ExpandAsync(
+                new SavedSearchExpansionRequest(workspaceId, ast, checkReferences ? caller.Principal : null), cancellationToken).ConfigureAwait(false);
+            if (!expansion.Success)
+            {
+                return QueryPlan.Failed(expansion.Errors);
+            }
+        }
+
         var translation = await translator.TranslateAsync(
-            ast, new SearchTranslationContext(workspaceId, generation ?? ProjectionMappings.Embedded.CurrentGeneration, limits), cancellationToken)
+            expansion.Ast, new SearchTranslationContext(workspaceId, generation ?? ProjectionMappings.Embedded.CurrentGeneration, limits), cancellationToken)
             .ConfigureAwait(false);
         if (!translation.Success)
         {
             return QueryPlan.Failed(translation.Errors.Count > 0
-                ? translation.Errors
+                ? expansion.Annotate(translation.Errors)
                 : [new QueryDiagnostic(SearchQueryErrorCodes.UnsupportedForField, "The query cannot be planned.", ast.Span)]);
         }
 
@@ -726,7 +766,8 @@ internal sealed partial class SearchService(
         TotalCount total,
         int returned,
         int dropped,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? savedSearchId = null)
     {
         var details = new Dictionary<string, string?>
         {
@@ -739,6 +780,12 @@ internal sealed partial class SearchService(
             ["postFilterDropped"] = Invariant(dropped),
             ["queryClass"] = plan.QueryClass,
         };
+        if (savedSearchId is { } saved)
+        {
+            // E07-T09: the run of a saved search (its criteria are the query below, as stored and re-parsed now).
+            details["savedSearchId"] = saved.ToString();
+        }
+
         var restricted = new Dictionary<string, string?>
         {
             ["query"] = search.QueryText,
@@ -758,6 +805,15 @@ internal sealed partial class SearchService(
                 new Dictionary<string, string?> { ["total"] = Invariant(total.Value) }, null, cancellationToken).ConfigureAwait(false);
         }
     }
+
+    /// <summary>Records a saved search's run (time, the runner's hit count, freshness) as its last run.</summary>
+    private Task RecordSavedRunAsync(
+        SearchCaller caller, SavedSearchRunSource? saved, TotalCount total, SearchFreshness freshness, CancellationToken cancellationToken) =>
+        saved is null || savedSearches is null
+            ? Task.CompletedTask
+            : savedSearches.RecordRunAsync(caller.WorkspaceId, saved.SavedSearchId,
+                new SavedSearchRunResult(freshness.AsOf, total.Value, total.Relation == TotalRelation.Eq, freshness.Current, freshness.ServedGeneration),
+                cancellationToken);
 
     private Task AuditPageServedAsync(
         SearchCaller caller, VisibilityFilter visibility, Guid searchId, Navigation navigation, ServedPage served, SearchResult result,

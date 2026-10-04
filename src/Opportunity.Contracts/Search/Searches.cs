@@ -15,13 +15,19 @@ namespace Opportunity.Contracts.Search;
 /// <param name="CountExact">Q-32 "count exactly": the total is exact instead of capped at 10,000 (audited).</param>
 /// <param name="Highlight">Return bounded snippets of the matching text (default true).</param>
 /// <param name="Facets">Facet fields for the first page (see <see cref="SearchFacetFields"/>).</param>
+/// <param name="SavedSearchId">
+/// Run a saved search instead of <see cref="Query"/> (give one or the other): its stored query is re-parsed now and the
+/// results are filtered for the caller; its stored sort applies unless <see cref="Sort"/> is given. The run is recorded as
+/// the search's last run.
+/// </param>
 public sealed record SearchRequest(
     string? Query,
     IReadOnlyList<SearchSortKey>? Sort = null,
     int? PageSize = null,
     bool? CountExact = null,
     bool? Highlight = null,
-    IReadOnlyList<string>? Facets = null);
+    IReadOnlyList<string>? Facets = null,
+    Guid? SavedSearchId = null);
 
 /// <param name="Field">A sortable field (<see cref="SearchSortFields"/>), case-insensitive.</param>
 public sealed record SearchSortKey(string Field, SearchSortDirection Direction = SearchSortDirection.Asc);
@@ -56,6 +62,9 @@ public sealed record SearchResultPage
 {
     /// <summary>Opaque handle of this search, bound to the caller, their session and the workspace. Null when nothing is indexed yet.</summary>
     public string? SearchId { get; init; }
+
+    /// <summary>The saved search this search ran (<c>savedSearchId</c> in the request); null for a typed query.</summary>
+    public Guid? SavedSearchId { get; init; }
 
     /// <summary>The normalized interpretation of the query (e.g. <c>a AND b</c> for <c>a b</c>).</summary>
     public required string Normalized { get; init; }

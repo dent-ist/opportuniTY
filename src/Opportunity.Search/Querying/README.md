@@ -52,3 +52,7 @@ selection. No search handle is stored; `DocumentSetSnapshotService` audits the s
   fills `AuditEvent.SearchGeneration`.
 - **Pending-set exclusion (ADR-015 D8.3, E05-T06)** – add the unindexed security-change IDs as a second server-side
   `must_not` in `SearchDsl.Query`.
+- **Saved searches (E07-T09, #71)** – `SearchService` takes an optional `ISavedSearchQueries`: `PlanAsync` expands
+  `savedsearch:<id>` references (ADR-008 §9) before translation, `SearchRequest.SavedSearchId` runs a stored query
+  (re-parsed now, its stored sort unless one is given) and records the last run, and the `Search.Executed` audit event
+  carries `savedSearchId`. Snapshots freeze a saved search as the query `savedsearch:<id>`.
