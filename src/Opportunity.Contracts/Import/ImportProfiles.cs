@@ -57,6 +57,9 @@ public enum StructuralTarget
 
     /// <summary>Upstream email hash (hex); the dedupe key of an email when no dedupe hash is mapped.</summary>
     EmailHash,
+
+    /// <summary>Control numbers of a parent's attachments (multi-value); cross-validates ParentID families.</summary>
+    AttachmentIds,
 }
 
 /// <summary>Type of a field a load creates (the nine field types of §6; dates split by precision).</summary>

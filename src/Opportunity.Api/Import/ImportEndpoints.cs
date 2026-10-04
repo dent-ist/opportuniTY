@@ -87,6 +87,14 @@ public sealed class ImportEndpoints : IApiEndpointModule
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{importId}/family-issues", ListFamilyIssuesAsync)
+            .WithName("ListImportFamilyIssues")
+            .WithTags("Import")
+            .WithSummary("Family report of an import: orphan attachments, range gaps, documents claimed by two families, invalid ranges, cycles.")
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     internal static async Task<Results<Accepted<ImportResource>, ValidationProblem, ProblemHttpResult>> StartAsync(
@@ -391,6 +399,45 @@ public sealed class ImportEndpoints : IApiEndpointModule
             ? Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{issues[limit - 1].RowNo}|{issues[limit - 1].IssueNo}")))
             : null;
         return TypedResults.Ok(new CursorPage<ImportRowIssueResource>(
+            items, next, new TotalCount(items.Count, next is null && after is null ? TotalRelation.Eq : TotalRelation.Gte)));
+    }
+
+    internal static async Task<Results<Ok<CursorPage<ImportFamilyIssueResource>>, ValidationProblem, ProblemHttpResult>> ListFamilyIssuesAsync(
+        string workspaceId, string importId, [AsParameters] PageQuery page, HttpContext context, IImportBatchStore batches,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (context.GetWorkspaceAccess() is not { } access || !Guid.TryParse(importId, out var id)
+            || await batches.GetAsync(access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { } record)
+        {
+            return Problems.NotFound("No such import.");
+        }
+
+        if (page.Validate() is { } invalid)
+        {
+            return invalid;
+        }
+
+        ImportRowIssueCursor? after = null;
+        if (page.Cursor is { } cursor)
+        {
+            if (DecodeIssueCursor(cursor) is not { } decoded)
+            {
+                return Validation("cursor", "The cursor is not valid.");
+            }
+
+            after = decoded;
+        }
+
+        var limit = page.EffectiveLimit;
+        var issues = await batches.GetFamilyIssuesAsync(access.WorkspaceId, record.ImportBatchId, after, limit + 1, cancellationToken).ConfigureAwait(false);
+        var items = issues.Take(limit).Select(i => new ImportFamilyIssueResource(
+            i.RowNo, i.DocumentId, i.ControlNumber, (ImportFamilyIssueKind)((int)i.Kind - 1), (ImportFamilyStatus)(int)i.Status, i.Message, i.Related,
+            i.MissingCount)).ToList();
+        var next = issues.Count > limit
+            ? Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{issues[limit - 1].RowNo}|{issues[limit - 1].IssueNo}")))
+            : null;
+        return TypedResults.Ok(new CursorPage<ImportFamilyIssueResource>(
             items, next, new TotalCount(items.Count, next is null && after is null ? TotalRelation.Eq : TotalRelation.Gte)));
     }
 

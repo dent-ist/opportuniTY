@@ -409,8 +409,15 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
                 .Be(DocumentWriteOutcome.Unchanged, field + " re-applied");
         }
 
-        // Every mutable property of Document is covered above (MetadataRaw is the one non-projected column).
-        var covered = changes.Select(c => c.Field.Split(' ')[0]).Concat(["FamilyId", "ParentDocumentId", "FamilySequence", "MetadataRaw"]);
+        // Family sources are stored but not projected: family resolution writes the projected family columns (E09-T01).
+        string[] familySources = ["BegAttachNorm", "EndAttachNorm", "ParentIdNorm", "GroupIdentifier", "AttachmentIdsNorm", "UpstreamFamilyDate"];
+        document.ParentIdNorm = "D-0000";
+        document.AttachmentIdsNorm = ["D-0002"];
+        (await db.Documents.UpdateAsync(document, cancellationToken: Ct)).Should()
+            .Be(new DocumentWriteResult(DocumentWriteOutcome.Unchanged, expected), "family sources are not projection inputs");
+
+        // Every mutable property of Document is covered above (MetadataRaw and the family sources are non-projected).
+        var covered = changes.Select(c => c.Field.Split(' ')[0]).Concat(["FamilyId", "ParentDocumentId", "FamilySequence", "MetadataRaw", .. familySources]);
         var mutable = typeof(Document).GetProperties().Select(p => p.Name)
             .Except(["WorkspaceId", "DocumentId", "ControlNumber", "ControlNumberNorm", "ControlNumberSortKey",
                 "FirstImportBatchId", "CreatedAt", "UpdatedAt"]);

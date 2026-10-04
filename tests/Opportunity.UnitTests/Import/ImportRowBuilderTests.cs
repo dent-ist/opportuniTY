@@ -61,6 +61,25 @@ public class ImportRowBuilderTests
     }
 
     [Fact]
+    public async Task Family_sources_are_stored_normalized_with_the_import_prefix()
+    {
+        var profile = new ImportProfileDefinition { ControlNumberPrefix = "v1-" };
+        var (mapping, records) = await ParseAsync(Concordance(
+            ["BEGDOC", "BegAttach", "EndAttach", "ParentID", "GroupIdentifier", "AttachmentIDs", "FamilyDate"],
+            ["abc-2", "abc-1", "abc-4", "abc-1", " Fam 7 ", "abc-3; abc-4;;abc-3", "2021-05-06T07:08:09Z"]), Catalog(), profile);
+
+        var row = ImportRowBuilder.Build(mapping, records[0], 1, 2, Workspace, Batch, new HashSet<int>());
+
+        row.HasErrors.Should().BeFalse();
+        var d = row.Document!;
+        (d.BegAttach, d.BegAttachNorm, d.EndAttachNorm, d.ParentIdNorm, d.GroupIdentifier).Should().Be(("abc-1", "V1-ABC-1", "V1-ABC-4", "V1-ABC-1", "Fam 7"));
+        d.AttachmentIdsNorm.Should().Equal("V1-ABC-3", "V1-ABC-4");
+        (d.FamilyDate, d.UpstreamFamilyDate).Should().Be(((DateTimeOffset?)null, new DateTimeOffset(2021, 5, 6, 7, 8, 9, TimeSpan.Zero)));
+        row.SuppliedColumns.Should().Contain(["beg_attach_norm", "end_attach_norm", "parent_id_norm", "group_identifier", "attachment_ids_norm", "upstream_family_date"])
+            .And.NotContain("family_date", "FamilyDate is derived by family resolution");
+    }
+
+    [Fact]
     public async Task Coding_fields_load_only_when_enabled_and_rejected_records_keep_their_parser_errors()
     {
         var responsive = Custom(1000, "Responsive", FieldType.Keyword, storage: FieldStorage.Coding);

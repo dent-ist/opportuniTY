@@ -79,9 +79,10 @@ public static partial class ImportRowBuilder
 
             if (cell.Target.Structural is { } structural)
             {
-                // The upload string stays available to the tickets that resolve it (family E09-T01, paths E08-T04);
-                // duplicate/thread identifiers are applied to the document below.
+                // The upload string stays available to the tickets that resolve it (paths E08-T04); family sources are
+                // also stored normalized (E09-T01) and duplicate/thread identifiers are applied to the document below.
                 raw[StructuralRawPrefix + structural] = new JsonObject { ["raw"] = value.GetValue<string>(), ["batch"] = importBatchId.ToString() };
+                SetFamilySource(mapping, document, structural, value.GetValue<string>(), cell.Column.Settings.MultiValueDelimiter, supplied, issues, column);
                 continue;
             }
 
@@ -100,7 +101,7 @@ public static partial class ImportRowBuilder
                         continue;
                     }
 
-                    if (definition.ColumnName is { } columnName)
+                    if (definition.ColumnName is { } columnName && fieldId != SystemFields.FamilyDate)
                     {
                         supplied.Add(columnName);
                     }
@@ -139,6 +140,7 @@ public static partial class ImportRowBuilder
             }
         }
 
+        NormalizeAttachmentRange(mapping, document, supplied, issues);
         var relationships = ApplyUpstreamRelationships(mapping, mapped, document, supplied);
         issues.AddRange(relationships.Warnings.Select(w => new ImportRowIssue(ImportIssueSeverity.Warning, "relationship-adjusted", Truncate(w))));
         var failed = issues.Any(i => i.Severity == ImportIssueSeverity.Error) || mapped.ControlNumberNorm is null;
@@ -191,6 +193,82 @@ public static partial class ImportRowBuilder
         return result;
     }
 
+    /// <summary>
+    /// The Mode B/C family sources (ADR-009 §2): ParentID (prefix already applied by the mapping) and AttachmentIDs are
+    /// normalized like control numbers; the group identifier is kept trimmed and verbatim.
+    /// </summary>
+    private static void SetFamilySource(
+        CompiledMapping mapping, Document document, StructuralTarget structural, string value, char delimiter, HashSet<string> supplied,
+        List<ImportRowIssue> issues, string column)
+    {
+        switch (structural)
+        {
+            case StructuralTarget.ParentId when ControlNumber.TryNormalize(value, mapping.ControlNumberCaseSensitive, null, out var parent, out _):
+                document.ParentIdNorm = parent;
+                supplied.Add("parent_id_norm");
+                break;
+            case StructuralTarget.GroupId:
+                document.GroupIdentifier = value.Trim();
+                supplied.Add("group_identifier");
+                break;
+            case StructuralTarget.AttachmentIds:
+                var ids = new List<string>();
+                foreach (var id in value.Split(delimiter, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (ControlNumber.TryNormalize(id, mapping.ControlNumberCaseSensitive, mapping.EffectiveProfile.ControlNumberPrefix, out var norm, out _))
+                    {
+                        ids.Add(norm);
+                    }
+                    else
+                    {
+                        issues.Add(new ImportRowIssue(ImportIssueSeverity.Warning, "family-source-ignored",
+                            Truncate($"Attachment IDs: '{id}' is not a valid control number; ignored."), column));
+                    }
+                }
+
+                if (ids.Count > 0)
+                {
+                    document.AttachmentIdsNorm = [.. ids.Distinct(StringComparer.Ordinal)];
+                    supplied.Add("attachment_ids_norm");
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>Mode A sources: BegAttach/EndAttach name control numbers, so they take the import prefix and normalization.</summary>
+    private static void NormalizeAttachmentRange(CompiledMapping mapping, Document document, HashSet<string> supplied, List<ImportRowIssue> issues)
+    {
+        string? Normalize(string? value, string label)
+        {
+            if (value is null)
+            {
+                return null;
+            }
+
+            if (ControlNumber.TryNormalize(value, mapping.ControlNumberCaseSensitive, mapping.EffectiveProfile.ControlNumberPrefix, out var norm, out _))
+            {
+                return norm;
+            }
+
+            issues.Add(new ImportRowIssue(ImportIssueSeverity.Warning, "family-source-ignored",
+                Truncate($"{label} '{value}' is not a valid control number; it is kept but not used to build families.")));
+            return null;
+        }
+
+        if (supplied.Contains("beg_attach"))
+        {
+            document.BegAttachNorm = Normalize(document.BegAttach, "BegAttach");
+            supplied.Add("beg_attach_norm");
+        }
+
+        if (supplied.Contains("end_attach"))
+        {
+            document.EndAttachNorm = Normalize(document.EndAttach, "EndAttach");
+            supplied.Add("end_attach_norm");
+        }
+    }
+
     /// <summary>Sets the structural column of a system field (ADR-003 §1); false for computed or unknown fields.</summary>
     private static bool TrySetColumn(Document document, int fieldId, JsonNode value, HashSet<string> supplied)
     {
@@ -210,7 +288,11 @@ public static partial class ImportRowBuilder
             case SystemFields.DateReceived: document.DateReceived = Instant(value); return true;
             case SystemFields.DateCreated: document.DateCreated = Instant(value); return true;
             case SystemFields.DateLastModified: document.DateLastModified = Instant(value); return true;
-            case SystemFields.FamilyDate: document.FamilyDate = Instant(value); return true;
+            case SystemFields.FamilyDate:
+                // FamilyDate is derived by family resolution (ADR-009 R25); the mapped value is its upstream input.
+                document.UpstreamFamilyDate = Instant(value);
+                supplied.Add("upstream_family_date");
+                return true;
             case SystemFields.DocumentDate:
                 document.DocumentDate = Instant(value);
                 document.DocumentDateSource = DocumentDateSource.Upstream;

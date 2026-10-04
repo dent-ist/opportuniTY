@@ -81,3 +81,54 @@ public sealed record ImportReport(
     long RowsErrored,
     int FieldsCreated,
     int ChoicesCreated);
+
+/// <summary>What a family report line is about (ADR-009 R10).</summary>
+public enum ImportFamilyIssueKind
+{
+    /// <summary>Orphan attachment: the parent named by Parent ID or BegAttach is not in the workspace.</summary>
+    ParentMissing,
+
+    /// <summary>The attachment range spans control numbers that are not in the workspace (see <c>missingCount</c>).</summary>
+    RangeGap,
+
+    /// <summary>The document is claimed by two families; it joined the one with the lowest parent.</summary>
+    ClaimedByTwoFamilies,
+
+    /// <summary>BegAttach/EndAttach have different prefixes or are reversed; the range is ignored.</summary>
+    InvalidRange,
+
+    /// <summary>Parent references form a cycle; the lowest control number became the parent.</summary>
+    Cycle,
+
+    /// <summary>Attachment IDs disagree with the resolved family (cross-check only).</summary>
+    AttachmentListMismatch,
+}
+
+/// <summary>The document's family status after resolution (the most severe finding).</summary>
+public enum ImportFamilyStatus
+{
+    Unresolved,
+    Resolved,
+    Conflict,
+    ParentMissing,
+    Gap,
+    InvalidRange,
+}
+
+/// <summary>
+/// One line of an import's family report: orphan attachments, ranges spanning missing control numbers, documents claimed
+/// by two families, invalid ranges, cycles and attachment-list mismatches. Lines describe the current families and
+/// disappear once a later load supplies the missing documents.
+/// </summary>
+/// <param name="Row">1-based data row of the load file that created or overlaid the document.</param>
+/// <param name="Related">The other control numbers involved (claiming parents, cycle members, the range bounds).</param>
+/// <param name="MissingCount">Range gaps: control numbers in the range that are not in the workspace.</param>
+public sealed record ImportFamilyIssueResource(
+    long Row,
+    Guid DocumentId,
+    string ControlNumber,
+    ImportFamilyIssueKind Kind,
+    ImportFamilyStatus FamilyStatus,
+    string Message,
+    IReadOnlyList<string> Related,
+    long? MissingCount);

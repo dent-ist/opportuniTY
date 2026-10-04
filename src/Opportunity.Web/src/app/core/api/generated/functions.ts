@@ -55,6 +55,8 @@ export type { GetImport$Params as GetImport$Params } from './fn/import/get-impor
 export { getImport as getImport } from './fn/import/get-import';
 export type { ListImportErrors$Params as ListImportErrors$Params } from './fn/import/list-import-errors';
 export { listImportErrors as listImportErrors } from './fn/import/list-import-errors';
+export type { ListImportFamilyIssues$Params as ListImportFamilyIssues$Params } from './fn/import/list-import-family-issues';
+export { listImportFamilyIssues as listImportFamilyIssues } from './fn/import/list-import-family-issues';
 export type { DownloadDocumentNative$Params as DownloadDocumentNative$Params } from './fn/document-content/download-document-native';
 export { downloadDocumentNative as downloadDocumentNative } from './fn/document-content/download-document-native';
 export type { GetDocumentText$Params as GetDocumentText$Params } from './fn/document-content/get-document-text';
