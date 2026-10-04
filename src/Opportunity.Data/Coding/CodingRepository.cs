@@ -19,6 +19,7 @@ using Opportunity.Data.Audit;
 using Opportunity.Data.Fields;
 using Opportunity.Data.Jobs;
 using Opportunity.Data.SearchWork;
+using Opportunity.Data.Security;
 
 namespace Opportunity.Data.Coding;
 
@@ -31,8 +32,10 @@ namespace Opportunity.Data.Coding;
 /// One transaction per write: claim the idempotency key, share-lock the field definitions, lock the documents'
 /// projection state in DocumentId order (the bulk lock order of ADR-010 §6), compute state-based changes, then write
 /// current state, events and version bumps in one round trip. The wide <c>document</c> row is never touched (ADR-003 R2).
+/// When a security-affecting field changed, the documents' restriction classes are recomputed through
+/// <paramref name="restrictions"/> in the same transaction (ADR-015 D6.1, §24 rule 1).
 /// </remarks>
-public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepository
+public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionClassBinding? restrictions = null) : ICodingRepository
 {
     public async Task<CodingWriteResult> ApplyAsync(CodingWriteRequest request, CancellationToken cancellationToken = default)
     {
@@ -44,7 +47,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         }
 
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, request.WorkspaceId, cancellationToken).ConfigureAwait(false);
-        var (result, plan) = await ApplyInTransactionAsync(tx, request, cancellationToken).ConfigureAwait(false);
+        var (result, plan) = await ApplyInTransactionAsync(tx, request, restrictions, cancellationToken).ConfigureAwait(false);
         if (result.Outcome is not (CodingWriteOutcome.Applied or CodingWriteOutcome.Replayed))
         {
             return result;
@@ -82,7 +85,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         ChunkCommitResult commit;
         await using (var tx = await WorkspaceTransaction.BeginAsync(dataSource, request.WorkspaceId, cancellationToken).ConfigureAwait(false))
         {
-            (result, var plan) = await ApplyInTransactionAsync(tx, request, cancellationToken).ConfigureAwait(false);
+            (result, var plan) = await ApplyInTransactionAsync(tx, request, restrictions, cancellationToken).ConfigureAwait(false);
             if (result.Outcome != CodingWriteOutcome.Applied)
             {
                 return new CodingChunkResult(result, null, null);
@@ -161,7 +164,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
                     throw new ArgumentException("Invalid import coding write: " + string.Join("; ", errors.Select(e => e.Message)));
                 }
 
-                var (result, plan) = await ApplyInTransactionAsync(tx, request, cancellationToken).ConfigureAwait(false);
+                var (result, plan) = await ApplyInTransactionAsync(tx, request, null, cancellationToken).ConfigureAwait(false);
                 if (result.Outcome != CodingWriteOutcome.Applied)
                 {
                     throw new ArgumentException($"Import coding write {result.Outcome}: " + string.Join("; ", result.Errors.Select(e => e.Message)));
@@ -326,7 +329,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
     }
 
     private static async Task<(CodingWriteResult Result, WritePlan Plan)> ApplyInTransactionAsync(
-        WorkspaceTransaction tx, CodingWriteRequest request, CancellationToken cancellationToken)
+        WorkspaceTransaction tx, CodingWriteRequest request, IRestrictionClassBinding? restrictions, CancellationToken cancellationToken)
     {
         var plan = new WritePlan();
         var ws = request.WorkspaceId;
@@ -416,6 +419,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
                 {
                     plan.TouchesSecurity = true;
                     plan.SecurityFieldIds.Add(op.Field.FieldId);
+                    plan.SecurityDocuments.Add(target.DocumentId);
                 }
             }
 
@@ -430,20 +434,58 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
             results.Add(new DocumentCodingResult(target.DocumentId, outcome, changed ? newVersion : version, skipped));
         }
 
-        // 6. The audit event first, then current state + events + version bumps: one transaction, so neither the change
-        //    nor its audit can commit alone (ADR-013 §2.1). A job chunk's audit also shares the transaction with its
-        //    IndexChunkTask and fence F3 (ApplyChunkAsync), so a refused chunk leaves no audit either.
-        if (request.Audit is { } audit)
-        {
-            await AuditSql.InsertAsync(tx, CodingAudit(audit, request, writeId, plan, results), cancellationToken).ConfigureAwait(false);
-        }
-
+        // 6. Current state + events + version bumps, the restriction classes they drive, and the audit event: one
+        //    transaction, so neither the change nor its audit can commit alone (ADR-013 §2.1), and a security-affecting
+        //    change is enforced by the PDP from its commit on (§24 rule 1). A job chunk's audit also shares the
+        //    transaction with its IndexChunkTask and fence F3 (ApplyChunkAsync), so a refused chunk leaves no audit.
         if (plan.Events.Count > 0)
         {
             await WriteAsync(tx, request, writeId, plan, cancellationToken).ConfigureAwait(false);
         }
 
-        return (new CodingWriteResult(CodingWriteOutcome.Applied, results, [], plan.Events.Count, plan.TouchesSecurity), plan);
+        if (restrictions is not null && plan.SecurityDocuments.Count > 0)
+        {
+            plan.RestrictionChanges = await RecomputeRestrictionsAsync(tx, ws, [.. plan.SecurityDocuments.Order()], restrictions, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (request.Audit is { } audit)
+        {
+            await AuditSql.InsertAsync(tx, CodingAudit(audit, request, writeId, plan, results), cancellationToken).ConfigureAwait(false);
+        }
+
+        return (new CodingWriteResult(CodingWriteOutcome.Applied, results, [], plan.Events.Count, plan.TouchesSecurity)
+        {
+            RestrictionChanges = plan.RestrictionChanges,
+        }, plan);
+    }
+
+    /// <summary>
+    /// ADR-015 D6.1: re-derives the bound restriction classes of <paramref name="documentIds"/> from their coding as
+    /// written by this transaction and brings <c>DocumentRestriction</c> in line. Classes outside the binding are kept.
+    /// </summary>
+    private static async Task<IReadOnlyList<RestrictionClassChange>> RecomputeRestrictionsAsync(
+        WorkspaceTransaction tx, Guid ws, Guid[] documentIds, IRestrictionClassBinding binding, CancellationToken cancellationToken)
+    {
+        var catalog = await FieldCatalogRepository.LoadCatalogAsync(tx, ws, false, cancellationToken).ConfigureAwait(false);
+        var bound = binding.BoundClasses(catalog);
+        if (bound.Count == 0)
+        {
+            return [];
+        }
+
+        var securityFields = catalog.Fields.Where(f => f.IsSecurityAffecting).Select(f => f.FieldId).ToHashSet();
+        var values = await ReadCurrentValuesAsync(tx, ws, documentIds, cancellationToken).ConfigureAwait(false);
+        var desired = new Dictionary<Guid, IReadOnlySet<string>>(documentIds.Length);
+        foreach (var documentId in documentIds)
+        {
+            var security = (values.GetValueOrDefault(documentId) ?? [])
+                .Where(v => securityFields.Contains(v.Key))
+                .ToDictionary(v => v.Key, v => v.Value);
+            desired[documentId] = binding.Derive(catalog, security);
+        }
+
+        return await DocumentRestrictionSql.SyncAsync(tx, ws, desired, bound, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The documents whose version this write bumped, with the version it wrote.</summary>
@@ -512,6 +554,12 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
             ["CodingEvents"] = Invariant(plan.Events.Count),
             ["SecurityAffecting"] = plan.TouchesSecurity ? "true" : "false",
         };
+        if (plan.RestrictionChanges.Count > 0)
+        {
+            details["RestrictionClasses.Added"] = string.Join(',', plan.RestrictionChanges.Where(c => c.Added).Select(c => c.ClassKey).Distinct().Order(StringComparer.Ordinal));
+            details["RestrictionClasses.Removed"] = string.Join(',', plan.RestrictionChanges.Where(c => !c.Added).Select(c => c.ClassKey).Distinct().Order(StringComparer.Ordinal));
+        }
+
         if (results.Count == 1)
         {
             foreach (var e in plan.Events.Where(e => e.Kind == CodingEventKind.ValueChanged && plan.SecurityFieldIds.Contains(e.FieldId)))
@@ -1010,5 +1058,10 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource) : ICodingRepos
         public bool TouchesSecurity { get; set; }
 
         public HashSet<int> SecurityFieldIds { get; } = [];
+
+        /// <summary>Documents where a security-affecting field changed: their restriction classes are recomputed.</summary>
+        public HashSet<Guid> SecurityDocuments { get; } = [];
+
+        public IReadOnlyList<RestrictionClassChange> RestrictionChanges { get; set; } = [];
     }
 }

@@ -46,4 +46,26 @@ public sealed class PostgresUserDirectory(NpgsqlDataSource dataSource) : IUserDi
         command.Parameters.AddWithValue("now", now);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    public async Task<IReadOnlyDictionary<Guid, string>> GetDisplayNamesAsync(
+        IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(userIds);
+        var names = new Dictionary<Guid, string>();
+        if (userIds.Count == 0)
+        {
+            return names;
+        }
+
+        await using var command = dataSource.CreateCommand(
+            "SELECT user_id, display_name FROM opportunity.app_user WHERE user_id = ANY(@ids) AND display_name IS NOT NULL");
+        command.Parameters.AddWithValue("ids", userIds.Distinct().ToArray());
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            names[reader.GetGuid(0)] = reader.GetString(1);
+        }
+
+        return names;
+    }
 }

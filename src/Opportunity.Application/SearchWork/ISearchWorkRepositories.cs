@@ -48,7 +48,17 @@ public interface ISearchOutboxRepository
         Guid workspaceId, long outboxId, string reason, bool permanent, CancellationToken cancellationToken = default);
 
     Task<SearchOutboxRow?> GetAsync(Guid workspaceId, long outboxId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read-your-own-writes for the coding panel: the oldest DocumentVersion of the document whose outbox row is not
+    /// Applied yet (null when every interactive change is indexed) and whether such a row has Failed.
+    /// </summary>
+    Task<DocumentOutboxState> GetDocumentStateAsync(Guid workspaceId, Guid documentId, CancellationToken cancellationToken = default);
 }
+
+/// <param name="OldestUnappliedVersion">Lowest version not yet indexed; null when the document's outbox is drained.</param>
+/// <param name="HasFailed">A row of the document gave up (ADR-001 §6.4) and needs repair.</param>
+public sealed record DocumentOutboxState(long? OldestUnappliedVersion, bool HasFailed);
 
 /// <summary>
 /// Chunk-level index tasks (§21, ADR-001 §1, ADR-010 §2–§3). Created only by the committing transaction of a job chunk

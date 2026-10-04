@@ -816,6 +816,206 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/coding": {
+      "get": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "A document's current coding, by layout, with its version (ETag) and indexing state.",
+        "description": "Lists the coding fields of the layout (every coding field without layoutId) that you may see, with value, editability and last change. projectedVersion reaches documentVersion when search has caught up.",
+        "operationId": "GetDocumentCoding",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "layoutId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCodingResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "Save coding changes with optimistic concurrency (If-Match: the ETag last read).",
+        "description": "All changes apply together or not at all, as one DocumentVersion. 412 version-conflict when the document changed since it was read: the problem carries currentVersion, lastEditor and current (the coding now). Security-affecting fields also need Coding.WritePrivilege. A retry with the same Idempotency-Key returns the original result (header Idempotent-Replayed) and writes nothing.",
+        "operationId": "SaveDocumentCoding",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocumentCodingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCodingResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/snapshots": {
       "post": {
         "tags": [
@@ -2502,6 +2702,138 @@
           }
         }
       },
+      "CodingChangeRequest": {
+        "required": [
+          "fieldId",
+          "operation"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/CodingOperationResource"
+          },
+          "value": { }
+        }
+      },
+      "CodingEditorResource": {
+        "required": [
+          "userId",
+          "displayName",
+          "changedAt",
+          "documentVersion",
+          "jobId"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "changedAt": {
+            "format": "date-time"
+          },
+          "documentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "CodingFieldValueResource": {
+        "required": [
+          "fieldId",
+          "value",
+          "editable",
+          "isSecurityAffecting",
+          "changedAtVersion",
+          "changedBy",
+          "changedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "editable": {
+            "type": "boolean"
+          },
+          "isSecurityAffecting": {
+            "type": "boolean"
+          },
+          "changedAtVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "changedBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "changedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "CodingIndexingStateResource": {
+        "enum": [
+          "indexed",
+          "pending",
+          "failed"
+        ]
+      },
+      "CodingOperationResource": {
+        "enum": [
+          "set",
+          "addChoices",
+          "removeChoices"
+        ]
+      },
       "ColumnMapping": {
         "type": "object",
         "properties": {
@@ -2945,6 +3277,66 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "DocumentCodingResource": {
+        "required": [
+          "documentId",
+          "documentVersion",
+          "projectedVersion",
+          "indexingState",
+          "layoutId",
+          "fields",
+          "lastEditor"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "documentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "projectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexingState": {
+            "$ref": "#/components/schemas/CodingIndexingStateResource"
+          },
+          "layoutId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingFieldValueResource"
+            }
+          },
+          "lastEditor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CodingEditorResource"
+              }
+            ]
           }
         }
       },
@@ -5257,6 +5649,27 @@
           "createTextField"
         ]
       },
+      "UpdateDocumentCodingRequest": {
+        "required": [
+          "changes"
+        ],
+        "type": "object",
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingChangeRequest"
+            }
+          },
+          "layoutId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "UserPreferencesResource": {
         "required": [
           "values"
@@ -5518,6 +5931,9 @@
     },
     {
       "name": "Fields"
+    },
+    {
+      "name": "Coding"
     },
     {
       "name": "Snapshots"
