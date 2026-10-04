@@ -13,3 +13,5 @@ versions.env text eol=lf
 *.sql text eol=lf
 *.conf text eol=lf
 deploy/** text=auto eol=lf
+# Load-file volumes are byte-exact test data (CRLF rows, UTF-8 BOM): never normalize them.
+deploy/docker-compose/seed/demo-volume/** -text

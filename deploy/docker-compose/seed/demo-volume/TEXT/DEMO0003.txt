@@ -1,0 +1,9 @@
+Project Heron - actuator housing cost comparison
+
+Supplier            Unit price   Lead time   Notes
+Tidewater (today)   $41.20       6 weeks     current supplier
+Tidewater (Q3)      $46.14       6 weeks     after the 12% price increase
+Brightwater Metals  $43.75       9 weeks     needs tooling, about $18,000 one-off
+
+Conclusion: switching suppliers saves money only after about 7,000 units. A shipment delay of 3 extra weeks
+would push the Heron launch past the trade show.
