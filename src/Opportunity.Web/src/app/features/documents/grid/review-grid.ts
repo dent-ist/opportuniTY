@@ -19,6 +19,8 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ApiError, UserFacingError, toApiError } from '../../../core/api/problem-details';
 import type {
   FieldResource,
+  SearchExpand,
+  SearchExpandedCounts,
   SearchFreshness,
   SearchHit,
   SearchResultPage,
@@ -76,6 +78,8 @@ export interface GridSearch {
   readonly savedSearchId?: string | null;
   /** The page is still loading what to search (a saved search): show the loading state, run nothing yet. */
   readonly deferred?: boolean;
+  /** "Include: Family / Duplicates / Email thread" (E09-T03); null: the hits only (or a saved search's stored choice). */
+  readonly expand?: SearchExpand | null;
 }
 
 /** A row opened with Enter, double-click (Review mode, E16-T03). */
@@ -124,7 +128,12 @@ interface RunOptions {
 
 interface ResultInfo {
   readonly searchId: string;
+  /** The size of the list: the hits, or with Include the hits plus the related documents added (E09-T03). */
   readonly total: TotalCount;
+  /** The documents matching the query (the base hits). */
+  readonly hits: TotalCount;
+  /** What Include added, by kind; null without Include. */
+  readonly expanded: SearchExpandedCounts | null;
   readonly freshness: SearchFreshness;
   /** The freshness the result set was served with, read tolerantly (E16-T07). */
   readonly served: ServedFreshness;
@@ -340,6 +349,27 @@ export class ReviewGrid implements CursorSource {
     const r = this.result();
     return r ? countLabel(r.total, r.freshness, this.prefs.locale()) : '';
   });
+  /** With Include: "2 hits + 4 family, 1 duplicate, 1 email thread" next to the list size (base vs expanded counts). */
+  protected readonly expandedText = computed(() => {
+    const r = this.result();
+    if (!r?.expanded) return null;
+    const n = new Intl.NumberFormat(this.prefs.locale());
+    const hits = countLabel(r.hits, r.freshness, this.prefs.locale());
+    const parts = [
+      [Number(r.expanded.family), 'family'],
+      [
+        Number(r.expanded.duplicates),
+        Number(r.expanded.duplicates) === 1 ? 'duplicate' : 'duplicates',
+      ],
+      [Number(r.expanded.thread), 'email thread'],
+    ]
+      .filter(([count]) => Number(count) > 0)
+      .map(([count, label]) => `${n.format(Number(count))} ${label}`);
+    const hitWord = Number(r.hits.value) === 1 ? 'hit' : 'hits';
+    return parts.length > 0
+      ? `${hits} ${hitWord} + ${parts.join(', ')}`
+      : `${hits} ${hitWord}, no related documents added`;
+  });
   protected readonly freshnessText = computed(() => {
     const r = this.result();
     return r
@@ -495,14 +525,18 @@ export class ReviewGrid implements CursorSource {
     const sort = this.sort();
     const compiled = this.compiled();
     const all = this._allResults();
-    if (all && all.query !== compiled.query) {
+    const search = this.search();
+    if (
+      all &&
+      (all.query !== compiled.query ||
+        JSON.stringify(all.expand ?? null) !== JSON.stringify(search.expand ?? null))
+    ) {
       // "All results" meant the results of the previous search; a new search does not inherit it.
       this.offerAll.set(false);
       this._allResults.set(null);
       this.selectionChange.emit(this._selected());
       this.announcer.announce('Selection of all results cleared: the search changed.');
     }
-    const search = this.search();
     // Filters narrow a saved search ad hoc: then the list runs the combined query text instead of the id.
     const savedSearchId =
       search.savedSearchId && compiled.query === search.query ? search.savedSearchId : null;
@@ -511,6 +545,7 @@ export class ReviewGrid implements CursorSource {
       page = await this.api.run({
         ...(savedSearchId ? { savedSearchId } : { query: compiled.query }),
         sort: sort ? [sort] : null,
+        ...(search.expand ? { expand: search.expand } : {}),
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
         // The hits' snippets carry the search terms Review mode highlights in the extracted text (#130).
@@ -1253,6 +1288,7 @@ export class ReviewGrid implements CursorSource {
         r.freshness.servedGeneration === null ? null : String(r.freshness.servedGeneration),
       total: r.total,
       countText: this.countText(),
+      expand: this.search().expand ?? null,
     });
     this.selectionChange.emit(this._selected());
     this.announceSelection();
@@ -1354,10 +1390,25 @@ export class ReviewGrid implements CursorSource {
   }
 
   protected readonly familyMarker = familyMarker;
+  protected readonly relatedTag = relatedTag;
   protected readonly COL_SELECT = COL_SELECT;
   protected readonly COL_CONTROL = COL_CONTROL;
   protected readonly FIXED_COLUMNS = FIXED_COLUMNS;
   protected readonly PAGE_SIZES = PAGE_SIZES;
+}
+
+/** The tag of a row Include added (E09-T03): why it is in the list although it does not match the query. */
+function relatedTag(hit: SearchHit): { text: string; label: string } | null {
+  switch (hit.expandedBy) {
+    case 'family':
+      return { text: 'Family', label: 'Added as family' };
+    case 'duplicate':
+      return { text: 'Duplicate', label: 'Added as duplicate' };
+    case 'thread':
+      return { text: 'Thread', label: 'Added from the email thread' };
+    default:
+      return null;
+  }
 }
 
 const REFRESHED = 'Results refreshed: the list now includes recent changes.';
@@ -1373,9 +1424,12 @@ function sameValue(a: FilterValue | null, b: FilterValue | null): boolean {
 }
 
 function resultInfo(searchId: string, page: SearchResultPage): ResultInfo {
+  const expanded = page.expanded ?? null;
   return {
     searchId,
-    total: page.total,
+    total: expanded ? { value: expanded.total, relation: 'eq' } : page.total,
+    hits: page.total,
+    expanded,
     freshness: page.freshness,
     served: toServedFreshness(page.freshness),
     pageCount: page.page.pageCount === null ? null : Number(page.page.pageCount),

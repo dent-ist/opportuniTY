@@ -185,7 +185,12 @@ export class MassEditDialog {
         ? `All ${this.n().format(checked)} checked documents are in the frozen set.`
         : `You checked ${this.n().format(checked)} documents; ${this.n().format(count)} of them are in the frozen set. The others are no longer available to you or cannot be coded by you.`;
     }
-    return `The list showed ${this.data.listCount} documents. The frozen set holds the documents that matched the search when it was frozen and that you may code, so imports, coding changes and access changes since the list loaded can make the numbers differ. Only the frozen documents change.`;
+    const related = this.frozen()?.related ?? 0;
+    const included =
+      related > 0
+        ? ` It includes ${this.n().format(related)} related ${related === 1 ? 'document' : 'documents'} (family, duplicates or email thread) added before freezing.`
+        : '';
+    return `The list showed ${this.data.listCount} documents. The frozen set holds the documents that matched the search when it was frozen and that you may code, so imports, coding changes and access changes since the list loaded can make the numbers differ.${included} Only the frozen documents change.`;
   });
 
   // Progress

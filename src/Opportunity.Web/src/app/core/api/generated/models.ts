@@ -159,6 +159,9 @@ export type { SavedSearchShareResource } from './models/saved-search-share-resou
 export type { SavedSearchShareTarget } from './models/saved-search-share-target';
 export type { SavedSearchSharingRequest } from './models/saved-search-sharing-request';
 export type { SavedSearchSummary } from './models/saved-search-summary';
+export type { SearchExpand } from './models/search-expand';
+export type { SearchExpandedBy } from './models/search-expanded-by';
+export type { SearchExpandedCounts } from './models/search-expanded-counts';
 export type { SearchFacet } from './models/search-facet';
 export type { SearchFacetBucket } from './models/search-facet-bucket';
 export type { SearchFreshness } from './models/search-freshness';

@@ -47,6 +47,13 @@ import {
 } from './review/review-ports';
 import { ReviewWorkspace } from './review/review-workspace';
 import { QueryBar, QuerySubmission } from './search/query-bar';
+import {
+  IncludeRelated,
+  IncludeRelatedToggles,
+  NO_RELATED,
+  includeOf,
+  toExpand,
+} from './search/include-related';
 import { BulkCodingApi, HttpBulkCodingApi } from './mass-edit/bulk-coding-api';
 import { MassActions } from './mass-edit/mass-actions';
 import { MassEditJobs } from './mass-edit/mass-edit-jobs';
@@ -99,6 +106,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     FreshnessStatus,
     Icon,
     IconButton,
+    IncludeRelatedToggles,
     MassActions,
     QueryBar,
     ReviewGrid,
@@ -170,6 +178,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
             </div>
           }
           <opp-query-bar (search)="onSearch($event)" />
+          <opp-include-related [value]="include()" (valueChange)="onInclude($event)" />
         </section>
         <opp-search-job-banner />
         <section aria-labelledby="documents-list-heading" oppCommandRegion>
@@ -258,6 +267,8 @@ export class DocumentsPage {
   protected readonly myId = computed(() => this.principal()?.userId ?? null);
   protected readonly liveLabel = LIVE_LABEL;
   protected readonly filteredNotice = FILTERED_NOTICE;
+  /** "Include: Family / Duplicates / Email thread" of the list (E09-T03); a saved search sets its stored choice. */
+  protected readonly include = signal<IncludeRelated>(NO_RELATED);
   /** The saved search the list shows (run from the browser pane, a link, or just saved). */
   protected readonly saved = signal<SavedSearch | null>(null);
   /** The `?savedSearch=` id applied (or being applied), so the URL echo of our own change is ignored. */
@@ -288,7 +299,7 @@ export class DocumentsPage {
           this.saved.set(null);
           this.appliedId = null;
           this.queryBar().clear();
-          this.search.set({ query: '' });
+          this.search.set(this.searchFor(''));
         }
       });
     });
@@ -314,11 +325,25 @@ export class DocumentsPage {
     const saved = this.saved();
     if (saved && submission.query === saved.query) {
       // Searching the saved query again keeps it a run of the saved search.
-      this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+      this.search.set(this.searchFor(saved.query, saved.savedSearchId));
       return;
     }
     if (saved) this.forgetSaved();
-    this.search.set({ query: submission.query });
+    this.search.set(this.searchFor(submission.query));
+  }
+
+  /** The Include toggles changed: the list runs again with the new expansion. */
+  protected onInclude(value: IncludeRelated): void {
+    this.include.set(value);
+    const search = this.search();
+    if (search.deferred) return;
+    this.search.set(this.searchFor(search.query, search.savedSearchId ?? null));
+  }
+
+  /** What the list runs: a query (or a saved search by id) with the Include choice, always explicit for a saved search. */
+  private searchFor(query: string, savedSearchId: string | null = null): GridSearch {
+    const expand = toExpand(this.include(), savedSearchId !== null);
+    return savedSearchId ? { query, savedSearchId, expand } : { query, expand };
   }
 
   // ── Saved searches ──────────────────────────────────────────────────────────────────────────────────────────
@@ -327,7 +352,7 @@ export class DocumentsPage {
   protected runSaved(summary: SavedSearchSummary): void {
     if (summary.savedSearchId === this.appliedId) {
       const saved = this.saved();
-      if (saved) this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+      if (saved) this.search.set(this.searchFor(saved.query, saved.savedSearchId));
       return;
     }
     void this.router.navigate([], {
@@ -349,7 +374,7 @@ export class DocumentsPage {
       this.pendingMassEdit = null;
       this.toasts.show(savedSearchErrorText(toApiError(e)), { tone: 'error' });
       this.setSavedInUrl(null, true);
-      if (this.search().deferred) this.search.set({ query: '' });
+      if (this.search().deferred) this.search.set(this.searchFor(''));
       return;
     }
     if (this.appliedId !== id) return;
@@ -362,13 +387,14 @@ export class DocumentsPage {
     this.saved.set(saved);
     this.queryBar().load(saved.query);
     this.grid().resetFilters();
-    this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+    this.include.set(includeOf(saved));
+    this.search.set(this.searchFor(saved.query, saved.savedSearchId));
   }
 
   protected clearSaved(): void {
     this.forgetSaved();
     this.queryBar().clear();
-    this.search.set({ query: '' });
+    this.search.set(this.searchFor(''));
   }
 
   /** The list no longer shows the saved search (another query ran, or it was cleared). */
@@ -394,7 +420,7 @@ export class DocumentsPage {
     const folders = await this.savedApi.folders().catch(() => []);
     const { SavedSearchDialog } = await import('../searches/saved-search-dialog');
     const ref = this.dialogs.open<SavedSearch, SavedSearchDialogData>(SavedSearchDialog, {
-      data: { mode: 'create', folders, query },
+      data: { mode: 'create', folders, query, include: this.include() },
       width: '44rem',
       autoFocus: 'input',
       injector: this.injector,

@@ -11,7 +11,9 @@ export interface SavedSearchResource {
   astVersion: number | string;
   columns: Array<string>;
   folderId: string | null;
+  includeDuplicates?: boolean;
   includeFamily: boolean;
+  includeThread?: boolean;
   lastHitCount: number | string | null;
   lastHitRelation: null | TotalRelation;
   lastRunAt: any;

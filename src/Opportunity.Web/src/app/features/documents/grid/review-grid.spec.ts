@@ -713,4 +713,57 @@ describe('Review grid (Documents list)', () => {
       expect(text()).toContain('Selected: 1');
     });
   });
+  it('includes family, duplicates and email threads: base and expanded counts, marked rows (E09-T03)', async () => {
+    await setup({
+      search: (req) => {
+        const body = req.body as SearchRequest;
+        if (!body.expand) return { body: fakePage({ total: 2, pageSize: 100 }, 1) };
+        const page = fakePage({ total: 4, pageSize: 100 }, 1);
+        return {
+          body: {
+            ...page,
+            total: { value: 2, relation: 'eq' },
+            expand: body.expand,
+            expanded: { family: 1, duplicates: 1, thread: 0, total: 4 },
+            items: page.items.map((h, i) =>
+              i === 1
+                ? { ...h, expandedBy: 'family' }
+                : i === 3
+                  ? { ...h, expandedBy: 'duplicate' }
+                  : h,
+            ),
+          },
+        };
+      },
+    });
+    expect(text()).toContain('2 documents');
+
+    const include = root().querySelector<HTMLElement>('fieldset')!;
+    expect(include.querySelector('legend')?.textContent).toContain('Include');
+    const boxes = [...include.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    expect(boxes.map((b) => b.closest('label')?.textContent?.trim())).toEqual([
+      'Family',
+      'Duplicates',
+      'Email thread',
+    ]);
+    boxes[0].click();
+    await settle();
+
+    expect(searches().at(-1)?.expand).toEqual({ family: true, duplicates: false, thread: false });
+    expect(text()).toContain('4 documents (2 hits + 1 family, 1 duplicate)');
+    expect(firstCells()).toEqual([
+      'ACM0000001',
+      'ACM0000002 FamilyAdded as family',
+      'ACM0000003',
+      'ACM0000004 DuplicateAdded as duplicate',
+    ]);
+
+    // Unticking runs the hits alone again.
+    boxes[0].click();
+    await settle();
+    expect(searches().at(-1)?.expand).toBeUndefined();
+    expect(text()).toContain('2 documents');
+    expect(text()).not.toContain('hits +');
+    await expectNoAxeViolations(root());
+  }, 30_000);
 });
