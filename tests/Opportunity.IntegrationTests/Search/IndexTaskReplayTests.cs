@@ -16,8 +16,8 @@ namespace Opportunity.IntegrationTests.Search;
 /// <summary>
 /// E06-T06 acceptance against real PostgreSQL and OpenSearch: an IndexChunkTask that failed permanently is replayed from
 /// PostgreSQL after its cause is fixed (ADR-010 §7.4: reset to Pending, the dispatcher publishes it again); the worker
-/// then indexes the documents' current PostgreSQL state and the applied watermark passes the job's generation. A second
-/// replay finds nothing to do.
+/// then indexes the documents' current PostgreSQL state and, after the next refresh, the visible watermark passes the
+/// job's generation. A second replay finds nothing to do.
 /// </summary>
 [Collection(OpenSearchCollectionDefinition.Name)]
 public sealed class IndexTaskReplayTests(OpenSearchFixture openSearch, MigrationPostgresFixture postgres)
@@ -53,9 +53,11 @@ public sealed class IndexTaskReplayTests(OpenSearchFixture openSearch, Migration
         (await h.Tasks.GetAsync(ws, task.TaskId, Ct))!.Status.Should().Be(IndexChunkTaskStatus.Failed);
         var failed = (await store.GetDetailAsync(ws, batch.JobId, Ct))!;
         var generation = failed.Overview.Job.JobGeneration!.Value;
-        failed.AppliedWatermark.Should().BeLessThan(generation, "a Failed task holds the watermark back");
+        (await h.TickWatermarkAsync(ws)).IndexedThroughGeneration.Should().BeLessThan(generation, "a Failed task holds the watermark back");
+        failed = (await store.GetDetailAsync(ws, batch.JobId, Ct))!;
+        failed.IndexedThroughGeneration.Should().BeLessThan(generation);
         failed.Overview.FailedIndexTasks.Should().Be(1);
-        JobSearchability.Evaluate(failed.Overview.Job, failed.AppliedWatermark).State.Should().Be(SearchabilityState.Pending);
+        JobSearchability.Evaluate(failed.Overview.Job, failed.IndexedThroughGeneration).State.Should().Be(SearchabilityState.Pending);
         (await store.ListFailuresAsync(ws, batch.JobId, null, 10, Ct)).Should().ContainSingle()
             .Which.Error.Should().Contain("BulkItemsRejected");
 
@@ -87,9 +89,13 @@ public sealed class IndexTaskReplayTests(OpenSearchFixture openSearch, Migration
         (await h.IndexedAsync(ws, changed))!.Value.Version.Should().Be(documents["REPLAY-0003"].Version + 1);
 
         var current = (await store.GetDetailAsync(ws, batch.JobId, Ct))!;
-        current.AppliedWatermark.Should().BeGreaterThanOrEqualTo(generation, "the watermark advances past the job's generation");
+        current.IndexedThroughGeneration.Should().BeLessThan(generation, "applied is not searchable until a refresh is observed");
+        JobSearchability.Evaluate(current.Overview.Job, current.IndexedThroughGeneration).State.Should().Be(SearchabilityState.CatchingUp);
+        (await h.TickWatermarkAsync(ws)).IndexedThroughGeneration.Should().BeGreaterThanOrEqualTo(generation);
+        current = (await store.GetDetailAsync(ws, batch.JobId, Ct))!;
+        current.IndexedThroughGeneration.Should().BeGreaterThanOrEqualTo(generation, "the watermark advances past the job's generation");
         current.Overview.FailedIndexTasks.Should().Be(0);
-        JobSearchability.Evaluate(current.Overview.Job, current.AppliedWatermark).Should().Be((1L, 1L, SearchabilityState.Current));
+        JobSearchability.Evaluate(current.Overview.Job, current.IndexedThroughGeneration).Should().Be((1L, 1L, SearchabilityState.Current));
         (await h.Import.Db.ScalarAsync<long>(
             "SELECT count(*) FROM audit.audit_event WHERE workspace_id = @ws AND category = 'Job' AND action = 'Replayed'", ("ws", ws)))
             .Should().Be(1);

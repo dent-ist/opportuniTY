@@ -67,6 +67,10 @@ public sealed class SearchApiTests(OpenSearchFixture openSearch, MigrationPostgr
         root.GetProperty("total").GetProperty("relation").GetString().Should().Be("eq");
         root.GetProperty("freshness").GetProperty("servedGeneration").ValueKind.Should().Be(JsonValueKind.Number);
         root.GetProperty("freshness").GetProperty("current").GetBoolean().Should().BeTrue("no search work is pending (Q-10)");
+        root.GetProperty("freshness").GetProperty("state").GetString().Should().Be("current");
+        root.GetProperty("freshness").GetProperty("indexedThroughGeneration").GetInt64().Should().Be(0);
+        root.GetProperty("freshness").GetProperty("pendingChanges").GetInt64().Should().Be(0);
+        root.GetProperty("freshness").GetProperty("lagSeconds").GetDouble().Should().Be(0);
         var searchId = root.GetProperty("searchId").GetString()!;
         var cursor = root.GetProperty("nextCursor").GetString()!;
         audit.Events.Should().Contain(e => e.Action == "Executed" && e.RestrictedDetails!["query"] == "contract termination");
@@ -96,6 +100,47 @@ public sealed class SearchApiTests(OpenSearchFixture openSearch, MigrationPostgr
             .GetProperty("queryErrors")[0].GetProperty("code").GetString().Should().Be("UNKNOWN_FIELD");
         await (await SendAsync(client, HttpMethod.Post, $"/api/v1/workspaces/{ws}/searches", alice, """{"query":"a","pageSize":501}"""))
             .ShouldBeProblemAsync(HttpStatusCode.BadRequest, "validation");
+
+        // E07-T08: the freshness endpoint. Committed work that nothing indexed for 3 minutes makes the index "delayed".
+        var freshnessUrl = $"/api/v1/workspaces/{ws}/search-freshness";
+        using (var current = await SendAsync(client, HttpMethod.Get, freshnessUrl, alice))
+        {
+            current.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var body = JsonDocument.Parse(await current.Content.ReadAsStringAsync(Ct));
+            body.RootElement.GetProperty("state").GetString().Should().Be("current");
+            body.RootElement.GetProperty("latestGeneration").GetInt64().Should().Be(0);
+            body.RootElement.GetProperty("asOf").GetDateTimeOffset().Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+        }
+
+        await h.Db.Core.ExecuteAsync("SELECT opportunity.search_work_ensure_partitions(now() + interval '1 day')");
+        await h.Db.Core.ExecuteAsync(
+            """
+            INSERT INTO opportunity.workspace_search_generation (workspace_id, value, last_outbox_id) VALUES (@ws, 1, 1);
+            INSERT INTO opportunity.search_outbox (workspace_id, outbox_id, document_id, document_version, change_mask, lane, search_generation, committed_at)
+            VALUES (@ws, 1, gen_random_uuid(), 2, 4, 2, 1, now() - interval '3 minutes');
+            """,
+            ("ws", ws));
+        using (var delayed = await SendAsync(client, HttpMethod.Get, freshnessUrl, alice))
+        {
+            using var body = JsonDocument.Parse(await delayed.Content.ReadAsStringAsync(Ct));
+            body.RootElement.GetProperty("state").GetString().Should().Be("delayed");
+            body.RootElement.GetProperty("indexedThroughGeneration").GetInt64().Should().Be(0);
+            body.RootElement.GetProperty("latestGeneration").GetInt64().Should().Be(1);
+            body.RootElement.GetProperty("pendingChanges").GetInt64().Should().Be(1);
+            body.RootElement.GetProperty("lagSeconds").GetDouble().Should().BeGreaterThanOrEqualTo(180);
+        }
+
+        using (var stale = await SendAsync(client, HttpMethod.Post, $"/api/v1/workspaces/{ws}/searches", alice, """{"query":"contract"}"""))
+        {
+            using var body = JsonDocument.Parse(await stale.Content.ReadAsStringAsync(Ct));
+            var freshness = body.RootElement.GetProperty("freshness");
+            freshness.GetProperty("current").GetBoolean().Should().BeFalse();
+            freshness.GetProperty("state").GetString().Should().Be("delayed");
+            freshness.GetProperty("pendingChanges").GetInt64().Should().Be(1);
+        }
+
+        await (await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{other}/search-freshness", bob))
+            .ShouldBeProblemAsync(HttpStatusCode.NotFound, "not-found");
     }
 
     [Fact]

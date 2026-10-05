@@ -111,6 +111,11 @@ public static class OpportunityMetricCatalog
         "Visible watermark indexedThroughGeneration per workspace (refresh-aware, never moves backwards).",
         [TelemetryAttributes.WorkspaceId], "E07-T08");
 
+    public static MetricDefinition SearchGenerationLag { get; } = new(
+        "opportunity.search.generation.lag", MetricKind.Gauge, "{generation}",
+        "Committed generations not yet searchable per workspace: committed - indexed (ADR-001 §7, search_generation_lag).",
+        [TelemetryAttributes.WorkspaceId], "E07-T08");
+
     public static MetricDefinition SearchIndexLag { get; } = new(
         "opportunity.search.index_lag", MetricKind.Gauge, "s",
         "now - CommittedAt of the oldest work record above the watermark (ADR-001 §7.4 search.index_lag_seconds).",
@@ -203,7 +208,7 @@ public static class OpportunityMetricCatalog
     [
         WorkerHeartbeatAge, WorkerLastConsumedAge, MessagingProcessDuration, MessagingConsumedMessages,
         OutboxPending, OutboxOldestAge, OutboxPublishLatency, DispatcherPublished, QueueDepth, QueueConsumers, DeadLetteredMessages,
-        SearchGenerationCommitted, SearchGenerationIndexed, SearchIndexLag, SearchCommitToSearchable,
+        SearchGenerationCommitted, SearchGenerationIndexed, SearchGenerationLag, SearchIndexLag, SearchCommitToSearchable,
         SecurityProjectionLag, SearchStaleVersionRejections, IndexChunkTasks, IndexChunkTaskOldestAge,
         IndexChunkTaskAttempts, IndexChunkTaskDuration, IndexBulkItems,
         SearchRequestDuration, SearchPostFilterDropped, Jobs, JobsActive, JobChunks, JobChunkDuration, AuditWriteDuration,

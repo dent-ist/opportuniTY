@@ -380,6 +380,58 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/search-freshness": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "How current the workspace's search index is: current, updating or delayed, with the generation watermark.",
+        "description": "indexedThroughGeneration is refresh-aware: every change committed with a generation at or below it is searchable. pendingChanges counts committed changes not yet searchable; lagSeconds is the age of the oldest of them. Cheap to poll.",
+        "operationId": "GetSearchFreshness",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchFreshnessStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/query-history": {
       "get": {
         "tags": [
@@ -9471,7 +9523,9 @@
         "required": [
           "done",
           "total",
-          "state"
+          "state",
+          "jobGeneration",
+          "indexedThroughGeneration"
         ],
         "type": "object",
         "properties": {
@@ -9493,6 +9547,23 @@
           },
           "state": {
             "$ref": "#/components/schemas/JobSearchableState"
+          },
+          "jobGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexedThroughGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
           }
         }
       },
@@ -10815,7 +10886,11 @@
         "required": [
           "servedGeneration",
           "current",
-          "asOf"
+          "asOf",
+          "state",
+          "indexedThroughGeneration",
+          "pendingChanges",
+          "lagSeconds"
         ],
         "type": "object",
         "properties": {
@@ -10833,6 +10908,91 @@
               "null",
               "boolean"
             ]
+          },
+          "asOf": {
+            "format": "date-time"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SearchFreshnessState"
+          },
+          "indexedThroughGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pendingChanges": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "lagSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "SearchFreshnessState": {
+        "enum": [
+          "current",
+          "updating",
+          "delayed"
+        ]
+      },
+      "SearchFreshnessStatus": {
+        "required": [
+          "state",
+          "indexedThroughGeneration",
+          "latestGeneration",
+          "pendingChanges",
+          "lagSeconds",
+          "asOf"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/SearchFreshnessState"
+          },
+          "indexedThroughGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "latestGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pendingChanges": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "lagSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
           },
           "asOf": {
             "format": "date-time"

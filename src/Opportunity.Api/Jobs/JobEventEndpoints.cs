@@ -86,7 +86,7 @@ public sealed class JobEventEndpoints : IApiEndpointModule
                 }, ct).ConfigureAwait(false);
                 foreach (var overview in missed.Items)
                 {
-                    await WriteEventAsync(response, JobMapping.ToEvent(overview, missed.AppliedWatermark), serializer, ct).ConfigureAwait(false);
+                    await WriteEventAsync(response, JobMapping.ToEvent(overview, missed.IndexedThroughGeneration), serializer, ct).ConfigureAwait(false);
                 }
             }
 

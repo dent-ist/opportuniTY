@@ -7,7 +7,7 @@ namespace Opportunity.Api.Jobs;
 /// <summary>Maps the job store's views onto the job monitor's resources (E06-T06).</summary>
 internal static class JobMapping
 {
-    public static JobSummary ToSummary(JobOverview overview, long appliedWatermark)
+    public static JobSummary ToSummary(JobOverview overview, long indexedThroughGeneration)
     {
         ArgumentNullException.ThrowIfNull(overview);
         var job = overview.Job;
@@ -21,7 +21,7 @@ internal static class JobMapping
             job.UpdatedAt,
             JobStateMachine.IsFinished(job.Status) ? job.FinishedAt : null,
             Committed(job),
-            Searchable(job, appliedWatermark),
+            Searchable(job, indexedThroughGeneration),
             ErrorCount(overview),
             job.CorrelationId,
             job.TargetSnapshotId,
@@ -31,7 +31,7 @@ internal static class JobMapping
     public static JobDetail ToDetail(JobOperationsDetail detail, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(detail);
-        var summary = ToSummary(detail.Overview, detail.AppliedWatermark);
+        var summary = ToSummary(detail.Overview, detail.IndexedThroughGeneration);
         var job = detail.Overview.Job;
         long Count(params JobChunkStatus[] statuses) => statuses.Sum(s => detail.ChunkCounts.GetValueOrDefault(s));
         var legacy = JobEndpoints.ToResource(job);
@@ -70,11 +70,11 @@ internal static class JobMapping
             legacy.Indexed);
     }
 
-    public static JobEvent ToEvent(JobOverview overview, long appliedWatermark)
+    public static JobEvent ToEvent(JobOverview overview, long indexedThroughGeneration)
     {
         ArgumentNullException.ThrowIfNull(overview);
         var job = overview.Job;
-        return new JobEvent(job.JobId, Status(job.Status), Committed(job), Searchable(job, appliedWatermark), job.UpdatedAt);
+        return new JobEvent(job.JobId, Status(job.Status), Committed(job), Searchable(job, indexedThroughGeneration), job.UpdatedAt);
     }
 
     public static JobFailure ToFailure(JobFailureRecord record)
@@ -101,16 +101,21 @@ internal static class JobMapping
             c.ItemsApplied, c.ItemsUnchanged, c.ItemsSkippedConcurrentEdit, c.ItemsExcludedNoAccess, c.ItemsFailed);
     }
 
-    public static JobSearchableProgress Searchable(JobInfo job, long appliedWatermark)
+    public static JobSearchableProgress Searchable(JobInfo job, long indexedThroughGeneration)
     {
-        var (done, total, state) = JobSearchability.Evaluate(job, appliedWatermark);
-        return new JobSearchableProgress(done, total, state switch
-        {
-            SearchabilityState.NotApplicable => JobSearchableState.NotApplicable,
-            SearchabilityState.Pending => JobSearchableState.Pending,
-            SearchabilityState.CatchingUp => JobSearchableState.CatchingUp,
-            _ => JobSearchableState.Current,
-        });
+        var (done, total, state) = JobSearchability.Evaluate(job, indexedThroughGeneration);
+        return new JobSearchableProgress(
+            done,
+            total,
+            state switch
+            {
+                SearchabilityState.NotApplicable => JobSearchableState.NotApplicable,
+                SearchabilityState.Pending => JobSearchableState.Pending,
+                SearchabilityState.CatchingUp => JobSearchableState.CatchingUp,
+                _ => JobSearchableState.Current,
+            },
+            job.JobGeneration,
+            indexedThroughGeneration);
     }
 
     private static long ErrorCount(JobOverview overview) =>

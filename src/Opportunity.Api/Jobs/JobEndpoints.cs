@@ -174,7 +174,7 @@ public sealed class JobEndpoints : IApiEndpointModule
             Limit = limit + 1,
         }, cancellationToken).ConfigureAwait(false);
 
-        var items = result.Items.Take(limit).Select(o => JobMapping.ToSummary(o, result.AppliedWatermark)).ToList();
+        var items = result.Items.Take(limit).Select(o => JobMapping.ToSummary(o, result.IndexedThroughGeneration)).ToList();
         string? next = null;
         if (result.Items.Count > limit)
         {
@@ -332,7 +332,7 @@ public sealed class JobEndpoints : IApiEndpointModule
         ArgumentNullException.ThrowIfNull(job);
         var c = job.Counters;
         // ADR-010 §10: current once the job's PG phase is over and every index task it created has been applied. The
-        // job monitor's searchable state (JobMapping) also checks the applied watermark.
+        // job monitor's searchable state (JobMapping) also checks the refresh-aware watermark.
         var indexState = JobStateMachine.IsFinished(job.Status) && c.IndexTasksApplied >= c.IndexTasksTotal
             ? JobIndexState.Current
             : JobIndexState.Indexing;

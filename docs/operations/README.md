@@ -57,7 +57,7 @@ links to a missing one. New alerts must follow the same rule.
 | `opportunity.queue.depth{state="ready"}`, `opportunity.queue.consumers`, `opportunity.worker.heartbeat.age` | [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
 | `opportunity.queue.depth` with `opportunity.queue.state` = `dlq` or `parking` | [replay-failed-work.md#dead-letter-queues](replay-failed-work.md#dead-letter-queues) |
 | `opportunity.index.chunk_task.attempts`, `opportunity.job.chunks` with `opportunity.outcome` = `failed` | [replay-failed-work.md](replay-failed-work.md) |
-| `opportunity.search.index_lag`, `opportunity.search.generation.committed` − `.indexed` (watermark stuck) | [replay-failed-work.md](replay-failed-work.md), then [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
+| `opportunity.search.index_lag`, `opportunity.search.generation.lag` (= `.committed` − `.indexed`; watermark stuck; also the dispatcher's "Search watermark tick failed" / refresh warnings) | [replay-failed-work.md](replay-failed-work.md), then [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
 
 `opportunity.dlq.messages` belongs to the dead-letter recorder of ADR-010 §7.3 (DLQ copies into a PostgreSQL
 `DeadLetterRecord`), which is not built yet; until then the DLQ is inspected in the RabbitMQ management UI. ADR-010 §7.6

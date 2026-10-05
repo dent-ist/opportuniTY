@@ -8,6 +8,7 @@ using Opportunity.Application.Audit;
 using Opportunity.Application.Jobs;
 using Opportunity.Core.Jobs;
 using Opportunity.Data.Audit;
+using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
 
 namespace Opportunity.Data.Jobs;
@@ -73,9 +74,9 @@ public sealed class JobOperationsStore(NpgsqlDataSource dataSource) : IJobOperat
             }
         }
 
-        var watermark = await SearchWorkSql.ReadWatermarkAsync(tx, cancellationToken).ConfigureAwait(false);
+        var indexed = await SearchWatermarkStore.ReadIndexedThroughAsync(tx, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return new JobOverviewPage(items, watermark.Applied);
+        return new JobOverviewPage(items, indexed);
     }
 
     public async Task<JobOperationsDetail?> GetDetailAsync(Guid workspaceId, Guid jobId, CancellationToken cancellationToken = default)
@@ -141,9 +142,9 @@ public sealed class JobOperationsStore(NpgsqlDataSource dataSource) : IJobOperat
             }
         }
 
-        var watermark = await SearchWorkSql.ReadWatermarkAsync(tx, cancellationToken).ConfigureAwait(false);
+        var indexed = await SearchWatermarkStore.ReadIndexedThroughAsync(tx, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return new JobOperationsDetail(overview, counts, exhausted, attempts, lastError, watermark.Applied);
+        return new JobOperationsDetail(overview, counts, exhausted, attempts, lastError, indexed);
     }
 
     public async Task<IReadOnlyList<JobFailureRecord>> ListFailuresAsync(

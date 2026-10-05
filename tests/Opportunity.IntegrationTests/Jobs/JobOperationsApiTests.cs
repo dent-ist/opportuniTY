@@ -57,6 +57,8 @@ public sealed class JobOperationsApiTests(MigrationPostgresFixture postgres)
         first.GetProperty("committed").GetProperty("done").GetInt64().Should().Be(0);
         first.GetProperty("committed").GetProperty("total").GetInt64().Should().Be(2);
         first.GetProperty("searchable").GetProperty("state").GetString().Should().Be("pending");
+        first.GetProperty("searchable").GetProperty("jobGeneration").ValueKind.Should().Be(JsonValueKind.Null, "no index task committed yet");
+        first.GetProperty("searchable").GetProperty("indexedThroughGeneration").GetInt64().Should().Be(0);
         first.GetProperty("link").GetString().Should().Be($"jobs/{ownRunning}");
         all.GetProperty("items")[0].GetProperty("searchable").GetProperty("state").GetString().Should().Be("current");
         all.GetProperty("items")[0].GetProperty("completedAt").GetString().Should().EndWith("Z");

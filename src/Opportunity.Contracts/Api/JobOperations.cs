@@ -32,10 +32,19 @@ public sealed record JobCreator(Guid UserId, string? DisplayName);
 
 /// <summary>
 /// Search progress: index tasks created by the job's committed chunks and how many are applied.
-/// <see cref="JobSearchableState.Current"/> also needs the workspace's applied search watermark to have reached the
-/// job's last generation (ADR-001 §7.2, ADR-010 §10).
+/// <see cref="JobSearchableState.Current"/> means the job is finished and the workspace's refresh-aware search watermark
+/// has reached the job's generation: <c>indexedThroughGeneration &gt;= jobGeneration</c> (ADR-001 §7.3, ADR-010 §10).
+/// Raw generations are for admins and support (Q-10); reviewers see the state.
 /// </summary>
-public sealed record JobSearchableProgress(long Done, long Total, JobSearchableState State);
+/// <param name="JobGeneration">
+/// The SearchGeneration of the job's last committed index task; null while the job has committed none (or creates no
+/// search work).
+/// </param>
+/// <param name="IndexedThroughGeneration">
+/// The workspace's refresh-aware watermark when this was read: every change up to it is searchable.
+/// </param>
+public sealed record JobSearchableProgress(
+    long Done, long Total, JobSearchableState State, long? JobGeneration, long IndexedThroughGeneration);
 
 public enum JobSearchableState
 {
@@ -48,7 +57,7 @@ public enum JobSearchableState
     /// <summary>Some of the job's changes are searchable; the rest is being indexed (or waits for a replay).</summary>
     CatchingUp,
 
-    /// <summary>The job is finished and search reflects every change it committed.</summary>
+    /// <summary>The job is finished and search reflects every change it committed (watermark at or past its generation).</summary>
     Current,
 }
 

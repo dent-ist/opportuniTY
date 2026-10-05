@@ -212,14 +212,24 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
 public static class SearchSessionStoreRegistration
 {
     /// <summary>
-    /// Registers the PostgreSQL <see cref="ISearchSessionStore"/> and <see cref="ISearchWatermarkReader"/> (need an
-    /// <see cref="NpgsqlDataSource"/>).
+    /// Registers the PostgreSQL <see cref="ISearchSessionStore"/> and the search freshness store
+    /// (<see cref="ISearchFreshnessReader"/>, <see cref="ISearchWatermarkStore"/>); they need an <see cref="NpgsqlDataSource"/>.
     /// </summary>
     public static IServiceCollection AddPostgresSearchSessionStore(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<ISearchSessionStore, SearchSessionStore>();
-        services.TryAddSingleton<ISearchWatermarkReader, SearchWatermarkReader>();
+        services.AddPostgresSearchWatermarkStore();
+        return services;
+    }
+
+    /// <summary>Registers the PostgreSQL <see cref="ISearchFreshnessReader"/> and <see cref="ISearchWatermarkStore"/> (one instance).</summary>
+    public static IServiceCollection AddPostgresSearchWatermarkStore(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.TryAddSingleton<SearchWatermarkStore>();
+        services.TryAddSingleton<ISearchWatermarkStore>(sp => sp.GetRequiredService<SearchWatermarkStore>());
+        services.TryAddSingleton<ISearchFreshnessReader>(sp => sp.GetRequiredService<SearchWatermarkStore>());
         return services;
     }
 }

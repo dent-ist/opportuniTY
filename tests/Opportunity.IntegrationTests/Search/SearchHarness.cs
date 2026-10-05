@@ -86,7 +86,7 @@ internal sealed class SearchHarness : IAsyncDisposable
         services.AddSingleton<ISecurityStateReader>(db.Reader);
         services.AddSingleton<IIndexPlacementStore>(new IndexPlacementStore(db.Core.AppDataSource));
         services.AddSingleton<ISearchSessionStore>(new SearchSessionStore(db.Core.AppDataSource));
-        services.AddSingleton<ISearchWatermarkReader>(new SearchWatermarkReader(db.Core.AppDataSource));
+        services.AddSingleton<ISearchFreshnessReader>(new SearchWatermarkStore(db.Core.AppDataSource));
         services.AddSingleton<IFieldCatalogRepository>(new FieldCatalogRepository(db.Core.AppDataSource));
         services.AddOpenSearchIndexTemplateBootstrap(options);
         services.AddOpportunityAuthorization();

@@ -137,7 +137,7 @@ public static class JobOperationsCli
             foreach (var o in page.Items)
             {
                 var j = o.Job;
-                var (done, total, state) = JobSearchability.Evaluate(j, page.AppliedWatermark);
+                var (done, total, state) = JobSearchability.Evaluate(j, page.IndexedThroughGeneration);
                 await output.WriteLineAsync(string.Join('\t',
                     j.JobId, j.JobType, j.Status, $"{j.Counters.ChunksCommitted}/{j.Counters.ChunksTotal}", $"{done}/{total} {state}",
                     j.Counters.ChunksFailed + j.Counters.ItemsFailed + o.FailedIndexTasks, Time(j.CreatedAt), Time(j.UpdatedAt),
@@ -162,7 +162,7 @@ public static class JobOperationsCli
 
             var j = detail.Overview.Job;
             var c = j.Counters;
-            var (done, total, state) = JobSearchability.Evaluate(j, detail.AppliedWatermark);
+            var (done, total, state) = JobSearchability.Evaluate(j, detail.IndexedThroughGeneration);
             await output.WriteLineAsync(
                 $"""
                 job          {j.JobId} ({j.JobType}{(detail.Overview.Name is { } n ? ", " + n : string.Empty)})
@@ -171,7 +171,7 @@ public static class JobOperationsCli
                 updated      {Time(j.UpdatedAt)}   finished {Time(j.FinishedAt)}
                 correlation  {j.CorrelationId ?? "-"}   snapshot {j.TargetSnapshotId?.ToString() ?? "-"}
                 committed    {c.ChunksCommitted}/{c.ChunksTotal} chunks ({c.ChunksFailed} failed, {c.ChunksCancelled} cancelled), {c.ItemsApplied} items applied, {c.ItemsFailed} failed
-                searchable   {done}/{total} index tasks, {state} (job generation {j.JobGeneration?.ToString(CultureInfo.InvariantCulture) ?? "-"}, applied watermark {detail.AppliedWatermark}); {detail.Overview.FailedIndexTasks} failed
+                searchable   {done}/{total} index tasks, {state} (job generation {j.JobGeneration?.ToString(CultureInfo.InvariantCulture) ?? "-"}, indexed through {detail.IndexedThroughGeneration}); {detail.Overview.FailedIndexTasks} failed
                 chunks       {string.Join(", ", detail.ChunkCounts.OrderBy(e => e.Key).Select(e => $"{e.Key} {e.Value}"))}{(detail.ExhaustedChunks > 0 ? $", Failed (attempts exhausted) {detail.ExhaustedChunks}" : string.Empty)}
                 attempts     {detail.Attempts}
                 last error   {detail.LastError ?? "-"}

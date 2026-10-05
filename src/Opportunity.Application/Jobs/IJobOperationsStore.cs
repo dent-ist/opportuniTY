@@ -68,17 +68,18 @@ public sealed record JobListQuery(Guid WorkspaceId)
 /// <summary>A job with what the monitor shows besides its counters.</summary>
 public sealed record JobOverview(JobInfo Job, string? InitiatorDisplayName, string? Name, long FailedIndexTasks);
 
-/// <param name="AppliedWatermark">The workspace's applied search watermark (ADR-001 §7.2), read with the page.</param>
-public sealed record JobOverviewPage(IReadOnlyList<JobOverview> Items, long AppliedWatermark);
+/// <param name="IndexedThroughGeneration">The workspace's refresh-aware search watermark (ADR-001 §7.3), read with the page.</param>
+public sealed record JobOverviewPage(IReadOnlyList<JobOverview> Items, long IndexedThroughGeneration);
 
 /// <param name="ChunkCounts">Chunks by status; failed chunks whose attempts ran out are counted separately.</param>
+/// <param name="IndexedThroughGeneration">The workspace's refresh-aware search watermark (ADR-001 §7.3), read with the job.</param>
 public sealed record JobOperationsDetail(
     JobOverview Overview,
     IReadOnlyDictionary<JobChunkStatus, long> ChunkCounts,
     long ExhaustedChunks,
     long Attempts,
     string? LastError,
-    long AppliedWatermark);
+    long IndexedThroughGeneration);
 
 public enum JobFailureSource
 {

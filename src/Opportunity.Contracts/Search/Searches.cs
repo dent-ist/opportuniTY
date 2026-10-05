@@ -102,13 +102,56 @@ public sealed record SearchResultPage
 public sealed record SearchPageInfo(int? Number, int Size, long? PageCount, bool IsFirst, bool IsLast);
 
 /// <summary>
-/// Q-10 freshness. <see cref="ServedGeneration"/> is the applied search generation the page's reader was opened at;
-/// <see cref="Current"/> is true when every change committed in the workspace was applied to the index by then and
-/// nothing was committed since (interim, not yet refresh-aware: E07-T08). Null means unknown, in which case counts are
-/// labelled approximate. Raw generations are shown to admins and support only; reviewers see "current as of
-/// <see cref="AsOf"/>".
+/// Q-10 freshness of a result page (ADR-001 §7, baseline §28). <see cref="ServedGeneration"/> and <see cref="Current"/>
+/// describe the page: the refresh-aware search watermark its point-in-time reader was opened at, and whether nothing
+/// committed in the workspace is missing from it. The other fields describe the workspace's index at serve time, as
+/// <c>GET …/search-freshness</c> does: a page can be not current while the index already is (run the search again).
+/// Null <see cref="Current"/> means unknown; counts are then labelled approximate. Raw generations are shown to admins
+/// and support only; reviewers see "current as of <see cref="AsOf"/>" or "search index updating".
 /// </summary>
-public sealed record SearchFreshness(long? ServedGeneration, bool? Current, DateTimeOffset AsOf);
+/// <param name="State">The index at serve time: current, updating, or delayed (unreflected work older than 2 minutes).</param>
+/// <param name="IndexedThroughGeneration">The refresh-aware watermark at serve time: every change up to it is searchable.</param>
+/// <param name="PendingChanges">Committed changes (interactive saves, job chunks) not yet searchable at serve time; approximate.</param>
+/// <param name="LagSeconds">Now − commit time of the oldest change not yet searchable; 0 when current.</param>
+public sealed record SearchFreshness(
+    long? ServedGeneration,
+    bool? Current,
+    DateTimeOffset AsOf,
+    SearchFreshnessState State,
+    long IndexedThroughGeneration,
+    long PendingChanges,
+    double LagSeconds);
+
+/// <summary>Whether search reflects every committed change (Q-10).</summary>
+public enum SearchFreshnessState
+{
+    /// <summary>Every committed change is searchable.</summary>
+    Current,
+
+    /// <summary>Recent changes are still being indexed.</summary>
+    Updating,
+
+    /// <summary>The oldest change search does not reflect yet was committed more than 2 minutes ago.</summary>
+    Delayed,
+}
+
+/// <summary>
+/// <c>GET /api/v1/workspaces/{workspaceId}/search-freshness</c>: the workspace's search index freshness, cheap enough
+/// to poll every few seconds.
+/// </summary>
+/// <param name="State">Current, updating, or delayed (unreflected work older than 2 minutes).</param>
+/// <param name="IndexedThroughGeneration">Refresh-aware watermark: every change with a generation at or below it is searchable.</param>
+/// <param name="LatestGeneration">The last committed search generation of the workspace.</param>
+/// <param name="PendingChanges">Committed changes not yet searchable (<c>latestGeneration − indexedThroughGeneration</c>).</param>
+/// <param name="LagSeconds">Now − commit time of the oldest change not yet searchable; 0 when current.</param>
+/// <param name="AsOf">When this was read.</param>
+public sealed record SearchFreshnessStatus(
+    SearchFreshnessState State,
+    long IndexedThroughGeneration,
+    long LatestGeneration,
+    long PendingChanges,
+    double LagSeconds,
+    DateTimeOffset AsOf);
 
 /// <summary>
 /// A result row: grid fields and bounded snippets only, never full text (ADR-015 D8.5). Further columns come from the

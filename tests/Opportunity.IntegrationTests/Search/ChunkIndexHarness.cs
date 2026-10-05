@@ -159,6 +159,10 @@ internal sealed class ChunkIndexHarness : IAsyncDisposable
 
     public Task<IReadOnlyList<IndexChunkTaskInfo>> TasksAsync(Guid ws, Guid jobId) => Tasks.GetByJobAsync(ws, jobId, Ct);
 
+    /// <summary>One tick of the dispatcher's visible-watermark ticker (refresh, then raise) for <paramref name="ws"/>.</summary>
+    public Task<Application.Search.SearchFreshnessReading> TickWatermarkAsync(Guid ws) =>
+        WatermarkTestSupport.TickAsync(_services, Import.Db.AppDataSource, ws);
+
     /// <summary>Delivers every task of the job that is not Applied, <paramref name="parallelism"/> at a time.</summary>
     public async Task DeliverAllAsync(Guid ws, Guid jobId, int parallelism = 1)
     {

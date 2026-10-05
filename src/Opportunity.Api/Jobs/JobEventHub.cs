@@ -125,7 +125,7 @@ public sealed partial class JobEventHub(
                         }
 
                         sent[job.JobId] = job.UpdatedAt;
-                        Publish(feed, job.InitiatedBy, JobMapping.ToEvent(overview, page.AppliedWatermark));
+                        Publish(feed, job.InitiatedBy, JobMapping.ToEvent(overview, page.IndexedThroughGeneration));
                     }
 
                     if (page.Items.Count < PageSize)

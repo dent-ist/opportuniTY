@@ -199,6 +199,27 @@ the version written. Workers ignore the version in the message for writing; they
    passes; the generation sequence and the watermark continue unchanged across the switch. The old index is kept
    ≥ the maximum PIT age (ADR-002) before deletion.
 
+**Implementation (E07-T08, #70).** The visible watermark lives in `workspace_search_watermark` (V0030), apart from
+the counter row so the ticker never waits on a committing transaction's counter lock. `SearchWatermarkAdvancer` (in
+`Opportunity.Search`, run every `Search:Watermark:Interval` = 1 s by the dispatcher host) reads counter, visible
+watermark, A(t₀) and the oldest unreflected `CommittedAt` in one REPEATABLE READ snapshot per workspace; for the
+workspaces with A(t₀) above their watermark it sends one `POST /{index}/_refresh` per physical index (the read alias
+and every write target, so a rebuild target is refreshed too) and raises the watermark with `GREATEST` only for
+workspaces whose indexes all answered `_shards.failed == 0`. Several dispatcher replicas may each run a ticker: this
+is safe (each A(t₀) precedes its own refresh; the store takes the maximum) and only adds refreshes; the per-index
+advisory lock is an optimization left to `E18-T04` (S4). Exposure: `GET …/search-freshness`
+(`state` current/updating/delayed with delayed = oldest unreflected work older than 2 min, `indexedThroughGeneration`,
+`latestGeneration`, `pendingChanges` = latest − indexed, `lagSeconds`), the same fields on every search page's
+`freshness` (page `servedGeneration`/`current` are the watermark the page's reader was opened at), and on jobs
+`searchable.jobGeneration`/`indexedThroughGeneration` with `state = current` once the job is finished and the
+watermark ≥ `jobGeneration`. Gauges per workspace (bounded), sampled each tick: `opportunity.search.generation.committed`,
+`.indexed`, `.lag` (`search_generation_lag`) and `opportunity.search.index_lag`.
+**Reindex / alias switch obligations for `E07-T11` (#73):** Reindex tasks carry no generation, so neither they nor a
+backfill move the watermark; dual writes are refreshed by the ticker because every write target is refreshed;
+`IIndexManager.CompleteRebuildAsync` refreshes the target before the alias switch, so everything the watermark covered
+on the old index is already searchable on the new one when reads move. The generation sequence and the watermark row are
+per workspace, not per index, and are not reset by a switch or a move between shared and dedicated placement.
+
 ### 8. Interim position and what the ADR-004b spike must measure (*Proposed — pending spike*)
 
 Interim: full-document external `index` everywhere (§3), explicit-refresh ticker (§7.3). `E18-T04` must measure, per

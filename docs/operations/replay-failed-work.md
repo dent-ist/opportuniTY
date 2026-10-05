@@ -56,8 +56,10 @@ below.
 ## 4. Verify
 
 - `jobs failures` lists nothing for the job; `jobs show` / `GET …/jobs/<job>`: chunks move to *Done*, `searchable.state`
-  becomes `current` (index tasks applied and the workspace's applied search watermark at or past the job's generation;
-  Failed rows hold the watermark back, ADR-001 §7.2).
+  becomes `current` (index tasks applied and the workspace's refresh-aware search watermark,
+  `searchable.indexedThroughGeneration`, at or past `searchable.jobGeneration`; Failed rows hold the watermark back,
+  ADR-001 §7.2/§7.3). The dispatcher's watermark ticker observes a refresh about once a second; `GET …/search-freshness`
+  shows the workspace's `state`, `pendingChanges` and `lagSeconds`.
 - `audit.audit_event` has one `Job` / `Replayed` row per replay with `ChunksReplayed` / `IndexTasksReplayed`
   (`RowsReplayed` for the outbox).
 

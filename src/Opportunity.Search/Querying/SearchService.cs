@@ -38,7 +38,7 @@ internal sealed partial class SearchService(
     IAuthorizationService authorization,
     IAuditEventWriter audit,
     ISearchSessionStore sessions,
-    ISearchWatermarkReader watermarks,
+    ISearchFreshnessReader freshnessReader,
     ISearchQueryTranslator translator,
     QueryLimits limits,
     OpenSearchOptions options,
@@ -144,8 +144,8 @@ internal sealed partial class SearchService(
 
         plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, facets.Count) };
 
-        // Q-10: the watermark read before the reader opens is a lower bound of what the reader reflects.
-        var watermark = await watermarks.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        // Q-10: the refresh-aware watermark read before the reader opens is a lower bound of what the reader reflects.
+        var watermark = await freshnessReader.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
         var now = time.GetUtcNow();
         var search = new SearchSessionRecord(
             caller.WorkspaceId,
@@ -163,9 +163,9 @@ internal sealed partial class SearchService(
             now,
             now + Settings.SearchIdleTimeout)
         {
-            ServedGeneration = watermark.Applied,
+            ServedGeneration = watermark.IndexedThroughGeneration,
         };
-        var freshness = new SearchFreshness(watermark.Applied, watermark.IsCurrent, now);
+        var freshness = SearchFreshnessMapping.ForPage(watermark.IndexedThroughGeneration, watermark, now);
 
         if (placement is null)
         {
@@ -283,7 +283,7 @@ internal sealed partial class SearchService(
 
         var sort = SortKey.FromJson(search.SortJson);
         plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, 0) };
-        var watermark = await watermarks.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var watermark = await freshnessReader.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
         var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
         SearchResult result;
         try
@@ -299,9 +299,8 @@ internal sealed partial class SearchService(
 
         // The reader is as current as when it opened: unchanged while nothing was committed since its watermark. A
         // reader reopened just now (Q-33) is as current as the watermark read before it.
-        var freshness = result.Refreshed
-            ? new SearchFreshness(watermark.Applied, watermark.IsCurrent, time.GetUtcNow())
-            : new SearchFreshness(search.ServedGeneration, search.ServedGeneration is { } g && watermark.Counter == g, time.GetUtcNow());
+        var freshness = SearchFreshnessMapping.ForPage(
+            result.Refreshed ? watermark.IndexedThroughGeneration : search.ServedGeneration, watermark, time.GetUtcNow());
         var served = await ServeAsync(caller, current, placement, visibility.Filter!, result, navigation, plan.Normalized, freshness, cancellationToken)
             .ConfigureAwait(false);
 
