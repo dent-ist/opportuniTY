@@ -113,7 +113,11 @@ describe('Searches › Search Terms Reports (#180)', () => {
   let toasts: { mock: { calls: unknown[][] } };
 
   async function setup(
-    permissions: string[] = [PERMISSIONS.documentView, PERMISSIONS.searchExecute],
+    permissions: string[] = [
+      PERMISSIONS.documentView,
+      PERMISSIONS.searchExecute,
+      PERMISSIONS.searchTermReportRun,
+    ],
     configure: (api: FakeApi) => void = () => undefined,
   ) {
     api = new FakeApi()
@@ -315,7 +319,12 @@ describe('Searches › Search Terms Reports (#180)', () => {
   });
 
   it('shows the frozen set, whose view the counts are, term errors with position, totals and links', async () => {
-    await setup([PERMISSIONS.documentView, PERMISSIONS.searchExecute, 'Job.ViewAll']);
+    await setup([
+      PERMISSIONS.documentView,
+      PERMISSIONS.searchExecute,
+      PERMISSIONS.searchTermReportRun,
+      'Job.ViewAll',
+    ]);
     await go('/w/ws-1/searches/terms-reports/str-1');
     expect(text(root().querySelector('h1')!)).toBe('Key terms');
     const about = root().querySelector('section[aria-labelledby="str-about"]')!;
