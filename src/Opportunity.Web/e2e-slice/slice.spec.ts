@@ -54,9 +54,10 @@ test.describe('as a reviewer', () => {
     const text = viewer.getByLabel(`Extracted text of ${codedControlNumber}`);
     await expect(text).toContainText(term);
     // The search hits are highlighted in the text and stepped through.
-    const hits = viewer.getByRole('group', { name: 'Search hits' });
-    await expect(hits).toContainText(/\d+ search hits?/);
-    await hits.getByRole('button', { name: 'Next hit' }).click();
+    // The highlight bar (E16-T12) counts the search's hits from server-computed spans and steps through them.
+    const hits = viewer.getByRole('group', { name: 'Highlights' });
+    await expect(hits).toContainText(/Search hits \([1-9]\d*\)/);
+    await hits.getByRole('button', { name: 'Next hit', exact: true }).click();
     await expect(hits).toContainText(/Hit 1 of \d+/);
 
     // Interactive code, then Save & Next.
