@@ -279,6 +279,39 @@ function importResource(id: string, name: string, mode: string, polls: number, e
     completedAt: done ? '2026-10-04T09:00:09Z' : null,
     optFileName: null,
     imagesOnly: false,
+    summary: {
+      importId: id,
+      name,
+      mode,
+      sourceFileName: 'VOL001.dat',
+      status: done ? (errored ? 'completedWithErrors' : 'completed') : 'running',
+      final: done,
+      startedAt: '2026-10-04T09:00:01Z',
+      completedAt: done ? '2026-10-04T09:00:09Z' : null,
+      elapsedSeconds: 8,
+      rows: {
+        read: 20,
+        imported: done ? 20 - errored : 8,
+        overlaid: 0,
+        skipped: 0,
+        errored: done ? errored : 0,
+        withWarnings: done ? 2 : 0,
+      },
+      natives: { linked: done ? 17 : 8, missing: done ? 1 : 0 },
+      text: { linked: done ? 17 : 8, missing: done ? 1 : 0, truncated: 0 },
+      images: { documentsLinked: 0, documentsWithoutImages: 0, pagesLinked: 0, pagesMissing: 0 },
+      families: { built: done ? 2 : 0, orphans: 0 },
+      fieldsCreated: 0,
+      choicesCreated: 0,
+      errorFileRows: done ? errored : 0,
+      issueCounts: done
+        ? [
+            { code: 'DATE_UNPARSEABLE', severity: 'error', count: errored },
+            { code: 'NATIVE_MISSING', severity: 'warning', count: 1 },
+            { code: 'TEXT_MISSING', severity: 'warning', count: 1 },
+          ]
+        : [],
+    },
   };
 }
 
