@@ -27,6 +27,12 @@ internal static partial class RelationshipExpansionSql
         ArgumentNullException.ThrowIfNull(tx);
         RequireIdentifier(seedTable);
         RequireIdentifier(target);
+        // Fresh statistics for the seeds, so the planner joins them through the relationship indexes.
+        await using (var analyzeSeeds = tx.Command($"ANALYZE {seedTable}"))
+        {
+            await analyzeSeeds.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await using (var create = tx.Command(
             $"CREATE TEMP TABLE {target} (document_id uuid PRIMARY KEY, reason smallint NOT NULL) ON COMMIT DROP"))
         {
