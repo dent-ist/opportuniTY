@@ -26,10 +26,13 @@ describe('Document list counts (Q-10, Q-32)', () => {
   });
 
   it('states freshness in plain language in the workspace time zone', () => {
-    expect(freshnessLabel(CURRENT, 'en-GB', 'Europe/Berlin')).toBe('Current as of 12:42');
+    expect(freshnessLabel(CURRENT, 'en-GB', 'Europe/Berlin')).toBe('Results current as of 12:42');
     expect(freshnessLabel({ ...CURRENT, current: false }, 'en-GB', 'UTC')).toBe(
-      'Updating — counts may not include recent changes (as of 10:42)',
+      'Results as of 10:42',
     );
+    // The wave-10 state wins over the M1 flag.
+    const delayed = { ...CURRENT, current: false, state: 'delayed' } as typeof CURRENT;
+    expect(freshnessLabel(delayed, 'en-GB', 'UTC')).toBe('Results as of 10:42');
   });
 
   it('formats cells with the zone shown', () => {

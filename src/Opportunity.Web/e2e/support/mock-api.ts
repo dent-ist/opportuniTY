@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { CODING_FIELDS, CodingMock } from './mock-coding';
 import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
+import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
@@ -39,6 +40,8 @@ export interface MockApiOptions {
   installationPermissions?: readonly string[];
   /** Whether the session satisfies MFA (`/api/v1/me`); default true. Without it creating a workspace needs a step-up. */
   mfa?: boolean;
+  /** Search index state at the start (wave-10 freshness, E16-T07); default current. */
+  freshness?: MockFreshnessState;
 }
 
 /** A request the mock answered, with its JSON body and Idempotency-Key. */
@@ -85,13 +88,25 @@ export interface MockControl {
   }[];
   /** Saved searches (E16-T11): folders, searches, writes received and runs by id. */
   readonly savedSearches: SavedSearchesMock;
+  /** Search freshness (E16-T07): move the index between current, updating and delayed. */
+  readonly freshness: FreshnessMock;
 }
 
 /**
  * A search result page of the document list (`SearchResultPage`) over document numbers `docs` (in order);
  * cursors encode the page number (`p<n>`).
  */
-function searchPage(docs: readonly number[], pageSize: number, number: number, query = '') {
+function searchPage(
+  docs: readonly number[],
+  pageSize: number,
+  number: number,
+  query = '',
+  freshness: Record<string, unknown> = {
+    asOf: '2026-10-03T10:42:00Z',
+    current: true,
+    servedGeneration: null,
+  },
+) {
   const total = docs.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const exact = total <= 10_000;
@@ -128,7 +143,7 @@ function searchPage(docs: readonly number[], pageSize: number, number: number, q
       isLast: number >= pageCount,
     },
     total: { value: exact ? total : 10_000, relation: exact ? 'eq' : 'gte' },
-    freshness: { asOf: '2026-10-03T10:42:00Z', current: true, servedGeneration: null },
+    freshness,
     nextCursor: number < pageCount ? `p${number + 1}` : null,
     previousCursor: number > 1 ? `p${number - 1}` : null,
     resultsRefreshed: false,
@@ -379,7 +394,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     lookup: (id) => imports.job(id),
   });
   const savedSearches = new SavedSearchesMock();
+  const freshness = new FreshnessMock(options.freshness);
   const control: MockControl = {
+    freshness,
     imports,
     jobs: jobsMock,
     workspaceWrites,
@@ -499,10 +516,11 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       expired = false;
       // Like the API, snippets come only with highlighting (on by default); the search keeps the setting for its pages.
       lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
-      if (!body?.savedSearchId) return json(route, searchPage(matching(), pageSize, 1, lastQuery));
+      if (!body?.savedSearchId)
+        return json(route, searchPage(matching(), pageSize, 1, lastQuery, freshness.served()));
       savedSearches.run(body.savedSearchId, matching().length);
       return json(route, {
-        ...searchPage(matching(), pageSize, 1, lastQuery),
+        ...searchPage(matching(), pageSize, 1, lastQuery, freshness.served()),
         savedSearchId: body.savedSearchId,
       });
     }
@@ -516,8 +534,11 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         : last
           ? Math.max(1, Math.ceil(docs.length / pageSize))
           : Number(url.searchParams.get('page') ?? 1);
-      return json(route, searchPage(docs, pageSize, n, lastQuery));
+      return json(route, searchPage(docs, pageSize, n, lastQuery, freshness.served()));
     }
+    // Search freshness (E16-T07): ./mock-freshness.ts.
+    const freshnessRoute = signedIn ? freshness.handle(route, method, path) : undefined;
+    if (freshnessRoute) return freshnessRoute;
     // Saved searches (E16-T11): ./mock-saved-searches.ts.
     const savedSearch = signedIn ? savedSearches.handle(route, method, path, url) : undefined;
     if (savedSearch) return savedSearch;

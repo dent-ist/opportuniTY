@@ -49,6 +49,9 @@ export class MassEditJobs {
   private readonly feed = inject(JobFeed, { optional: true });
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private destroyed = false;
+  private readonly _tracked = signal<readonly TrackedJob[]>([]);
+  /** Jobs submitted from this page, oldest first (the Documents banner shows those not yet searchable). */
+  readonly tracked = this._tracked.asReadonly();
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
@@ -67,6 +70,7 @@ export class MassEditJobs {
       done: false,
     };
     this.feed?.reportedElsewhere(jobId);
+    this._tracked.update((jobs) => [...jobs, entry]);
     void this.poll(entry);
     return entry;
   }

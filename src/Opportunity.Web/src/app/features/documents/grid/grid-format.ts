@@ -1,4 +1,5 @@
 import type { SearchFreshness, TotalCount } from '../../../core/api/generated/models';
+import { toServedFreshness } from '../../../core/search/search-freshness';
 
 /**
  * Count label of the results header (Q-10, Q-32, familiarity guide §6): exact counts with thousands separators;
@@ -21,16 +22,20 @@ export function isApproximate(total: TotalCount, freshness: SearchFreshness): bo
   return total.relation === 'gte' || freshness.current !== true;
 }
 
-/** "Current as of 10:42" (Q-10 plain-language freshness; reviewers never see generation numbers). */
+/**
+ * The stamp of a result set (Q-10, E16-T07): when the index it was served from was current, in plain words —
+ * "Results current as of 10:42", or "Results as of 10:42" while changes were still pending (the footnote then says
+ * how many). Reviewers never see generation numbers; admins find them in the freshness detail.
+ */
 export function freshnessLabel(
   freshness: SearchFreshness,
   locale: string,
   timeZone: string,
 ): string {
   const time = formatTime(freshness.asOf as string, locale, timeZone);
-  return freshness.current === false
-    ? `Updating — counts may not include recent changes (as of ${time})`
-    : `Current as of ${time}`;
+  return toServedFreshness(freshness).state === 'current'
+    ? `Results current as of ${time}`
+    : `Results as of ${time}`;
 }
 
 /** "10:42" in the workspace display time zone ("—" for a missing or invalid time). */

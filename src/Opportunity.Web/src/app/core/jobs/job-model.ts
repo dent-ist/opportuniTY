@@ -25,6 +25,10 @@ export interface Progress {
 
 export interface SearchableProgress extends Progress {
   readonly state: SearchableState;
+  /** The job's last committed generation (wave-10 contract; null on an older API). */
+  readonly jobGeneration?: string | null;
+  /** Refresh-aware index watermark when read; `current` once it reaches `jobGeneration`. */
+  readonly indexedThroughGeneration?: string | null;
 }
 
 export interface JobUser {
@@ -381,6 +385,8 @@ function toSearchable(raw: Raw, legacyIndexed: Raw | null): SearchableProgress {
     done: num(raw['done']),
     total: num(raw['total']),
     state: (SEARCHABLE_STATES.has(state) ? state : 'pending') as SearchableState,
+    jobGeneration: strOrNull(raw['jobGeneration']),
+    indexedThroughGeneration: strOrNull(raw['indexedThroughGeneration']),
   };
 }
 
