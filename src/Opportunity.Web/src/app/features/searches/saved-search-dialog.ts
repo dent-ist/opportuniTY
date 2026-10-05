@@ -34,6 +34,8 @@ export interface SavedSearchDialogData {
   readonly saved?: SavedSearch;
   /** Create: the query to start from ("Save current search" in Documents) and its view. */
   readonly query?: string;
+  /** Create: the list's columns (field query names) and sort, saved with the search (E16-T09). */
+  readonly columns?: readonly string[];
   readonly sort?: readonly SavedSearchSortKey[];
   readonly folderId?: string | null;
 }
@@ -205,6 +207,7 @@ export class SavedSearchDialog {
           name,
           folderId,
           query: query ?? '',
+          ...(this.data.columns?.length ? { columns: this.data.columns } : {}),
           ...(this.data.sort?.length ? { sort: this.data.sort } : {}),
         });
       case 'copy':

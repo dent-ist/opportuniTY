@@ -50,6 +50,15 @@ public static class AuditTaxonomy
         public const string Shared = "SavedSearch.Shared";
     }
 
+    /// <summary>Changes to shared document-list views (E16-T09); personal views are not audited.</summary>
+    public static class GridView
+    {
+        public const string Category = "Search";
+        public const string Created = "GridView.Created";
+        public const string Modified = "GridView.Modified";
+        public const string Deleted = "GridView.Deleted";
+    }
+
     public static class Coding
     {
         public const string Category = "Coding";
@@ -147,7 +156,8 @@ public static class AuditTaxonomy
         .. Expand("AuthZ", "Denied"),
         .. Expand("Document", "Retrieved", "Viewed", "NativeDownloaded", "Printed", "TextDownloaded"),
         .. Expand("Search", "Executed", "ResultsPageServed", "CountExact", "TermReportGenerated",
-            "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted", "SavedSearch.Shared"),
+            "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted", "SavedSearch.Shared",
+            "GridView.Created", "GridView.Modified", "GridView.Deleted"),
         .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled"),
         .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded"),
         .. Expand("Redaction", "Added", "Modified", "Removed"),

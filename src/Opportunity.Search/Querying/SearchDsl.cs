@@ -51,14 +51,21 @@ internal sealed record SortKey(string Field, string Path, bool Descending)
         _ => false,
     };
 
+    /// <summary>Stored with the resolved path, so pages sort exactly as the first page did even if the catalogue changes.</summary>
     public static string ToJson(IReadOnlyList<SortKey> keys) =>
-        new JsonArray([.. keys.Select(k => (JsonNode)Obj(("field", k.Field), ("direction", k.Descending ? "desc" : "asc")))]).ToJsonString();
+        new JsonArray([.. keys.Select(k => (JsonNode)Obj(("field", k.Field), ("direction", k.Descending ? "desc" : "asc"), ("path", k.Path)))])
+            .ToJsonString();
 
     public static IReadOnlyList<SortKey> FromJson(string json) =>
-        [.. JsonNode.Parse(json)!.AsArray().Select(n => Resolve(
-            n!["field"]!.GetValue<string>(),
-            n["direction"]!.GetValue<string>() == "desc" ? SearchSortDirection.Desc : SearchSortDirection.Asc)
-            ?? throw new InvalidOperationException("A stored sort key is no longer sortable."))];
+        [.. JsonNode.Parse(json)!.AsArray().Select(n =>
+        {
+            var field = n!["field"]!.GetValue<string>();
+            var descending = n["direction"]!.GetValue<string>() == "desc";
+            return n["path"]?.GetValue<string>() is { Length: > 0 } path
+                ? new SortKey(field, path, descending)
+                : Resolve(field, descending ? SearchSortDirection.Desc : SearchSortDirection.Asc)
+                    ?? throw new InvalidOperationException("A stored sort key is no longer sortable.");
+        })];
 }
 
 /// <summary>Everything one search request needs besides the query (built by <see cref="SearchService"/>).</summary>
@@ -71,6 +78,9 @@ internal sealed record SearchBodySpec
     public required TimeSpan KeepAlive { get; init; }
 
     public required IReadOnlyList<SortKey> Sort { get; init; }
+
+    /// <summary>Projection paths fetched besides the grid fields (<c>SearchRequest.Fields</c>).</summary>
+    public IReadOnlyList<string> SourceFields { get; init; } = [];
 
     /// <summary>Walk the sort backwards (previous and last pages, Q-49).</summary>
     public bool Reverse { get; init; }
@@ -140,7 +150,8 @@ internal static class SearchDsl
             ("size", spec.Size),
             ("sort", Sort(spec.Sort, spec.Reverse)),
             ("track_total_hits", spec.TrackTotalHitsUpTo is { } cap ? cap : true),
-            ("_source", Obj(("includes", new JsonArray([.. ProjectionFields.GridSource.Select(f => (JsonNode)f)])))),
+            ("_source", Obj(("includes", new JsonArray([.. ProjectionFields.GridSource.Concat(spec.SourceFields).Distinct(StringComparer.Ordinal)
+                .Select(f => (JsonNode)f)])))),
             ("timeout", Milliseconds(spec.Timeout)),
             ("pit", Obj(("id", spec.PointInTimeId), ("keep_alive", Seconds(spec.KeepAlive)))));
         if (spec.From > 0)
@@ -179,11 +190,18 @@ internal static class SearchDsl
         return body;
     }
 
-    /// <summary>The sort with the <c>documentId</c> tie-breaker; reversed exactly (including missing values) when asked.</summary>
+    /// <summary>
+    /// The sort with the deterministic tie-breakers: Control Number ascending (unless the sort already uses it, E16-T09),
+    /// then <c>documentId</c> (unique, so equal Control Numbers never reorder). Reversed exactly (including missing values)
+    /// when asked.
+    /// </summary>
     public static JsonArray Sort(IReadOnlyList<SortKey> keys, bool reverse)
     {
         var sort = new JsonArray();
-        foreach (var key in keys.Append(new SortKey(ProjectionFields.DocumentId, ProjectionFields.DocumentId, Descending: false)))
+        var tieBreakers = keys.Any(k => k.Path == ProjectionFields.ControlNumberSort)
+            ? [new SortKey(ProjectionFields.DocumentId, ProjectionFields.DocumentId, Descending: false)]
+            : new[] { SortKey.ControlNumber, new SortKey(ProjectionFields.DocumentId, ProjectionFields.DocumentId, Descending: false) };
+        foreach (var key in keys.Concat(tieBreakers))
         {
             var descending = key.Descending ^ reverse;
             var order = Obj(("order", descending ? "desc" : "asc"));

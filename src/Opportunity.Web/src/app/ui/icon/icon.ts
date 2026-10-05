@@ -61,6 +61,8 @@ const PATHS = {
   play: 'M8 5.5v13l10.5-6.5z',
   snapshot: 'M4 7.5h16v12H4zM8 7.5l1.5-3h5l1.5 3M12 16.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
   save: 'M5 4.5h11.5L19.5 7.5v12H5zM8 4.5v5h7v-5M8 19.5v-5.5h8v5.5',
+  columns: 'M4 4.5h16v15H4zM9.5 4.5v15M14.5 4.5v15',
+  pin: 'M9 4h6M10 4v6l-3 4h10l-3-4V4M12 14v6.5',
 } as const;
 
 export type IconName = keyof typeof PATHS;

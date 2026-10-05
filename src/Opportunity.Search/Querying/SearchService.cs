@@ -46,7 +46,8 @@ internal sealed partial class SearchService(
     TimeProvider time,
     ILogger<SearchService> logger,
     OpportunityMetrics? metrics = null,
-    ISavedSearchQueries? savedSearches = null) : ISearchService
+    ISavedSearchQueries? savedSearches = null,
+    ISearchFieldCatalogSource? catalogs = null) : ISearchService
 {
     private const string ResourceType = "Search";
     private const string CorrelationTag = "opportunity.correlation_id";
@@ -112,20 +113,39 @@ internal sealed partial class SearchService(
         }
 
         var queryText = saved?.QueryText ?? request.Query!;
-        var sort = new List<SortKey>();
+        var requestedSort = new List<SearchSortKey>();
         foreach (var key in request.Sort ?? saved?.Sort ?? [])
         {
-            if (key is null || SortKey.Resolve(key.Field, key.Direction) is not { } resolved)
+            if (key is null || string.IsNullOrWhiteSpace(key.Field) || key.Field.Length > SearchResultFields.MaxNameLength || !Enum.IsDefined(key.Direction))
             {
-                return SearchOutcome.InvalidRequest("sort", $"Sortable fields: {string.Join(", ", SearchSortFields.All)}.");
+                return SearchOutcome.InvalidRequest("sort", SortableFieldsMessage);
             }
 
-            sort.Add(resolved);
+            requestedSort.Add(key);
         }
 
-        if (sort.Count > 5 || sort.Select(s => s.Field).Distinct(StringComparer.Ordinal).Count() != sort.Count)
+        if (requestedSort.Count > 5)
         {
             return SearchOutcome.InvalidRequest("sort", "At most 5 distinct sort fields.");
+        }
+
+        var fieldNames = new List<string>();
+        foreach (var name in request.Fields ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Length > SearchResultFields.MaxNameLength)
+            {
+                return SearchOutcome.InvalidRequest("fields", $"Fields are field query names of 1–{SearchResultFields.MaxNameLength} characters.");
+            }
+
+            if (!fieldNames.Contains(name.Trim(), StringComparer.OrdinalIgnoreCase))
+            {
+                fieldNames.Add(name.Trim());
+            }
+        }
+
+        if (fieldNames.Count > SearchResultFields.MaxFields)
+        {
+            return SearchOutcome.InvalidRequest("fields", $"At most {SearchResultFields.MaxFields} fields.");
         }
 
         var facets = new List<string>();
@@ -146,6 +166,13 @@ internal sealed partial class SearchService(
         }
 
         var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var columns = await ColumnsAsync(caller.WorkspaceId, placement?.Generation, requestedSort, fieldNames, cancellationToken).ConfigureAwait(false);
+        if (columns.Problem is { } columnProblem)
+        {
+            return columnProblem;
+        }
+
+        var sort = columns.Sort;
         // Text the caller typed may only reference saved searches they can see; a saved search's own references are its criteria.
         var plan = await PlanAsync(caller, queryText, placement?.Generation, saved is null, cancellationToken).ConfigureAwait(false);
         if (plan.Errors is { } errors)
@@ -180,6 +207,7 @@ internal sealed partial class SearchService(
             now + Settings.SearchIdleTimeout)
         {
             ServedGeneration = watermark.IndexedThroughGeneration,
+            ResultFieldsJson = columns.Fields.Count > 0 ? SearchColumns.ToJson(columns.Fields) : null,
         };
         var freshness = SearchFreshnessMapping.ForPage(watermark.IndexedThroughGeneration, watermark, now);
 
@@ -447,6 +475,49 @@ internal sealed partial class SearchService(
         };
     }
 
+    private static readonly string SortableFieldsMessage =
+        $"Sort by {string.Join(", ", SearchSortFields.All)} or the query name of a workspace field that is sortable (GET …/fields).";
+
+    /// <summary>
+    /// Resolves the sort (fixed names first, then sortable workspace fields by query name) and the fields the hits carry
+    /// against the workspace's catalogue (E16-T09). Unknown or unsearchable result fields are left out; an unsortable
+    /// sort field is a request error.
+    /// </summary>
+    private async Task<(List<SortKey> Sort, IReadOnlyList<ResultField> Fields, SearchOutcome? Problem)> ColumnsAsync(
+        Guid workspaceId, int? generation, List<SearchSortKey> requestedSort, List<string> fieldNames,
+        CancellationToken cancellationToken)
+    {
+        SearchFieldResolver? resolver = null;
+        if (fieldNames.Count > 0 || requestedSort.Any(k => SortKey.Resolve(k.Field, k.Direction) is null))
+        {
+            var catalog = catalogs is null
+                ? new Core.Fields.FieldCatalog([], [])
+                : await catalogs.GetAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+            resolver = SearchFieldResolver.Create(catalog, generation ?? ProjectionMappings.Embedded.CurrentGeneration);
+        }
+
+        var sort = new List<SortKey>();
+        foreach (var key in requestedSort)
+        {
+            var resolved = SortKey.Resolve(key.Field, key.Direction)
+                ?? (resolver is null ? null : SearchColumns.SortKeyFor(resolver, key.Field.Trim(), key.Direction == SearchSortDirection.Desc));
+            if (resolved is null)
+            {
+                return ([], [], SearchOutcome.InvalidRequest("sort", $"“{key.Field}” cannot be sorted. {SortableFieldsMessage}"));
+            }
+
+            sort.Add(resolved);
+        }
+
+        if (sort.Select(k => k.Path).Distinct(StringComparer.Ordinal).Count() != sort.Count)
+        {
+            return ([], [], SearchOutcome.InvalidRequest("sort", "At most 5 distinct sort fields."));
+        }
+
+        var fields = resolver is null ? [] : fieldNames.Select(n => SearchColumns.FieldFor(resolver, n)).OfType<ResultField>().ToList();
+        return (sort, fields, null);
+    }
+
     /// <summary>
     /// The §29 gate class (docs/benchmarks/query-taxonomy.md): a grid sort other than relevance or facets make any
     /// query complex, as the benchmark's classifier counts them.
@@ -488,6 +559,7 @@ internal sealed partial class SearchService(
                 PointInTimeId = pit,
                 KeepAlive = Settings.PointInTimeKeepAlive,
                 Sort = sort,
+                SourceFields = [.. SearchColumns.FromJson(search.ResultFieldsJson).Select(f => f.Path)],
                 Reverse = navigation.Reverse,
                 SearchAfter = navigation.SearchAfter,
                 From = navigation.From,
@@ -638,7 +710,8 @@ internal sealed partial class SearchService(
             previous = cursor.CursorId.ToString("N");
         }
 
-        var (items, dropped) = await PostFilterAsync(caller, placement, window, cancellationToken).ConfigureAwait(false);
+        var (items, dropped) = await PostFilterAsync(caller, placement, window, SearchColumns.FromJson(search.ResultFieldsJson), cancellationToken)
+            .ConfigureAwait(false);
         items = await MarkFamilyParentsAsync(placement, visibility, result.PointInTimeId, items, cancellationToken).ConfigureAwait(false);
         var page = new SearchResultPage
         {
@@ -661,7 +734,7 @@ internal sealed partial class SearchService(
     /// belong to this workspace) is dropped with its snippets and grid fields. One summary audit per call (Q-59).
     /// </summary>
     private async Task<(IReadOnlyList<SearchHit> Items, int Dropped)> PostFilterAsync(
-        SearchCaller caller, Placement placement, List<JsonObject> hits, CancellationToken cancellationToken)
+        SearchCaller caller, Placement placement, List<JsonObject> hits, IReadOnlyList<ResultField> fields, CancellationToken cancellationToken)
     {
         var candidates = new List<(JsonObject Hit, Guid DocumentId)>(hits.Count);
         var integrity = 0;
@@ -697,7 +770,7 @@ internal sealed partial class SearchService(
         {
             if (decisions.TryGetValue(documentId, out var decision) && decision.IsAllowed)
             {
-                items.Add(ToHit(hit, documentId));
+                items.Add(ToHit(hit, documentId, fields));
             }
             else
             {
@@ -750,7 +823,7 @@ internal sealed partial class SearchService(
 
     private const string FamilyParentsAggregation = "family_parents";
 
-    private static SearchHit ToHit(JsonObject hit, Guid documentId)
+    private static SearchHit ToHit(JsonObject hit, Guid documentId, IReadOnlyList<ResultField> fields)
     {
         var s = (JsonObject)hit["_source"]!;
         var snippets = (hit["highlight"]?[ProjectionFields.Text] as JsonArray ?? [])
@@ -773,7 +846,8 @@ internal sealed partial class SearchService(
             (int?)Number(s, ProjectionFields.FamilySequence),
             Number(s, ProjectionFields.FileSize),
             (int?)Number(s, ProjectionFields.PageCount),
-            snippets);
+            snippets,
+            Fields: SearchColumns.Values(s, fields));
     }
 
     /// <summary>Strips the private-use highlight delimiters and returns the highlighted ranges as offsets.</summary>

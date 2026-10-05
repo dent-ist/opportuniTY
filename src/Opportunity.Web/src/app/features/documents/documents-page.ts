@@ -356,12 +356,22 @@ export class DocumentsPage {
     this.showSaved(saved);
   }
 
-  /** The list shows `saved`: its name in the search panel, its query in the bar, run by id. */
-  private showSaved(saved: SavedSearch): void {
+  /**
+   * The list shows `saved`: its name in the search panel, its query in the bar, run by id. Its columns and sort (saved
+   * with it from Documents, E16-T09) are applied to the list; a search saved without them keeps the current View.
+   */
+  private showSaved(saved: SavedSearch, applyView = true): void {
     this.appliedId = saved.savedSearchId;
     this.saved.set(saved);
     this.queryBar().load(saved.query);
     this.grid().resetFilters();
+    if (applyView && (saved.columns.length > 0 || saved.sort.length > 0)) {
+      this.grid().applyColumns(
+        saved.columns.length > 0 ? saved.columns.map((field) => ({ field })) : null,
+        saved.sort.length > 0 ? saved.sort : null,
+        false,
+      );
+    }
     this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
   }
 
@@ -388,13 +398,15 @@ export class DocumentsPage {
     });
   }
 
-  /** "Save current search": the list's query (keyword and filters) as a new saved search. */
+  /** "Save current search": the list's query (keyword and filters), columns and sort as a new saved search. */
   protected async saveCurrent(): Promise<void> {
     const query = this.grid().effectiveQuery();
+    const columns = this.grid().savedSearchColumns();
+    const sort = this.grid().sortKeys();
     const folders = await this.savedApi.folders().catch(() => []);
     const { SavedSearchDialog } = await import('../searches/saved-search-dialog');
     const ref = this.dialogs.open<SavedSearch, SavedSearchDialogData>(SavedSearchDialog, {
-      data: { mode: 'create', folders, query },
+      data: { mode: 'create', folders, query, columns, sort },
       width: '44rem',
       autoFocus: 'input',
       injector: this.injector,
@@ -403,8 +415,8 @@ export class DocumentsPage {
     if (!result) return;
     this.toasts.show(`Saved search “${result.name}” created.`, { tone: 'success' });
     void this.browser()?.reload();
-    // Same documents, run by id from now on, so its last run and hit count are recorded.
-    this.showSaved(result);
+    // Same documents and columns, run by id from now on, so its last run and hit count are recorded.
+    this.showSaved(result, false);
     this.setSavedInUrl(result.savedSearchId, true);
   }
 

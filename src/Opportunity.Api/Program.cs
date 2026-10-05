@@ -37,6 +37,7 @@ builder.Services.AddQueryValidation();
 builder.Services.AddSearchEndpoints();
 builder.Services.AddQueryHistoryEndpoints();
 builder.Services.AddSavedSearchEndpoints();
+builder.Services.AddGridViewEndpoints();
 builder.Services.AddSnapshotEndpoints(builder.Configuration);
 builder.Services.AddJobEndpoints(builder.Configuration);
 builder.Services.AddWorkspaceEndpoints(builder.Configuration);

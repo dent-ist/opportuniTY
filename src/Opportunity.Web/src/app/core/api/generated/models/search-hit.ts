@@ -8,6 +8,9 @@ export interface SearchHit {
   documentId: string;
   familyId: string | null;
   familySequence: number | string | null;
+  fields?: {
+    [key: string]: Array<string>;
+  } | null;
   fileExtension: string | null;
   fileName: string | null;
   fileSize: number | string | null;

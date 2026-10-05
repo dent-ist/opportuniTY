@@ -56,14 +56,17 @@ internal sealed record WorkspaceResources(
     Guid SavedSearchFolderId,
     Guid SpareFolderId,
     Guid SavedSearchId,
-    Guid SpareSavedSearchId)
+    Guid SpareSavedSearchId,
+    Guid GridViewId,
+    Guid SpareGridViewId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
         "unknown", Guid.CreateVersion7(), Guid.CreateVersion7(), fields, Guid.CreateVersion7(), "ZZ-0000001", Guid.CreateVersion7(),
         Guid.NewGuid().ToString("N"), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+        Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -72,6 +75,7 @@ internal sealed record WorkspaceResources(
         [
             WorkspaceId, DocumentId, SearchId, BulkSnapshotId, ExportSnapshotId, ExportId, ExportFileId, ImportId, ImportJobId, ImportProfileId,
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
+            GridViewId, SpareGridViewId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -244,6 +248,12 @@ internal sealed class AttackWorld : IAsyncDisposable
         var spareSearch = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/saved-searches", owner, HttpStatusCode.Created,
             new JsonObject { ["name"] = $"Spare search {name}", ["query"] = "memo" });
 
+        // Document-list views (E16-T09): a shared view, and a personal spare for the delete probe.
+        var gridView = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/grid-views", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"View {name}", ["visibility"] = "shared", ["columns"] = new JsonArray(new JsonObject { ["field"] = "filename" }) });
+        var spareView = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/grid-views", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"Spare view {name}" });
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -270,7 +280,9 @@ internal sealed class AttackWorld : IAsyncDisposable
             folder.GetProperty("folderId").GetGuid(),
             spareFolder.GetProperty("folderId").GetGuid(),
             savedSearch.GetProperty("savedSearchId").GetGuid(),
-            spareSearch.GetProperty("savedSearchId").GetGuid());
+            spareSearch.GetProperty("savedSearchId").GetGuid(),
+            gridView.GetProperty("viewId").GetGuid(),
+            spareView.GetProperty("viewId").GetGuid());
     }
 
     /// <summary>Sends a request as <paramref name="user"/> (null: anonymous) with a fresh Idempotency-Key on writes.</summary>

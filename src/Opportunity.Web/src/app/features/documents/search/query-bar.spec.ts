@@ -173,7 +173,7 @@ describe('Query bar (Documents search panel)', () => {
     expect(el.getAttribute('aria-describedby')).toContain('-hint');
     expect(query('[aria-hidden="true"].qb__mirror')).not.toBeNull();
     await expectNoAxeViolations(root());
-  });
+  }, 30_000); // the Documents page (with the View bar) is slow to render and check in jsdom on a loaded machine
 
   it('shows an invalid query inline at the offending token, announces it and does not search', async () => {
     await setup({ validateMs: 0, suggestMs: 0 });

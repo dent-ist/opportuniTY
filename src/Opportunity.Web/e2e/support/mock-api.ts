@@ -5,6 +5,7 @@ import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
+import { GridViewsMock } from './mock-grid-views';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -90,6 +91,10 @@ export interface MockControl {
   readonly savedSearches: SavedSearchesMock;
   /** Search freshness (E16-T07): move the index between current, updating and delayed. */
   readonly freshness: FreshnessMock;
+  /** Document-list views and the saved layout (E16-T09). */
+  readonly gridViews: GridViewsMock;
+  /** The body of the last `POST …/searches` (sort, fields). */
+  readonly lastSearch: () => Record<string, unknown> | null;
 }
 
 /**
@@ -106,6 +111,7 @@ function searchPage(
     current: true,
     servedGeneration: null,
   },
+  fields: readonly string[] = [],
 ) {
   const total = docs.length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -129,6 +135,10 @@ function searchPage(
       mimeType: attachment ? 'application/pdf' : 'application/vnd.ms-outlook',
       pageCount: (n % 7) + 1,
       snippets: snippetsFor(n, query),
+      // The values of the columns the search asked for (E16-T09): a choice ID for choice fields.
+      ...(fields.length > 0
+        ? { fields: Object.fromEntries(fields.map((f) => [f, [fieldValue(f, n)]])) }
+        : {}),
     };
   });
   return {
@@ -148,6 +158,13 @@ function searchPage(
     previousCursor: number > 1 ? `p${number - 1}` : null,
     resultsRefreshed: false,
   };
+}
+
+/** A deterministic value of field `queryName` for document `n` (choice fields: one of their choice IDs). */
+function fieldValue(queryName: string, n: number): string {
+  const field = CODING_FIELDS.find((f) => f.queryName === queryName);
+  const choices = field?.choices;
+  return choices ? String(choices[n % choices.length].choiceId) : `${queryName} ${n}`;
 }
 
 /** The structural columns of the review grid, with their types (GET …/fields, ADR-007 §3). */
@@ -208,6 +225,7 @@ export const ALL_PERMISSIONS = [
   'Job.ViewAll',
   'Job.Manage',
   'Job.Replay',
+  'View.ManageShared',
   'Audit.Read',
   'Audit.ReadSearchText',
   'Workspace.ManageUsers',
@@ -394,6 +412,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     lookup: (id) => imports.job(id),
   });
   const savedSearches = new SavedSearchesMock();
+  const gridViews = new GridViewsMock(permissions.includes('View.ManageShared'));
+  let lastSearch: Record<string, unknown> | null = null;
+  let lastFields: string[] = [];
   const freshness = new FreshnessMock(options.freshness);
   const control: MockControl = {
     freshness,
@@ -401,6 +422,8 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     jobs: jobsMock,
     workspaceWrites,
     savedSearches,
+    gridViews,
+    lastSearch: () => lastSearch,
     unhandled,
     audit,
     coding,
@@ -503,7 +526,10 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         query?: string;
         savedSearchId?: string;
         highlight?: boolean | null;
+        fields?: string[];
       };
+      lastSearch = { ...body };
+      lastFields = body?.fields ?? [];
       pageSize = Number(body?.pageSize ?? 100);
       if (body?.savedSearchId) {
         // A saved search runs its stored query (wave-9 contract): unknown or not visible → 404.
@@ -517,10 +543,13 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       // Like the API, snippets come only with highlighting (on by default); the search keeps the setting for its pages.
       lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
       if (!body?.savedSearchId)
-        return json(route, searchPage(matching(), pageSize, 1, lastQuery, freshness.served()));
+        return json(
+          route,
+          searchPage(matching(), pageSize, 1, lastQuery, freshness.served(), lastFields),
+        );
       savedSearches.run(body.savedSearchId, matching().length);
       return json(route, {
-        ...searchPage(matching(), pageSize, 1, lastQuery, freshness.served()),
+        ...searchPage(matching(), pageSize, 1, lastQuery, freshness.served(), lastFields),
         savedSearchId: body.savedSearchId,
       });
     }
@@ -534,8 +563,11 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         : last
           ? Math.max(1, Math.ceil(docs.length / pageSize))
           : Number(url.searchParams.get('page') ?? 1);
-      return json(route, searchPage(docs, pageSize, n, lastQuery, freshness.served()));
+      return json(route, searchPage(docs, pageSize, n, lastQuery, freshness.served(), lastFields));
     }
+    // Document-list views and the layout (E16-T09): ./mock-grid-views.ts.
+    const viewRoute = signedIn ? gridViews.handle(route, method, path) : undefined;
+    if (viewRoute) return viewRoute;
     // Search freshness (E16-T07): ./mock-freshness.ts.
     const freshnessRoute = signedIn ? freshness.handle(route, method, path) : undefined;
     if (freshnessRoute) return freshnessRoute;

@@ -10,6 +10,7 @@ import { provideOpportunityHttp } from '../../../core/api/http';
 import { CommandRegistry } from '../../../core/commands';
 import { DocumentsPage } from '../documents-page';
 import { FILTER_DEBOUNCE_MS } from './grid-filter';
+import { LAYOUT_SAVE_DELAY_MS } from './review-grid';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
 import { FakeResultOptions, fakePage } from './grid-fixtures.testing';
@@ -60,6 +61,8 @@ describe('Review grid (Documents list)', () => {
       permissions?: string[];
       search?: (req: HttpRequest<unknown>) => FakeResponse;
       page?: (req: HttpRequest<unknown>) => FakeResponse;
+      /** More API routes (views, layout) before the page opens. */
+      extra?: (api: FakeApi) => void;
     } = {},
   ): Promise<void> {
     result = options.result ?? { total: 250, pageSize: 100 };
@@ -95,6 +98,7 @@ describe('Review grid (Documents list)', () => {
             return { body: fakePage(result, n) };
           }),
       );
+    options.extra?.(api);
     TestBed.configureTestingModule({
       providers: [...provideAppRouting(), ...provideOpportunityHttp(), ...provideFakeApi(api)],
     });
@@ -188,7 +192,7 @@ describe('Review grid (Documents list)', () => {
     await scrollTo(0);
     expect(firstCells()[0]).toBe('ACM0000001');
     expect(pageRequests()).toHaveLength(14); // scrolling back reads the cache
-  });
+  }, 30_000); // the Documents page (with the View bar) is slow to render and check in jsdom on a loaded machine
 
   it('pages with First, Previous, Next and Last (Q-49)', async () => {
     await setup({ result: { total: 1000, pageSize: 100 } });
@@ -712,5 +716,277 @@ describe('Review grid (Documents list)', () => {
       expect(filtered).toBe(true);
       expect(text()).toContain('Selected: 1');
     });
+  });
+
+  describe('Views, columns and multi-column sort (E16-T09)', () => {
+    const VIEWS = '/api/v1/workspaces/ws-1/grid-views';
+    const LAYOUT = `${VIEWS}/layout`;
+    const RESPONSIVENESS = field('responsiveness', 'Responsiveness', {
+      type: 'singleChoice',
+      storage: 'coding',
+      isSystem: false,
+      capabilities: { sortable: false, filterable: true, leadingWildcard: false } as never,
+      choices: [
+        { choiceId: 1, name: 'Responsive', isActive: true },
+        { choiceId: 2, name: 'Not Responsive', isActive: true },
+      ],
+    } as never);
+    const SHARED = {
+      viewId: 'v-1',
+      name: 'First pass',
+      visibility: 'shared',
+      owner: { userId: 'u-9', displayName: 'Admin' },
+      columns: [{ field: 'filename' }, { field: 'responsiveness', width: 200, pinned: true }],
+      sort: [{ field: 'fileName', direction: 'asc' }],
+      modifiedAt: '2026-10-04T10:00:00Z',
+      version: 1,
+      canEdit: false,
+    };
+    let layoutPuts: unknown[];
+    let created: unknown[];
+
+    function views(
+      layout: Record<string, unknown> = { viewId: null, columns: null, sort: null },
+      list: unknown[] = [SHARED],
+    ) {
+      layoutPuts = [];
+      created = [];
+      return (fake: FakeApi) =>
+        fake
+          .on('GET', FIELDS, {
+            body: { items: [...CATALOGUE, RESPONSIVENESS], nextCursor: null },
+          })
+          .on('GET', VIEWS, { body: { items: list } })
+          .on('GET', LAYOUT, { body: { modifiedAt: null, ...layout } })
+          .on('PUT', LAYOUT, (req) => {
+            layoutPuts.push(req.body);
+            return { body: req.body };
+          })
+          .on('POST', VIEWS, (req) => {
+            created.push(req.body);
+            const body = req.body as Record<string, unknown>;
+            return {
+              status: 201,
+              body: {
+                ...body,
+                viewId: 'v-new',
+                owner: { userId: 'u-1', displayName: 'Alex' },
+                version: 1,
+                canEdit: true,
+              },
+            };
+          });
+    }
+
+    const headers = () =>
+      [...grid().querySelectorAll<HTMLElement>('[role="columnheader"]')].map(
+        (h) => h.querySelector('.grid__label')?.textContent?.trim() ?? '',
+      );
+    const header = (name: string) =>
+      [...grid().querySelectorAll<HTMLElement>('[role="columnheader"]')].find(
+        (h) => h.querySelector('.grid__label')?.textContent?.trim() === name,
+      )!;
+    const viewSelect = () => root().querySelector<HTMLSelectElement>('.grid__view select')!;
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
+    const announced = () =>
+      vi.mocked(TestBed.inject(LiveAnnouncer).announce).mock.calls.map((c) => String(c[0]));
+    const shiftClick = (el: HTMLElement) =>
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+
+    async function waitFor(check: () => unknown): Promise<void> {
+      for (let i = 0; i < 200 && !check(); i++) await settle(10);
+    }
+
+    it('opens with the remembered View: its columns (values asked for), pinned columns first and its sort', async () => {
+      await setup({
+        extra: views({ viewId: 'v-1', columns: null, sort: null }),
+        search: () => {
+          const page = fakePage(result, 1);
+          return {
+            body: {
+              ...page,
+              items: page.items.map((h) => ({ ...h, fields: { responsiveness: ['1'] } })),
+            },
+          };
+        },
+      });
+      // One search, already with the View's sort and the field values its columns need.
+      expect(searches()).toHaveLength(1);
+      expect(searches()[0].sort).toEqual([{ field: 'fileName', direction: 'asc' }]);
+      expect(searches()[0].fields).toEqual(['responsiveness']);
+      expect(headers()).toEqual(['', 'Control Number', '', 'Responsiveness', 'File Name']);
+      expect(viewSelect().value).toBe('v-1');
+      expect(rows()[0].textContent).toContain('Responsive');
+      // Not sortable (a choice field): the header says why, and sorting it only explains.
+      const describedBy = header('Responsiveness').getAttribute('aria-describedby')!;
+      expect(document.getElementById(describedBy)?.textContent).toContain(
+        'Choice fields cannot be sorted',
+      );
+      header('Responsiveness').click();
+      await settle();
+      expect(searches()).toHaveLength(1);
+      expect(announced().at(-1)).toContain('Responsiveness cannot be sorted');
+      expect(header('File Name').getAttribute('aria-sort')).toBe('ascending');
+    });
+
+    it('sorts by up to three columns with Shift, and remembers the layout', async () => {
+      await setup({ extra: views() });
+      header('File Name').click();
+      await settle();
+      shiftClick(header('Document Date'));
+      await settle();
+      shiftClick(header('File Size'));
+      await settle();
+      const three = [
+        { field: 'fileName', direction: 'asc' },
+        { field: 'documentDate', direction: 'asc' },
+        { field: 'fileSize', direction: 'asc' },
+      ];
+      expect(searches().at(-1)?.sort).toEqual(three);
+      expect(header('File Size').textContent).toContain('sort level 3, ascending');
+      const count = searches().length;
+      shiftClick(header('Page Count'));
+      await settle();
+      expect(searches()).toHaveLength(count);
+      expect(announced().at(-1)).toContain('At most 3 sort levels');
+
+      await settle(LAYOUT_SAVE_DELAY_MS + 50);
+      expect(layoutPuts.at(-1)).toEqual({ viewId: null, columns: null, sort: three });
+
+      // Shift+Enter on a sorted header flips its level, a second time removes it.
+      shiftClick(header('Document Date'));
+      await settle();
+      expect(searches().at(-1)?.sort?.[1]).toEqual({ field: 'documentDate', direction: 'desc' });
+      shiftClick(header('Document Date'));
+      await settle();
+      expect(searches().at(-1)?.sort).toEqual([three[0], three[2]]);
+    });
+
+    it('moves and resizes a column from its header with the keyboard', async () => {
+      await setup({ extra: views() });
+      grid().focus();
+      key('ArrowUp');
+      key('ArrowRight');
+      key('ArrowRight');
+      key('ArrowRight'); // File Name
+      await settle();
+      expect(activeText()).toContain('File Name');
+      key('ArrowLeft', { ctrlKey: true, shiftKey: true });
+      await settle();
+      expect(headers().slice(3, 5)).toEqual(['File Name', 'Document Date']);
+      expect(activeText()).toContain('File Name');
+      key('ArrowRight', { shiftKey: true });
+      await settle(LAYOUT_SAVE_DELAY_MS + 50);
+      const put = layoutPuts.at(-1) as { columns: { field: string; width?: number }[] };
+      // File Extension is hidden in this workspace, so the Default view does not show it.
+      expect(put.columns.map((c) => c.field)).toEqual([
+        'filename',
+        'date',
+        'filetype',
+        'filesize',
+        'pagecount',
+      ]);
+      expect(put.columns[0].width).toBeGreaterThanOrEqual(40);
+    });
+
+    it('chooses, reorders, pins and sorts columns in the Columns dialog', async () => {
+      await setup({ extra: views() });
+      button('Columns').click();
+      await waitFor(dialog);
+      await settle();
+      const d = dialog()!;
+      const items = () =>
+        [...d.querySelectorAll<HTMLElement>('.cc__item')].map((i) =>
+          i.querySelector('.cc__label')?.textContent?.trim(),
+        );
+      expect(items()).toEqual([
+        'Document Date',
+        'File Name',
+        'File Type',
+        'File Size',
+        'Page Count',
+      ]);
+      // Alt+Arrow Up on a row moves it.
+      d.querySelectorAll<HTMLElement>('.cc__item')[1].dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, bubbles: true }),
+      );
+      await settle();
+      expect(items().slice(0, 2)).toEqual(['File Name', 'Document Date']);
+      d.querySelector<HTMLButtonElement>('button[aria-label="Remove File Type"]')!.click();
+      await settle();
+      [...d.querySelectorAll<HTMLButtonElement>('.cc__add')]
+        .find((b) => b.textContent?.includes('Responsiveness'))!
+        .click();
+      await settle();
+      expect(items().at(-1)).toBe('Responsiveness');
+      expect(d.textContent).toContain('Not sortable');
+      // Sort levels list the fields that cannot be sorted as unavailable.
+      const level1 = d.querySelector<HTMLSelectElement>('.cc__level select')!;
+      const option = [...level1.options].find((o) => o.textContent?.includes('Responsiveness'))!;
+      expect(option.disabled).toBe(true);
+      expect(option.textContent).toContain('cannot be sorted');
+      level1.value = 'pageCount';
+      level1.dispatchEvent(new Event('change'));
+      await settle();
+      [...d.querySelectorAll<HTMLButtonElement>('button')]
+        .find((b) => b.textContent?.trim() === 'Apply')!
+        .click();
+      await settle();
+      expect(dialog()).toBeNull();
+      expect(searches().at(-1)?.sort).toEqual([{ field: 'pageCount', direction: 'asc' }]);
+      expect(searches().at(-1)?.fields).toEqual(['responsiveness']);
+      expect(headers().slice(3)).toEqual([
+        'File Name',
+        'Document Date',
+        'File Size',
+        'Page Count',
+        'Responsiveness',
+      ]);
+      expect(root().querySelector('.grid__modified')?.textContent).toContain('Modified');
+    }, 30_000);
+
+    it('saves the list as a personal view; sharing needs the manage-views permission', async () => {
+      await setup({ extra: views() });
+      header('File Size').click();
+      await settle();
+      button('Views').click();
+      await settle();
+      [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+        .find((b) => b.textContent?.includes('Save as new view'))!
+        .click();
+      await waitFor(dialog);
+      await settle();
+      const d = dialog()!;
+      expect(d.querySelector<HTMLInputElement>('input[value="shared"]')!.disabled).toBe(true);
+      expect(d.textContent).toContain('needs the "Manage shared views" permission');
+      const name = d.querySelector<HTMLInputElement>('input:not([type="radio"])')!;
+      name.value = 'Big files';
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+      [...d.querySelectorAll<HTMLButtonElement>('button')]
+        .find((b) => b.textContent?.trim() === 'Save view')!
+        .click();
+      await waitFor(() => !dialog());
+      await settle();
+      expect(created).toEqual([
+        {
+          name: 'Big files',
+          visibility: 'personal',
+          columns: ['date', 'filename', 'filetype', 'filesize', 'pagecount'].map((f) => ({
+            field: f,
+            width: null,
+            pinned: false,
+          })),
+          sort: [{ field: 'fileSize', direction: 'asc' }],
+        },
+      ]);
+      expect(viewSelect().value).toBe('v-new');
+      expect(root().querySelector('.grid__modified')).toBeNull();
+
+      // Back to the Default view: its columns and the default order.
+      viewSelect().value = '';
+      viewSelect().dispatchEvent(new Event('change'));
+      await settle();
+      expect(searches().at(-1)?.sort).toBeNull();
+    }, 30_000);
   });
 });

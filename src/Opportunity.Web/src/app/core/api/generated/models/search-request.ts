@@ -5,6 +5,7 @@ import { SearchSortKey } from '../models/search-sort-key';
 export interface SearchRequest {
   countExact?: boolean | null;
   facets?: Array<string> | null;
+  fields?: Array<string> | null;
   highlight?: boolean | null;
   pageSize?: number | string | null;
   query: string | null;

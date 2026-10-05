@@ -75,6 +75,7 @@ public static class SearchServiceCollectionExtensions
         services.TryAddSingleton<IQueryBinder>(sp => new SearchQueryBinder(
             sp.GetRequiredService<ISearchQueryTranslator>(), sp.GetRequiredService<QueryLimits>(), sp.GetRequiredService<ProjectionMappings>(),
             sp.GetRequiredService<ILogger<SearchQueryBinder>>()));
+        services.TryAddSingleton<ISearchSortFields>(sp => new SearchSortFieldCatalog(sp.GetRequiredService<ISearchFieldCatalogSource>()));
         services.TryAddScoped<ISearchService, SearchService>();
         return services;
     }
