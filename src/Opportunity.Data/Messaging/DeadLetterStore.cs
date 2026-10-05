@@ -12,7 +12,7 @@ namespace Opportunity.Data.Messaging;
 
 /// <summary>
 /// PostgreSQL implementation of <see cref="IDeadLetterStore"/> over <c>dead_letter</c> (tenant, forced RLS) and
-/// <c>dead_letter_installation</c> (installation-level), V0031. A record whose workspace does not exist (or no longer
+/// <c>dead_letter_installation</c> (installation-level), V0033. A record whose workspace does not exist (or no longer
 /// accepts rows) falls back to the installation table with the claimed id, so a forged or stale envelope can neither
 /// fail the recorder nor reach a workspace that is not there.
 /// </summary>
