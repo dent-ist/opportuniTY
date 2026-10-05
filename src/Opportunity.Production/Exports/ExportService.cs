@@ -52,7 +52,7 @@ public sealed class ExportService(
             return new ExportCreateOutcome(ExportCreateStatus.NotFound);
         }
 
-        if (snapshot.Purpose != SnapshotPurpose.Export || snapshot.Status != SnapshotStatus.Ready)
+        if (!SnapshotStrategyRules.AcceptsSnapshot(SetOperationKind.Export, snapshot.Purpose) || snapshot.Status != SnapshotStatus.Ready)
         {
             return Invalid("snapshotId", "Export a Ready frozen set created for export.");
         }

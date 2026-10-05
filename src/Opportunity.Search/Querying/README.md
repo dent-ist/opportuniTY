@@ -18,6 +18,24 @@
    bound to (user, session, workspace). Mismatches answer 404 and are audited (`AuthZ.Denied`, `SearchHandleMismatch`).
 7. **Audit** `Search.Executed` with the full text in restricted details (Q-16); later pages `Search.ResultsPageServed`.
 
+## Interactive reader lifecycle (E10-T03, ADR-002 §8, Q-33)
+
+Interactive grid and review cursors always page a live point-in-time reader (`SnapshotStrategyRules.Decide` with
+`SetOperationKind.InteractiveCursor`; never materialized in the MVP). Settings under `OpenSearch:Search`:
+
+- `PointInTimeKeepAlive` (5 min): renewed by every page and by the family-parent aggregation.
+- `PointInTimeMaxAge` (30 min): a page asked for after that closes the reader and opens a new one.
+- `MaxOpenPointInTimesPerUser` (3, per user and workspace): a new search detaches and closes the user's oldest readers
+  beyond the cap (`ISearchSessionStore.DetachReadersAsync`); the detached search keeps its handle and cursors.
+
+Whenever a page cannot use its reader — expired or lost (OpenSearch `search_context_missing_exception`), aged out, or
+detached — the service opens a new reader with the same query and sort, resumes `search_after` from the cursor's
+stored sort values (or the page offset), stores the new reader with its open time and the watermark read before it
+(`search_session.pit_opened_at` / `served_generation`, V0030), and answers with `resultsRefreshed: true` and the new
+`freshness`. `Search.ResultsPageServed` records `readerReestablished` (`expired`, `maxAge` or `detached`). The grid
+and Review mode show "Results refreshed"; a document that left the set gets "no longer in the results — continue from
+next".
+
 ## Snapshot selection (E10-T02)
 
 `SelectAsync` enumerates every matching document ID for snapshot materialization (ADR-002 §5.1): optional index

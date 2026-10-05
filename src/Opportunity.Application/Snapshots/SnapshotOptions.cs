@@ -1,5 +1,7 @@
 using System.Globalization;
 
+using Opportunity.Core.Snapshots;
+
 namespace Opportunity.Application.Snapshots;
 
 /// <summary>Snapshot settings (section <c>Snapshots</c>, ADR-002 §2 and §9 defaults).</summary>
@@ -31,6 +33,9 @@ public sealed class SnapshotOptions
     /// <summary>ADR-002 §9: a bulk-coding snapshot expires this long after its last job finished.</summary>
     public TimeSpan JobRetention { get; set; } = TimeSpan.FromDays(90);
 
+    /// <summary>ADR-002 §2 numeric PIT policy (section <c>Snapshots:Pit</c>) the strategy rule decides with.</summary>
+    public PitPolicy Pit { get; set; } = new();
+
     /// <summary>Run the background materializer and retention loop in this process.</summary>
     public bool BackgroundEnabled { get; set; } = true;
 
@@ -56,6 +61,8 @@ public sealed class SnapshotOptions
         Require(JobRetention >= TimeSpan.Zero, nameof(JobRetention));
         Require(PollInterval > TimeSpan.Zero && RetentionInterval > TimeSpan.Zero, nameof(PollInterval));
         Require(!string.IsNullOrWhiteSpace(InstanceId) && InstanceId.Length <= 200, nameof(InstanceId));
+        Require(Pit is not null, nameof(Pit));
+        Pit!.Validate(SectionName + ":" + nameof(Pit));
     }
 
     private static void Require(bool condition, string setting)

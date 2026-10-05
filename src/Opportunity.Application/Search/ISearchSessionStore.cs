@@ -17,15 +17,29 @@ public interface ISearchSessionStore
     /// <summary>The cursor of <paramref name="searchId"/>, or null when unknown or expired.</summary>
     Task<SearchCursorRecord?> GetCursorAsync(Guid workspaceId, Guid searchId, Guid cursorId, CancellationToken cancellationToken = default);
 
-    /// <summary>Extends the search, records a reopened point-in-time reader, and adds the cursors of a served page.</summary>
+    /// <summary>
+    /// Extends the search, records a re-established point-in-time reader (<paramref name="reader"/>, null when the page
+    /// ran on the existing one), and adds the cursors of a served page.
+    /// </summary>
     Task TouchAsync(
         Guid workspaceId,
         Guid searchId,
-        string? pointInTimeId,
+        SearchReaderUpdate? reader,
         DateTimeOffset expiresAt,
         IReadOnlyList<SearchCursorRecord> cursors,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// ADR-002 §8 per-user cap: detaches the readers of <paramref name="userId"/>'s live searches in the workspace
+    /// beyond the <paramref name="keep"/> most recently opened, and returns their point-in-time IDs for the caller to
+    /// close. A detached search keeps its handle and cursors; its next page re-establishes a reader.
+    /// </summary>
+    Task<IReadOnlyList<string>> DetachReadersAsync(Guid workspaceId, Guid userId, int keep, CancellationToken cancellationToken = default);
 }
+
+/// <summary>A point-in-time reader (re-)established for a search.</summary>
+/// <param name="ServedGeneration">The applied watermark read before the reader opened (Q-10), when known.</param>
+public sealed record SearchReaderUpdate(string PointInTimeId, DateTimeOffset OpenedAt, long? ServedGeneration);
 
 /// <param name="QueryText">The submitted query-language text, re-planned for every page.</param>
 /// <param name="SortJson">The resolved sort keys as JSON (owned by the search module).</param>
@@ -52,6 +66,9 @@ public sealed record SearchSessionRecord(
     /// workspace's generation counter still equals it. Null when unknown (older rows).
     /// </summary>
     public long? ServedGeneration { get; init; }
+
+    /// <summary>When <see cref="PointInTimeId"/> was opened (ADR-002 §8 maximum age); null on older rows (use <see cref="CreatedAt"/>).</summary>
+    public DateTimeOffset? PointInTimeOpenedAt { get; init; }
 }
 
 public enum SearchCursorDirection

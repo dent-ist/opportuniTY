@@ -86,6 +86,12 @@ public sealed class DocumentSetSnapshotService(
             return invalid;
         }
 
+        // §22 / ADR-002: the strategy rule decides; this service serves only operations it always materializes.
+        if (!SnapshotStrategyRules.AlwaysMaterialized(SnapshotStrategyRules.OperationFor(request.Purpose)))
+        {
+            return SnapshotCreateOutcome.Invalid("purpose", "This purpose runs under a point-in-time reader, not a snapshot.");
+        }
+
         var principal = caller.Principal;
         var ws = caller.WorkspaceId;
         var decision = await authorization.AuthorizeAsync(principal, ws, SnapshotRules.RequiredPermission(request.Purpose), cancellationToken)
@@ -499,6 +505,8 @@ public sealed class DocumentSetSnapshotService(
             ["projectionGeneration"] = frozen.ProjectionGeneration is { } p ? Invariant(p) : null,
             ["selectedWhileIndexing"] = frozen.SelectedWhileIndexing is { } w ? (w ? "true" : "false") : null,
             ["strategy"] = frozen.Strategy.ToString(),
+            ["strategyRule"] = SnapshotStrategyRules.Describe(SnapshotStrategyRules.Decide(
+                SnapshotStrategyRules.OperationFor(frozen.Purpose), new SetSizeEstimate(frozen.CandidateCount ?? 0), options.Pit)),
         };
         Dictionary<string, string?>? restricted = null;
         if (frozen.QueryText is { } text)
