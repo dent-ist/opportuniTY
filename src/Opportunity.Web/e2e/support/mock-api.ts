@@ -196,6 +196,7 @@ export const ALL_PERMISSIONS = [
   'Document.ViewQuarantined',
   'Search.Execute',
   'SavedSearch.Share',
+  'SearchTermReport.Run',
   'Coding.Write',
   'Coding.WritePrivilege',
   'Coding.Bulk',

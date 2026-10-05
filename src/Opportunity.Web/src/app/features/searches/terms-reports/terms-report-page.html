@@ -21,7 +21,7 @@
           Export XLSX
         </a>
       }
-      @if (finished() && i.snapshotId) {
+      @if (finished() && i.snapshotId && mayDelete()) {
         <button type="button" oppButton="secondary" [busy]="rerunning()" (click)="rerun()">
           <opp-icon name="refresh" />
           Re-run on the same set

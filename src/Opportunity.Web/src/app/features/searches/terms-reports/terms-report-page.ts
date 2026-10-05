@@ -163,6 +163,7 @@ export class TermsReportPage {
     const i = this.item();
     return i ? visibilityNotice(i.createdBy, this.caller().userId) : '';
   });
+  /** Rerun and delete: its creator or a workspace admin (#72). */
   protected readonly mayDelete = computed(() => {
     const i = this.item();
     return !!i && canDelete(i, this.caller());

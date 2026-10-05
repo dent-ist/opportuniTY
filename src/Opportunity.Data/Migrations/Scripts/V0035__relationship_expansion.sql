@@ -1,4 +1,4 @@
--- V0034: family, duplicate and email-thread expansion (E09-T03, ADR-002 §5.2.1, ADR-009 R20).
+-- V0035: family, duplicate and email-thread expansion (E09-T03, ADR-002 §5.2.1, ADR-009 R20).
 -- The expansion asked for is stored as bit flags (1 family, 2 duplicates, 4 thread; Opportunity.Core.Documents.
 -- RelationshipExpansion): on a search session so every page re-plans the same expanded query, and on a snapshot header
 -- so a background (re-)materialization expands exactly as asked before freezing. Saved searches gain the duplicates

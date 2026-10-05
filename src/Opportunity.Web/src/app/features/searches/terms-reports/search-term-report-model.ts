@@ -1,6 +1,5 @@
 import { ApiError, describeError } from '../../../core/api/problem-details';
 import type { JobStatus as PillStatus } from '../../../ui';
-import { PERMISSION_ADMIN } from '../saved-search-model';
 import type {
   ReportScope,
   ReportScopeKind,
@@ -292,12 +291,12 @@ export interface Caller {
   readonly can: (permission: string) => boolean;
 }
 
-/** The person who ran it, or a Workspace Admin, may delete a report (contract); the API decides every call. */
+/** The person who ran it, or a workspace admin (Workspace.ManageUsers, #72), may rerun or delete a report; the API decides every call. */
 export function canDelete(
   report: Pick<SearchTermReportSummary, 'createdBy'>,
   caller: Caller,
 ): boolean {
-  return report.createdBy.userId === caller.userId || caller.can(PERMISSION_ADMIN);
+  return report.createdBy.userId === caller.userId || caller.can('Workspace.ManageUsers');
 }
 
 /** Raw search generations are for admins and support only (Q-73). */

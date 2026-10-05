@@ -9,6 +9,7 @@
 export const PERMISSIONS = {
   documentView: 'Document.View',
   searchExecute: 'Search.Execute',
+  searchTermReportRun: 'SearchTermReport.Run',
   codingWrite: 'Coding.Write',
   downloadNative: 'Document.DownloadNative',
   productionCreate: 'Production.Create',
@@ -47,7 +48,7 @@ export const WORKSPACE_SECTIONS: readonly WorkspaceSection[] = [
 /** Tabs of the Searches section, in order; paths are under `/w/:workspaceId/searches/`. */
 export const SEARCH_AREAS: readonly WorkspaceSection[] = [
   { path: 'saved', label: 'Saved Searches', permission: PERMISSIONS.searchExecute },
-  { path: 'terms-reports', label: 'Search Terms Reports', permission: PERMISSIONS.searchExecute },
+  { path: 'terms-reports', label: 'Search Terms Reports', permission: PERMISSIONS.searchTermReportRun },
 ];
 
 /** Entries of the Admin ▾ menu, in guide order; paths are under `/w/:workspaceId/admin/`. */

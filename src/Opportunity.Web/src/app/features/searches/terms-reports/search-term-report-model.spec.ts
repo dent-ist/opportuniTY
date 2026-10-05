@@ -154,7 +154,7 @@ describe('Search Terms Report rules (#180)', () => {
     const none = () => false;
     expect(canDelete(report, { userId: 'u-1', can: none })).toBe(true);
     expect(canDelete(report, { userId: 'u-2', can: none })).toBe(false);
-    expect(canDelete(report, { userId: 'u-2', can: (p) => p === 'Workspace.ManageSecurity' })).toBe(
+    expect(canDelete(report, { userId: 'u-2', can: (p) => p === 'Workspace.ManageUsers' })).toBe(
       true,
     );
     expect(canSeeGenerations({ can: none })).toBe(false);

@@ -58,7 +58,8 @@ export class TermsReportsPage {
   private readonly me = inject(SessionService).principal;
 
   protected readonly workspaceId = this.context.workspaceId;
-  protected readonly canCreate = this.context.can(PERMISSIONS.searchExecute);
+  protected readonly canCreate =
+    this.context.can(PERMISSIONS.searchTermReportRun) && this.context.can(PERMISSIONS.searchExecute);
   protected readonly items = signal<readonly SearchTermReportSummary[]>([]);
   protected readonly nextCursor = signal<string | null>(null);
   protected readonly loading = signal(true);
