@@ -105,12 +105,22 @@ public sealed class ApiConventionsTests(ApiFactory factory) : IClassFixture<ApiF
     [Fact]
     public async Task Invalid_configuration_fails_at_start_up()
     {
-        // Own factory: a host that fails to start must not be registered with (and later re-disposed by) the shared fixture.
-        await using var isolated = new ApiFactory();
-        await using var misconfigured = isolated.WithWebHostBuilder(b => b.UseSetting("Idempotency:Retention", "01:00:00"));
+        // WebApplicationFactory's deferred host can observe the failed host after it was disposed and throw
+        // ObjectDisposedException instead of the start-up error (a race in the test host, seen under load). Retry only
+        // that outcome; the assertion is unchanged.
+        Exception? failure = null;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            // Own factory: a host that fails to start must not be registered with (and later re-disposed by) the shared fixture.
+            await using var isolated = new ApiFactory();
+            await using var misconfigured = isolated.WithWebHostBuilder(b => b.UseSetting("Idempotency:Retention", "01:00:00"));
+            failure = Record.Exception(() => misconfigured.CreateClient());
+            if (failure is not ObjectDisposedException)
+            {
+                break;
+            }
+        }
 
-        var start = () => misconfigured.CreateClient();
-
-        start.Should().Throw<OptionsValidationException>().Which.Message.Should().Contain("Retention");
+        failure.Should().BeOfType<OptionsValidationException>().Which.Message.Should().Contain("Retention");
     }
 }

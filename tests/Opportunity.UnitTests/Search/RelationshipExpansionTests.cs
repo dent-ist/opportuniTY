@@ -131,11 +131,11 @@ public sealed class RelationshipExpansionTests
     {
         var key = SortKey.Resolve("FAMILYDATE", SearchSortDirection.Asc)!;
         Paths(SearchDsl.Sort([key], reverse: false)).Should().Equal(
-            "familyDate:asc", "familyId:asc", "familySequence:asc", "documentId:asc");
+            "familyDate:asc", "familyId:asc", "familySequence:asc", "controlNumberSort:asc", "documentId:asc");
         Paths(SearchDsl.Sort([key], reverse: true)).Should().Equal(
-            "familyDate:desc", "familyId:desc", "familySequence:desc", "documentId:desc");
+            "familyDate:desc", "familyId:desc", "familySequence:desc", "controlNumberSort:desc", "documentId:desc");
         Paths(SearchDsl.Sort([SortKey.Resolve("familyDate", SearchSortDirection.Desc)!], reverse: false)).Should().Equal(
-            "familyDate:desc", "familyId:desc", "familySequence:asc", "documentId:asc");
+            "familyDate:desc", "familyId:desc", "familySequence:asc", "controlNumberSort:asc", "documentId:asc");
         SortKey.FromJson(SortKey.ToJson([key])).Should().Equal(key);
 
         static IEnumerable<string> Paths(JsonArray sort) => sort.Select(s =>
