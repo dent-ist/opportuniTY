@@ -33,9 +33,12 @@ export function freshnessLabel(
   timeZone: string,
 ): string {
   const time = formatTime(freshness.asOf as string, locale, timeZone);
-  return toServedFreshness(freshness).state === 'current'
-    ? `Results current as of ${time}`
-    : `Results as of ${time}`;
+  // `current` describes this result set; `state` the workspace index at serve time (#70), which can differ.
+  const current =
+    typeof freshness.current === 'boolean'
+      ? freshness.current
+      : toServedFreshness(freshness).state === 'current';
+  return current ? `Results current as of ${time}` : `Results as of ${time}`;
 }
 
 /** "10:42" in the workspace display time zone ("—" for a missing or invalid time). */
