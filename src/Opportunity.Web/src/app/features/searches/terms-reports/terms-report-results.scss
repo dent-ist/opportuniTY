@@ -1,0 +1,112 @@
+// One Search Terms Report: facts, progress, sortable counts, term errors and totals.
+
+// ── Facts (scope, frozen set, run by…) ─────────────────────────────────────────────────────────────────────
+
+.str__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--opp-space-3) var(--opp-space-5);
+  margin: 0;
+}
+
+.str__facts dt {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+  font-weight: var(--opp-font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.str__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+// ── Progress ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+.str__progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--opp-space-3);
+}
+
+.str__table tfoot th,
+.str__table tfoot td {
+  background: var(--opp-color-surface-sunken);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.str__table tfoot tr:first-child > * {
+  border-block-start: calc(var(--opp-border-width) * 2) solid var(--opp-color-border-strong);
+}
+
+.str__expression {
+  display: block;
+  color: var(--opp-color-text-muted);
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-xs);
+  font-weight: var(--opp-font-weight-regular);
+  overflow-wrap: anywhere;
+}
+
+.str__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  min-height: var(--opp-target-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.str__num .str__sort {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.str__sort:hover {
+  text-decoration: underline;
+}
+
+.str__sort-icon {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.str__sort-icon--idle {
+  visibility: hidden;
+}
+
+.str__row--error {
+  background: var(--opp-color-warning-bg);
+}
+
+.str__term-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  color: var(--opp-color-warning-text);
+  font-size: var(--opp-font-size-sm);
+}
+
+.str__term-error-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.str__mark {
+  border-block-end: calc(var(--opp-border-width) * 2) solid var(--opp-color-danger);
+  background: var(--opp-color-danger-bg);
+  color: var(--opp-color-danger-text);
+}
+
+.str__mark--end::after {
+  content: '\2002';
+}

@@ -130,6 +130,8 @@ export const JOB_TYPES: readonly { value: string; label: string }[] = [
   { value: 'reindex', label: 'Reindex' },
   { value: 'relationshipFixup', label: 'Family and duplicate updates' },
   { value: 'render', label: 'Rendering' },
+  // Wave-11 contract (#72): the job type name of a Search Terms Report run is assumed until the API lands.
+  { value: 'searchTermReport', label: 'Search Terms Report' },
 ];
 
 export function typeLabel(type: string): string {

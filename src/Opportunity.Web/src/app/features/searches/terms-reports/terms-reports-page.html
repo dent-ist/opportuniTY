@@ -1,0 +1,108 @@
+<div class="str__header">
+  <div class="str__heading-group">
+    <h1 class="str__title">Search Terms Reports</h1>
+    <p class="str__muted">
+      Counts how many documents each search term hits, with family members and unique hits. Each
+      report counts a frozen set, so it can be re-run with the same numbers.
+    </p>
+  </div>
+  @if (canCreate) {
+    <div class="str__actions">
+      <a oppButton="primary" routerLink="new">
+        <opp-icon name="plus" />
+        New report
+      </a>
+    </div>
+  }
+</div>
+
+@if (loading() && items().length === 0) {
+  <opp-loading-state label="Loading Search Terms Reports…" />
+} @else if (error() && items().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else if (rows().length === 0) {
+  <opp-empty-state
+    title="No Search Terms Reports yet"
+    message="Create one with New report: paste your terms or upload a CSV file, and choose a saved search, a frozen set or the whole workspace."
+  />
+} @else {
+  <div class="str__table-wrap" tabindex="0" role="region" aria-label="Search Terms Reports">
+    <table class="str__table" [attr.aria-busy]="loading() || null">
+      <caption class="opp-visually-hidden">
+        Search Terms Reports, newest first
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Scope</th>
+          <th scope="col" class="str__num">Terms</th>
+          <th scope="col">Status</th>
+          <th scope="col">Run by</th>
+          <th scope="col">Started</th>
+          <th scope="col">Completed</th>
+          <th scope="col"><span class="opp-visually-hidden">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.r.reportId) {
+          <tr>
+            <th scope="row" class="str__name">
+              <a [routerLink]="row.r.reportId">{{ row.r.name }}</a>
+            </th>
+            <td>{{ row.scope }}</td>
+            <td class="str__num">{{ row.terms }}</td>
+            <td><opp-status-pill [status]="row.pill" /></td>
+            <td>{{ row.by }}</td>
+            <td class="str__nowrap">{{ row.created }}</td>
+            <td class="str__nowrap">{{ row.completed }}</td>
+            <td class="str__actions-cell">
+              <button
+                type="button"
+                oppIconButton
+                [label]="'Actions for ' + row.r.name"
+                [cdkMenuTriggerFor]="menu"
+              >
+                <opp-icon name="more" />
+              </button>
+              <ng-template #menu>
+                <div cdkMenu class="opp-menu" [attr.aria-label]="'Actions for ' + row.r.name">
+                  <button
+                    type="button"
+                    cdkMenuItem
+                    class="opp-menu__item"
+                    (cdkMenuItemTriggered)="open(row.r)"
+                  >
+                    <opp-icon name="report" /> Open report
+                  </button>
+                  @if (row.canDelete) {
+                    <button
+                      type="button"
+                      cdkMenuItem
+                      class="opp-menu__item"
+                      (cdkMenuItemTriggered)="remove(row.r)"
+                    >
+                      <opp-icon name="trash" /> Delete…
+                    </button>
+                  }
+                </div>
+              </ng-template>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (error() && items().length) {
+    <opp-error-state [error]="error()!" (retry)="loadMore()" />
+  }
+  @if (nextCursor()) {
+    <div>
+      <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+        Load more reports
+      </button>
+    </div>
+  }
+  <p class="str__muted">
+    Counts include only the documents the person who ran a report could see at the time.
+  </p>
+}

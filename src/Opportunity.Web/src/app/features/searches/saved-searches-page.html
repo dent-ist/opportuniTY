@@ -276,11 +276,9 @@
                           type="button"
                           cdkMenuItem
                           class="opp-menu__item"
-                          aria-disabled="true"
-                          (cdkMenuItemTriggered)="notAvailable('Search Terms Reports')"
+                          (cdkMenuItemTriggered)="newTermsReport(r.s)"
                         >
-                          Add to new Search Terms Report…
-                          <span class="opp-menu__detail">Not available yet</span>
+                          <opp-icon name="report" /> Add to new Search Terms Report…
                         </button>
                       </div>
                     </ng-template>
