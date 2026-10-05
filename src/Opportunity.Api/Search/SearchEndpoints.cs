@@ -17,6 +17,7 @@ namespace Opportunity.Api.Search;
 /// <c>POST /api/v1/workspaces/{workspaceId}/searches</c> runs a search and returns its first page;
 /// <c>GET .../searches/{searchId}/pages</c> pages through it by opaque cursor, page number (top of the result window)
 /// or <c>last=true</c> (Q-49). Handles are bound to the caller, their session and the workspace; anything else is 404.
+/// <c>GET .../search-freshness</c> reports how current the index is (E07-T08, Q-10).
 /// </summary>
 public sealed class SearchEndpoints : IApiEndpointModule
 {
@@ -49,6 +50,31 @@ public sealed class SearchEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .RequirePermission(Permission.SearchExecute);
+
+        routes.Workspace.MapGet("/search-freshness", GetFreshnessAsync)
+            .WithName("GetSearchFreshness")
+            .WithTags("Search")
+            .WithSummary("How current the workspace's search index is: current, updating or delayed, with the generation watermark.")
+            .WithDescription(
+                "indexedThroughGeneration is refresh-aware: every change committed with a generation at or below it is searchable. " +
+                "pendingChanges counts committed changes not yet searchable; lagSeconds is the age of the oldest of them. Cheap to poll.")
+            .Produces<SearchFreshnessStatus>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .RequirePermission(Permission.SearchExecute);
+    }
+
+    internal static async Task<IResult> GetFreshnessAsync(
+        string workspaceId, HttpContext context, ISearchFreshnessReader freshness, CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (context.GetWorkspaceAccess() is not { } access)
+        {
+            return Problems.NotFound();
+        }
+
+        var reading = await freshness.ReadAsync(access.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(SearchFreshnessMapping.ToStatus(reading, reading.ReadAt));
     }
 
     internal static async Task<IResult> SearchAsync(

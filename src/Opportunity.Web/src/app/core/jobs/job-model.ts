@@ -25,6 +25,10 @@ export interface Progress {
 
 export interface SearchableProgress extends Progress {
   readonly state: SearchableState;
+  /** The job's last committed generation (wave-10 contract; null on an older API). */
+  readonly jobGeneration?: string | null;
+  /** Refresh-aware index watermark when read; `current` once it reaches `jobGeneration`. */
+  readonly indexedThroughGeneration?: string | null;
 }
 
 export interface JobUser {
@@ -77,6 +81,18 @@ export interface JobFailure {
   readonly attempts: number;
   readonly error: string;
   readonly failedAt: string;
+}
+
+const FAILURE_KINDS: Record<string, string> = {
+  chunk: 'Chunk',
+  indexTask: 'Index task',
+  outbox: 'Search update',
+  deadLetter: 'Dead-lettered message',
+};
+
+/** A failure's kind in words; a dead-lettered message is the recorded broker copy (diagnostics only). */
+export function failureKindLabel(kind: string): string {
+  return FAILURE_KINDS[kind] ?? kind;
 }
 
 /** One event of `GET …/job-events` (server-sent events). */
@@ -381,6 +397,8 @@ function toSearchable(raw: Raw, legacyIndexed: Raw | null): SearchableProgress {
     done: num(raw['done']),
     total: num(raw['total']),
     state: (SEARCHABLE_STATES.has(state) ? state : 'pending') as SearchableState,
+    jobGeneration: strOrNull(raw['jobGeneration']),
+    indexedThroughGeneration: strOrNull(raw['indexedThroughGeneration']),
   };
 }
 

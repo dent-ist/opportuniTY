@@ -38,5 +38,6 @@
     <Project Path="tools/Opportunity.Benchmarks/Opportunity.Benchmarks.csproj" />
     <Project Path="tools/Opportunity.DataGenerator/Opportunity.DataGenerator.csproj" />
     <Project Path="tools/Opportunity.DataGenerator.Corpus/Opportunity.DataGenerator.Corpus.csproj" />
+    <Project Path="tools/Opportunity.Correctness/Opportunity.Correctness.csproj" />
   </Folder>
 </Solution>

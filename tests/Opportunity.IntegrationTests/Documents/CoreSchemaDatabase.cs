@@ -49,6 +49,9 @@ internal sealed class CoreSchemaDatabase : IAsyncDisposable
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>Over an existing migrated database (owned by the caller), e.g. one reached through fault proxies.</summary>
+    public static CoreSchemaDatabase Over(string connectionString, string appConnectionString) => new(connectionString, appConnectionString);
+
     public static async Task<CoreSchemaDatabase> CreateAsync(MigrationPostgresFixture postgres)
     {
         var connectionString = await postgres.CreateDatabaseAsync();

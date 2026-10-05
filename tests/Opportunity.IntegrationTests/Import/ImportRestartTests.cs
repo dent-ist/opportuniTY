@@ -6,7 +6,7 @@ using Opportunity.Core.Jobs;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.Jobs;
 #if OPPORTUNITY_FAILPOINTS
-using Opportunity.Jobs.Faults;
+using Opportunity.Application.Faults;
 #endif
 
 namespace Opportunity.IntegrationTests.Import;
@@ -116,7 +116,7 @@ public sealed class ImportRestartTests(MigrationPostgresFixture postgres)
     {
         public ValueTask HitAsync(string failpoint, FailpointContext context, CancellationToken cancellationToken)
         {
-            var sequence = ((JobChunkMessage)context.Message.Payload).Sequence;
+            var sequence = ((JobChunkMessage)context.Message!.Payload).Sequence;
             if (plan.TryGetValue(sequence, out var at) && at == failpoint)
             {
                 plan.Remove(sequence);

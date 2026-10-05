@@ -22,6 +22,7 @@ import {
   savedProgress,
   searchableProgress,
 } from './import-model';
+import { elapsedText, issueRows, reportGroups } from './import-report';
 
 /** How often a running import is re-read. */
 export const IMPORT_POLL_MS = new InjectionToken<number>('IMPORT_POLL_MS', { factory: () => 1500 });
@@ -31,7 +32,8 @@ const ERROR_ROWS = 50;
 
 /**
  * One import (guide §5.1 steps 7–8): the job's progress in two phases, Saved (stored in the database) and Searchable
- * (the job's index state), then the report: rows read / imported / overlaid / unchanged / errored, the import report
+ * (the job's index state), then the report: live counters while it runs and, once it has finished, the full report
+ * summary in plain language (Rows · Natives and text · Images · Families · Fields, issues by type; Q-71), the import report
  * CSV, the error file in the source's delimiters and encoding (re-importable once fixed), the first row errors, and
  * links to the Jobs section and to re-importing the corrected error file with the same profile and mode.
  */
@@ -39,7 +41,7 @@ const ERROR_ROWS = 50;
   selector: 'opp-import-detail',
   imports: [Badge, Button, ErrorState, Icon, LoadingState, Progress, RouterLink, StatusPill],
   templateUrl: './import-detail.html',
-  styleUrl: './imports.scss',
+  styleUrls: ['./imports.scss', './import-report.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [{ provide: ImportApi, useClass: HttpImportApi }],
 })
@@ -57,6 +59,7 @@ export class ImportDetail {
   protected readonly error = signal<ApiError | null>(null);
   protected readonly rowErrors = signal<readonly ImportRowIssueResource[]>([]);
   protected readonly modeLabels = MODE_LABELS;
+  protected readonly Number = Number;
 
   protected readonly n = computed(() => new Intl.NumberFormat(this.prefs.locale()));
   protected readonly status = computed(() => {
@@ -75,6 +78,20 @@ export class ImportDetail {
     const i = this.item();
     return i ? searchableProgress(i.job) : null;
   });
+  /** The full report summary, once the import has finished (live counters before that). */
+  protected readonly summary = computed(() => {
+    const i = this.item();
+    return i && isJobFinished(i.job) && i.summary ? i.summary : null;
+  });
+  protected readonly groups = computed(() => {
+    const s = this.summary();
+    return s ? reportGroups(s) : [];
+  });
+  protected readonly issues = computed(() => {
+    const s = this.summary();
+    return s ? issueRows(s) : [];
+  });
+  protected readonly elapsed = computed(() => elapsedText(this.summary()?.elapsedSeconds));
   protected readonly errored = computed(() => Number(this.item()?.report.rowsErrored ?? 0));
 
   constructor() {

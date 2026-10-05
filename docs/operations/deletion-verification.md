@@ -71,8 +71,10 @@ Expected: no `Versions` and no `DeleteMarkers` outside the retained areas (e.g. 
 
 ## 4. Messaging (best effort)
 
-No queued or dead-lettered message should still name the workspace: in the RabbitMQ management UI, *Get messages* on
-non-empty `*.dlq` / `*.parking` queues (requeue on) and look for the workspace id in the `workspaceId` header. Workers
+No queued or dead-lettered message should still name the workspace. Dead-lettered and parked messages are recorded in
+PostgreSQL: `SELECT count(*) FROM opportunity.dead_letter WHERE workspace_id = '<workspace id>'` (the rows go with the
+workspace's other tenant rows) and `… FROM opportunity.dead_letter_installation WHERE claimed_workspace_id = '<workspace
+id>'` (messages recorded after the workspace was gone); the broker's own `*.dlq` copies expire after 14 days. Workers
 fence on `Workspace.Status` before every side effect (ADR-010 §2 F1–F3, ADR-014 §4), so such a message does no work;
 report it on the certificate.
 

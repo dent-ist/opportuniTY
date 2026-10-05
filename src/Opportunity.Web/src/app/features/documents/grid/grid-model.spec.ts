@@ -1,11 +1,19 @@
-import type { FieldResource } from '../../../core/api/generated/models';
+import type { FieldResource, SearchFreshness } from '../../../core/api/generated/models';
 import { defaultColumns, familyMarker } from './grid-columns';
 import { CellFormatter, countLabel, freshnessLabel } from './grid-format';
 import { fakePage, hit } from './grid-fixtures.testing';
 import { ResultWindow, toLoadedPage } from './result-window';
 
-const CURRENT = { asOf: '2026-10-04T10:42:00Z', current: true, servedGeneration: 7 };
-const UNKNOWN = { ...CURRENT, current: null };
+const CURRENT: SearchFreshness = {
+  asOf: '2026-10-04T10:42:00Z',
+  current: true,
+  servedGeneration: 7,
+  state: 'current',
+  indexedThroughGeneration: 7,
+  pendingChanges: 0,
+  lagSeconds: 0,
+};
+const UNKNOWN: SearchFreshness = { ...CURRENT, current: null };
 
 describe('Document list counts (Q-10, Q-32)', () => {
   it('shows exact, approximate and capped counts', () => {
@@ -18,10 +26,13 @@ describe('Document list counts (Q-10, Q-32)', () => {
   });
 
   it('states freshness in plain language in the workspace time zone', () => {
-    expect(freshnessLabel(CURRENT, 'en-GB', 'Europe/Berlin')).toBe('Current as of 12:42');
+    expect(freshnessLabel(CURRENT, 'en-GB', 'Europe/Berlin')).toBe('Results current as of 12:42');
     expect(freshnessLabel({ ...CURRENT, current: false }, 'en-GB', 'UTC')).toBe(
-      'Updating — counts may not include recent changes (as of 10:42)',
+      'Results as of 10:42',
     );
+    // The wave-10 state wins over the M1 flag.
+    const delayed = { ...CURRENT, current: false, state: 'delayed' } as typeof CURRENT;
+    expect(freshnessLabel(delayed, 'en-GB', 'UTC')).toBe('Results as of 10:42');
   });
 
   it('formats cells with the zone shown', () => {

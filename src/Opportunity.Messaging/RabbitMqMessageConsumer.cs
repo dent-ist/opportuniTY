@@ -3,6 +3,9 @@ using System.Globalization;
 
 using Microsoft.Extensions.Logging;
 
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Messaging;
 using Opportunity.Application.Telemetry;
 using Opportunity.Contracts.Messaging;
@@ -115,6 +118,16 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
         {
             await subscription.Handler(message, cancellationToken).ConfigureAwait(false);
         }
+#if OPPORTUNITY_FAILPOINTS
+        catch (SimulatedCrashException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Test builds (E18-T01): the worker process "died" at a failpoint while its host was being killed. Like a real
+            // kill, the delivery stays unsettled and the broker redelivers it once the channel closes.
+            activity?.SetStatus(ActivityStatusCode.Error, "simulated crash");
+            LogLeftForRedelivery(_logger, queue.Name, envelope.MessageType);
+            return;
+        }
+#endif
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // Shutdown: leave the delivery unsettled; closing the channel returns it (see Subscription.DisposeAsync).

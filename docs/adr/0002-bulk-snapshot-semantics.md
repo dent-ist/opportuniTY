@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **Accepted** for §1–§5 and §7–§9 (rule, numeric policy, decision tables, materialization procedure, generation semantics, interactive cursors, reproducibility scope). **Proposed — pending spike** for §6 (membership representation): interim choice *PG member pages*, finalized by the 1M-member benchmark in `E10-T03`. |
+| **Status** | **Accepted** for §1–§5 and §7–§9 (rule, numeric policy, decision tables, materialization procedure, generation semantics, interactive cursors, reproducibility scope); implemented by `E10-T03` (#91), see §10. **Proposed — interim benchmark recorded, pending reference hardware** for §6 (membership representation): interim choice *PG member pages* confirmed at CI scale (§6.1); the decision is finalized by the run on reference hardware (Q-70). |
 | **Date** | 2026-10-02 |
 | **Owner (role)** | Search (OpenSearch) |
 | **Deciders** | Lead architect; contributing: Backend, UI/UX; product owner (Q-08, Q-30, Q-33) |
@@ -86,7 +86,8 @@ fails with "selection changed too fast — run as a saved report".
 | 15 | T | T | T | F | Materialized | L, R, A |
 | 16 | T | T | T | T | Materialized | L, R, A, X |
 
-`E10-T03` implements this as a pure function `Choose(L, R, A, X)` with a table-driven test over all 16 rows.
+`E10-T03` implements this as a pure function `Choose(L, R, A, X)` with a table-driven test over all 16 rows
+(`Opportunity.Core.Snapshots.SnapshotStrategyRules`, `tests/Opportunity.UnitTests/Snapshots/SnapshotStrategyRulesTests.cs`).
 
 ### 4. Job types
 
@@ -148,6 +149,64 @@ heap + index + TOAST bytes, WAL bytes, p95 time to resolve one 1,000-member chun
 within 20% of (b) on every metric (simplicity wins); use (c) for snapshots > 5M members if (b)'s freeze time
 extrapolates beyond 10 min at 10M or exceeds 50 B/member. Fallback if the benchmark is not run: (b).
 
+#### 6.1 Benchmark result — *interim, pending reference hardware* (2026-10-05, E10-T03)
+
+No reference hardware exists yet (Q-70), so the benchmark was built as an opt-in test and run on the CI-class
+development container. These numbers are **interim**; they are re-recorded on the frozen reference hardware (#149) at
+1M and 10M members before §6 is accepted.
+
+**Method.** `tests/Opportunity.IntegrationTests/Snapshots/SnapshotRepresentationBenchmark.cs`, run with
+`OPPORTUNITY_SNAPSHOT_BENCHMARK=1 OPPORTUNITY_SNAPSHOT_BENCHMARK_MEMBERS=<n>` (optional
+`OPPORTUNITY_SNAPSHOT_BENCHMARK_OUT=<file>` for the Markdown table, `OPPORTUNITY_SNAPSHOT_BENCHMARK_PGOPTIONS` for session
+settings). One migrated PostgreSQL 17 database (Testcontainers, container defaults: `shared_buffers` 128 MB,
+`work_mem` 4 MB), one workspace with `n` live documents (each its own family) and a `bench_coding` table standing in
+for coding state. For each representation, over the same members in the §5 order:
+
+- **(b) PG member pages** — the production store (`DocumentSetSnapshotStore`): candidates staged, then the timed
+  `FreezeAsync` (stage join, liveness and baselines, authorization pass with an allow-all authorizer in batches of
+  5,000, ordering, pages with SHA-256, root hash, header); chunks read through `ReadMembersAsync` as the RLS-bound app
+  login; delete through retention (`ExpireAsync`).
+- **(a) row per member** — a benchmark-only table `(workspace_id, snapshot_id, ordinal, document_id, baseline_version,
+  inclusion_reason)` with PK `(workspace_id, snapshot_id, ordinal)`, filled by one `REPEATABLE READ` `INSERT … SELECT`
+  with the same ordering plus the per-page hashes; chunks by ordinal range.
+- **(c) object-store manifests** — 1,000-member binary pages (34 B/member), zlib (fastest), SHA-256 per page and a
+  manifest, written to a local temporary directory (no object-store network latency); a chunk is read, decoded and
+  loaded into a temp table by binary `COPY` before the `UPDATE` joins it.
+
+Chunk timings are 200 (resolve) and 50 (bulk `UPDATE`) random, unaligned 1,000-member ranges. "VACUUM" is the manual
+`VACUUM` of the membership table right after the delete (autovacuum proxy). Hardware: 4 vCPU Intel Xeon @ 2.1 GHz,
+16 GB RAM, shared with other parallel test runs (timings are noisy; relative order is what matters).
+
+| Members | Representation | Freeze | Stored | Bytes/member | WAL | Chunk p50 / p95 | Bulk `UPDATE` p95 | Delete | VACUUM |
+|---|---|---|---|---|---|---|---|---|---|
+| 100,000 | (a) row per member | 0.37 s | 15.3 MiB | 160.7 | 22.1 MiB | 0.8 / 1.4 ms | 11.3 ms | 32 ms | 13 ms |
+| 100,000 | **(b) PG member pages** | 1.30 s | 1.7 MiB | 17.9 | 1.7 MiB | 3.1 / 4.5 ms | 11.9 ms | 21 ms | 4 ms |
+| 100,000 | (c) manifests | 0.18 s | 1.8 MiB | 18.9 | n/a | 7.5 / 14.0 ms | 22.6 ms | 321 ms | n/a |
+| 1,000,000 | (a) row per member | 5.41 s | 152.8 MiB | 160.3 | 220.8 MiB | 1.7 / 3.1 ms | 33.7 ms | 494 ms | 384 ms |
+| 1,000,000 | **(b) PG member pages** | 44.37 s | 16.4 MiB | 17.2 | 19.0 MiB | 3.6 / 8.4 ms | 35.2 ms | 1,124 ms | 24 ms |
+| 1,000,000 | (c) manifests | 2.37 s | 18.1 MiB | 19.0 | n/a | 5.8 / 19.0 ms | 65.3 ms | 388 ms | n/a |
+
+The 1M row is a single run on the same development container (it fits the shared disk only just); it is recorded
+because the ticket asks for 1M, not as a reference-hardware result.
+
+**Reading against the decision rule (interim).**
+
+1. (a) is not within 20% of (b): it stores ~9× the bytes and writes ~11× the WAL (160 vs 17–18 B/member), and its
+   delete + vacuum cost grows with it. (a) is faster to freeze and to resolve a chunk, but resolving a chunk from (b)
+   stays in single-digit milliseconds at p95 and the bulk `UPDATE` joined to membership costs the same. **Keep (b).**
+2. (b) stores 17–18 B/member, well under the 50 B/member threshold for (c).
+3. (b)'s freeze grows faster than linearly on this container (1.3 s at 100k, 44 s at 1M; a linear extrapolation from
+   1M gives 7.4 min at 10M, under the 10 min threshold, but the growth suggests more). The timed (b) freeze includes the
+   staging join, the authorization pass and the audit insert that (a) and (c) skip, and at 1M its sorts and joins
+   exceed the container's 4 MB `work_mem`. **Open item for the reference run:** profile the 1M freeze (`EXPLAIN
+   ANALYZE` per statement, `work_mem` sized per the deployment guide) and run 10M; if (b) still extrapolates beyond
+   10 min at 10M, apply (c) for snapshots above 5M members as §6 already provides. The freeze is several statements in one
+   transaction and took 44 s in total at 1M here; the API data source's per-statement command timeout (Npgsql default
+   30 s) must be checked against the largest accepted selection on reference hardware (the benchmark disables it).
+4. (c) freezes fastest and stores as little as (b), but every chunk pays a read-decode-`COPY` round trip (p95 2–4× of
+   (b), and object-store latency is not even included) and it is not joinable. It stays the evidence manifest for X =
+   true snapshots and the candidate for very large snapshots only.
+
 ### 7. Meaning of `SearchGeneration`
 
 1. `Snapshot.SearchGeneration = G`, the visible watermark read immediately **before** the PIT was opened. Meaning:
@@ -199,6 +258,41 @@ imported metadata and overlays are not event-sourced, and the copy's size is bou
 
 **Retention:** unconfirmed snapshots 24 h; job snapshots 90 days after the job ends unless referenced by an export,
 production or saved report, which keeps them for the life of the matter (ADR-014).
+
+### 10. Implementation (E10-T03, 2026-10-05)
+
+**Rule engine.** `Opportunity.Core.Snapshots.SnapshotStrategyRules` is pure and deterministic:
+`Choose(L, R, A, X)` is the §3 table; `FixedPredicates(SetOperationKind)` is the §4 job-type table (R, A, X per
+operation); `EstimateRuntime` computes `T_est = T_setup + Count × ExpansionFactor / R_type`; `Decide(operation, estimate,
+policy)` adds L when `T_est × SafetyFactor > JobMaxAge` **or when no estimate is given** (an unsized job never gets a
+reader it might outlive). `PitPolicy` holds the §2 defaults and is configured as `Snapshots:Pit` (validated on start).
+Interactive cursors always get a reader (§8). Exports and productions set R, A and X, so they are materialized for every
+size and every policy (tested). `R_type` uses the policy defaults; the "10th percentile of the last 20 runs" refinement
+waits for job throughput history (it changes only L, which never changes the strategy of any operation built so far).
+
+**Callers.** `DocumentSetSnapshotService` serves only operations the rule always materializes
+(`AlwaysMaterialized(OperationFor(purpose))`) and records the decision in its `Search.Executed` audit details
+(`strategyRule`, e.g. `Materialized (R, A, X; T_est 12.5 s)`); a saved search frozen as `savedsearch:<id>` goes the same
+way. Bulk coding and export accept a snapshot only through `AcceptsSnapshot(operation, purpose)`. The interactive search
+service asks the rule for `InteractiveCursor` (always a reader). The search-term report preview — the only job that may
+run under a reader — is not built yet (#72); it must call `Decide` with its term count.
+
+**Interactive reader lifecycle (§8).** Settings `OpenSearch:Search:PointInTimeKeepAlive` (5 min, renewed by every page),
+`PointInTimeMaxAge` (30 min) and `MaxOpenPointInTimesPerUser` (3). A page whose reader expired or was lost, aged out,
+or was detached by the per-user cap opens a new reader with the same query and sort, resumes `search_after` from the
+cursor's stored sort values, stores the new reader's open time and watermark (`search_session.pit_opened_at`,
+`served_generation`; V0030) and answers `resultsRefreshed: true` with the new `freshness`; `Search.ResultsPageServed`
+records `readerReestablished` = `expired` | `maxAge` | `detached`. Verified against real OpenSearch with a 3 s
+keep-alive (`PointInTimeLifecycleTests`) and in the grid and Review-mode UI tests.
+
+Deviations from §8 as written (lead confirmation requested):
+
+- The response flag is the existing `resultsRefreshed` (E07-T05 contract the UI already uses), not a new
+  `cursorReestablished`; the new generation is reported in `freshness`, not as a separate `searchGeneration`.
+- The per-user cap counts readers per user **per workspace** (search sessions are workspace-owned under RLS); it is
+  enforced when a new search opens a reader, so re-establishing a detached search's reader may briefly exceed it.
+- The installation-level cap (50% of `search.max_open_pit_context`) and `Pit.MaxOpenPerWorkspace` for jobs are not
+  enforced yet: no job pages under a reader in the MVP.
 
 ## Consequences
 

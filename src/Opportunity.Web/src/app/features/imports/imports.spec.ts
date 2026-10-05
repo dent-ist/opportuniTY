@@ -159,6 +159,33 @@ function importResource(id: string, status: string, indexed: 'indexing' | 'curre
     },
     createdAt: '2026-10-04T09:00:00Z',
     completedAt: null,
+    summary: {
+      importId: id,
+      name: 'VOL001.dat 2026-10-04',
+      mode: 'append',
+      sourceFileName: 'VOL001.dat',
+      status,
+      final: status !== 'running' && status !== 'created',
+      startedAt: '2026-10-04T09:00:00Z',
+      completedAt: null,
+      elapsedSeconds: 125,
+      rows: {
+        read: 20,
+        imported: 20 - errored,
+        overlaid: 0,
+        skipped: 0,
+        errored,
+        withWarnings: 0,
+      },
+      natives: { linked: 20 - errored, missing: 3 },
+      text: { linked: 20 - errored, missing: 0, truncated: 0 },
+      images: { documentsLinked: 0, documentsWithoutImages: 0, pagesLinked: 0, pagesMissing: 0 },
+      families: { built: 2, orphans: 0 },
+      fieldsCreated: 1,
+      choicesCreated: 0,
+      errorFileRows: errored,
+      issueCounts: errored ? [{ code: 'DATE_UNPARSEABLE', severity: 'error', count: errored }] : [],
+    },
   };
 }
 
@@ -283,6 +310,9 @@ describe('Imports section (E08-T08)', () => {
                   1,
                 ),
         };
+      })
+      .on('GET', `${WS}/imports/imp-run`, {
+        body: importResource('imp-run', 'running', 'indexing'),
       })
       .on('GET', `${WS}/imports/imp-9/errors`, {
         body: {
@@ -492,11 +522,42 @@ describe('Imports section (E08-T08)', () => {
       links.find((a) => a.textContent?.includes('Re-import corrected'))?.getAttribute('href'),
     ).toBe('/w/ws-1/imports/new?from=imp-9');
     expect(text()).toContain('DATE_UNPARSEABLE');
+    // Finished: the full report summary, grouped and in plain language (Q-71).
+    const groups = [...root().querySelectorAll('.imports__report-group')];
+    expect(groups.map((g) => g.querySelector('h3')?.textContent?.trim())).toEqual([
+      'Rows',
+      'Natives and text',
+      'Images',
+      'Families',
+      'Fields',
+    ]);
+    const factOf = (label: string) =>
+      [...root().querySelectorAll('.imports__report-list div')].find(
+        (d) => d.querySelector('dt')?.textContent?.trim() === label,
+      );
+    expect(factOf('New documents loaded')?.querySelector('dd')?.textContent?.trim()).toBe('19');
+    expect(factOf('Natives missing')?.textContent).toContain('Needs attention');
+    expect(factOf('Natives stored')?.textContent).not.toContain('Needs attention');
+    expect(text()).toContain('No page images were loaded by this import.');
+    expect(text()).toContain('Took 2 minutes 5 seconds.');
+    expect(text()).toContain('1 row is in the error file.');
+    expect(
+      root().querySelector('[role="region"][aria-label="Issues by type"]')?.textContent,
+    ).toContain('DATE_UNPARSEABLE');
     const reads = detailReads;
     await settle(5);
     expect(detailReads).toBe(reads);
     await expectNoAxeViolations(root());
   }, 30_000);
+
+  it('a running import shows the live counters, not the report summary (Q-71)', async () => {
+    await setup();
+    await go('/w/ws-1/imports/imp-run');
+    expect(text()).toContain('Rows read');
+    expect(text()).toContain('The report downloads are available when the import finishes.');
+    expect(root().querySelector('.imports__report-groups')).toBeNull();
+    expect(root().querySelector('[aria-label="Issues by type"]')).toBeNull();
+  });
 
   it('pre-flight errors block the start', async () => {
     await setup({ blocking: true });

@@ -22,13 +22,20 @@ public sealed record BindingDefinition(
 ///     --expired--> {area}.retry.return (headers: opportunity-queue = {queue}) --> {queue}
 /// {area}.dlx (direct) --{queue}--> {queue}.dlq                          max-length, TTL 14 d (diagnostics only)
 ///                     --parking--> {area}.parking                       unknown type / unsupported major
+///                     --{queue}, parking--> opportunity.dead-letter.record   copies for the dead-letter recorder
 /// </code>
+/// A direct exchange delivers to every queue bound with the routing key, so each dead-lettered or parked message lands
+/// both in its diagnostic queue (kept for 14 days) and in the recorder's queue, which the dispatcher's dead-letter
+/// recorder drains into PostgreSQL (ADR-010 §7.3).
 /// All queues are quorum queues. Lanes (ADR-001 §5.3) are separate work queues, never message priorities.
 /// </summary>
 public sealed class RabbitMqTopology
 {
     public const string WorkExchange = "opportunity.work";
     public const string ParkingRoutingKey = "parking";
+
+    /// <summary>The queue the dead-letter recorder consumes: a copy of every dead-lettered and parked message.</summary>
+    public const string DeadLetterRecordQueue = "opportunity.dead-letter.record";
 
     private RabbitMqTopology(
         IReadOnlyList<ExchangeDefinition> exchanges,
@@ -99,7 +106,15 @@ public sealed class RabbitMqTopology
                 ["x-overflow"] = "reject-publish",
             })));
             bindings.Add(new(DeadLetterExchange(area), ParkingQueue(area), ParkingRoutingKey));
+            bindings.Add(new(DeadLetterExchange(area), DeadLetterRecordQueue, ParkingRoutingKey));
         }
+
+        queueDefinitions.Add(new(DeadLetterRecordQueue, Quorum(new()
+        {
+            ["x-max-length"] = (long)options.DeadLetterMaxLength,
+            ["x-overflow"] = "drop-head",
+            ["x-message-ttl"] = (long)options.DeadLetterTtl.TotalMilliseconds,
+        })));
 
         foreach (var queue in workQueues)
         {
@@ -129,6 +144,7 @@ public sealed class RabbitMqTopology
                 ["x-message-ttl"] = (long)options.DeadLetterTtl.TotalMilliseconds,
             })));
             bindings.Add(new(DeadLetterExchange(queue.Area), DeadLetterQueue(queue), queue.Name));
+            bindings.Add(new(DeadLetterExchange(queue.Area), DeadLetterRecordQueue, queue.Name));
         }
 
         return new RabbitMqTopology(exchanges, queueDefinitions, bindings);
@@ -185,8 +201,8 @@ public sealed class RabbitMqTopology
 
 /// <summary>
 /// RabbitMQ permission patterns (configure, write, read) for one component in one virtual host (ADR-015 D9.5):
-/// the dispatcher may only publish to the work exchange; a worker may only consume its own area's queues and publish
-/// to its own retry and dead-letter exchanges; only the migrator configures.
+/// the dispatcher may only publish to the work exchange and consume the dead-letter recorder's queue; a worker may only
+/// consume its own area's queues and publish to its own retry and dead-letter exchanges; only the migrator configures.
 /// </summary>
 public sealed record RabbitMqPermissions(string Configure, string Write, string Read)
 {
@@ -194,7 +210,8 @@ public sealed record RabbitMqPermissions(string Configure, string Write, string 
 
     public static RabbitMqPermissions Migrator { get; } = new(".*", ".*", ".*");
 
-    public static RabbitMqPermissions Dispatcher { get; } = new(Nothing, $"^{Escape(RabbitMqTopology.WorkExchange)}$", Nothing);
+    public static RabbitMqPermissions Dispatcher { get; } = new(
+        Nothing, $"^{Escape(RabbitMqTopology.WorkExchange)}$", $"^{Escape(RabbitMqTopology.DeadLetterRecordQueue)}$");
 
     /// <summary>Permissions of the worker consuming <paramref name="areas"/> (e.g. <c>index</c>).</summary>
     public static RabbitMqPermissions Worker(params string[] areas)

@@ -29,6 +29,7 @@
   }
 } @else {
   <div class="grid__header">
+    <ng-content select="[gridFreshness]" />
     @if (result()) {
       <p class="grid__count">
         <strong>{{ countText() }}</strong> documents
@@ -58,6 +59,17 @@
       <ng-content select="[gridActions]" />
     </div>
   </div>
+  @if (footnote(); as f) {
+    <p class="grid__footnote grid__freshness">
+      <opp-icon name="info" />
+      <span>{{ f.text }}</span>
+      @if (f.caughtUp) {
+        <button type="button" oppButton="ghost" [busy]="busy()" (click)="showRecentChanges()">
+          Include recent changes
+        </button>
+      }
+    </p>
+  }
   @if (allResults(); as all) {
     <div class="grid__notice grid__notice--selection">
       <span

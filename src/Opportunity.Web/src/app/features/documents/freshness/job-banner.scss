@@ -1,0 +1,39 @@
+:host(.jb-list) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+}
+
+:host(.jb-list:empty) {
+  display: none;
+}
+
+.jb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-1) var(--opp-space-1) var(--opp-space-1) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-info-border);
+  border-inline-start-width: var(--opp-space-1);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+}
+
+.jb__text {
+  flex: 1 1 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.jb__link {
+  color: inherit;
+  font-weight: var(--opp-font-weight-semibold);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+
+  &:focus-visible {
+    outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+    outline-offset: var(--opp-focus-ring-offset);
+  }
+}

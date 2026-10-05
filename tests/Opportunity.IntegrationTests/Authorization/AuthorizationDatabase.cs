@@ -21,6 +21,8 @@ internal sealed class AuthorizationDatabase : IAsyncDisposable
 
     public PostgresSecurityStateReader Reader { get; }
 
+    public static AuthorizationDatabase Over(CoreSchemaDatabase core) => new(core);
+
     public static async Task<AuthorizationDatabase> CreateAsync(MigrationPostgresFixture postgres) =>
         new(await CoreSchemaDatabase.CreateAsync(postgres));
 

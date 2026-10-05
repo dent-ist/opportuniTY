@@ -4,6 +4,8 @@
 import { JobSearchableState } from '../models/job-searchable-state';
 export interface JobSearchableProgress {
   done: number | string;
+  indexedThroughGeneration: number | string;
+  jobGeneration: number | string | null;
   state: JobSearchableState;
   total: number | string;
 }

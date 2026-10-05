@@ -45,12 +45,14 @@ describe('Review mode (E16-T03)', () => {
   let harness: RouterTestingHarness;
   let result: FakeResultOptions;
   let expired: boolean;
+  let reopened: boolean;
   let removed: Set<number>;
   let retrievals: number;
 
   async function setup(options: { total?: number } = {}): Promise<void> {
     result = { total: options.total ?? 250, pageSize: 100 };
     expired = false;
+    reopened = false;
     removed = new Set();
     retrievals = 0;
     // Pages over the documents still in the set (a recoded document can leave it).
@@ -87,7 +89,12 @@ describe('Review mode (E16-T03)', () => {
       .on('GET', PAGES, (req) =>
         expired
           ? { status: 404, body: { title: 'Not found', status: 404 } }
-          : { body: page(Number(req.params.get('cursor')?.slice(1) ?? req.params.get('page'))) },
+          : {
+              body: {
+                ...page(Number(req.params.get('cursor')?.slice(1) ?? req.params.get('page'))),
+                resultsRefreshed: reopened,
+              },
+            },
       );
     for (let n = 1; n <= 260; n++) {
       api
@@ -264,6 +271,28 @@ describe('Review mode (E16-T03)', () => {
     expect(bar()).toContain('Doc 100 of 249');
     expect(bar()).toContain('ACM0000101');
   }, 30_000); // a hundred moves
+
+  it('says "results refreshed" when the server re-established its expired reader mid-session (Q-33, E10-T03)', async () => {
+    await setup({ total: 102 });
+    grid().focus();
+    press('End', { key: 'End' });
+    // The server's point-in-time reader expires; the next page runs on a new one, where doc-101 left the set.
+    reopened = true;
+    removed.add(101);
+    press('Enter', { key: 'Enter' });
+    await settle();
+    // Opening the last row of page 1 fetched page 2 (on the new reader) for the next document.
+    expect(api.urls('GET').filter((u) => u.startsWith(PAGES))).toEqual([`${PAGES}?cursor=p2`]);
+    expect(review()!.textContent).toContain(
+      'Results refreshed: the list now includes recent changes.',
+    );
+    expect(bar()).toContain('Doc 100 of 101');
+    expect(bar()).toContain('ACM0000100');
+    button('Next document').click();
+    await settle();
+    expect(bar()).toContain('Doc 101 of 101');
+    expect(bar()).toContain('ACM0000102');
+  });
 
   it('asks Save / Discard / Cancel before leaving unsaved coding; Save & Next saves first', async () => {
     await setup();

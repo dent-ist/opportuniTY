@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opportunity:benchmarks:shadow-ledger-verdict:v1",
+  "title": "opportuniTY shadow-ledger oracle verdict, v1",
+  "description": "verdict.json of the stale-version-overwrite shadow-ledger oracle (E17-T07; baseline §21, §26; ADR-001 §9). `shadowLedger` is exactly the result bundle's `oracles.shadowLedger` object and is copied into bundle.json unchanged; the other properties explain it. Minor versions (1.x) only add optional properties.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "workspaceId", "candidate", "startedUtc", "endedUtc", "shadowLedger", "sampling", "findings"],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^1\\.[0-9]+$" },
+    "kind": { "const": "shadow-ledger" },
+    "workspaceId": { "type": "string", "format": "uuid" },
+    "candidate": { "type": "string", "minLength": 1, "description": "ADR-004 candidate whose projection layout was judged (bundle `run.candidate`)." },
+    "seed": { "type": "integer", "description": "Seed of the run (fault matrix trial, generator), when there is one." },
+    "startedUtc": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "endedUtc": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "shadowLedger": {
+      "allOf": [
+        { "$ref": "urn:opportunity:benchmarks:result-bundle:v1#/$defs/oracles/properties/shadowLedger" },
+        { "required": ["status", "touchedDocs", "staleOverwrites", "versionRegressions", "missingDocs", "valueMismatches"] }
+      ]
+    },
+    "sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passes", "observations", "documentsTracked", "committedEventsCaptured"],
+      "properties": {
+        "passes": { "type": "integer", "minimum": 0 },
+        "observations": { "type": "integer", "minimum": 0 },
+        "documentsTracked": { "type": "integer", "minimum": 0 },
+        "committedEventsCaptured": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["documents", "batches", "batchSize", "durationMs", "documentsPerSecond"],
+      "properties": {
+        "documents": { "type": "integer", "minimum": 0 },
+        "batches": { "type": "integer", "minimum": 0 },
+        "batchSize": { "type": "integer", "minimum": 1 },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "documentsPerSecond": { "type": "number", "minimum": 0 }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["documentId", "kind"],
+        "properties": {
+          "documentId": { "type": "string", "format": "uuid" },
+          "kind": {
+            "enum": ["stale-version", "external-version-mismatch", "version-ahead", "version-regression", "resurrected", "missing", "value-mismatch"]
+          },
+          "postgresVersion": { "type": "integer" },
+          "indexedVersion": { "type": "integer" },
+          "externalVersion": { "type": "integer" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  }
+}

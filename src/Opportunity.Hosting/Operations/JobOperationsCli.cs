@@ -1,10 +1,13 @@
 using System.Globalization;
+using System.Text;
 
 using Npgsql;
 
 using Opportunity.Application.Jobs;
+using Opportunity.Application.Messaging;
 using Opportunity.Core.Jobs;
 using Opportunity.Data.Jobs;
+using Opportunity.Data.Messaging;
 using Opportunity.Data.SearchWork;
 using Opportunity.Hosting.Health;
 
@@ -12,7 +15,7 @@ namespace Opportunity.Hosting.Operations;
 
 /// <summary>
 /// The operations CLI of the worker image (E06-T06; runbooks in docs/operations): <c>jobs list|show|failures|replay|
-/// replay-outbox|backlog|redispatch</c>, run instead of the worker host when the first argument is <c>jobs</c>, e.g.
+/// replay-outbox|backlog|redispatch|dlq list|dlq show</c>, run instead of the worker host when the first argument is <c>jobs</c>, e.g.
 /// <c>docker compose run --rm --no-deps worker jobs failures --workspace &lt;id&gt; --job &lt;id&gt;</c>. It connects
 /// with the runtime login (<c>ConnectionStrings__App</c>, RLS applies) and uses the same PostgreSQL operations as the
 /// API: replay resets rows to Pending for the dispatcher (never re-publishes dead-lettered messages) and is audited as
@@ -37,6 +40,9 @@ public static class JobOperationsCli
           replay-outbox --operator <name>                reset the workspace's failed SearchOutbox rows to Pending
           backlog                                        un-applied and failed search work, oldest commit times
           redispatch                                     return lost work to Pending now (what the sweepers do every 30 s)
+          dlq list      [--job <id>] [--limit 50]        dead-lettered and parked messages recorded in PostgreSQL, newest
+                                                         first; without --workspace those naming no existing workspace
+          dlq show      --message <id>                   one recorded message: headers, error and body
         """;
 
     /// <summary>Runs the CLI when <paramref name="args"/> starts with <see cref="Verb"/>; null otherwise (start the host).</summary>
@@ -59,6 +65,11 @@ public static class JobOperationsCli
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
+        if (args is ["dlq", var subcommand, .. var dlqRest] && !subcommand.StartsWith("--", StringComparison.Ordinal))
+        {
+            args = [$"dlq {subcommand}", .. dlqRest];
+        }
+
         if (args is not [var command, .. var rest] || !TryParseOptions(rest, out var options))
         {
             await error.WriteLineAsync(Usage).ConfigureAwait(false);
@@ -67,13 +78,28 @@ public static class JobOperationsCli
 
         connectionString ??= options.GetValueOrDefault("connection-string")
             ?? Environment.GetEnvironmentVariable($"ConnectionStrings__{PostgresReadiness.ConnectionStringName}");
-        if (string.IsNullOrWhiteSpace(connectionString) || !TryGuid(options, "workspace", out var workspaceId))
+        var deadLetters = command.StartsWith("dlq ", StringComparison.Ordinal);
+        var workspaceId = Guid.Empty;
+        if (string.IsNullOrWhiteSpace(connectionString)
+            || (!TryGuid(options, "workspace", out workspaceId) && !(deadLetters && !options.ContainsKey("workspace"))))
         {
             await error.WriteLineAsync("A workspace id (--workspace) and a connection string are required.\n" + Usage).ConfigureAwait(false);
             return ExitUsage;
         }
 
         await using var dataSource = NpgsqlDataSource.Create(connectionString);
+        if (deadLetters)
+        {
+            var dlq = new DeadLetterSession(
+                new DeadLetterStore(dataSource), workspaceId == Guid.Empty ? null : workspaceId, options, output, error, cancellationToken);
+            return command switch
+            {
+                "dlq list" => await dlq.ListAsync().ConfigureAwait(false),
+                "dlq show" => await dlq.ShowAsync().ConfigureAwait(false),
+                _ => await dlq.UsageAsync().ConfigureAwait(false),
+            };
+        }
+
         var store = new JobOperationsStore(dataSource);
         var cli = new Session(store, dataSource, workspaceId, options, output, error, cancellationToken);
         return command switch
@@ -114,6 +140,93 @@ public static class JobOperationsCli
     private static string Time(DateTimeOffset? value) =>
         value is { } v ? v.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture) : "-";
 
+    private static bool TryLimit(Dictionary<string, string> options, int fallback, out int limit)
+    {
+        limit = fallback;
+        return !options.TryGetValue("limit", out var text)
+            || (int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out limit) && limit is >= 1 and <= JobListQuery.MaxLimit);
+    }
+
+    /// <summary>
+    /// <c>jobs dlq …</c>: the dead-letter records (ADR-010 §7.3) of one workspace, or with no <c>--workspace</c> the
+    /// installation-level ones. Read-only: dead-lettered messages are never re-published; replay the PostgreSQL rows.
+    /// </summary>
+    private sealed class DeadLetterSession(
+        DeadLetterStore store, Guid? workspaceId, Dictionary<string, string> options, TextWriter output, TextWriter error,
+        CancellationToken cancellationToken)
+    {
+        /// <summary>Bodies are printed up to this many bytes.</summary>
+        private const int ShownBody = 4_096;
+
+        public async Task<int> UsageAsync()
+        {
+            await error.WriteLineAsync(Usage).ConfigureAwait(false);
+            return ExitUsage;
+        }
+
+        public async Task<int> ListAsync()
+        {
+            Guid? jobId = null;
+            if (options.ContainsKey("job"))
+            {
+                if (!TryGuid(options, "job", out var job))
+                {
+                    return await UsageAsync().ConfigureAwait(false);
+                }
+
+                jobId = job;
+            }
+
+            if (!TryLimit(options, 50, out var limit))
+            {
+                return await UsageAsync().ConfigureAwait(false);
+            }
+
+            var records = await store.ListAsync(workspaceId, jobId, limit, cancellationToken).ConfigureAwait(false);
+            await output.WriteLineAsync("MESSAGE_ID	QUEUE	REASON	DEATHS	TYPE	JOB_ID	RECORDED	ERROR").ConfigureAwait(false);
+            foreach (var r in records)
+            {
+                await output.WriteLineAsync(string.Join('\t',
+                    r.MessageId, r.Queue, r.DeathReason, r.DeathCount, r.MessageType ?? "-", r.JobId?.ToString() ?? "-", Time(r.RecordedAt),
+                    OneLine(r.Error) ?? "-")).ConfigureAwait(false);
+            }
+
+            return ExitSuccess;
+        }
+
+        public async Task<int> ShowAsync()
+        {
+            if (!options.TryGetValue("message", out var messageId) || string.IsNullOrWhiteSpace(messageId))
+            {
+                return await UsageAsync().ConfigureAwait(false);
+            }
+
+            if (await store.GetAsync(workspaceId, messageId.Trim(), cancellationToken).ConfigureAwait(false) is not { } r)
+            {
+                await error.WriteLineAsync($"No dead-letter record {messageId} {(workspaceId is { } ws ? $"in workspace {ws}" : "at installation level")}.")
+                    .ConfigureAwait(false);
+                return ExitNotFound;
+            }
+
+            var shown = Math.Min(r.Body.Length, ShownBody);
+            await output.WriteLineAsync(
+                $"""
+                message      {r.MessageId} ({r.MessageType ?? "unknown type"})
+                workspace    {r.WorkspaceId?.ToString() ?? (r.ClaimedWorkspaceId is { } claimed ? $"none (envelope names {claimed}, which does not exist)" : "none")}
+                job          {r.JobId?.ToString() ?? "-"}   chunk/task {r.SubjectId?.ToString() ?? "-"}   correlation {r.CorrelationId ?? "-"}
+                queue        {r.Queue} via {r.Exchange} ({r.RoutingKey})
+                reason       {r.DeathReason}, dead-lettered {r.DeathCount}x, first {Time(r.FirstDeathAt)}, recorded {Time(r.RecordedAt)}
+                error        {(r.ErrorType is { } type ? type + ": " : string.Empty)}{OneLine(r.Error) ?? "-"}
+                headers      {r.HeadersJson}
+                body         {r.BodySize} bytes{(r.BodySize > shown ? $" (first {shown} shown)" : string.Empty)}
+                """).ConfigureAwait(false);
+            await output.WriteLineAsync(Encoding.UTF8.GetString(r.Body, 0, shown)).ConfigureAwait(false);
+            return ExitSuccess;
+        }
+
+        private static string? OneLine(string? text) => text?.ReplaceLineEndings(" ");
+    }
+
     private sealed class Session(
         JobOperationsStore store, NpgsqlDataSource dataSource, Guid workspaceId, Dictionary<string, string> options, TextWriter output,
         TextWriter error, CancellationToken cancellationToken)
@@ -137,7 +250,7 @@ public static class JobOperationsCli
             foreach (var o in page.Items)
             {
                 var j = o.Job;
-                var (done, total, state) = JobSearchability.Evaluate(j, page.AppliedWatermark);
+                var (done, total, state) = JobSearchability.Evaluate(j, page.IndexedThroughGeneration);
                 await output.WriteLineAsync(string.Join('\t',
                     j.JobId, j.JobType, j.Status, $"{j.Counters.ChunksCommitted}/{j.Counters.ChunksTotal}", $"{done}/{total} {state}",
                     j.Counters.ChunksFailed + j.Counters.ItemsFailed + o.FailedIndexTasks, Time(j.CreatedAt), Time(j.UpdatedAt),
@@ -162,7 +275,7 @@ public static class JobOperationsCli
 
             var j = detail.Overview.Job;
             var c = j.Counters;
-            var (done, total, state) = JobSearchability.Evaluate(j, detail.AppliedWatermark);
+            var (done, total, state) = JobSearchability.Evaluate(j, detail.IndexedThroughGeneration);
             await output.WriteLineAsync(
                 $"""
                 job          {j.JobId} ({j.JobType}{(detail.Overview.Name is { } n ? ", " + n : string.Empty)})
@@ -171,7 +284,7 @@ public static class JobOperationsCli
                 updated      {Time(j.UpdatedAt)}   finished {Time(j.FinishedAt)}
                 correlation  {j.CorrelationId ?? "-"}   snapshot {j.TargetSnapshotId?.ToString() ?? "-"}
                 committed    {c.ChunksCommitted}/{c.ChunksTotal} chunks ({c.ChunksFailed} failed, {c.ChunksCancelled} cancelled), {c.ItemsApplied} items applied, {c.ItemsFailed} failed
-                searchable   {done}/{total} index tasks, {state} (job generation {j.JobGeneration?.ToString(CultureInfo.InvariantCulture) ?? "-"}, applied watermark {detail.AppliedWatermark}); {detail.Overview.FailedIndexTasks} failed
+                searchable   {done}/{total} index tasks, {state} (job generation {j.JobGeneration?.ToString(CultureInfo.InvariantCulture) ?? "-"}, indexed through {detail.IndexedThroughGeneration}); {detail.Overview.FailedIndexTasks} failed
                 chunks       {string.Join(", ", detail.ChunkCounts.OrderBy(e => e.Key).Select(e => $"{e.Key} {e.Value}"))}{(detail.ExhaustedChunks > 0 ? $", Failed (attempts exhausted) {detail.ExhaustedChunks}" : string.Empty)}
                 attempts     {detail.Attempts}
                 last error   {detail.LastError ?? "-"}
@@ -270,12 +383,7 @@ public static class JobOperationsCli
         private OperationsActor? Operator() =>
             options.TryGetValue("operator", out var name) && !string.IsNullOrWhiteSpace(name) && name.Length <= 200 ? OperationsActor.Cli(name) : null;
 
-        private bool TryLimit(int fallback, out int limit)
-        {
-            limit = fallback;
-            return !options.TryGetValue("limit", out var text)
-                || (int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out limit) && limit is >= 1 and <= JobListQuery.MaxLimit);
-        }
+        private bool TryLimit(int fallback, out int limit) => JobOperationsCli.TryLimit(options, fallback, out limit);
 
         private bool TryEnums<T>(string name, out List<T> values)
             where T : struct, Enum

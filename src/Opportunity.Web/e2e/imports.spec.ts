@@ -168,3 +168,28 @@ test.describe('a load file with errors', () => {
     expect(mock.imports.starts).toHaveLength(0);
   });
 });
+
+test('a finished import shows its report summary, reachable with the keyboard (Q-71)', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/imports/imp-1');
+  const report = page.getByRole('region', { name: 'Report' });
+  for (const group of ['Rows', 'Natives and text', 'Images', 'Families', 'Fields']) {
+    await expect(report.getByRole('heading', { level: 3, name: group })).toBeVisible();
+  }
+  const rows = report.getByRole('region', { name: 'Rows' });
+  await expect(rows.getByRole('definition').nth(1)).toHaveText('18');
+  await expect(rows).toContainText('Rows not loaded (errors)');
+  await expect(report).toContainText('Took 8 seconds. 2 rows are in the error file.');
+  await expect(report).toContainText('No page images were loaded by this import.');
+  await expect(report).toContainText('Needs attention');
+
+  // The issues table scrolls as one keyboard stop, then the downloads follow.
+  const issues = page.getByRole('region', { name: 'Issues by type' });
+  await tabTo(page, issues);
+  await expect(issues).toBeFocused();
+  await expect(issues.getByRole('row')).toHaveCount(4);
+  await expect(issues.getByRole('row').nth(1)).toContainText('DATE_UNPARSEABLE');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Import report (CSV)' })).toBeFocused();
+});

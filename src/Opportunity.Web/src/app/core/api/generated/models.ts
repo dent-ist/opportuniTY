@@ -162,6 +162,8 @@ export type { SavedSearchSummary } from './models/saved-search-summary';
 export type { SearchFacet } from './models/search-facet';
 export type { SearchFacetBucket } from './models/search-facet-bucket';
 export type { SearchFreshness } from './models/search-freshness';
+export type { SearchFreshnessState } from './models/search-freshness-state';
+export type { SearchFreshnessStatus } from './models/search-freshness-status';
 export type { SearchHit } from './models/search-hit';
 export type { SearchOutboxReplayResource } from './models/search-outbox-replay-resource';
 export type { SearchPageInfo } from './models/search-page-info';

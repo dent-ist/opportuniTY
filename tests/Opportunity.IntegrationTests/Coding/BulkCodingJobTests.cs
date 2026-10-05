@@ -12,7 +12,7 @@ using Opportunity.Core.SearchWork;
 using Opportunity.Data.SearchWork;
 using Opportunity.IntegrationTests.Migrations;
 #if OPPORTUNITY_FAILPOINTS
-using Opportunity.Jobs.Faults;
+using Opportunity.Application.Faults;
 #endif
 
 namespace Opportunity.IntegrationTests.Coding;

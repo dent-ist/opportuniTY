@@ -19,6 +19,8 @@ export type { RunSearch$Params as RunSearch$Params } from './fn/search/run-searc
 export { runSearch as runSearch } from './fn/search/run-search';
 export type { GetSearchPage$Params as GetSearchPage$Params } from './fn/search/get-search-page';
 export { getSearchPage as getSearchPage } from './fn/search/get-search-page';
+export type { GetSearchFreshness$Params as GetSearchFreshness$Params } from './fn/search/get-search-freshness';
+export { getSearchFreshness as getSearchFreshness } from './fn/search/get-search-freshness';
 export type { ListQueryHistory$Params as ListQueryHistory$Params } from './fn/search/list-query-history';
 export { listQueryHistory as listQueryHistory } from './fn/search/list-query-history';
 export type { RecordQueryHistory$Params as RecordQueryHistory$Params } from './fn/search/record-query-history';

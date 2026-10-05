@@ -31,6 +31,8 @@ public class OpenSearchFixture : DependencyFixture
             // Allow wildcard deletes for per-test cleanup, and keep shared CI disks from tripping read-only blocks.
             .WithEnvironment("action.destructive_requires_name", "false")
             .WithEnvironment("cluster.routing.allocation.disk.threshold_enabled", "false")
+            // Reap expired point-in-time readers every second (default 1 min), so keep-alive expiry is testable (E10-T03).
+            .WithEnvironment("search.keep_alive_interval", "1s")
             // ForPath escapes '?', so poll the plain health endpoint; it answers 200 once the node is up.
             .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r
                 .ForPort(Port)
@@ -61,6 +63,8 @@ public class OpenSearchFixture : DependencyFixture
             new Uri(BaseAddress, $"{prefix}*?expand_wildcards=all&ignore_unavailable=true")).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
+
+    protected override IContainer DependencyContainer => _container;
 
     protected override Task StartDependencyAsync() => _container.StartAsync();
 

@@ -7,7 +7,9 @@ import { createSnapshot } from '../../../core/api/generated/fn/snapshots/create-
 import { getSnapshot } from '../../../core/api/generated/fn/snapshots/get-snapshot';
 import type {
   CreateSnapshotRequest,
+  JobDetail,
   JobResource,
+  JobSearchableProgress,
   JobResourceStatus,
   SnapshotResource,
   SnapshotResourceStatus,
@@ -59,6 +61,8 @@ export interface BulkJob {
   readonly indexTasksApplied: number;
   readonly indexTasksTotal: number;
   readonly searchable: boolean;
+  /** The job's last committed generation (wave-10 `searchable.jobGeneration`; shown to admins only, Q-10). */
+  readonly jobGeneration: string | null;
 }
 
 export interface BulkCodingSubmission {
@@ -140,6 +144,10 @@ export function toFrozenSet(s: SnapshotResource): FrozenSet {
 
 export function toBulkJob(j: JobResource): BulkJob {
   const c = j.committed;
+  // The job operations shape (#61) carries `searchable`, which turns current only once the refresh-aware watermark
+  // reached the job's generation (#70); the M1 `indexed` block is the fallback.
+  const searchable = (j as Partial<JobDetail>).searchable as
+    (JobSearchableProgress & { jobGeneration?: unknown }) | undefined;
   return {
     jobId: j.jobId,
     status: j.status,
@@ -149,9 +157,15 @@ export function toBulkJob(j: JobResource): BulkJob {
     skipped: Number(c.itemsSkippedConcurrentEdit),
     failed: Number(c.itemsFailed),
     excluded: Number(c.itemsExcludedNoAccess),
-    indexTasksApplied: Number(j.indexed.indexTasksApplied),
-    indexTasksTotal: Number(j.indexed.indexTasksTotal),
-    searchable: j.indexed.state === 'current',
+    indexTasksApplied: Number(searchable?.done ?? j.indexed.indexTasksApplied),
+    indexTasksTotal: Number(searchable?.total ?? j.indexed.indexTasksTotal),
+    searchable: searchable?.state
+      ? searchable.state === 'current' || searchable.state === 'notApplicable'
+      : j.indexed.state === 'current',
+    jobGeneration:
+      searchable?.jobGeneration === null || searchable?.jobGeneration === undefined
+        ? null
+        : String(searchable.jobGeneration),
   };
 }
 

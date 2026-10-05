@@ -13,6 +13,19 @@ public sealed class SearchServiceOptions
     /// <summary>How long OpenSearch keeps a point-in-time reader between pages; every page extends it (Q-33).</summary>
     public TimeSpan PointInTimeKeepAlive { get; set; } = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// ADR-002 §8: the oldest a point-in-time reader of an interactive search may get. A page asked for after that runs
+    /// on a new reader (re-established from the cursor position) and says "results refreshed", so a long review
+    /// session does not pin old segments indefinitely.
+    /// </summary>
+    public TimeSpan PointInTimeMaxAge { get; set; } = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// ADR-002 §8: open interactive readers per user and workspace; a new search closes the user's oldest beyond this
+    /// (their next page re-establishes a reader and says "results refreshed").
+    /// </summary>
+    public int MaxOpenPointInTimesPerUser { get; set; } = 3;
+
     /// <summary>How long an idle search handle and its cursors stay usable.</summary>
     public TimeSpan SearchIdleTimeout { get; set; } = TimeSpan.FromMinutes(30);
 
@@ -40,7 +53,9 @@ public sealed class SearchServiceOptions
         Require(DefaultPageSize >= 1 && DefaultPageSize <= MaxPageSize, section, nameof(DefaultPageSize));
         Require(MaxPageSize is >= 1 and <= 500, section, nameof(MaxPageSize));
         Require(TrackTotalHitsUpTo >= 1, section, nameof(TrackTotalHitsUpTo));
-        Require(PointInTimeKeepAlive >= TimeSpan.FromSeconds(10) && PointInTimeKeepAlive <= TimeSpan.FromHours(1), section, nameof(PointInTimeKeepAlive));
+        Require(PointInTimeKeepAlive >= TimeSpan.FromSeconds(1) && PointInTimeKeepAlive <= TimeSpan.FromHours(1), section, nameof(PointInTimeKeepAlive));
+        Require(PointInTimeMaxAge >= TimeSpan.FromSeconds(1) && PointInTimeMaxAge <= TimeSpan.FromHours(24), section, nameof(PointInTimeMaxAge));
+        Require(MaxOpenPointInTimesPerUser is >= 1 and <= 50, section, nameof(MaxOpenPointInTimesPerUser));
         Require(SearchIdleTimeout >= PointInTimeKeepAlive && SearchIdleTimeout <= TimeSpan.FromHours(24), section, nameof(SearchIdleTimeout));
         Require(QueryTimeout > TimeSpan.Zero, section, nameof(QueryTimeout));
         Require(SnippetFragmentSize is >= 20 and <= 1000, section, nameof(SnippetFragmentSize));

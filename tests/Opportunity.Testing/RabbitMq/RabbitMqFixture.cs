@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 
 using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Containers;
 
 using Opportunity.Testing.Images;
 using Opportunity.Testing.Toxiproxy;
@@ -135,6 +136,8 @@ public class RabbitMqFixture : DependencyFixture
             new Uri($"api/vhosts/{Uri.EscapeDataString(name)}", UriKind.Relative)).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
+
+    protected override IContainer DependencyContainer => _container;
 
     protected override async Task StartDependencyAsync()
     {

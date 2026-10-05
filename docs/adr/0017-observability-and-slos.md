@@ -132,6 +132,7 @@ file name into a third-party backend.
 | `opportunity.dlq.messages` | counter | {message} | destination, `error.type` | `E06-T06` dead-letter recorder |
 | `opportunity.search.generation.committed` | gauge | {generation} | `opportunity.workspace_id` (bounded) | `E07-T08` |
 | `opportunity.search.generation.indexed` | gauge | {generation} | `opportunity.workspace_id` (bounded) | `E07-T08` (visible watermark) |
+| `opportunity.search.generation.lag` | gauge | {generation} | `opportunity.workspace_id` (bounded) | `E07-T08` (`search_generation_lag`: committed − indexed) |
 | `opportunity.search.index_lag` | gauge | s | `opportunity.workspace_id` (bounded) | `E07-T08` (ADR-001 §7.4 `search.index_lag_seconds`) |
 | `opportunity.search.commit_to_searchable` | histogram | s | `opportunity.lane` | `E07-T06` |
 | `opportunity.search.security_projection_lag` | histogram | s | `opportunity.lane` | `E05-T06` (ADR-001 §5.4 `security_projection_lag_seconds`) |

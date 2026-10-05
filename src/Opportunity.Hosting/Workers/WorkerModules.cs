@@ -3,10 +3,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 using Opportunity.Data.Audit;
+using Opportunity.Data.Messaging;
+using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
 using Opportunity.Jobs;
 using Opportunity.Jobs.Dispatch;
 using Opportunity.Messaging;
+using Opportunity.Search;
+using Opportunity.Search.Freshness;
 
 namespace Opportunity.Hosting.Workers;
 
@@ -74,9 +78,24 @@ public static class WorkerModuleCatalog
         {
             services.AddRabbitMqMessaging(RabbitMqOptions.Bind(configuration));
             services.AddRabbitMqQueueMetrics();
+
+            // Dead-lettered and parked messages are copied into PostgreSQL for diagnostics (ADR-010 §7.3).
+            services.AddPostgresDeadLetterStore();
+            services.AddDeadLetterRecorder(DeadLetterRecorderOptions.Bind(configuration));
         }
 
         services.AddOutboxDispatcher(configuration.GetSection(OutboxDispatcherOptions.SectionName).Get<OutboxDispatcherOptions>());
+
+        // The refresh-aware search watermark (E07-T08, ADR-001 §7.3): one ticker per dispatcher refreshes the indexes of
+        // workspaces with newly applied work and then raises their visible watermark; it samples the lag gauges.
+        var openSearch = OpenSearchOptions.Bind(configuration);
+        if (openSearch.Endpoint is not null)
+        {
+            services.AddPostgresIndexPlacementStore();
+            services.AddOpenSearchIndexManagement(openSearch);
+            services.AddPostgresSearchWatermarkStore();
+            services.AddSearchWatermarkTicker(configuration);
+        }
     }
 
     private static void AddPlaceholder(IServiceCollection services, string type) =>

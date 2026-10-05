@@ -13,6 +13,7 @@ using Opportunity.Contracts.Api;
 using Opportunity.Contracts.Search;
 using Opportunity.Core.QueryLanguage;
 using Opportunity.Core.Security;
+using Opportunity.Core.Snapshots;
 using Opportunity.Search.Indexing;
 
 using static Opportunity.Search.Indexing.JsonBodies;
@@ -38,7 +39,7 @@ internal sealed partial class SearchService(
     IAuthorizationService authorization,
     IAuditEventWriter audit,
     ISearchSessionStore sessions,
-    ISearchWatermarkReader watermarks,
+    ISearchFreshnessReader freshnessReader,
     ISearchQueryTranslator translator,
     QueryLimits limits,
     OpenSearchOptions options,
@@ -55,8 +56,23 @@ internal sealed partial class SearchService(
     /// <summary>ReasonCode of a search handle replayed by another user or session (audited, answered 404).</summary>
     internal const string HandleMismatchReason = "SearchHandleMismatch";
 
-    /// <summary>ReasonCode of a cursor that is not one of the (caller's own) handle's live cursors (audited, answered 404).</summary>
+    /// <summary>
+    /// ReasonCode of a cursor issued for another search (another user's, session's or search's) replayed on the caller's
+    /// own handle (audited, answered 404). Expired and unknown cursors get the same 404 without an audit event (Q-71).
+    /// </summary>
     internal const string CursorMismatchReason = "SearchCursorMismatch";
+
+    /// <summary>Audit detail values of why a page ran on a re-established reader.</summary>
+    internal const string ReaderExpired = "expired";
+    internal const string ReaderAgedOut = "maxAge";
+    internal const string ReaderDetached = "detached";
+
+    /// <summary>
+    /// The §22 rule for interactive cursors (ADR-002 §8, Q-33): a live point-in-time reader, never a materialized set;
+    /// expiry is handled by re-establishing the reader and saying "results refreshed".
+    /// </summary>
+    private static readonly SelectionStrategy InteractiveStrategy =
+        SnapshotStrategyRules.Decide(SetOperationKind.InteractiveCursor, null, new PitPolicy()).Strategy;
 
     private SearchServiceOptions Settings => options.Search;
 
@@ -144,8 +160,8 @@ internal sealed partial class SearchService(
 
         plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, facets.Count) };
 
-        // Q-10: the watermark read before the reader opens is a lower bound of what the reader reflects.
-        var watermark = await watermarks.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        // Q-10: the refresh-aware watermark read before the reader opens is a lower bound of what the reader reflects.
+        var watermark = await freshnessReader.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
         var now = time.GetUtcNow();
         var search = new SearchSessionRecord(
             caller.WorkspaceId,
@@ -163,9 +179,9 @@ internal sealed partial class SearchService(
             now,
             now + Settings.SearchIdleTimeout)
         {
-            ServedGeneration = watermark.Applied,
+            ServedGeneration = watermark.IndexedThroughGeneration,
         };
-        var freshness = new SearchFreshness(watermark.Applied, watermark.IsCurrent, now);
+        var freshness = SearchFreshnessMapping.ForPage(watermark.IndexedThroughGeneration, watermark, now);
 
         if (placement is null)
         {
@@ -177,7 +193,13 @@ internal sealed partial class SearchService(
             return SearchOutcome.Ok(EmptyPage(plan.Normalized, pageSize, freshness) with { SavedSearchId = saved?.SavedSearchId });
         }
 
+        if (InteractiveStrategy != SelectionStrategy.PointInTime)
+        {
+            throw new InvalidOperationException("Interactive searches page under a point-in-time reader (ADR-002 §8).");
+        }
+
         var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
+        search = search with { PointInTimeOpenedAt = time.GetUtcNow() };
         var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
         SearchResult result;
         try
@@ -198,6 +220,7 @@ internal sealed partial class SearchService(
             search with { PointInTimeId = result.PointInTimeId, TotalValue = result.Total.Value, TotalExact = result.Total.Relation == TotalRelation.Eq },
             served.Cursors,
             cancellationToken).ConfigureAwait(false);
+        await CapReadersAsync(caller, cancellationToken).ConfigureAwait(false);
         await AuditExecutedAsync(caller, visibility.Filter!, search, plan, search.SearchId, result.Total, served.Page.Items.Count,
             served.Dropped, cancellationToken, saved?.SavedSearchId).ConfigureAwait(false);
         await RecordSavedRunAsync(caller, saved, served.Page.Total, freshness, cancellationToken).ConfigureAwait(false);
@@ -241,9 +264,16 @@ internal sealed partial class SearchService(
             if (!Guid.TryParseExact(raw, "N", out var cursorId)
                 || await sessions.GetCursorAsync(caller.WorkspaceId, id, cursorId, cancellationToken).ConfigureAwait(false) is not { } cursor)
             {
-                // Not one of this handle's live cursors: a tampered, expired or replayed (another user's) cursor. Same 404,
-                // audited like a replayed handle (Q-62).
-                await AuditHandleMismatchAsync(caller, id, cancellationToken, CursorMismatchReason).ConfigureAwait(false);
+                // Not one of this handle's live cursors. Always the same 404 (no existence oracle); audited only when the
+                // cursor was issued for another search (another user's, another session's or another of the caller's own),
+                // not when it is expired, malformed or unknown (Q-71).
+                if (cursorId != Guid.Empty
+                    && await sessions.GetCursorBindingAsync(caller.WorkspaceId, cursorId, cancellationToken).ConfigureAwait(false) is { } binding
+                    && binding.SearchId != id)
+                {
+                    await AuditCursorMismatchAsync(caller, id, binding, cancellationToken).ConfigureAwait(false);
+                }
+
                 return SearchOutcome.NotFound;
             }
 
@@ -283,7 +313,16 @@ internal sealed partial class SearchService(
 
         var sort = SortKey.FromJson(search.SortJson);
         plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, 0) };
-        var watermark = await watermarks.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var agedOut = search.PointInTimeId is not null && (search.PointInTimeOpenedAt ?? search.CreatedAt) + Settings.PointInTimeMaxAge <= time.GetUtcNow();
+        if (agedOut)
+        {
+            // ADR-002 §8: the reader reached its maximum age; close it and re-establish one from the cursor position.
+            LogPointInTimeAgedOut(logger, search.WorkspaceId, search.SearchId);
+            await ClosePointInTimeAsync(search.PointInTimeId!).ConfigureAwait(false);
+            search = search with { PointInTimeId = null, PointInTimeOpenedAt = null };
+        }
+
+        var watermark = await freshnessReader.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
         var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
         SearchResult result;
         try
@@ -295,20 +334,27 @@ internal sealed partial class SearchService(
             RecordDuration(started, plan.QueryClass, "rejected");
             return SearchOutcome.InvalidQuery(plan.Rejection(rejected.Code));
         }
+
+        if (agedOut && result.RefreshReason == ReaderDetached)
+        {
+            result = result with { RefreshReason = ReaderAgedOut };
+        }
+
         var current = search with { PointInTimeId = result.PointInTimeId };
 
         // The reader is as current as when it opened: unchanged while nothing was committed since its watermark. A
         // reader reopened just now (Q-33) is as current as the watermark read before it.
-        var freshness = result.Refreshed
-            ? new SearchFreshness(watermark.Applied, watermark.IsCurrent, time.GetUtcNow())
-            : new SearchFreshness(search.ServedGeneration, search.ServedGeneration is { } g && watermark.Counter == g, time.GetUtcNow());
+        var freshness = SearchFreshnessMapping.ForPage(
+            result.Refreshed ? watermark.IndexedThroughGeneration : search.ServedGeneration, watermark, time.GetUtcNow());
         var served = await ServeAsync(caller, current, placement, visibility.Filter!, result, navigation, plan.Normalized, freshness, cancellationToken)
             .ConfigureAwait(false);
 
         await sessions.TouchAsync(
             caller.WorkspaceId,
             id,
-            result.PointInTimeId == search.PointInTimeId ? null : result.PointInTimeId,
+            result.Refreshed ? new SearchReaderUpdate(result.PointInTimeId, result.OpenedAt ?? time.GetUtcNow(), watermark.IndexedThroughGeneration)
+                : result.PointInTimeId == search.PointInTimeId ? null
+                : new SearchReaderUpdate(result.PointInTimeId, search.PointInTimeOpenedAt ?? search.CreatedAt, search.ServedGeneration),
             time.GetUtcNow() + Settings.SearchIdleTimeout,
             served.Cursors,
             cancellationToken).ConfigureAwait(false);
@@ -316,6 +362,26 @@ internal sealed partial class SearchService(
 
         RecordDuration(started, plan.QueryClass, "ok");
         return SearchOutcome.Ok(served.Page);
+    }
+
+    /// <summary>
+    /// ADR-002 §8: at most <see cref="SearchServiceOptions.MaxOpenPointInTimesPerUser"/> open readers per user and
+    /// workspace; the oldest beyond that are detached from their searches and closed.
+    /// </summary>
+    private async Task CapReadersAsync(SearchCaller caller, CancellationToken cancellationToken)
+    {
+        var detached = await sessions.DetachReadersAsync(caller.WorkspaceId, caller.Principal.UserId, Settings.MaxOpenPointInTimesPerUser, cancellationToken)
+            .ConfigureAwait(false);
+        if (detached.Count == 0)
+        {
+            return;
+        }
+
+        LogReadersCapped(logger, detached.Count, caller.Principal.UserId, caller.WorkspaceId);
+        foreach (var pit in detached)
+        {
+            await ClosePointInTimeAsync(pit).ConfigureAwait(false);
+        }
     }
 
     private async Task<(SearchOutcome? Outcome, VisibilityFilter? Filter)> VisibilityAsync(SearchCaller caller, CancellationToken cancellationToken)
@@ -409,7 +475,10 @@ internal sealed partial class SearchService(
         IReadOnlyList<string> facets,
         CancellationToken cancellationToken)
     {
-        var refreshed = false;
+        // A page of a search whose reader aged out or was detached (per-user cap) re-establishes one (ADR-002 §8).
+        var refreshed = search.PointInTimeId is null;
+        var reason = refreshed ? ReaderDetached : null;
+        DateTimeOffset? openedAt = refreshed ? time.GetUtcNow() : null;
         var pit = search.PointInTimeId ?? await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
         while (true)
         {
@@ -444,8 +513,10 @@ internal sealed partial class SearchService(
             {
                 // Q-33: the live reader expired; reopen it and say so ("results refreshed").
                 LogPointInTimeReopened(logger, search.WorkspaceId, search.SearchId);
+                openedAt = time.GetUtcNow();
                 pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
                 refreshed = true;
+                reason = ReaderExpired;
                 continue;
             }
 
@@ -472,7 +543,11 @@ internal sealed partial class SearchService(
                 new TotalCount(totalValue, relation),
                 json["pit_id"]?.GetValue<string>() ?? pit,
                 refreshed,
-                json["aggregations"] as JsonObject);
+                json["aggregations"] as JsonObject)
+            {
+                OpenedAt = openedAt,
+                RefreshReason = refreshed ? reason : null,
+            };
         }
     }
 
@@ -826,6 +901,7 @@ internal sealed partial class SearchService(
                 ["returned"] = Invariant(served.Page.Items.Count),
                 ["postFilterDropped"] = Invariant(served.Dropped),
                 ["resultsRefreshed"] = result.Refreshed ? "true" : "false",
+                ["readerReestablished"] = result.RefreshReason,
             },
             null,
             cancellationToken);
@@ -835,6 +911,17 @@ internal sealed partial class SearchService(
         LogHandleMismatch(logger, caller.WorkspaceId, caller.Principal.UserId);
         return WriteAuditAsync(caller, false, AuditTaxonomy.AuthZ.Category, AuditTaxonomy.AuthZ.Denied, searchId,
             new Dictionary<string, string?> { ["permission"] = "Search.Execute" }, null, cancellationToken, AuditOutcome.Denied, reason);
+    }
+
+    private Task AuditCursorMismatchAsync(SearchCaller caller, Guid searchId, SearchCursorBinding binding, CancellationToken cancellationToken)
+    {
+        var boundTo = binding.UserId != caller.Principal.UserId ? "anotherUser"
+            : binding.SessionId != caller.SessionId ? "anotherSession"
+            : "anotherSearch";
+        LogCursorMismatch(logger, caller.WorkspaceId, caller.Principal.UserId, boundTo);
+        return WriteAuditAsync(caller, false, AuditTaxonomy.AuthZ.Category, AuditTaxonomy.AuthZ.Denied, searchId,
+            new Dictionary<string, string?> { ["permission"] = "Search.Execute", ["cursorBoundTo"] = boundTo }, null, cancellationToken,
+            AuditOutcome.Denied, CursorMismatchReason);
     }
 
     private async Task WriteAuditAsync(
@@ -887,8 +974,17 @@ internal sealed partial class SearchService(
     [LoggerMessage(Level = LogLevel.Information, Message = "Search {SearchId} in workspace {WorkspaceId}: point-in-time reader expired, reopened")]
     private static partial void LogPointInTimeReopened(ILogger logger, Guid workspaceId, Guid searchId);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search {SearchId} in workspace {WorkspaceId}: point-in-time reader reached its maximum age, re-established")]
+    private static partial void LogPointInTimeAgedOut(ILogger logger, Guid workspaceId, Guid searchId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Closed {Count} point-in-time reader(s) of user {UserId} in workspace {WorkspaceId} beyond the per-user cap")]
+    private static partial void LogReadersCapped(ILogger logger, int count, Guid userId, Guid workspaceId);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Search handle of workspace {WorkspaceId} replayed by user {UserId} or another session; answered 404")]
     private static partial void LogHandleMismatch(ILogger logger, Guid workspaceId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Search cursor of workspace {WorkspaceId} replayed by user {UserId} on another search ({BoundTo}); answered 404")]
+    private static partial void LogCursorMismatch(ILogger logger, Guid workspaceId, Guid userId, string boundTo);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Dropped {Count} hit(s) in workspace {WorkspaceId} whose projection row names another workspace or no document")]
     private static partial void LogIntegrityDrop(ILogger logger, Guid workspaceId, int count);
@@ -914,7 +1010,14 @@ internal sealed partial class SearchService(
     }
 
     private sealed record SearchResult(
-        IReadOnlyList<JsonObject> Hits, TotalCount Total, string PointInTimeId, bool Refreshed, JsonObject? Aggregations);
+        IReadOnlyList<JsonObject> Hits, TotalCount Total, string PointInTimeId, bool Refreshed, JsonObject? Aggregations)
+    {
+        /// <summary>When a reader was (re-)established for this request; null when the page ran on the existing one.</summary>
+        public DateTimeOffset? OpenedAt { get; init; }
+
+        /// <summary><see cref="ReaderExpired"/>, <see cref="ReaderAgedOut"/> or <see cref="ReaderDetached"/> when refreshed.</summary>
+        public string? RefreshReason { get; init; }
+    }
 
     private sealed record ServedPage(SearchResultPage Page, IReadOnlyList<SearchCursorRecord> Cursors, int Dropped);
 

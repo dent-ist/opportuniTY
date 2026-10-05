@@ -98,6 +98,7 @@ internal static class RouteAttackCatalog
             new RouteProbe("own handle, another workspace's cursor", HttpMethod.Get, (o, t) => $"{W(o)}/searches/{o.SearchId:N}/pages?cursor={t.SearchCursor}", HttpStatusCode.OK),
             new RouteProbe("search handle, page jump", HttpMethod.Get, (o, t) => $"{W(o)}/searches/{t.SearchId:N}/pages?page=1", HttpStatusCode.OK)),
         Case("GET", Ws + "/query-history", ProtectedOperation.Search, WorkspaceOnly(HttpMethod.Get, "/query-history", HttpStatusCode.OK)),
+        Case("GET", Ws + "/search-freshness", ProtectedOperation.Search, WorkspaceOnly(HttpMethod.Get, "/search-freshness", HttpStatusCode.OK)),
 
         // Saved searches and their folders (E07-T09).
         Case("GET", Ws + "/saved-search-folders", ProtectedOperation.SavedSearch, WorkspaceOnly(HttpMethod.Get, "/saved-search-folders", HttpStatusCode.OK)),

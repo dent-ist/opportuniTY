@@ -102,6 +102,8 @@ public class ObjectStoreFixture : DependencyFixture
         await Admin.DeleteBucketAsync(name).ConfigureAwait(false);
     }
 
+    protected override IContainer DependencyContainer => _container;
+
     protected override async Task StartDependencyAsync()
     {
         await _container.StartAsync().ConfigureAwait(false);

@@ -1,0 +1,58 @@
+// The finished import's report summary (Q-71), on the import detail page.
+
+.imports__report-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: var(--opp-space-3);
+}
+
+.imports__report-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.imports__report-group h3 {
+  font-size: var(--opp-font-size-md);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.imports__report-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.imports__report-list div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-1) 0;
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.imports__report-list div:last-child {
+  border-block-end: 0;
+}
+
+.imports__report-list dt {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.imports__report-list dd {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  margin: 0;
+  font-weight: var(--opp-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.imports__report-list .imports__report-fact--attention dd {
+  color: var(--opp-color-warning-text);
+}

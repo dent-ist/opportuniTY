@@ -14,7 +14,8 @@ public class ToolingIsolationTests
             {
                 string text = File.ReadAllText(path);
                 return text.Contains("tools", StringComparison.OrdinalIgnoreCase)
-                    && (text.Contains("Opportunity.DataGenerator", StringComparison.Ordinal) || text.Contains("Opportunity.Benchmarks", StringComparison.Ordinal));
+                    && (text.Contains("Opportunity.DataGenerator", StringComparison.Ordinal) || text.Contains("Opportunity.Benchmarks", StringComparison.Ordinal)
+                        || text.Contains("Opportunity.Correctness", StringComparison.Ordinal));
             })
             .Select(path => Path.GetRelativePath(root, path))];
 

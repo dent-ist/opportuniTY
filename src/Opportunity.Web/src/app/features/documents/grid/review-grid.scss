@@ -6,7 +6,8 @@
 }
 
 .grid__header,
-.grid__footer {
+.grid__footer,
+.grid__footnote {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -15,7 +16,8 @@
 
 .grid__count,
 .grid__selected,
-.grid__rows {
+.grid__rows,
+.grid__footnote {
   margin: 0;
 }
 

@@ -58,7 +58,7 @@ public sealed class BulkCodingService(
             return BulkCodingSubmitOutcome.Of(BulkCodingSubmitStatus.NotFound);
         }
 
-        if (snapshot.Purpose != SnapshotPurpose.BulkCoding)
+        if (!SnapshotStrategyRules.AcceptsSnapshot(SetOperationKind.BulkCoding, snapshot.Purpose))
         {
             return BulkCodingSubmitOutcome.Of(BulkCodingSubmitStatus.Invalid,
                 new FieldError("snapshotId", "snapshot-purpose", "Bulk coding needs a snapshot frozen for bulk coding."));

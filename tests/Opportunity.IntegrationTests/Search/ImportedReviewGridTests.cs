@@ -62,6 +62,7 @@ public sealed class ImportedReviewGridTests(OpenSearchFixture openSearch, Migrat
             ("ws", ws), ("parent", ids["OPP0001"]));
         await h.DeliverAllAsync(ws, batch.JobId);
         (await h.CountAsync(ws)).Should().Be(4);
+        (await h.TickWatermarkAsync(ws)).IsCurrent.Should().BeTrue();
 
         await using var search = SearchServices(h);
         var reviewer = await MemberAsync(h, ws);
@@ -71,6 +72,8 @@ public sealed class ImportedReviewGridTests(OpenSearchFixture openSearch, Migrat
         first.Total.Should().Be(new TotalCount(4, TotalRelation.Eq));
         first.Freshness.Current.Should().BeTrue();
         first.Freshness.ServedGeneration.Should().NotBeNull();
+        first.Freshness.State.Should().Be(SearchFreshnessState.Current);
+        first.Freshness.PendingChanges.Should().Be(0);
 
         var parent = first.Items[0];
         parent.DocumentDate.Should().Be(DateTimeOffset.Parse("2018-11-16T14:55:55Z", System.Globalization.CultureInfo.InvariantCulture));
@@ -108,6 +111,8 @@ public sealed class ImportedReviewGridTests(OpenSearchFixture openSearch, Migrat
         back.Freshness.Current.Should().BeFalse();
         var stale = await SearchAsync(search, ws, reviewer, new SearchRequest("", PageSize: 10));
         stale.Freshness.Current.Should().BeFalse();
+        stale.Freshness.State.Should().Be(SearchFreshnessState.Updating);
+        stale.Freshness.PendingChanges.Should().BeGreaterThan(0);
         stale.Items.Should().HaveCount(4);
     }
 
@@ -120,7 +125,7 @@ public sealed class ImportedReviewGridTests(OpenSearchFixture openSearch, Migrat
         services.AddSingleton<ISecurityStateReader>(new PostgresSecurityStateReader(db.AppDataSource));
         services.AddSingleton<IIndexPlacementStore>(new IndexPlacementStore(db.AppDataSource));
         services.AddSingleton<ISearchSessionStore>(new SearchSessionStore(db.AppDataSource));
-        services.AddSingleton<ISearchWatermarkReader>(new SearchWatermarkReader(db.AppDataSource));
+        services.AddSingleton<ISearchFreshnessReader>(new SearchWatermarkStore(db.AppDataSource));
         services.AddSingleton<IFieldCatalogRepository>(new FieldCatalogRepository(db.AppDataSource));
         services.AddOpportunityAuthorization();
         services.AddOpenSearchSearchService();

@@ -36,7 +36,13 @@ export interface MockJob {
   updatedAt: string;
   completedAt: string | null;
   committed: { done: number; total: number };
-  searchable: { done: number; total: number; state: string };
+  searchable: {
+    done: number;
+    total: number;
+    state: string;
+    jobGeneration?: number;
+    indexedThroughGeneration?: number;
+  };
   errorCount: number;
   correlationId: string;
   snapshotId: string | null;
