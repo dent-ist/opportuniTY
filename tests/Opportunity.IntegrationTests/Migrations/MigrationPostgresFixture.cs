@@ -23,9 +23,21 @@ public sealed class MigrationPostgresFixture : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (_container is not null)
+        if (_container is null)
+        {
+            return;
+        }
+
+        // Teardown only: when a busy CI runner's Docker daemon does not answer the remove request in time, every test of
+        // this shared collection would be reported as failed although all of them passed. The resource reaper (Ryuk)
+        // removes the container when the test session ends, so a slow removal is logged, not failed.
+        try
         {
             await _container.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or TimeoutException)
+        {
+            await Console.Error.WriteLineAsync($"PostgreSQL test container removal did not finish ({ex.GetType().Name}); left to the resource reaper.");
         }
     }
 
