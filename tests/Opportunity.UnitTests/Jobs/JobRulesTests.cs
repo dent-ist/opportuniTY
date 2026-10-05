@@ -51,7 +51,7 @@ public class JobRulesTests
     {
         Enum.GetNames<ChunkOperationKind>().Should().Equal(
             "ImportChunk", "BulkCodingChunk", "RelationshipChunk", "IndexChunk", "ReindexChunk", "ExportChunk",
-            "ProductionChunk", "RenderChunk");
+            "ProductionChunk", "RenderChunk", "SearchTermReportChunk");
     }
 
     [Theory]

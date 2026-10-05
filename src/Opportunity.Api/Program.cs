@@ -52,6 +52,8 @@ builder.Services.AddUserPreferenceEndpoints();
 builder.Services.AddExportEndpoints();
 builder.Services.AddExportContentEndpoints();
 builder.Services.AddImportContentEndpoints();
+builder.Services.AddSearchTermReportEndpoints(builder.Configuration);
+builder.Services.AddSearchTermReportContentEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();

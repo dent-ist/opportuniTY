@@ -210,6 +210,7 @@ and may relax it only through an amendment to this ADR.
    | `Document.ViewQuarantined` | ✔ | | | | | | |
    | `Search.Execute` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
    | `SavedSearch.Share` | ✔ | | ✔ | ✔ | ✔ | | |
+   | `SearchTermReport.Run` (run, rerun, export search term reports, together with Search.Execute; E07-T10) | ✔ | | ✔ | ✔ | ✔ | | |
    | `Coding.Write` | ✔ | ✔ | ✔ | ✔ | | | |
    | `Coding.WritePrivilege` (all security-affecting fields) | ✔ | | | ✔ | | | |
    | `Coding.Bulk` | ✔ | | ✔ | ✔ | ✔ | | |
@@ -230,7 +231,7 @@ and may relax it only through an amendment to this ADR.
    | `Workspace.RequestDeletion` (Q-23) | ✔ | | | | | | |
 
    Users always see their own jobs and may cancel them. *Amendment 2026-10-04 (E06-T06, #61):* replay was split out of
-   `Job.Manage` into `Job.Replay`, the permission the ticket names, so it can be granted on its own later. Installation-level permissions (`Installation.ManageWorkspaces`,
+   `Job.Manage` into `Job.Replay`, the permission the ticket names, so it can be granted on its own later. *Amendment 2026-10-05 (E07-T10, #72):* `SearchTermReport.Run` added for search term reports (granted with `SavedSearch.Share`'s roles). Installation-level permissions (`Installation.ManageWorkspaces`,
    `Installation.ManageIdentity`, `Installation.AssignBreakGlass`, `Installation.ApproveDeletion`,
    `Installation.ManageLegalHold`) belong to the **Installation Admin** role. That role grants **no** document access
    by itself: an installation admin who needs content must hold a workspace role and is subject to walls.

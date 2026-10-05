@@ -50,6 +50,18 @@ public static class AuditTaxonomy
         public const string Shared = "SavedSearch.Shared";
     }
 
+    /// <summary>Search term reports (E07-T10, Q-30): runs, exports and deletion, with the report ID and snapshot.</summary>
+    public static class SearchTermReport
+    {
+        public const string Category = "Search";
+        public const string Generated = "TermReportGenerated";
+        public const string Exported = "TermReportExported";
+        public const string Deleted = "TermReportDeleted";
+
+        /// <summary>The audit resource type of report events.</summary>
+        public const string ResourceType = "SearchTermReport";
+    }
+
     public static class Coding
     {
         public const string Category = "Coding";
@@ -146,7 +158,7 @@ public static class AuditTaxonomy
         .. Expand("Auth", "SignIn", "SignInFailed", "SignOut", "SessionExpired", "SessionRevoked", "StepUp"),
         .. Expand("AuthZ", "Denied"),
         .. Expand("Document", "Retrieved", "Viewed", "NativeDownloaded", "Printed", "TextDownloaded"),
-        .. Expand("Search", "Executed", "ResultsPageServed", "CountExact", "TermReportGenerated",
+        .. Expand("Search", "Executed", "ResultsPageServed", "CountExact", "TermReportGenerated", "TermReportExported", "TermReportDeleted",
             "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted", "SavedSearch.Shared"),
         .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled"),
         .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded"),

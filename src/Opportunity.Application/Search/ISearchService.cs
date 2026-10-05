@@ -36,6 +36,58 @@ public interface ISearchService
         SearchSelectionRequest request,
         Func<IReadOnlyList<Guid>, CancellationToken, Task> onPage,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Which of <paramref name="documentIds"/> match <paramref name="query"/> (search term reports, E07-T10): one search
+    /// restricted to those IDs under the same outer filter as every search, IDs only, never partial (a timed-out or
+    /// too-broad query is an <see cref="SearchSelectionStatus.InvalidQuery"/> with a positioned error), and the matches
+    /// re-checked against PostgreSQL (Q-12). At most <see cref="MaxMatchDocuments"/> IDs per call. No search handle is
+    /// kept and nothing is audited here: the caller audits the operation as a whole.
+    /// </summary>
+    Task<SearchMatchOutcome> MatchAsync(
+        SearchCaller caller, string query, IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default);
+
+    /// <summary>The most document IDs one <see cref="MatchAsync"/> call takes.</summary>
+    public const int MaxMatchDocuments = 5_000;
+}
+
+/// <param name="Status">Ok, InvalidQuery (with <see cref="QueryErrors"/>), NotFound or Forbidden.</param>
+/// <param name="Matches">The matching IDs the caller may view, in no particular order.</param>
+public sealed record SearchMatchOutcome(SearchSelectionStatus Status, IReadOnlyList<Guid> Matches, IReadOnlyList<QueryValidationDiagnostic> QueryErrors)
+{
+    public static SearchMatchOutcome Of(SearchSelectionStatus status) => new(status, [], []);
+}
+
+/// <summary>
+/// The hit set of one term of a completed search term report, for opening the term as a search (E07-T10). Implemented
+/// by the report feature; the search service only filters by it. Null when the report or term does not exist or is not
+/// visible to the caller.
+/// </summary>
+public interface ISearchTermHitSource
+{
+    Task<SearchTermHitSet?> GetAsync(SearchCaller caller, Guid reportId, Guid termId, CancellationToken cancellationToken = default);
+}
+
+public enum SearchTermHitSetStatus
+{
+    Ok,
+
+    /// <summary>The report's current run has not completed.</summary>
+    NotCompleted,
+
+    /// <summary>The term has an error and no hits.</summary>
+    TermError,
+
+    /// <summary>More hits than <see cref="SearchTermHitSet.MaxDocuments"/>; open a narrower term.</summary>
+    TooLarge,
+}
+
+/// <param name="Expression">The term's query-language expression (relevance and highlighting).</param>
+/// <param name="DocumentIds">The hit documents as counted (empty unless <see cref="Status"/> is Ok).</param>
+public sealed record SearchTermHitSet(SearchTermHitSetStatus Status, string Expression, IReadOnlyList<Guid> DocumentIds)
+{
+    /// <summary>The largest hit set that opens as a search: OpenSearch's default <c>index.max_terms_count</c>.</summary>
+    public const int MaxDocuments = 65_536;
 }
 
 /// <param name="Query">Query-language text; empty selects every document the caller may see.</param>

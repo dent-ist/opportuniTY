@@ -3,17 +3,15 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-
 using AwesomeAssertions;
-
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-
 using Opportunity.Application.Authorization;
 using Opportunity.Application.Search.Indexing;
+using Opportunity.Application.Search.TermReports;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.Security;
 using Opportunity.IntegrationTests.Api;
@@ -56,14 +54,18 @@ internal sealed record WorkspaceResources(
     Guid SavedSearchFolderId,
     Guid SpareFolderId,
     Guid SavedSearchId,
-    Guid SpareSavedSearchId)
+    Guid SpareSavedSearchId,
+    Guid TermReportId,
+    Guid TermId,
+    Guid SpareTermReportId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
         "unknown", Guid.CreateVersion7(), Guid.CreateVersion7(), fields, Guid.CreateVersion7(), "ZZ-0000001", Guid.CreateVersion7(),
         Guid.NewGuid().ToString("N"), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+        Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -72,6 +74,7 @@ internal sealed record WorkspaceResources(
         [
             WorkspaceId, DocumentId, SearchId, BulkSnapshotId, ExportSnapshotId, ExportId, ExportFileId, ImportId, ImportJobId, ImportProfileId,
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
+            TermReportId, TermId, SpareTermReportId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -149,6 +152,7 @@ internal sealed class AttackWorld : IAsyncDisposable
             builder.UseSetting("ObjectStorage:Provider", "FileSystem");
             builder.UseSetting("ObjectStorage:FileSystem:RootPath", import.StoreRoot);
             builder.UseSetting("Snapshots:BackgroundEnabled", "false");
+            builder.UseSetting("SearchTermReports:BackgroundEnabled", "false");
             builder.UseSetting("Jobs:Events:MaxStreamDuration", "00:00:01");
             builder.ConfigureTestServices(services =>
             {
@@ -244,6 +248,11 @@ internal sealed class AttackWorld : IAsyncDisposable
         var spareSearch = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/saved-searches", owner, HttpStatusCode.Created,
             new JsonObject { ["name"] = $"Spare search {name}", ["query"] = "memo" });
 
+        // Search term reports (E07-T10): a completed one with a term, and a spare for the delete probe.
+        var termReport = await TermReportAsync(ws, owner, $"Terms {name}");
+        var spareTermReport = await TermReportAsync(ws, owner, $"Spare terms {name}");
+        var termId = termReport.GetProperty("terms")[0].GetProperty("termId").GetGuid();
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -270,7 +279,29 @@ internal sealed class AttackWorld : IAsyncDisposable
             folder.GetProperty("folderId").GetGuid(),
             spareFolder.GetProperty("folderId").GetGuid(),
             savedSearch.GetProperty("savedSearchId").GetGuid(),
-            spareSearch.GetProperty("savedSearchId").GetGuid());
+            spareSearch.GetProperty("savedSearchId").GetGuid(),
+            termReport.GetProperty("reportId").GetGuid(),
+            termId,
+            spareTermReport.GetProperty("reportId").GetGuid());
+    }
+
+    /// <summary>A search term report over the workspace with one term, run to completion by the API host's runner.</summary>
+    private async Task<JsonElement> TermReportAsync(Guid ws, Guid owner, string name)
+    {
+        var created = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/search-term-reports", owner, HttpStatusCode.Accepted, new JsonObject
+        {
+            ["name"] = name,
+            ["terms"] = new JsonArray(new JsonObject { ["name"] = "Memo", ["expression"] = "memo" }),
+            ["scope"] = new JsonObject { ["kind"] = "workspace" },
+        });
+        var reportId = created.GetProperty("reportId").GetGuid();
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<SearchTermReportRunner>().RunToEndAsync(ws, reportId, cancellationToken: Ct))
+                .Should().Be(Core.SearchTermReports.SearchTermReportStatus.Completed);
+        }
+
+        return await JsonAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/search-term-reports/{reportId}", owner, HttpStatusCode.OK);
     }
 
     /// <summary>Sends a request as <paramref name="user"/> (null: anonymous) with a fresh Idempotency-Key on writes.</summary>

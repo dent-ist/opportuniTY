@@ -19,7 +19,7 @@ public enum SearchabilityState
 public static class JobSearchability
 {
     /// <summary>Job types whose chunks create no index tasks.</summary>
-    public static bool AppliesTo(JobType type) => type is not (JobType.Export or JobType.Production or JobType.Render);
+    public static bool AppliesTo(JobType type) => type is not (JobType.Export or JobType.Production or JobType.Render or JobType.SearchTermReport);
 
     public static (long Done, long Total, SearchabilityState State) Evaluate(JobInfo job, long indexedThroughGeneration)
     {

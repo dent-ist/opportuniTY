@@ -18,6 +18,7 @@ permissions in the Break-glass column (Q-45).
 | `Document.Print` | ✔ | | | | ✔ | | |
 | `Document.ViewQuarantined` | ✔ | | | | | | |
 | `Search.Execute` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `SearchTermReport.Run` | ✔ | | ✔ | ✔ | ✔ | | |
 | `SavedSearch.Share` | ✔ | | ✔ | ✔ | ✔ | | |
 | `Coding.Write` | ✔ | ✔ | ✔ | ✔ | | | |
 | `Coding.WritePrivilege` | ✔ | | | ✔ | | | |
@@ -54,6 +55,7 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Document.Print` | Print or save rendered pages. |
 | `Document.ViewQuarantined` | See that a native is quarantined and its scan result; never renders it. |
 | `Search.Execute` | Run searches and see result pages (post-filtered, Q-12). |
+| `SearchTermReport.Run` | Run, rerun and export search term reports (Q-30); with Search.Execute. |
 | `SavedSearch.Share` | Share saved searches with other workspace users. |
 | `Coding.Write` | Change coding fields that are not security-affecting. |
 | `Coding.WritePrivilege` | Change security-affecting fields: privilege, confidentiality, wall membership. |

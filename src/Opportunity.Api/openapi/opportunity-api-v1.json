@@ -5454,6 +5454,446 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/search-term-reports": {
+      "post": {
+        "tags": [
+          "Search Term Reports"
+        ],
+        "summary": "Count named terms over the workspace, a saved search or a snapshot; 202 with the report and its job.",
+        "description": "Give terms as [{name, expression}] or as termsCsv (Name,Expression lines). The report runs as a background job over a materialized snapshot of the scope: per term documents with hits, with family, unique hits and unique hits with family, plus totals. A term that does not parse or bind gets a per-term error and the report still runs. Counts exclude documents the person running the report may not see.",
+        "operationId": "CreateSearchTermReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSearchTermReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTermReportResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Search Term Reports"
+        ],
+        "summary": "Search term reports, newest first: your own, or everyone's with Job.ViewAll.",
+        "operationId": "ListSearchTermReports",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfSearchTermReportSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/search-term-reports/{reportId}": {
+      "get": {
+        "tags": [
+          "Search Term Reports"
+        ],
+        "summary": "One search term report with its provenance (snapshot, search generation, index current), terms, counts and job.",
+        "operationId": "GetSearchTermReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTermReportResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Search Term Reports"
+        ],
+        "summary": "Delete a report (its creator or a workspace admin); a run in progress is cancelled. Audited.",
+        "operationId": "DeleteSearchTermReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/search-term-reports/{reportId}/rerun": {
+      "post": {
+        "tags": [
+          "Search Term Reports"
+        ],
+        "summary": "Run a completed or failed report again over the same snapshot (its creator or a workspace admin); 202.",
+        "description": "The same snapshot and terms give the same numbers while the documents and access rights are unchanged.",
+        "operationId": "RerunSearchTermReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTermReportResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/search-term-reports/{reportId}/export": {
+      "get": {
+        "tags": [
+          "Search Term Reports"
+        ],
+        "summary": "The completed report as CSV (UTF-8 with BOM) or XLSX: provenance, one row per term, totals. Audited.",
+        "operationId": "ExportSearchTermReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me/preferences": {
       "get": {
         "tags": [
@@ -6257,6 +6697,47 @@
           }
         }
       },
+      "CreateSearchTermReportRequest": {
+        "required": [
+          "name",
+          "terms",
+          "scope"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "terms": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SearchTermRequest"
+            }
+          },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTermReportScopeRequest"
+              }
+            ]
+          },
+          "termsCsv": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CreateSnapshotRequest": {
         "required": [
           "purpose"
@@ -6666,6 +7147,31 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SavedSearchSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfSearchTermReportSummary": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchTermReportSummary"
             }
           },
           "nextCursor": {
@@ -9517,7 +10023,8 @@
           "reindex",
           "export",
           "production",
-          "render"
+          "render",
+          "searchTermReport"
         ]
       },
       "JobSearchableProgress": {
@@ -11220,6 +11727,20 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "searchTermReportId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "termId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -11323,6 +11844,395 @@
           },
           "direction": {
             "$ref": "#/components/schemas/SearchSortDirection"
+          }
+        }
+      },
+      "SearchTermReportResource": {
+        "required": [
+          "reportId",
+          "name",
+          "status",
+          "scope",
+          "termCount",
+          "createdBy",
+          "createdAt",
+          "jobId",
+          "executedBy",
+          "terms",
+          "job"
+        ],
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SearchTermReportStatusResource"
+          },
+          "statusReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SearchTermReportScopeResource"
+          },
+          "termCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/SearchTermReportUser"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "searchGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexCurrent": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "executedBy": {
+            "$ref": "#/components/schemas/SearchTermReportUser"
+          },
+          "executedAt": {
+            "format": "date-time"
+          },
+          "totals": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTermReportTotals"
+              }
+            ]
+          },
+          "terms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchTermReportTerm"
+            }
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobResource"
+          }
+        }
+      },
+      "SearchTermReportScopeKindResource": {
+        "enum": [
+          "workspace",
+          "savedSearch",
+          "snapshot"
+        ]
+      },
+      "SearchTermReportScopeRequest": {
+        "required": [
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SearchTermReportScopeKindResource"
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "SearchTermReportScopeResource": {
+        "required": [
+          "kind",
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SearchTermReportScopeKindResource"
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SearchTermReportStatusResource": {
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed"
+        ]
+      },
+      "SearchTermReportSummary": {
+        "required": [
+          "reportId",
+          "name",
+          "status",
+          "scope",
+          "termCount",
+          "createdBy",
+          "createdAt",
+          "jobId"
+        ],
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SearchTermReportStatusResource"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SearchTermReportScopeResource"
+          },
+          "termCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/SearchTermReportUser"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "SearchTermReportTerm": {
+        "required": [
+          "termId",
+          "name",
+          "expression",
+          "error",
+          "documentsWithHits",
+          "documentsWithHitsIncludingFamily",
+          "uniqueHits",
+          "uniqueHitsIncludingFamily"
+        ],
+        "type": "object",
+        "properties": {
+          "termId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTermReportTermError"
+              }
+            ]
+          },
+          "documentsWithHits": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsWithHitsIncludingFamily": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "uniqueHits": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "uniqueHitsIncludingFamily": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "SearchTermReportTermError": {
+        "required": [
+          "code",
+          "message",
+          "position"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "position": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SearchTermReportTotals": {
+        "required": [
+          "documentsInScope",
+          "documentsWithHits",
+          "documentsWithHitsIncludingFamily",
+          "documentsWithoutHits"
+        ],
+        "type": "object",
+        "properties": {
+          "documentsInScope": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsWithHits": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsWithHitsIncludingFamily": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsWithoutHits": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "SearchTermReportUser": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        }
+      },
+      "SearchTermRequest": {
+        "required": [
+          "name",
+          "expression"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expression": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -11955,6 +12865,9 @@
     },
     {
       "name": "Exports"
+    },
+    {
+      "name": "Search Term Reports"
     },
     {
       "name": "Preferences"

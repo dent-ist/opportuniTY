@@ -46,7 +46,8 @@ internal sealed partial class SearchService(
     TimeProvider time,
     ILogger<SearchService> logger,
     OpportunityMetrics? metrics = null,
-    ISavedSearchQueries? savedSearches = null) : ISearchService
+    ISavedSearchQueries? savedSearches = null,
+    ISearchTermHitSource? termHits = null) : ISearchService
 {
     private const string ResourceType = "Search";
     private const string CorrelationTag = "opportunity.correlation_id";
@@ -89,7 +90,28 @@ internal sealed partial class SearchService(
         }
 
         SavedSearchRunSource? saved = null;
-        if (request.SavedSearchId is { } savedSearchId)
+        TermScope? termScope = null;
+        if (request.SearchTermReportId is not null || request.TermId is not null)
+        {
+            if (request.SearchTermReportId is not { } reportId || request.TermId is not { } termId)
+            {
+                return SearchOutcome.InvalidRequest("termId", "Give both searchTermReportId and termId.");
+            }
+
+            if (request.Query is not null || request.SavedSearchId is not null)
+            {
+                return SearchOutcome.InvalidRequest("query", "Give one of query, savedSearchId or a search term report term.");
+            }
+
+            var resolved = await ResolveTermAsync(caller, reportId, termId, cancellationToken).ConfigureAwait(false);
+            if (resolved.Outcome is { } refused)
+            {
+                return refused;
+            }
+
+            termScope = resolved.Scope;
+        }
+        else if (request.SavedSearchId is { } savedSearchId)
         {
             if (request.Query is not null)
             {
@@ -111,7 +133,7 @@ internal sealed partial class SearchService(
             return SearchOutcome.InvalidRequest("query", "The query text is required (it may be empty).");
         }
 
-        var queryText = saved?.QueryText ?? request.Query!;
+        var queryText = termScope?.Expression ?? saved?.QueryText ?? request.Query!;
         var sort = new List<SortKey>();
         foreach (var key in request.Sort ?? saved?.Sort ?? [])
         {
@@ -147,7 +169,7 @@ internal sealed partial class SearchService(
 
         var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
         // Text the caller typed may only reference saved searches they can see; a saved search's own references are its criteria.
-        var plan = await PlanAsync(caller, queryText, placement?.Generation, saved is null, cancellationToken).ConfigureAwait(false);
+        var plan = await PlanAsync(caller, queryText, placement?.Generation, saved is null && termScope is null, cancellationToken).ConfigureAwait(false);
         if (plan.Errors is { } errors)
         {
             return SearchOutcome.InvalidQuery(errors);
@@ -180,6 +202,7 @@ internal sealed partial class SearchService(
             now + Settings.SearchIdleTimeout)
         {
             ServedGeneration = watermark.IndexedThroughGeneration,
+            ScopeJson = termScope?.Json,
         };
         var freshness = SearchFreshnessMapping.ForPage(watermark.IndexedThroughGeneration, watermark, now);
 
@@ -200,7 +223,8 @@ internal sealed partial class SearchService(
 
         var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
         search = search with { PointInTimeOpenedAt = time.GetUtcNow() };
-        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
+        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!,
+            termScope is null ? plan.Query! : TermScoped(plan.Query!, termScope.DocumentIds));
         SearchResult result;
         try
         {
@@ -322,8 +346,21 @@ internal sealed partial class SearchService(
             search = search with { PointInTimeId = null, PointInTimeOpenedAt = null };
         }
 
+        var userClause = plan.Query!;
+        if (search.ScopeJson is { } scopeJson)
+        {
+            // A term hit set (E07-T10): re-read for every page; a report deleted or being rerun meanwhile ends the search.
+            if (TermScope.Parse(scopeJson) is not { } term
+                || await ResolveTermAsync(caller, term.ReportId, term.TermId, cancellationToken).ConfigureAwait(false) is not { Scope: { } scope })
+            {
+                return SearchOutcome.NotFound;
+            }
+
+            userClause = TermScoped(userClause, scope.DocumentIds);
+        }
+
         var watermark = await freshnessReader.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
-        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
+        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, userClause);
         SearchResult result;
         try
         {

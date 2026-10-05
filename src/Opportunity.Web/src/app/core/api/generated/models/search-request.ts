@@ -9,5 +9,7 @@ export interface SearchRequest {
   pageSize?: number | string | null;
   query: string | null;
   savedSearchId?: string | null;
+  searchTermReportId?: string | null;
   sort?: Array<SearchSortKey> | null;
+  termId?: string | null;
 }

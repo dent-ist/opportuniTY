@@ -36,6 +36,9 @@ public enum JobType
     Export,
     Production,
     Render,
+
+    /// <summary>A search term report run (E07-T10): counts term hits over a Report snapshot.</summary>
+    SearchTermReport,
 }
 
 /// <summary>
@@ -52,6 +55,9 @@ public enum ChunkOperationKind
     ExportChunk,
     ProductionChunk,
     RenderChunk,
+
+    /// <summary>Search term report chunks run in the API host (they need the search service), never through a queue.</summary>
+    SearchTermReportChunk,
 }
 
 /// <summary>How a chunk names its members (ADR-010 §4). Stored as smallint; values are fixed forever.</summary>

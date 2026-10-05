@@ -76,6 +76,12 @@ public sealed record SearchSessionRecord(
 
     /// <summary>When <see cref="PointInTimeId"/> was opened (ADR-002 §8 maximum age); null on older rows (use <see cref="CreatedAt"/>).</summary>
     public DateTimeOffset? PointInTimeOpenedAt { get; init; }
+
+    /// <summary>
+    /// A server-side restriction of the search owned by the search module (e.g. a search term report's term hit set,
+    /// E07-T10), re-applied to every page; null for an ordinary search.
+    /// </summary>
+    public string? ScopeJson { get; init; }
 }
 
 /// <summary>The search a cursor belongs to, with the user and session that search is bound to.</summary>

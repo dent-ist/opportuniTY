@@ -20,6 +20,12 @@ namespace Opportunity.Contracts.Search;
 /// results are filtered for the caller; its stored sort applies unless <see cref="Sort"/> is given. The run is recorded as
 /// the search's last run.
 /// </param>
+/// <param name="SearchTermReportId">
+/// With <see cref="TermId"/>, instead of <see cref="Query"/>: open a completed search term report's term as a search
+/// (E07-T10). The results are that term's hits within the report's snapshot as counted, filtered again for the caller;
+/// the term's expression is used for relevance and highlighting.
+/// </param>
+/// <param name="TermId">The term of <see cref="SearchTermReportId"/>.</param>
 public sealed record SearchRequest(
     string? Query,
     IReadOnlyList<SearchSortKey>? Sort = null,
@@ -27,7 +33,9 @@ public sealed record SearchRequest(
     bool? CountExact = null,
     bool? Highlight = null,
     IReadOnlyList<string>? Facets = null,
-    Guid? SavedSearchId = null);
+    Guid? SavedSearchId = null,
+    Guid? SearchTermReportId = null,
+    Guid? TermId = null);
 
 /// <param name="Field">A sortable field (<see cref="SearchSortFields"/>), case-insensitive.</param>
 public sealed record SearchSortKey(string Field, SearchSortDirection Direction = SearchSortDirection.Asc);

@@ -29,6 +29,7 @@ internal static class ProtectedOperation
     public const string Coding = "Coding (interactive read/write, bulk coding)";
     public const string Search = "Search hits, counts, facets, handles and cursors";
     public const string SavedSearch = "Saved searches and their folders";
+    public const string TermReport = "Search term reports (counts, export, term hit sets)";
     public const string Snapshot = "Frozen sets (snapshots)";
     public const string Import = "Import jobs, reports and profiles";
     public const string Job = "Job status";
@@ -92,7 +93,11 @@ internal static class RouteAttackCatalog
             new RouteProbe("saved search in the body", HttpMethod.Post, (o, _) => W(o) + "/searches", HttpStatusCode.OK,
                 (_, t) => J(new JsonObject { ["savedSearchId"] = t.SavedSearchId.ToString() })),
             new RouteProbe("query references another workspace's saved search", HttpMethod.Post, (o, _) => W(o) + "/searches", HttpStatusCode.OK,
-                (_, t) => J(new JsonObject { ["query"] = $"savedsearch:{t.SavedSearchId}" }), Expectation: ForeignExpectation.SameAsUnknown)),
+                (_, t) => J(new JsonObject { ["query"] = $"savedsearch:{t.SavedSearchId}" }), Expectation: ForeignExpectation.SameAsUnknown),
+            new RouteProbe("search term report term in the body", HttpMethod.Post, (o, _) => W(o) + "/searches", HttpStatusCode.OK,
+                (_, t) => J(new JsonObject { ["searchTermReportId"] = t.TermReportId.ToString(), ["termId"] = t.TermId.ToString() })),
+            new RouteProbe("own report, another workspace's term", HttpMethod.Post, (o, _) => W(o) + "/searches", HttpStatusCode.OK,
+                (o, t) => J(new JsonObject { ["searchTermReportId"] = o.TermReportId.ToString(), ["termId"] = t.TermId.ToString() }))),
         Case("GET", Ws + "/searches/{searchId}/pages", ProtectedOperation.Search,
             new RouteProbe("search handle and its cursor", HttpMethod.Get, (o, t) => $"{W(o)}/searches/{t.SearchId:N}/pages?cursor={t.SearchCursor}", HttpStatusCode.OK),
             new RouteProbe("own handle, another workspace's cursor", HttpMethod.Get, (o, t) => $"{W(o)}/searches/{o.SearchId:N}/pages?cursor={t.SearchCursor}", HttpStatusCode.OK),
@@ -141,6 +146,33 @@ internal static class RouteAttackCatalog
                 (_, _) => J(new JsonObject { ["sharedWith"] = new JsonArray() }))),
         Case("POST", Ws + "/query-history", ProtectedOperation.Search,
             WorkspaceOnly(HttpMethod.Post, "/query-history", HttpStatusCode.NoContent, _ => J(new JsonObject { ["query"] = "memo" }))),
+
+        // Search term reports (E07-T10). The rerun probe comes after every probe that needs the report completed.
+        Case("POST", Ws + "/search-term-reports", ProtectedOperation.TermReport,
+            new RouteProbe("snapshot scope in the body", HttpMethod.Post, (o, _) => W(o) + "/search-term-reports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject
+                {
+                    ["name"] = "Probe",
+                    ["terms"] = new JsonArray(new JsonObject { ["name"] = "Memo", ["expression"] = "memo" }),
+                    ["scope"] = new JsonObject { ["kind"] = "snapshot", ["id"] = t.ExportSnapshotId.ToString() },
+                })),
+            new RouteProbe("saved search scope in the body", HttpMethod.Post, (o, _) => W(o) + "/search-term-reports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject
+                {
+                    ["name"] = "Probe",
+                    ["termsCsv"] = "Name,Expression\r\nMemo,memo",
+                    ["scope"] = new JsonObject { ["kind"] = "savedSearch", ["id"] = t.SavedSearchId.ToString() },
+                }))),
+        Case("GET", Ws + "/search-term-reports", ProtectedOperation.TermReport, WorkspaceOnly(HttpMethod.Get, "/search-term-reports", HttpStatusCode.OK)),
+        Case("GET", Ws + "/search-term-reports/{reportId}", ProtectedOperation.TermReport,
+            new RouteProbe("report", HttpMethod.Get, (o, t) => $"{W(o)}/search-term-reports/{t.TermReportId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/search-term-reports/{reportId}/export", ProtectedOperation.TermReport,
+            new RouteProbe("report as CSV", HttpMethod.Get, (o, t) => $"{W(o)}/search-term-reports/{t.TermReportId}/export?format=csv", HttpStatusCode.OK),
+            new RouteProbe("report as XLSX", HttpMethod.Get, (o, t) => $"{W(o)}/search-term-reports/{t.TermReportId}/export?format=xlsx", HttpStatusCode.OK)),
+        Case("POST", Ws + "/search-term-reports/{reportId}/rerun", ProtectedOperation.TermReport,
+            new RouteProbe("report", HttpMethod.Post, (o, t) => $"{W(o)}/search-term-reports/{t.TermReportId}/rerun", HttpStatusCode.Accepted)),
+        Case("DELETE", Ws + "/search-term-reports/{reportId}", ProtectedOperation.TermReport,
+            new RouteProbe("report", HttpMethod.Delete, (o, t) => $"{W(o)}/search-term-reports/{t.SpareTermReportId}", HttpStatusCode.NoContent)),
 
         // Jobs.
         Case("GET", Ws + "/jobs/{jobId}", ProtectedOperation.Job,

@@ -131,6 +131,7 @@ internal static class JobMapping
         JobType.Reindex => "Search reindex",
         JobType.Export => "Export",
         JobType.Production => "Production",
+        JobType.SearchTermReport => "Search Terms Report",
         _ => "Rendering",
     };
 

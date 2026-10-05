@@ -16,10 +16,10 @@ namespace Opportunity.Data.Jobs;
 /// <summary>PostgreSQL implementation of <see cref="IJobOperationsStore"/> (E06-T06, ADR-010 §7).</summary>
 public sealed class JobOperationsStore(NpgsqlDataSource dataSource) : IJobOperationsStore
 {
-    // The job columns of JobSql, then the monitor's extras: initiator display name, import/export name, failed tasks.
+    // The job columns of JobSql, then the monitor's extras: initiator display name, import/export/report name, failed tasks.
     private const string OverviewSelect =
         $"""
-        SELECT {JobSql.JobColumns}, u.display_name, coalesce(b.name, e.name),
+        SELECT {JobSql.JobColumns}, u.display_name, coalesce(b.name, e.name, r.name),
                (SELECT count(*) FROM opportunity.index_chunk_task t
                  WHERE t.workspace_id = j.workspace_id AND t.job_id = j.job_id AND t.status = 6)
         FROM opportunity.job j
@@ -27,6 +27,9 @@ public sealed class JobOperationsStore(NpgsqlDataSource dataSource) : IJobOperat
         LEFT JOIN opportunity.app_user u ON u.user_id = j.initiated_by
         LEFT JOIN opportunity.import_batch b ON b.workspace_id = j.workspace_id AND b.import_batch_id = j.import_batch_id
         LEFT JOIN LATERAL (SELECT x.name FROM opportunity.export x WHERE x.workspace_id = j.workspace_id AND x.job_id = j.job_id LIMIT 1) e ON true
+        LEFT JOIN LATERAL (SELECT s.name FROM opportunity.search_term_report s
+                            WHERE j.job_type = 'SearchTermReport' AND s.workspace_id = j.workspace_id
+                              AND s.report_id::text = j.parameters ->> 'reportId' LIMIT 1) r ON true
         """;
 
     private const int OverviewOffset = 35;
