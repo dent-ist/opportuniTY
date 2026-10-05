@@ -50,6 +50,11 @@ import { QueryBar, QuerySubmission } from './search/query-bar';
 import { BulkCodingApi, HttpBulkCodingApi } from './mass-edit/bulk-coding-api';
 import { MassActions } from './mass-edit/mass-actions';
 import { MassEditJobs } from './mass-edit/mass-edit-jobs';
+import { FreshnessMonitor } from './freshness/freshness-monitor';
+import { FreshnessStatus } from './freshness/freshness-status';
+import { SearchJobBanner } from './freshness/job-banner';
+import { PendingSearchJobs } from './freshness/pending-jobs';
+import { HttpSearchFreshnessApi, SearchFreshnessApi } from '../../core/search/search-freshness';
 
 /**
  * Documents: the default landing page of a workspace (familiarity guide §2.1, §3), with two modes on one route.
@@ -65,6 +70,11 @@ import { MassEditJobs } from './mass-edit/mass-edit-jobs';
  * "Back to list" (asking about unsaved edits first), and Forward reopens the last reviewed document.
  *
  * Mass Actions (E16-T06) sit in the list's header and act on its selection (Mass Edit: bulk coding job).
+ *
+ * Search freshness (E16-T07, Q-10): the list's header carries the freshness pill (Current / Updating / Delayed, details
+ * with raw generations for admins and support only), each result set its plain-language stamp and, when not current,
+ * the footnote "Counts may not include N recent changes"; a banner follows the reviewer's own saved jobs (Mass Edit,
+ * imports, overlays) until they are searchable.
  *
  * Saved searches (E16-T11): the browser pane on the left lists them for quick running and offers "Save current
  * search"; `?savedSearch=<id>` runs one (by id, so the server re-parses it and records the run) and the search panel
@@ -86,6 +96,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     Badge,
     Button,
     CommandRegionDirective,
+    FreshnessStatus,
     Icon,
     IconButton,
     MassActions,
@@ -93,6 +104,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     ReviewGrid,
     ReviewWorkspace,
     SavedSearchBrowser,
+    SearchJobBanner,
   ],
   template: `<h1 class="documents__title" [class.opp-visually-hidden]="reviewing()">Documents</h1>
     <div class="documents__list" [class.is-browser-closed]="!browserOpen()" [hidden]="reviewing()">
@@ -159,6 +171,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
           }
           <opp-query-bar (search)="onSearch($event)" />
         </section>
+        <opp-search-job-banner />
         <section aria-labelledby="documents-list-heading" oppCommandRegion>
           <h2 id="documents-list-heading" class="opp-visually-hidden">Document list</h2>
           <opp-review-grid
@@ -167,6 +180,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
             (refreshed)="onRefreshed($event)"
             (loaded)="onLoaded($event)"
           >
+            <opp-freshness-status gridFreshness />
             <opp-mass-actions
               gridActions
               [target]="grid().selectionTarget()"
@@ -194,6 +208,9 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     PendingCoding,
     { provide: BulkCodingApi, useClass: HttpBulkCodingApi },
     MassEditJobs,
+    { provide: SearchFreshnessApi, useClass: HttpSearchFreshnessApi },
+    FreshnessMonitor,
+    PendingSearchJobs,
     { provide: SavedSearchApi, useClass: HttpSavedSearchApi },
   ],
   host: { '[class.is-reviewing]': 'reviewing()' },

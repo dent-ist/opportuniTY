@@ -47,6 +47,12 @@ import {
 } from './grid-filters';
 import { ActiveFilter, FilterSummary } from './filter-summary';
 import { CellFormatter, countLabel, freshnessLabel } from './grid-format';
+import {
+  type ServedFreshness,
+  footnoteText,
+  toServedFreshness,
+} from '../../../core/search/search-freshness';
+import { FreshnessMonitor } from '../freshness/freshness-monitor';
 import { PageRequest, ReviewSearchApi } from './review-search';
 import { LoadedPage, ResultWindow, toLoadedPage } from './result-window';
 import type { CursorSource } from '../review/review-cursor';
@@ -120,6 +126,8 @@ interface ResultInfo {
   readonly searchId: string;
   readonly total: TotalCount;
   readonly freshness: SearchFreshness;
+  /** The freshness the result set was served with, read tolerantly (E16-T07). */
+  readonly served: ServedFreshness;
   readonly pageCount: number | null;
 }
 
@@ -173,6 +181,8 @@ export class ReviewGrid implements CursorSource {
   private readonly api = inject(ReviewSearchApi);
   /** The reviewer's own saves search has not caught up with (E16-T05): their rows are marked until searchable. */
   protected readonly pendingCoding = inject(PendingCoding, { optional: true });
+  /** The index's freshness (E16-T07): every served result set feeds it; the footnote reads it. */
+  private readonly freshness = inject(FreshnessMonitor, { optional: true });
   private readonly context = inject(WorkspaceContext);
   private readonly prefs = inject(UiPreferences);
   private readonly storage = inject(PreferenceStorage);
@@ -340,6 +350,14 @@ export class ReviewGrid implements CursorSource {
         )
       : '';
   });
+  /** "Counts may not include 85 recent changes." under a result set served while the index was catching up. */
+  protected readonly footnote = computed(() => {
+    const served = this.result()?.served;
+    if (!served || served.state === 'current') return null;
+    // The index has caught up since (a later reading; an older one never replaces the served state).
+    const caughtUp = this.freshness?.index()?.state === 'current';
+    return { text: footnoteText(served.pendingChanges, this.prefs.locale()), caughtUp };
+  });
   protected readonly approximateTotal = computed(() => this.result()?.total.relation === 'gte');
   protected readonly ariaRowCount = computed(() => {
     const r = this.result();
@@ -424,6 +442,11 @@ export class ReviewGrid implements CursorSource {
     effect(() => {
       if (this.search().deferred) return;
       untracked(() => this.run());
+    });
+
+    effect(() => {
+      const served = this.result()?.served;
+      if (served) untracked(() => this.freshness?.observe(served));
     });
 
     effect(() => {
@@ -583,6 +606,15 @@ export class ReviewGrid implements CursorSource {
 
   protected retry(): void {
     void this.run();
+  }
+
+  /** The index caught up after these results were served: run the search again, keeping the focused document. */
+  protected showRecentChanges(): void {
+    const row = this.focusRow();
+    void this.run({
+      anchor: this.focusedId(),
+      anchorPosition: row >= 0 ? this.window().position(row) : null,
+    });
   }
 
   protected countExactly(): void {
@@ -1345,6 +1377,7 @@ function resultInfo(searchId: string, page: SearchResultPage): ResultInfo {
     searchId,
     total: page.total,
     freshness: page.freshness,
+    served: toServedFreshness(page.freshness),
     pageCount: page.page.pageCount === null ? null : Number(page.page.pageCount),
   };
 }

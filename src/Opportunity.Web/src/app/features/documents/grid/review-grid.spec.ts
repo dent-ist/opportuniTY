@@ -167,7 +167,7 @@ describe('Review grid (Documents list)', () => {
       'File Size',
       'Page Count',
     ]);
-    expect(text()).toContain('250 documents · Current as of 10:42');
+    expect(text()).toContain('250 documents · Results current as of 10:42');
     expect(text()).toContain('Page 1 of 3');
     expect(text()).toContain('Rows 1–20 of 250');
     expect(rows()[0].getAttribute('aria-rowindex')).toBe('2');

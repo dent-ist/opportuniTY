@@ -1,0 +1,66 @@
+@if (index(); as f) {
+  @if (canSeeDetails) {
+    <button
+      #toggleRef
+      type="button"
+      class="fs__toggle"
+      [attr.aria-expanded]="open()"
+      [attr.aria-controls]="panelId"
+      (click)="toggle()"
+    >
+      <span class="opp-visually-hidden">Search index: </span>
+      <opp-freshness
+        [state]="f.state"
+        [pending]="f.pendingChanges"
+        [lagSeconds]="f.state === 'current' ? undefined : f.lagSeconds"
+      />
+      <span class="opp-visually-hidden">, show details</span>
+      <opp-icon [name]="open() ? 'chevron-up' : 'chevron-down'" />
+    </button>
+    @if (open() && detail(); as d) {
+      <div [id]="panelId" class="fs__panel" role="group" aria-label="Search index details">
+        <p class="fs__line">
+          Index current through generation {{ d.through }}
+          @for (job of d.jobs; track job.title) {
+            / Job generation {{ job.generation }}
+            <span class="fs__muted">({{ job.title }})</span>
+          }
+        </p>
+        <dl class="fs__facts">
+          @if (d.latest !== null) {
+            <div>
+              <dt>Latest saved generation</dt>
+              <dd>{{ d.latest }}</dd>
+            </div>
+          }
+          @if (d.served !== null) {
+            <div>
+              <dt>These results</dt>
+              <dd>Generation {{ d.served }}</dd>
+            </div>
+          }
+          <div>
+            <dt>Changes not yet searchable</dt>
+            <dd>{{ d.pending }}</dd>
+          </div>
+          <div>
+            <dt>Lag</dt>
+            <dd>{{ d.lag }}</dd>
+          </div>
+          <div>
+            <dt>Checked</dt>
+            <dd>{{ d.checked }}</dd>
+          </div>
+        </dl>
+        <p class="fs__muted">Only workspace administrators and support see these numbers.</p>
+      </div>
+    }
+  } @else {
+    <span class="opp-visually-hidden">Search index: </span>
+    <opp-freshness
+      [state]="f.state"
+      [pending]="f.pendingChanges"
+      [lagSeconds]="f.state === 'current' ? undefined : f.lagSeconds"
+    />
+  }
+}

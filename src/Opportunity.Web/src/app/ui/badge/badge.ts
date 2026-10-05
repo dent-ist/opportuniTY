@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { UiPreferences } from '../../core/preferences/ui-preferences';
+import { pillText } from '../../core/search/search-freshness';
 import { Icon, IconName } from '../icon/icon';
 
 // Data-state indicators (ADR-018 §7). Every state is carried by text (and usually an icon), never by
@@ -89,6 +90,8 @@ export class FreshnessIndicator {
   readonly pending = input<number>();
   /** When the served results were current (ISO-8601 or Date). */
   readonly asOf = input<string | Date>();
+  /** How far behind the index is (seconds), when known: "~12 s behind". */
+  readonly lagSeconds = input<number>();
 
   private readonly prefs = inject(UiPreferences);
 
@@ -105,14 +108,21 @@ export class FreshnessIndicator {
     switch (this.state()) {
       case 'current':
         return time ? `Current as of ${time}` : 'Current';
-      case 'updating': {
-        const pending = this.pending();
-        return pending
-          ? `Updating · ≈ ${new Intl.NumberFormat(locale).format(pending)} changes pending`
-          : 'Updating';
-      }
-      case 'delayed':
+      case 'updating':
+        return pillText(
+          {
+            state: 'updating',
+            pendingChanges: this.pending() ?? 0,
+            lagSeconds: this.lagSeconds() ?? 0,
+          },
+          locale,
+        );
+      case 'delayed': {
+        const lag = this.lagSeconds();
+        if (lag !== undefined)
+          return pillText({ state: 'delayed', pendingChanges: 0, lagSeconds: lag }, locale);
         return time ? `Delayed · results as of ${time}` : 'Delayed · results may be out of date';
+      }
     }
   });
 }

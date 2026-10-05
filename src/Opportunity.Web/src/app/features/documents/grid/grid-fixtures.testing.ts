@@ -28,6 +28,8 @@ export interface FakeResultOptions {
   cap?: number;
   current?: boolean | null;
   searchId?: string;
+  /** Wave-10 freshness additions (`state`, `pendingChanges`, `lagSeconds`, …), merged into `freshness`. */
+  freshness?: Record<string, unknown>;
 }
 
 /**
@@ -54,7 +56,12 @@ export function fakePage(options: FakeResultOptions, number: number): SearchResu
       isLast: number >= pageCount,
     },
     total: { value: exact ? total : cap, relation: exact ? 'eq' : 'gte' },
-    freshness: { asOf: '2026-10-04T10:42:00Z', current, servedGeneration: null },
+    freshness: {
+      asOf: '2026-10-04T10:42:00Z',
+      current,
+      servedGeneration: null,
+      ...options.freshness,
+    },
     nextCursor: number < pageCount ? `p${number + 1}` : null,
     previousCursor: number > 1 ? `p${number - 1}` : null,
     resultsRefreshed: false,
