@@ -19,7 +19,7 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
     private const string SessionColumns =
         """
         workspace_id, search_id, user_id, session_id, query_text, sort_keys::text, page_size, count_exact, highlight,
-        pit_id, total_value, total_exact, created_at, expires_at, served_generation
+        pit_id, total_value, total_exact, created_at, expires_at, served_generation, pit_opened_at
         """;
 
     /// <summary>Expired searches removed per create, so cleanup cost stays bounded.</summary>
@@ -47,9 +47,9 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
             """
             INSERT INTO opportunity.search_session
                 (workspace_id, search_id, user_id, session_id, query_text, sort_keys, page_size, count_exact, highlight,
-                 pit_id, total_value, total_exact, created_at, expires_at, served_generation)
+                 pit_id, total_value, total_exact, created_at, expires_at, served_generation, pit_opened_at)
             VALUES (@ws, @id, @user, @session, @query, @sort, @size, @exact, @highlight, @pit, @total, @totalExact, @created, @expires,
-                    @served)
+                    @served, @pitOpened)
             """))
         {
             insert.Parameters.AddWithValue("ws", search.WorkspaceId);
@@ -67,6 +67,8 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
             insert.Parameters.AddWithValue("created", search.CreatedAt);
             insert.Parameters.AddWithValue("expires", search.ExpiresAt);
             insert.Parameters.AddWithValue("served", NpgsqlDbType.Bigint, (object?)search.ServedGeneration ?? DBNull.Value);
+            insert.Parameters.AddWithValue("pitOpened", NpgsqlDbType.TimestampTz,
+                search.PointInTimeId is null ? DBNull.Value : search.PointInTimeOpenedAt ?? search.CreatedAt);
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -103,6 +105,7 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
                     reader.GetFieldValue<DateTimeOffset>(13))
                 {
                     ServedGeneration = reader.IsDBNull(14) ? null : reader.GetInt64(14),
+                    PointInTimeOpenedAt = reader.IsDBNull(15) ? null : reader.GetFieldValue<DateTimeOffset>(15),
                 };
             }
         }
@@ -146,7 +149,7 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
     public async Task TouchAsync(
         Guid workspaceId,
         Guid searchId,
-        string? pointInTimeId,
+        SearchReaderUpdate? reader,
         DateTimeOffset expiresAt,
         IReadOnlyList<SearchCursorRecord> cursors,
         CancellationToken cancellationToken = default)
@@ -155,13 +158,19 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         await using (var update = tx.Command(
             """
-            UPDATE opportunity.search_session SET pit_id = COALESCE(@pit, pit_id), expires_at = GREATEST(expires_at, @expires)
+            UPDATE opportunity.search_session
+               SET pit_id = COALESCE(@pit, pit_id),
+                   pit_opened_at = CASE WHEN @pit IS NULL THEN pit_opened_at ELSE @opened END,
+                   served_generation = CASE WHEN @pit IS NULL THEN served_generation ELSE @served END,
+                   expires_at = GREATEST(expires_at, @expires)
              WHERE workspace_id = @ws AND search_id = @id
             """))
         {
             update.Parameters.AddWithValue("ws", workspaceId);
             update.Parameters.AddWithValue("id", searchId);
-            update.Parameters.AddWithValue("pit", NpgsqlDbType.Text, (object?)pointInTimeId ?? DBNull.Value);
+            update.Parameters.AddWithValue("pit", NpgsqlDbType.Text, (object?)reader?.PointInTimeId ?? DBNull.Value);
+            update.Parameters.AddWithValue("opened", NpgsqlDbType.TimestampTz, (object?)reader?.OpenedAt ?? DBNull.Value);
+            update.Parameters.AddWithValue("served", NpgsqlDbType.Bigint, (object?)reader?.ServedGeneration ?? DBNull.Value);
             update.Parameters.AddWithValue("expires", expiresAt);
             if (await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
             {
@@ -173,6 +182,39 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
 
         await InsertCursorsAsync(tx, cursors, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<string>> DetachReadersAsync(Guid workspaceId, Guid userId, int keep, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(keep);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var detached = new List<string>();
+        await using (var command = tx.Command(
+            """
+            WITH detached AS (
+                SELECT search_id, pit_id FROM opportunity.search_session
+                 WHERE workspace_id = @ws AND user_id = @user AND pit_id IS NOT NULL AND expires_at > now()
+                 ORDER BY COALESCE(pit_opened_at, created_at) DESC, search_id DESC
+                OFFSET @keep
+                   FOR UPDATE)
+            UPDATE opportunity.search_session s SET pit_id = NULL, pit_opened_at = NULL
+              FROM detached d
+             WHERE s.workspace_id = @ws AND s.search_id = d.search_id
+            RETURNING d.pit_id
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("user", userId);
+            command.Parameters.AddWithValue("keep", keep);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                detached.Add(reader.GetString(0));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return detached;
     }
 
     private static async Task InsertCursorsAsync(WorkspaceTransaction tx, IReadOnlyList<SearchCursorRecord> cursors, CancellationToken cancellationToken)
