@@ -563,7 +563,7 @@ public sealed class FaultWorldFixture(FaultPostgresFixture postgres, OpenSearchF
         services.AddSingleton<Application.Authorization.ISecurityStateReader>(Authz.Reader);
         services.AddSingleton<IIndexPlacementStore>(new IndexPlacementStore(Core.AppDataSource));
         services.AddSingleton<ISearchSessionStore>(new SearchSessionStore(Core.AppDataSource));
-        services.AddSingleton<ISearchWatermarkReader>(new SearchWatermarkReader(Core.AppDataSource));
+        services.AddSingleton<ISearchFreshnessReader>(new SearchWatermarkStore(Core.AppDataSource));
         services.AddSingleton<IFieldCatalogRepository>(new FieldCatalogRepository(Core.AppDataSource));
         services.AddOpenSearchIndexTemplateBootstrap(options);
         services.AddOpportunityAuthorization();
