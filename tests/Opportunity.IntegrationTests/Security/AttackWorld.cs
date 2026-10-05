@@ -59,7 +59,9 @@ internal sealed record WorkspaceResources(
     Guid TermId,
     Guid SpareTermReportId,
     Guid GridViewId,
-    Guid SpareGridViewId)
+    Guid SpareGridViewId,
+    Guid HighlightSetId,
+    Guid SpareHighlightSetId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -67,7 +69,8 @@ internal sealed record WorkspaceResources(
         Guid.NewGuid().ToString("N"), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+        Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -76,7 +79,7 @@ internal sealed record WorkspaceResources(
         [
             WorkspaceId, DocumentId, SearchId, BulkSnapshotId, ExportSnapshotId, ExportId, ExportFileId, ImportId, ImportJobId, ImportProfileId,
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
-            TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId,
+            TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -261,6 +264,12 @@ internal sealed class AttackWorld : IAsyncDisposable
         var spareView = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/grid-views", owner, HttpStatusCode.Created,
             new JsonObject { ["name"] = $"Spare view {name}" });
 
+        // Highlight Sets (E16-T12): one applied by the term-hit probes, a spare for the delete probe.
+        var highlightSet = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/highlight-sets", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"Key terms {name}", ["color"] = "amber", ["terms"] = new JsonArray(new JsonObject { ["expression"] = "memo" }) });
+        var spareHighlightSet = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/highlight-sets", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"Spare set {name}", ["color"] = "green", ["terms"] = new JsonArray(new JsonObject { ["expression"] = "\"price increase\"" }) });
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -292,7 +301,9 @@ internal sealed class AttackWorld : IAsyncDisposable
             termId,
             spareTermReport.GetProperty("reportId").GetGuid(),
             gridView.GetProperty("viewId").GetGuid(),
-            spareView.GetProperty("viewId").GetGuid());
+            spareView.GetProperty("viewId").GetGuid(),
+            highlightSet.GetProperty("highlightSetId").GetGuid(),
+            spareHighlightSet.GetProperty("highlightSetId").GetGuid());
     }
 
     /// <summary>A search term report over the workspace with one term, run to completion by the API host's runner.</summary>

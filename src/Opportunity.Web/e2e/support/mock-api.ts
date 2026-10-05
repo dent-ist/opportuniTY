@@ -7,6 +7,7 @@ import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
 import { SearchTermReportsMock } from './mock-search-term-reports';
 import { GridViewsMock } from './mock-grid-views';
+import { HighlightsMock } from './mock-highlights';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -90,6 +91,8 @@ export interface MockControl {
   }[];
   /** Saved searches (E16-T11): folders, searches, writes received and runs by id. */
   readonly savedSearches: SavedSearchesMock;
+  /** Highlight Sets, toggles and term hits (E16-T12). */
+  readonly highlights: HighlightsMock;
   /** Search freshness (E16-T07): move the index between current, updating and delayed. */
   readonly freshness: FreshnessMock;
   /** Search Terms Reports (#180): reports, writes received (create with Idempotency-Key, re-run, delete, export). */
@@ -236,6 +239,7 @@ export const ALL_PERMISSIONS = [
   'Workspace.ManageSecurity',
   'Workspace.ManageFields',
   'Workspace.RequestDeletion',
+  'HighlightSet.Manage',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -420,6 +424,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const gridViews = new GridViewsMock(permissions.includes('View.ManageShared'));
   let lastSearch: Record<string, unknown> | null = null;
   let lastFields: string[] = [];
+  const highlights = new HighlightsMock(() => lastQuery);
   const freshness = new FreshnessMock(options.freshness);
   const control: MockControl = {
     freshness,
@@ -430,6 +435,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     termReports,
     gridViews,
     lastSearch: () => lastSearch,
+    highlights,
     unhandled,
     audit,
     coding,
@@ -599,6 +605,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Search Terms Reports (#180): ./mock-search-term-reports.ts.
     const termReport = signedIn ? termReports.handle(route, method, path, url) : undefined;
     if (termReport) return termReport;
+    // Highlight Sets and term hits (E16-T12): ./mock-highlights.ts.
+    const highlighted = signedIn ? highlights.handle(route, method, path, url) : undefined;
+    if (highlighted) return highlighted;
     // Imports (E08-T08): ./mock-imports.ts.
     const imported = signedIn ? imports.handle(route, method, path) : undefined;
     if (imported) return imported;

@@ -398,6 +398,8 @@ export class ReviewGrid implements CursorSource {
   /** The loaded rows in list order (the review cursor walks these, E16-T03). */
   readonly rows = computed(() => this.window().rows);
   protected readonly result = signal<ResultInfo | null>(null);
+  /** The current search's handle (Review mode highlights its hits, E16-T12). */
+  readonly searchId = computed(() => this.result()?.searchId ?? null);
   protected readonly busy = signal(false);
   protected readonly loadingMore = signal<'next' | 'previous' | null>(null);
   protected readonly loadError = signal<string | null>(null);

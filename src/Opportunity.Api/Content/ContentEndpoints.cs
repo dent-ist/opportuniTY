@@ -1,15 +1,18 @@
 using System.Globalization;
 
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Opportunity.Api.Conventions;
 using Opportunity.Application.Content;
 using Opportunity.Application.Fields;
+using Opportunity.Application.Search.HighlightSets;
 using Opportunity.Contracts.Api;
 using Opportunity.Core.Security;
 using Opportunity.Data.Documents;
 using Opportunity.Hosting.Options;
+using Opportunity.Security.Authentication;
 using Opportunity.Security.Authorization;
 using Opportunity.Storage;
 
@@ -100,6 +103,21 @@ public sealed class ContentEndpoints : IApiEndpointModule
                 + "stored UTF-8 text, so chunks never split a character and concatenate to the whole text. A document "
                 + "without text answers chunk 0 with missing: true. purpose: display (default) or prefetch.")
             .Produces<DocumentTextChunkResource>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        documents.MapGet("/text/hits", GetTextHitsAsync)
+            .RequireDocumentPermission(Permission.DocumentView)
+            .WithName("GetDocumentTextHits")
+            .WithSummary("Term hits in the extracted text: the current search's and Highlight Sets' (Document.View).")
+            .WithDescription(
+                "Server-computed hit spans over the stored text, a page of whole chunks at a time (up to 16 chunks or about "
+                + "5,000 hits): chunk-local UTF-16 offsets per hit and per-unit counts for the page; ask again with "
+                + "fromChunk = nextChunk until it is null. searchId: the caller's search handle (its terms, phrases, "
+                + "wildcards and W/n proximities, each phrase and proximity as one span; NOT clauses and other fields are "
+                + "not highlighted); an expired or unknown handle answers 404 (run the search again). highlightSetId "
+                + "(repeatable, at most 20; an unknown one answers 404): Highlight Sets to apply. Audited like a text retrieval; no text is returned.")
+            .Produces<DocumentTextHitsResource>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -286,6 +304,80 @@ public sealed class ContentEndpoints : IApiEndpointModule
         return gateway.DeliverTextChunkAsync(context, workspace, request, cancellationToken);
     }
 
+    internal static async Task<IResult> GetTextHitsAsync(
+        string workspaceId,
+        string documentId,
+        [FromQuery] string? searchId,
+        [FromQuery(Name = "highlightSetId")] string[]? highlightSetIds,
+        [FromQuery] string? fromChunk,
+        HttpContext context,
+        ProtectedContentGateway gateway,
+        TermHitUnitResolver resolver,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        var errors = new Dictionary<string, string[]>();
+        var from = 0;
+        if (fromChunk is not null && !int.TryParse(fromChunk, NumberStyles.None, CultureInfo.InvariantCulture, out from))
+        {
+            errors["fromChunk"] = ["Must be a non-negative integer."];
+        }
+
+        Guid? search = null;
+        if (!string.IsNullOrEmpty(searchId))
+        {
+            if (Guid.TryParse(searchId, out var parsed))
+            {
+                search = parsed;
+            }
+            else
+            {
+                errors["searchId"] = ["Must be a search ID."];
+            }
+        }
+
+        var sets = new List<Guid>();
+        foreach (var value in highlightSetIds ?? [])
+        {
+            if (Guid.TryParse(value, out var id))
+            {
+                sets.Add(id);
+            }
+            else
+            {
+                errors["highlightSetId"] = ["Must be highlight set IDs."];
+            }
+        }
+
+        if (sets.Distinct().Count() > TermHitUnitResolver.MaxSets)
+        {
+            errors["highlightSetId"] = [$"At most {TermHitUnitResolver.MaxSets} highlight sets per request."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return Problems.Validation(errors);
+        }
+
+        if (context.GetWorkspaceAccess() is not { } workspace || !TryParseId(documentId, out var document))
+        {
+            return ProtectedContentGateway.DocumentNotFound();
+        }
+
+        var session = Guid.TryParse(context.User.FindFirst(OpportunityClaimTypes.SessionId)?.Value, out var sid) ? sid : (Guid?)null;
+        var units = await resolver.ResolveAsync(workspace.Principal, workspace.WorkspaceId, session, search, sets, cancellationToken).ConfigureAwait(false);
+        switch (units.Status)
+        {
+            case TermHitUnitStatus.SearchNotFound:
+                return Problems.NotFound("No such search; it may have expired. Run the search again.");
+            case TermHitUnitStatus.HighlightSetNotFound:
+                return Problems.NotFound("No such highlight set.");
+        }
+
+        var request = new ContentRequest(workspace.WorkspaceId, document, ContentRendition.Text, ContentPurpose.Display, TextChunk: from, Use: "termHits");
+        return await gateway.DeliverTextHitsAsync(context, workspace, request, units, cancellationToken).ConfigureAwait(false);
+    }
+
     internal static Task<IResult> DownloadNativeAsync(
         string workspaceId, string documentId, HttpContext context, ProtectedContentGateway gateway, CancellationToken cancellationToken) =>
         DeliverAsync(context, gateway, documentId, ContentRendition.Native, ContentPurpose.Download, null, cancellationToken);
@@ -389,6 +481,7 @@ public static class ContentEndpointRegistration
         services.TryAddSingleton<IDocumentViewerCatalog, DocumentViewerCatalog>();
         services.TryAddScoped<IDocumentAccessService, DocumentAccessService>();
         services.TryAddScoped<ProtectedContentGateway>();
+        services.TryAddScoped<TermHitUnitResolver>();
         services.AddSingleton<IApiEndpointModule, ContentEndpoints>();
         return services;
     }

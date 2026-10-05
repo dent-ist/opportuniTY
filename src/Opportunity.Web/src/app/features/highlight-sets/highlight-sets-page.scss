@@ -1,0 +1,178 @@
+// Admin › Highlight Sets (E16-T12).
+
+:host(.hs-page) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 56rem;
+  padding: var(--opp-space-5);
+}
+
+.hs__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.hs__title {
+  margin: 0;
+  font-size: var(--opp-font-size-2xl);
+}
+
+.hs__title:focus {
+  outline: none;
+}
+
+.hs__lead,
+.hs__hint,
+.hs__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+}
+
+.hs__lead {
+  max-width: 44rem;
+}
+
+.hs__hint,
+.hs__muted {
+  font-size: var(--opp-font-size-sm);
+}
+
+.hs__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-4);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  background: var(--opp-color-surface);
+}
+
+.hs__card-title {
+  margin: 0;
+  font-size: var(--opp-font-size-lg);
+}
+
+.hs__form,
+.hs__terms-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+}
+
+.hs__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--opp-space-3);
+}
+
+.hs__label {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.hs__textarea {
+  min-block-size: 8rem;
+  padding: var(--opp-space-2) var(--opp-control-padding-x);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-control);
+  resize: vertical;
+}
+
+.hs__textarea[aria-invalid='true'] {
+  border-color: var(--opp-color-danger-border);
+}
+
+.hs__error {
+  margin: 0;
+  color: var(--opp-color-danger-text);
+  font-size: var(--opp-font-size-sm);
+}
+
+.hs__notice {
+  display: flex;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-danger-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-danger-bg);
+  color: var(--opp-color-danger-text);
+}
+
+.hs__notice p {
+  margin: 0;
+}
+
+.hs__notice-title {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.hs__line-errors {
+  margin: var(--opp-space-1) 0 0;
+  padding-inline-start: var(--opp-space-4);
+}
+
+.hs__actions {
+  display: flex;
+  gap: var(--opp-space-2);
+}
+
+.hs__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hs__item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.hs__item-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  min-inline-size: 0;
+}
+
+.hs__item-name {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.hs__preview {
+  overflow: hidden;
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The colour key: the highlight fill with its underline colour as the outline.
+.hs__swatch {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border: 2px solid;
+  border-radius: var(--opp-radius-sm);
+}
+
+@each $color in 'search', 'amber', 'green', 'blue', 'violet', 'rose', 'teal' {
+  .hs__swatch[data-color='#{$color}'] {
+    background: var(--opp-color-hl-#{$color}-bg);
+    border-color: var(--opp-color-hl-#{$color}-line);
+  }
+}

@@ -28,6 +28,19 @@ const pairs: [string, string, number, string][] = [
     4.5,
     'query bar syntax highlighting',
   ]),
+  // Term-hit highlights (E16-T12): colour plus an underline that stands out ≥ 3:1 on the fill and every surface.
+  ...['search', 'amber', 'green', 'blue', 'violet', 'rose', 'teal'].flatMap(
+    (hl): [string, string, number, string][] => [
+      [`hl-${hl}-text`, `hl-${hl}-bg`, 4.5, `${hl} highlight text`],
+      [`hl-${hl}-line`, `hl-${hl}-bg`, 3, `${hl} highlight underline on its fill`],
+      ...['bg', 'surface', 'surface-sunken'].map((s): [string, string, number, string] => [
+        `hl-${hl}-line`,
+        s,
+        3,
+        `${hl} highlight underline and swatch outline`,
+      ]),
+    ],
+  ),
   ['on-accent', 'accent', 4.5, 'primary button label'],
   ['on-accent', 'accent-hover', 4.5, 'primary button label (hover)'],
   ['on-danger', 'danger', 4.5, 'danger button label'],

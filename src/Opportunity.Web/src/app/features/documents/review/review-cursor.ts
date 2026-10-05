@@ -15,6 +15,8 @@ export interface CursorSource {
   hasMore(direction: CursorDirection): boolean;
   /** True when a page was added. The rows can also change otherwise: an expired search runs again (Q-33). */
   fetchMore(direction: CursorDirection): Promise<boolean>;
+  /** The handle of the search behind the rows, when there is one (its hits are highlighted, E16-T12). */
+  readonly searchId?: Signal<string | null>;
 }
 
 /** `end` / `start`: nothing beyond (the cursor never wraps). `busy`: the list is loading; try again. */
@@ -61,6 +63,8 @@ export class ReviewCursor {
     return i < 0 ? null : this.source.positionOf(i);
   });
   readonly total = computed(() => this.source.countText());
+  /** The search the cursor walks, for highlighting its hits. */
+  readonly searchId = computed(() => this.source.searchId?.() ?? null);
   /** The related item on display instead of the cursor document, if any. */
   readonly related = this._related.asReadonly();
   /** What the viewer and coding pane show: the related item, else the cursor document. */

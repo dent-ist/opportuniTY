@@ -1,0 +1,104 @@
+// The highlight bar of Extracted Text (E16-T12).
+
+// Highlight bar: the toggles of Search hits and each Highlight Set, the hit stepper and the per-term panel.
+.hits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+}
+
+.hits__bar,
+.hits__stepper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-1) var(--opp-space-3);
+}
+
+.hits__title {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.hits__count,
+.hits__note,
+.hits__empty {
+  color: var(--opp-color-text-muted);
+}
+
+.hits__position {
+  min-inline-size: 12rem;
+}
+
+.hits__note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  margin: 0;
+}
+
+.hits__note--warning {
+  color: var(--opp-color-warning-text);
+}
+
+.hits__panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--opp-space-2) var(--opp-space-4);
+  max-block-size: 12rem;
+  overflow: auto;
+  padding-block-start: var(--opp-space-2);
+  border-block-start: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.hits__group-title {
+  margin: 0 0 var(--opp-space-1);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.hits__empty {
+  margin: 0;
+}
+
+.hits__terms {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hits__term {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+
+.hits__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hits__term-count {
+  font-variant-numeric: tabular-nums;
+}
+
+// The colour key: the fill with the underline colour as a 2 px outline (never colour alone: the label follows).
+.hits__swatch {
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  border: 2px solid;
+  border-radius: var(--opp-radius-sm);
+}
+
+@each $color in 'search', 'amber', 'green', 'blue', 'violet', 'rose', 'teal' {
+  .hits__swatch[data-color='#{$color}'] {
+    background: var(--opp-color-hl-#{$color}-bg);
+    border-color: var(--opp-color-hl-#{$color}-line);
+  }
+}

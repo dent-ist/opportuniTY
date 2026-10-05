@@ -30,6 +30,7 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/admin/audit',
   '/w/ws-1/admin/settings',
   '/w/ws-1/admin/setup',
+  '/w/ws-1/admin/highlight-sets',
 ];
 
 /** Popups are rendered only while open, so each is opened and checked separately. */
@@ -283,7 +284,11 @@ for (const theme of THEMES) {
       await viewer.getByRole('searchbox', { name: 'Find in document' }).fill('pricing');
       await viewer.getByRole('button', { name: 'Next match' }).click();
       await expect(viewer.locator('#viewer-find-count')).toHaveText('1 of 1');
-      await expect(viewer.getByText('1 search hit')).toBeVisible();
+      // Search hits and a Highlight Set (two colours, underlined), the current hit and the per-term panel.
+      await expect(viewer.getByText('Search hits (1)')).toBeVisible();
+      await viewer.getByRole('button', { name: 'Next hit', exact: true }).click();
+      await viewer.getByRole('button', { name: 'Terms' }).click();
+      await expect(viewer.locator('#viewer-hit-panel')).toContainText('notice');
       await expectNoSeriousAxeViolations(page, testInfo);
 
       // Metadata, with an imported-value tooltip open.
@@ -300,6 +305,33 @@ for (const theme of THEMES) {
       await viewer.getByRole('tab', { name: 'Extracted Text' }).click();
       for (let i = 0; i < 3; i++) await page.keyboard.press('BracketRight');
       await expect(viewer.getByText('No extracted text for this document.')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('highlight sets: the editor with per-line term errors (E16-T12)', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/admin/highlight-sets');
+      await page.getByRole('button', { name: 'New highlight set' }).click();
+      await page.getByRole('textbox', { name: 'Name' }).fill('Names');
+      await page.getByRole('textbox', { name: 'Terms' }).fill('smith\nte*');
+      await page.route('**/api/v1/workspaces/ws-1/highlight-sets', (route) =>
+        route.request().method() === 'POST'
+          ? route.fulfill({
+              status: 400,
+              contentType: 'application/problem+json',
+              body: JSON.stringify({
+                title: 'Validation',
+                status: 400,
+                errors: {
+                  'terms[1].expression': ['LEADING_WILDCARD: A wildcard needs 3 letters.'],
+                },
+              }),
+            })
+          : route.fallback(),
+      );
+      await page.getByRole('button', { name: 'Save highlight set' }).click();
+      await expect(page.getByRole('alert')).toContainText('Line 2');
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 

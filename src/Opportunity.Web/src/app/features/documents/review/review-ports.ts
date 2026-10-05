@@ -13,6 +13,7 @@ import type {
   DocumentPageResource,
   DocumentResource,
   DocumentTextChunkResource,
+  DocumentTextHitsResource,
   DocumentViewRecord,
   FieldResource,
   UpdateDocumentCodingRequest,
@@ -52,6 +53,42 @@ export interface TextChunk {
   readonly retrievalId: string | null;
 }
 
+/** A highlighted unit (E16-T12): a term, phrase, wildcard or W/n proximity of the search or of a Highlight Set term. */
+export interface TextHitUnit {
+  readonly unit: number;
+  readonly source: 'search' | 'highlightSet';
+  readonly highlightSetId: string | null;
+  readonly label: string;
+  readonly kind: 'term' | 'phrase' | 'wildcard' | 'proximity';
+  /** Palette colour (`search` for search hits). */
+  readonly color: string;
+  readonly count: number;
+}
+
+/** A hit span: UTF-16 offsets in the text of `chunk`; `end` may run past it into the next chunk. */
+export interface TextHit {
+  readonly unit: number;
+  readonly chunk: number;
+  readonly start: number;
+  readonly end: number;
+}
+
+/** One page of `GET …/text/hits`: the units with this page's counts, and its hits in text order. */
+export interface TextHitsPage {
+  readonly units: readonly TextHitUnit[];
+  readonly hits: readonly TextHit[];
+  readonly nextChunk: number | null;
+  readonly chunkCount: number;
+  readonly missing: boolean;
+}
+
+export interface TextHitsRequest {
+  /** The current search handle (its hits), or null. */
+  readonly searchId: string | null;
+  readonly highlightSetIds: readonly string[];
+  readonly fromChunk: number;
+}
+
 /** Page image or thumbnail of the active page set. */
 export type PageImageKind = 'image' | 'thumbnail';
 
@@ -72,6 +109,11 @@ export abstract class DocumentContentApi {
     index: number,
     purpose: ContentPurpose,
   ): Promise<TextChunk>;
+  /**
+   * `GET …/documents/{id}/text/hits`: server-computed hit spans (search and Highlight Sets) for a page of chunks;
+   * phrases and proximities are whole spans. An expired search handle or a deleted set answers 404.
+   */
+  abstract textHits(documentId: string, request: TextHitsRequest): Promise<TextHitsPage>;
   /** `GET …/documents/{id}/pages`: every page of the active page set, in order. */
   abstract pages(
     documentId: string,
@@ -121,6 +163,19 @@ export class HttpDocumentContentApi extends DocumentContentApi {
       ),
     );
     return toTextChunk(documentId, response.body!, retrievalIdOf(response));
+  }
+
+  async textHits(documentId: string, request: TextHitsRequest): Promise<TextHitsPage> {
+    const params: Record<string, string | string[]> = { fromChunk: String(request.fromChunk) };
+    if (request.searchId) params['searchId'] = request.searchId;
+    if (request.highlightSetIds.length) params['highlightSetId'] = [...request.highlightSetIds];
+    const body = await firstValueFrom(
+      this.http.get<DocumentTextHitsResource>(
+        this.context.apiUrl('documents', documentId, 'text', 'hits'),
+        { params },
+      ),
+    );
+    return toTextHitsPage(body);
   }
 
   async pages(
@@ -179,6 +234,29 @@ export class HttpDocumentContentApi extends DocumentContentApi {
       this.http.post(this.context.apiUrl('documents', documentId, 'views'), body),
     );
   }
+}
+
+export function toTextHitsPage(body: DocumentTextHitsResource): TextHitsPage {
+  return {
+    units: body.units.map((u) => ({
+      unit: Number(u.unit),
+      source: u.source,
+      highlightSetId: u.highlightSetId,
+      label: u.label,
+      kind: u.kind,
+      color: u.color ?? 'search',
+      count: Number(u.count),
+    })),
+    hits: body.hits.map((h) => ({
+      unit: Number(h.unit),
+      chunk: Number(h.chunk),
+      start: Number(h.start),
+      end: Number(h.end),
+    })),
+    nextChunk: body.nextChunk === null ? null : Number(body.nextChunk),
+    chunkCount: Number(body.chunkCount),
+    missing: body.missing,
+  };
 }
 
 function retrievalIdOf(response: HttpResponse<unknown>): string | null {

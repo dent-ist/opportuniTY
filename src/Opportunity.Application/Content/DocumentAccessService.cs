@@ -307,6 +307,11 @@ public sealed class DocumentAccessService(
             details["chunk"] = chunk.ToString(CultureInfo.InvariantCulture);
         }
 
+        if (request.Use is { } use)
+        {
+            details["use"] = use;
+        }
+
         return details;
     }
 

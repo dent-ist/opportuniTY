@@ -22,6 +22,7 @@ export const PERMISSIONS = {
   auditRead: 'Audit.Read',
   /** Create, change and delete shared document-list views (E16-T09, "manage views"). */
   manageSharedViews: 'View.ManageShared',
+  manageHighlightSets: 'HighlightSet.Manage',
 } as const;
 
 /** Installation-level permissions (`GET /api/v1/me` → `installationPermissions`), not tied to a workspace. */
@@ -63,7 +64,7 @@ export const ADMIN_AREAS: readonly WorkspaceSection[] = [
   { path: 'choices', label: 'Choices', permission: PERMISSIONS.manageFields },
   { path: 'coding-layouts', label: 'Coding Layouts', permission: PERMISSIONS.manageFields },
   { path: 'views', label: 'Views', permission: PERMISSIONS.manageFields },
-  { path: 'highlight-sets', label: 'Highlight Sets', permission: PERMISSIONS.manageFields },
+  { path: 'highlight-sets', label: 'Highlight Sets', permission: PERMISSIONS.manageHighlightSets },
   { path: 'redaction-sets', label: 'Redaction Sets', permission: PERMISSIONS.manageFields },
   { path: 'users-groups', label: 'Users & Groups', permission: PERMISSIONS.manageUsers },
   { path: 'roles-security', label: 'Roles & Security', permission: PERMISSIONS.manageSecurity },

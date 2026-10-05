@@ -19,7 +19,6 @@ import type { LoadedDocument } from '../document-loader';
 import { ViewerImage } from './image-view';
 import { ViewerMetadata } from './metadata-view';
 import { ViewerNative } from './native-view';
-import { snippetTerms } from './text-segments';
 import { ViewerText } from './text-view';
 import {
   VIEWER_MODES,
@@ -72,6 +71,8 @@ export interface ViewerDocument {
 })
 export class DocumentViewer {
   readonly document = input.required<ViewerDocument>();
+  /** The handle of the search the document was opened from: its hits are highlighted in Extracted Text. */
+  readonly searchId = input<string | null>(null);
 
   private readonly preference = inject(ViewerModePreference);
   private readonly announcer = inject(Announcer);
@@ -121,9 +122,6 @@ export class DocumentViewer {
       ? VIEWER_MODES.filter((m) => m.mode !== mode && content.availability[m.mode].available)
       : [];
   });
-
-  /** The search hit's highlighted terms (snippet highlights); Highlight Sets join them in E16-T12 (#138). */
-  protected readonly terms = computed(() => snippetTerms(this.document().hit.snippets ?? []));
 
   constructor() {
     const registry = inject(CommandRegistry);

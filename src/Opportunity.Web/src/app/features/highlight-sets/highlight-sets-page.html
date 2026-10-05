@@ -1,0 +1,142 @@
+<header class="hs__header">
+  <div>
+    <h1 #heading class="hs__title" tabindex="-1">Highlight Sets</h1>
+    <p class="hs__lead">
+      Term lists that reviewers switch on in Extracted Text to see key words, phrases and names
+      marked in every document. Each reviewer chooses which sets are on.
+    </p>
+  </div>
+  <button
+    type="button"
+    oppButton="primary"
+    [disabled]="editing() !== undefined"
+    (click)="startNew()"
+  >
+    <opp-icon name="plus" /> New highlight set
+  </button>
+</header>
+
+@if (editing() !== undefined) {
+  <section class="hs__card" aria-labelledby="hs-editor-title">
+    <h2 id="hs-editor-title" class="hs__card-title">
+      {{ editing() ? 'Edit ' + editing()!.name : 'New highlight set' }}
+    </h2>
+    <form novalidate class="hs__form" (submit)="save($event)">
+      <div class="hs__row">
+        <opp-text-field
+          #nameField
+          label="Name"
+          [required]="true"
+          [value]="draft().name"
+          [error]="errors()['name']?.join(' ')"
+          [invalid]="!!errors()['name']"
+          [disabled]="saving()"
+          (valueChange)="update({ name: $event })"
+        />
+        <opp-select
+          label="Colour"
+          hint="Shown with an underline, so it never relies on colour alone."
+          [options]="colorOptions()"
+          [value]="draft().color"
+          [error]="errors()['color']?.join(' ')"
+          [invalid]="!!errors()['color']"
+          [disabled]="saving()"
+          (valueChange)="update({ color: $event })"
+        />
+      </div>
+      <div class="hs__terms-field">
+        <label class="hs__label" for="hs-terms">Terms <span aria-hidden="true">*</span></label>
+        <textarea
+          id="hs-terms"
+          class="hs__textarea"
+          rows="8"
+          required
+          spellcheck="false"
+          aria-describedby="hs-terms-hint"
+          [attr.aria-invalid]="termErrors().length || errors()['terms'] ? true : null"
+          [value]="draft().terms"
+          [disabled]="saving()"
+          (input)="onTerms($event)"
+        ></textarea>
+        <p id="hs-terms-hint" class="hs__hint">
+          One term per line: a word (termination), a phrase ("price increase", or several words on a
+          line), a wildcard with at least three letters first (terminat*), or a proximity (agreement
+          W/5 termination). Matching ignores case and accents, like search.
+        </p>
+        @if (errors()['terms']; as messages) {
+          <p class="hs__error">{{ messages.join(' ') }}</p>
+        }
+      </div>
+      @if (saveError(); as message) {
+        <div class="hs__notice" role="alert">
+          <opp-icon name="error" />
+          <div>
+            <p class="hs__notice-title">The highlight set was not saved</p>
+            <p>{{ message }}</p>
+            @if (termErrors().length) {
+              <ul class="hs__line-errors">
+                @for (e of termErrors(); track e.line) {
+                  <li>
+                    Line {{ e.line }} <code>{{ e.text }}</code
+                    >: {{ e.message }}
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+        </div>
+      }
+      <div class="hs__actions">
+        <button type="submit" oppButton="primary" [busy]="saving()">Save highlight set</button>
+        <button type="button" oppButton="ghost" [disabled]="saving()" (click)="cancel()">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </section>
+}
+
+@if (loading()) {
+  <opp-loading-state label="Loading highlight sets…" />
+} @else if (loadError(); as error) {
+  <opp-error-state [error]="error" (retry)="load()" />
+} @else if (!sets().length) {
+  <opp-empty-state
+    title="No highlight sets yet"
+    message="Create one with the terms reviewers should notice, such as key issues or names."
+  />
+} @else {
+  <ul class="hs__list" aria-label="Highlight sets">
+    @for (set of sets(); track set.highlightSetId) {
+      <li class="hs__item">
+        <span
+          class="hs__swatch"
+          [attr.data-color]="swatch(set.color)"
+          [attr.title]="colorLabel(set.color)"
+          aria-hidden="true"
+        ></span>
+        <div class="hs__item-main">
+          <span class="hs__item-name">{{ set.name }}</span>
+          <span class="hs__muted">
+            {{ colorLabel(set.color) }} · {{ set.terms.length }}
+            {{ set.terms.length === 1 ? 'term' : 'terms' }} · changed {{ date(set.modifiedAt) }} by
+            {{ set.modifiedBy }}
+          </span>
+          <span class="hs__preview">{{ preview(set) }}</span>
+        </div>
+        <button
+          type="button"
+          oppIconButton
+          [label]="'Edit ' + set.name"
+          [disabled]="editing() !== undefined"
+          (click)="edit(set)"
+        >
+          <opp-icon name="pencil" />
+        </button>
+        <button type="button" oppIconButton [label]="'Delete ' + set.name" (click)="remove(set)">
+          <opp-icon name="trash" />
+        </button>
+      </li>
+    }
+  </ul>
+}
