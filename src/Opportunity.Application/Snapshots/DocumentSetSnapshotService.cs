@@ -6,20 +6,25 @@ using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
 using Opportunity.Application.Search;
 using Opportunity.Contracts.Search;
+using Opportunity.Core.Documents;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.Security;
 using Opportunity.Core.Snapshots;
 
 namespace Opportunity.Application.Snapshots;
 
-/// <summary>What to freeze: exactly one of a query, explicit document IDs or another snapshot.</summary>
+/// <summary>
+/// What to freeze: exactly one of a query, explicit document IDs or another snapshot, optionally with the families,
+/// duplicates and email threads of what it selects (E09-T03; added in the freeze, ADR-002 §5.2.1).
+/// </summary>
 public sealed record SnapshotCreateRequest(
     SnapshotPurpose Purpose,
     string? Name = null,
     string? Query = null,
     IReadOnlyList<Guid>? DocumentIds = null,
     Guid? SourceSnapshotId = null,
-    string? ClientIdempotencyKey = null);
+    string? ClientIdempotencyKey = null,
+    RelationshipExpansion Expansion = default);
 
 public enum SnapshotCreateStatus
 {
@@ -505,6 +510,7 @@ public sealed class DocumentSetSnapshotService(
             ["projectionGeneration"] = frozen.ProjectionGeneration is { } p ? Invariant(p) : null,
             ["selectedWhileIndexing"] = frozen.SelectedWhileIndexing is { } w ? (w ? "true" : "false") : null,
             ["strategy"] = frozen.Strategy.ToString(),
+            ["expand"] = frozen.Expansion.IsNone ? null : frozen.Expansion.ToString(),
             ["strategyRule"] = SnapshotStrategyRules.Describe(SnapshotStrategyRules.Decide(
                 SnapshotStrategyRules.OperationFor(frozen.Purpose), new SetSizeEstimate(frozen.CandidateCount ?? 0), options.Pit)),
         };
@@ -611,6 +617,7 @@ public sealed class DocumentSetSnapshotService(
             CreatedByGroups = caller.Principal.Groups,
             CorrelationId = caller.Principal.CorrelationId ?? Activity.Current?.GetTagItem(CorrelationTag) as string,
             ClientIdempotencyKey = request.ClientIdempotencyKey,
+            Expansion = request.Expansion,
             ClaimOwner = options.InstanceId,
             ClaimLease = options.ClaimLease,
         }, cancellationToken);

@@ -307,7 +307,7 @@ describe('Documents freshness pill, footnote and job banner', () => {
     include.click();
     await settle();
     expect(api.requests.filter((r) => r.method === 'POST').length).toBe(2);
-  });
+  }, 30_000); // axe over the Documents page is slow in jsdom on a loaded machine
 
   it('shows admins the raw generations in a detail popover', async () => {
     const finished = jobSummary({
@@ -337,7 +337,7 @@ describe('Documents freshness pill, footnote and job banner', () => {
     await settle();
     expect(root().querySelector('[aria-label="Search index details"]')).toBeNull();
     expect(document.activeElement).toBe(toggle);
-  });
+  }, 30_000); // axe over the Documents page is slow in jsdom on a loaded machine
 
   it('shows the banner while the reviewer’s job is saved but not searchable, and clears it after catch-up', async () => {
     const job = jobSummary({

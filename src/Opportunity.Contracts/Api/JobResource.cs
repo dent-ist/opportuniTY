@@ -61,6 +61,7 @@ public enum JobResourceType
     Export,
     Production,
     Render,
+    SearchTermReport,
 }
 
 public enum JobResourceStatus

@@ -11,6 +11,7 @@ using Opportunity.Application.Search;
 using Opportunity.Application.Telemetry;
 using Opportunity.Contracts.Api;
 using Opportunity.Contracts.Search;
+using Opportunity.Core.Documents;
 using Opportunity.Core.QueryLanguage;
 using Opportunity.Core.Security;
 using Opportunity.Core.Snapshots;
@@ -46,7 +47,9 @@ internal sealed partial class SearchService(
     TimeProvider time,
     ILogger<SearchService> logger,
     OpportunityMetrics? metrics = null,
-    ISavedSearchQueries? savedSearches = null) : ISearchService
+    ISavedSearchQueries? savedSearches = null,
+    ISearchTermHitSource? termHits = null,
+    ISearchFieldCatalogSource? catalogs = null) : ISearchService
 {
     private const string ResourceType = "Search";
     private const string CorrelationTag = "opportunity.correlation_id";
@@ -89,7 +92,28 @@ internal sealed partial class SearchService(
         }
 
         SavedSearchRunSource? saved = null;
-        if (request.SavedSearchId is { } savedSearchId)
+        TermScope? termScope = null;
+        if (request.SearchTermReportId is not null || request.TermId is not null)
+        {
+            if (request.SearchTermReportId is not { } reportId || request.TermId is not { } termId)
+            {
+                return SearchOutcome.InvalidRequest("termId", "Give both searchTermReportId and termId.");
+            }
+
+            if (request.Query is not null || request.SavedSearchId is not null)
+            {
+                return SearchOutcome.InvalidRequest("query", "Give one of query, savedSearchId or a search term report term.");
+            }
+
+            var resolved = await ResolveTermAsync(caller, reportId, termId, cancellationToken).ConfigureAwait(false);
+            if (resolved.Outcome is { } refused)
+            {
+                return refused;
+            }
+
+            termScope = resolved.Scope;
+        }
+        else if (request.SavedSearchId is { } savedSearchId)
         {
             if (request.Query is not null)
             {
@@ -111,21 +135,43 @@ internal sealed partial class SearchService(
             return SearchOutcome.InvalidRequest("query", "The query text is required (it may be empty).");
         }
 
-        var queryText = saved?.QueryText ?? request.Query!;
-        var sort = new List<SortKey>();
+        var queryText = termScope?.Expression ?? saved?.QueryText ?? request.Query!;
+
+        // E09-T03: the request's expansion, else the saved search's stored choice (Q-72 includeFamily).
+        var expansion = request.Expand is not null ? request.Expand.ToExpansion() : saved?.Expansion ?? RelationshipExpansion.None;
+        var requestedSort = new List<SearchSortKey>();
         foreach (var key in request.Sort ?? saved?.Sort ?? [])
         {
-            if (key is null || SortKey.Resolve(key.Field, key.Direction) is not { } resolved)
+            if (key is null || string.IsNullOrWhiteSpace(key.Field) || key.Field.Length > SearchResultFields.MaxNameLength || !Enum.IsDefined(key.Direction))
             {
-                return SearchOutcome.InvalidRequest("sort", $"Sortable fields: {string.Join(", ", SearchSortFields.All)}.");
+                return SearchOutcome.InvalidRequest("sort", SortableFieldsMessage);
             }
 
-            sort.Add(resolved);
+            requestedSort.Add(key);
         }
 
-        if (sort.Count > 5 || sort.Select(s => s.Field).Distinct(StringComparer.Ordinal).Count() != sort.Count)
+        if (requestedSort.Count > 5)
         {
             return SearchOutcome.InvalidRequest("sort", "At most 5 distinct sort fields.");
+        }
+
+        var fieldNames = new List<string>();
+        foreach (var name in request.Fields ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Length > SearchResultFields.MaxNameLength)
+            {
+                return SearchOutcome.InvalidRequest("fields", $"Fields are field query names of 1–{SearchResultFields.MaxNameLength} characters.");
+            }
+
+            if (!fieldNames.Contains(name.Trim(), StringComparer.OrdinalIgnoreCase))
+            {
+                fieldNames.Add(name.Trim());
+            }
+        }
+
+        if (fieldNames.Count > SearchResultFields.MaxFields)
+        {
+            return SearchOutcome.InvalidRequest("fields", $"At most {SearchResultFields.MaxFields} fields.");
         }
 
         var facets = new List<string>();
@@ -146,8 +192,15 @@ internal sealed partial class SearchService(
         }
 
         var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var columns = await ColumnsAsync(caller.WorkspaceId, placement?.Generation, requestedSort, fieldNames, cancellationToken).ConfigureAwait(false);
+        if (columns.Problem is { } columnProblem)
+        {
+            return columnProblem;
+        }
+
+        var sort = columns.Sort;
         // Text the caller typed may only reference saved searches they can see; a saved search's own references are its criteria.
-        var plan = await PlanAsync(caller, queryText, placement?.Generation, saved is null, cancellationToken).ConfigureAwait(false);
+        var plan = await PlanAsync(caller, queryText, placement?.Generation, saved is null && termScope is null, cancellationToken).ConfigureAwait(false);
         if (plan.Errors is { } errors)
         {
             return SearchOutcome.InvalidQuery(errors);
@@ -155,7 +208,8 @@ internal sealed partial class SearchService(
 
         if (sort.Count == 0)
         {
-            sort.Add(SortKey.DefaultFor(plan.Ast));
+            // An expanded search keeps families together unless asked otherwise ("Date (Family)", ADR-009 R25).
+            sort.Add(expansion.IsNone ? SortKey.DefaultFor(plan.Ast) : SortKey.Family);
         }
 
         plan = plan with { QueryClass = GateClass(plan.QueryClass, sort, facets.Count) };
@@ -180,6 +234,9 @@ internal sealed partial class SearchService(
             now + Settings.SearchIdleTimeout)
         {
             ServedGeneration = watermark.IndexedThroughGeneration,
+            ScopeJson = termScope?.Json,
+            Expansion = expansion,
+            ResultFieldsJson = columns.Fields.Count > 0 ? SearchColumns.ToJson(columns.Fields) : null,
         };
         var freshness = SearchFreshnessMapping.ForPage(watermark.IndexedThroughGeneration, watermark, now);
 
@@ -190,7 +247,7 @@ internal sealed partial class SearchService(
                 saved?.SavedSearchId).ConfigureAwait(false);
             await RecordSavedRunAsync(caller, saved, new TotalCount(0, TotalRelation.Eq), freshness, cancellationToken).ConfigureAwait(false);
             RecordDuration(started, plan.QueryClass, "ok");
-            return SearchOutcome.Ok(EmptyPage(plan.Normalized, pageSize, freshness) with { SavedSearchId = saved?.SavedSearchId });
+            return SearchOutcome.Ok(EmptyPage(plan.Normalized, pageSize, freshness, expansion) with { SavedSearchId = saved?.SavedSearchId });
         }
 
         if (InteractiveStrategy != SelectionStrategy.PointInTime)
@@ -200,17 +257,24 @@ internal sealed partial class SearchService(
 
         var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
         search = search with { PointInTimeOpenedAt = time.GetUtcNow() };
-        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
+        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!,
+            termScope is null ? plan.Query! : TermScoped(plan.Query!, termScope.DocumentIds));
         SearchResult result;
         try
         {
-            result = await ExecuteAsync(placement, search with { PointInTimeId = pit }, query, sort, Navigation.First(), facets, cancellationToken)
-                .ConfigureAwait(false);
+            result = await ExecuteAsync(placement, search with { PointInTimeId = pit }, query, sort, Navigation.First(), facets, cancellationToken,
+                Expander(placement, visibility.Filter!, plan.Query!, expansion)).ConfigureAwait(false);
         }
         catch (QueryRejectedException rejected)
         {
             RecordDuration(started, plan.QueryClass, "rejected");
             return SearchOutcome.InvalidQuery(plan.Rejection(rejected.Code));
+        }
+        catch (ExpansionTooLargeException)
+        {
+            await ClosePointInTimeAsync(pit).ConfigureAwait(false);
+            RecordDuration(started, plan.QueryClass, "rejected");
+            return ExpansionTooLarge();
         }
 
         var served = await ServeAsync(
@@ -221,8 +285,8 @@ internal sealed partial class SearchService(
             served.Cursors,
             cancellationToken).ConfigureAwait(false);
         await CapReadersAsync(caller, cancellationToken).ConfigureAwait(false);
-        await AuditExecutedAsync(caller, visibility.Filter!, search, plan, search.SearchId, result.Total, served.Page.Items.Count,
-            served.Dropped, cancellationToken, saved?.SavedSearchId).ConfigureAwait(false);
+        await AuditExecutedAsync(caller, visibility.Filter!, search, plan, search.SearchId, served.Page.Total, served.Page.Items.Count,
+            served.Dropped, cancellationToken, saved?.SavedSearchId, served.Page.Expanded).ConfigureAwait(false);
         await RecordSavedRunAsync(caller, saved, served.Page.Total, freshness, cancellationToken).ConfigureAwait(false);
 
         RecordDuration(started, plan.QueryClass, "ok");
@@ -322,17 +386,37 @@ internal sealed partial class SearchService(
             search = search with { PointInTimeId = null, PointInTimeOpenedAt = null };
         }
 
+        var userClause = plan.Query!;
+        if (search.ScopeJson is { } scopeJson)
+        {
+            // A term hit set (E07-T10): re-read for every page; a report deleted or being rerun meanwhile ends the search.
+            if (TermScope.Parse(scopeJson) is not { } term
+                || await ResolveTermAsync(caller, term.ReportId, term.TermId, cancellationToken).ConfigureAwait(false) is not { Scope: { } scope })
+            {
+                return SearchOutcome.NotFound;
+            }
+
+            userClause = TermScoped(userClause, scope.DocumentIds);
+        }
+
         var watermark = await freshnessReader.ReadAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
-        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, plan.Query!);
+        var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!, userClause);
         SearchResult result;
         try
         {
-            result = await ExecuteAsync(placement, search, query, sort, navigation, [], cancellationToken).ConfigureAwait(false);
+            result = await ExecuteAsync(placement, search, query, sort, navigation, [], cancellationToken,
+                Expander(placement, visibility.Filter!, plan.Query!, search.Expansion)).ConfigureAwait(false);
         }
         catch (QueryRejectedException rejected)
         {
             RecordDuration(started, plan.QueryClass, "rejected");
             return SearchOutcome.InvalidQuery(plan.Rejection(rejected.Code));
+        }
+        catch (ExpansionTooLargeException)
+        {
+            // The hits grew past the interactive bound since the first page; the caller narrows or freezes the set.
+            RecordDuration(started, plan.QueryClass, "rejected");
+            return ExpansionTooLarge();
         }
 
         if (agedOut && result.RefreshReason == ReaderDetached)
@@ -447,6 +531,49 @@ internal sealed partial class SearchService(
         };
     }
 
+    private static readonly string SortableFieldsMessage =
+        $"Sort by {string.Join(", ", SearchSortFields.All)} or the query name of a workspace field that is sortable (GET …/fields).";
+
+    /// <summary>
+    /// Resolves the sort (fixed names first, then sortable workspace fields by query name) and the fields the hits carry
+    /// against the workspace's catalogue (E16-T09). Unknown or unsearchable result fields are left out; an unsortable
+    /// sort field is a request error.
+    /// </summary>
+    private async Task<(List<SortKey> Sort, IReadOnlyList<ResultField> Fields, SearchOutcome? Problem)> ColumnsAsync(
+        Guid workspaceId, int? generation, List<SearchSortKey> requestedSort, List<string> fieldNames,
+        CancellationToken cancellationToken)
+    {
+        SearchFieldResolver? resolver = null;
+        if (fieldNames.Count > 0 || requestedSort.Any(k => SortKey.Resolve(k.Field, k.Direction) is null))
+        {
+            var catalog = catalogs is null
+                ? new Core.Fields.FieldCatalog([], [])
+                : await catalogs.GetAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+            resolver = SearchFieldResolver.Create(catalog, generation ?? ProjectionMappings.Embedded.CurrentGeneration);
+        }
+
+        var sort = new List<SortKey>();
+        foreach (var key in requestedSort)
+        {
+            var resolved = SortKey.Resolve(key.Field, key.Direction)
+                ?? (resolver is null ? null : SearchColumns.SortKeyFor(resolver, key.Field.Trim(), key.Direction == SearchSortDirection.Desc));
+            if (resolved is null)
+            {
+                return ([], [], SearchOutcome.InvalidRequest("sort", $"“{key.Field}” cannot be sorted. {SortableFieldsMessage}"));
+            }
+
+            sort.Add(resolved);
+        }
+
+        if (sort.Select(k => k.Path).Distinct(StringComparer.Ordinal).Count() != sort.Count)
+        {
+            return ([], [], SearchOutcome.InvalidRequest("sort", "At most 5 distinct sort fields."));
+        }
+
+        var fields = resolver is null ? [] : fieldNames.Select(n => SearchColumns.FieldFor(resolver, n)).OfType<ResultField>().ToList();
+        return (sort, fields, null);
+    }
+
     /// <summary>
     /// The §29 gate class (docs/benchmarks/query-taxonomy.md): a grid sort other than relevance or facets make any
     /// query complex, as the benchmark's classifier counts them.
@@ -473,7 +600,8 @@ internal sealed partial class SearchService(
         IReadOnlyList<SortKey> sort,
         Navigation navigation,
         IReadOnlyList<string> facets,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string, CancellationToken, Task<ExpandedQuery>>? expand = null)
     {
         // A page of a search whose reader aged out or was detached (per-user cap) re-establishes one (ADR-002 §8).
         var refreshed = search.PointInTimeId is null;
@@ -482,12 +610,32 @@ internal sealed partial class SearchService(
         var pit = search.PointInTimeId ?? await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
         while (true)
         {
+            ExpandedQuery? expanded = null;
+            if (expand is not null)
+            {
+                try
+                {
+                    expanded = await expand(pit, cancellationToken).ConfigureAwait(false);
+                }
+                catch (ReaderGoneException) when (!refreshed)
+                {
+                    LogPointInTimeReopened(logger, search.WorkspaceId, search.SearchId);
+                    openedAt = time.GetUtcNow();
+                    pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
+                    refreshed = true;
+                    reason = ReaderExpired;
+                    continue;
+                }
+            }
+
             var body = SearchDsl.Body(new SearchBodySpec
             {
-                Query = query,
+                Query = expanded?.Query ?? query,
+                Aggregations = expanded?.Aggregations,
                 PointInTimeId = pit,
                 KeepAlive = Settings.PointInTimeKeepAlive,
                 Sort = sort,
+                SourceFields = [.. SearchColumns.FromJson(search.ResultFieldsJson).Select(f => f.Path)],
                 Reverse = navigation.Reverse,
                 SearchAfter = navigation.SearchAfter,
                 From = navigation.From,
@@ -538,15 +686,31 @@ internal sealed partial class SearchService(
             var relation = total?["relation"]?.GetValue<string>() == "eq" && json["timed_out"]?.GetValue<bool>() != true
                 ? TotalRelation.Eq
                 : TotalRelation.Gte;
+            var aggregations = json["aggregations"] as JsonObject;
+            TotalCount? baseTotal = null;
+            SearchExpandedCounts? expandedCounts = null;
+            var totalCount = new TotalCount(totalValue, relation);
+            if (expanded is not null)
+            {
+                // Filter aggregations count every match, so both the base hits and the expanded list size are exact;
+                // paging follows the expanded list.
+                var (baseHits, counts) = RelationshipExpansionQuery.ReadCounts(aggregations);
+                baseTotal = new TotalCount(baseHits, TotalRelation.Eq);
+                expandedCounts = counts;
+                totalCount = new TotalCount(counts.Total, TotalRelation.Eq);
+            }
+
             return new SearchResult(
                 [.. hits.OfType<JsonObject>()],
-                new TotalCount(totalValue, relation),
+                totalCount,
                 json["pit_id"]?.GetValue<string>() ?? pit,
                 refreshed,
-                json["aggregations"] as JsonObject)
+                aggregations)
             {
                 OpenedAt = openedAt,
                 RefreshReason = refreshed ? reason : null,
+                BaseTotal = baseTotal,
+                Expanded = expandedCounts,
             };
         }
     }
@@ -638,7 +802,9 @@ internal sealed partial class SearchService(
             previous = cursor.CursorId.ToString("N");
         }
 
-        var (items, dropped) = await PostFilterAsync(caller, placement, window, cancellationToken).ConfigureAwait(false);
+        var (items, dropped) = await PostFilterAsync(caller, placement, window, !search.Expansion.IsNone, SearchColumns.FromJson(search.ResultFieldsJson),
+                cancellationToken)
+            .ConfigureAwait(false);
         items = await MarkFamilyParentsAsync(placement, visibility, result.PointInTimeId, items, cancellationToken).ConfigureAwait(false);
         var page = new SearchResultPage
         {
@@ -646,7 +812,9 @@ internal sealed partial class SearchService(
             Normalized = normalized,
             Items = items,
             Page = new SearchPageInfo(number, size, pageCount, IsFirst: !hasPrevious, IsLast: !hasNext),
-            Total = result.Total,
+            Total = result.BaseTotal ?? result.Total,
+            Expand = search.Expansion.ToContract(),
+            Expanded = result.Expanded,
             Freshness = freshness,
             NextCursor = next,
             PreviousCursor = previous,
@@ -661,7 +829,8 @@ internal sealed partial class SearchService(
     /// belong to this workspace) is dropped with its snippets and grid fields. One summary audit per call (Q-59).
     /// </summary>
     private async Task<(IReadOnlyList<SearchHit> Items, int Dropped)> PostFilterAsync(
-        SearchCaller caller, Placement placement, List<JsonObject> hits, CancellationToken cancellationToken)
+        SearchCaller caller, Placement placement, List<JsonObject> hits, bool expanded, IReadOnlyList<ResultField> fields,
+        CancellationToken cancellationToken)
     {
         var candidates = new List<(JsonObject Hit, Guid DocumentId)>(hits.Count);
         var integrity = 0;
@@ -697,7 +866,7 @@ internal sealed partial class SearchService(
         {
             if (decisions.TryGetValue(documentId, out var decision) && decision.IsAllowed)
             {
-                items.Add(ToHit(hit, documentId));
+                items.Add(ToHit(hit, documentId, expanded, fields));
             }
             else
             {
@@ -750,7 +919,7 @@ internal sealed partial class SearchService(
 
     private const string FamilyParentsAggregation = "family_parents";
 
-    private static SearchHit ToHit(JsonObject hit, Guid documentId)
+    private static SearchHit ToHit(JsonObject hit, Guid documentId, bool expanded, IReadOnlyList<ResultField> fields)
     {
         var s = (JsonObject)hit["_source"]!;
         var snippets = (hit["highlight"]?[ProjectionFields.Text] as JsonArray ?? [])
@@ -773,7 +942,13 @@ internal sealed partial class SearchService(
             (int?)Number(s, ProjectionFields.FamilySequence),
             Number(s, ProjectionFields.FileSize),
             (int?)Number(s, ProjectionFields.PageCount),
-            snippets);
+            snippets,
+            ExpandedBy: expanded ? RelationshipExpansionQuery.ExpandedBy(hit["matched_queries"]) : null,
+            FamilyDate: DateTimeOffset.TryParse(String(s, ProjectionFields.FamilyDate), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal,
+                out var familyDate)
+                ? familyDate
+                : null,
+            Fields: SearchColumns.Values(s, fields));
     }
 
     /// <summary>Strips the private-use highlight delimiters and returns the highlighted ranges as offsets.</summary>
@@ -821,15 +996,26 @@ internal sealed partial class SearchService(
             .OfType<JsonObject>()
             .Select(b => new SearchFacetBucket(b["key"]?.ToString() ?? string.Empty, b["doc_count"]?.GetValue<long>() ?? 0))]))];
 
-    private static SearchResultPage EmptyPage(string normalized, int pageSize, SearchFreshness freshness) => new()
+    private static SearchResultPage EmptyPage(string normalized, int pageSize, SearchFreshness freshness, RelationshipExpansion expansion) => new()
     {
         SearchId = null,
         Normalized = normalized,
         Items = [],
         Page = new SearchPageInfo(1, pageSize, 1, IsFirst: true, IsLast: true),
         Total = new TotalCount(0, TotalRelation.Eq),
+        Expand = expansion.ToContract(),
+        Expanded = expansion.IsNone ? null : new SearchExpandedCounts(0, 0, 0, 0),
         Freshness = freshness,
     };
+
+    /// <summary>The expansion step of an expanded search's pages; null without expansion.</summary>
+    private Func<string, CancellationToken, Task<ExpandedQuery>>? Expander(
+        Placement placement, VisibilityFilter visibility, JsonObject userQuery, RelationshipExpansion expansion) =>
+        expansion.IsNone ? null : (pit, ct) => ExpandAsync(placement, visibility, userQuery, expansion, pit, ct);
+
+    private SearchOutcome ExpansionTooLarge() => SearchOutcome.InvalidRequest("expand",
+        string.Create(CultureInfo.InvariantCulture,
+            $"The results reach more than {Settings.MaxExpansionKeys:N0} families, duplicate groups or email threads; narrow the search, or include them when you freeze the set (Mass Edit, export)."));
 
     /// <summary>Search.Executed with the full query text in the restricted details (Q-16), before results are returned.</summary>
     private async Task AuditExecutedAsync(
@@ -842,7 +1028,8 @@ internal sealed partial class SearchService(
         int returned,
         int dropped,
         CancellationToken cancellationToken,
-        Guid? savedSearchId = null)
+        Guid? savedSearchId = null,
+        SearchExpandedCounts? expanded = null)
     {
         var details = new Dictionary<string, string?>
         {
@@ -855,6 +1042,13 @@ internal sealed partial class SearchService(
             ["postFilterDropped"] = Invariant(dropped),
             ["queryClass"] = plan.QueryClass,
         };
+        if (!search.Expansion.IsNone)
+        {
+            // E09-T03: the expansion and what it added (the base hits are "total").
+            details["expand"] = search.Expansion.ToString();
+            details["expandedTotal"] = expanded is null ? null : Invariant(expanded.Total);
+        }
+
         if (savedSearchId is { } saved)
         {
             // E07-T09: the run of a saved search (its criteria are the query below, as stored and re-parsed now).
@@ -1017,6 +1211,11 @@ internal sealed partial class SearchService(
 
         /// <summary><see cref="ReaderExpired"/>, <see cref="ReaderAgedOut"/> or <see cref="ReaderDetached"/> when refreshed.</summary>
         public string? RefreshReason { get; init; }
+
+        /// <summary>An expanded search's exact base hit count; <see cref="Total"/> is then the expanded list size.</summary>
+        public TotalCount? BaseTotal { get; init; }
+
+        public SearchExpandedCounts? Expanded { get; init; }
     }
 
     private sealed record ServedPage(SearchResultPage Page, IReadOnlyList<SearchCursorRecord> Cursors, int Dropped);

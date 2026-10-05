@@ -285,6 +285,11 @@ cursor's stored sort values, stores the new reader's open time and watermark (`s
 records `readerReestablished` = `expired` | `maxAge` | `detached`. Verified against real OpenSearch with a 3 s
 keep-alive (`PointInTimeLifecycleTests`) and in the grid and Review-mode UI tests.
 
+**Expansion (E09-T03, #86).** §5.2.1 is implemented: a snapshot header stores the requested expansion (family,
+duplicates, thread; V0035, immutable like the query) and the freeze expands the authorized seeds from the PostgreSQL
+relationship columns (`RelationshipExpansionSql`, ADR-009 R29), authorizes the added members like the seeds and records
+them with `InclusionReason` Family / Duplicate / Thread. Members are ordered as before (family key, family, sequence).
+
 Deviations from §8 as written (lead confirmation requested):
 
 - The response flag is the existing `resultsRefreshed` (E07-T05 contract the UI already uses), not a new

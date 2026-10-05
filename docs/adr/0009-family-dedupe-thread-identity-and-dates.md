@@ -149,6 +149,42 @@ Rules:
 8. **R28** **Productions and privilege logs** render dates in the zone and format of the production specification
    (Q-28, Q-08), recorded in its frozen spec.
 
+### 6. Expansion (E09-T03, #86) — implementation and interim budget (2026-10-05)
+
+1. **R29 One definition.** `Opportunity.Core.Documents.RelationshipExpansion` (family, duplicates, thread) defines the
+   steps: from the base set (hits, explicit IDs or a source snapshot's members) add (1) the base's families, (2) its
+   duplicate groups, (3) its email threads, then (4) the families of what (2) and (3) added (R20: expanded emails bring
+   their attachments). Each step adds only documents not already present, so a document keeps its first reason
+   (family, duplicate, thread). Two implementations follow it: `Opportunity.Search.Querying.RelationshipExpansionQuery`
+   (interactive search, over the projection under the page's reader) and `Opportunity.Data.Relationships.
+   RelationshipExpansionSql` (snapshot freeze, over the authoritative PostgreSQL columns, before membership is fixed —
+   ADR-002 §5.2.1). Other PostgreSQL set computations (e.g. a search-term report's "with family" counts) should reuse the
+   latter with their own seed table.
+2. **R30 Security.** Expanded members are authorized exactly like hits: the outer security filter and the Q-12 page
+   post-filter for search, the freeze's per-member authorization for snapshots. Hidden members are omitted without a
+   trace and are not counted (Q-11, Q-13, Q-52); keys are read only from documents the person may see.
+3. **R31 API.** `expand { family, duplicates, thread }` on `POST …/searches` and `POST …/snapshots`; saved searches store
+   `includeFamily`, `includeDuplicates`, `includeThread` and a run or freeze applies them unless it gives its own. A
+   result page keeps `total` = base hits and adds `expand` and `expanded { family, duplicates, thread, total }`; each
+   added row has `expandedBy` = `family` | `duplicate` | `thread`. An expanded search defaults to the `familyDate` sort
+   (family date, family, family sequence: families contiguous, parent first), which is also a grid sort option.
+4. **R32 Bounds.** An interactive expansion is limited to `OpenSearch:Search:MaxExpansionKeys` (250,000) keys of each
+   kind, because every page sends the keys to OpenSearch; above it the search answers 400 on `expand` and the set is
+   frozen instead (snapshots expand in PostgreSQL without that bound).
+
+**Interim budget (Q-70: CI-class container, not reference hardware).** `tests/Opportunity.IntegrationTests/Search/
+RelationshipExpansionBenchmark.cs` (`OPPORTUNITY_EXPANSION_BENCHMARK=1`), 100,000 documents in 25,000 families of
+1 parent + 3 attachments, "Include family", 4 vCPU shared with other test runs:
+
+| Query | Base hits | Expanded | First page (keys + page) | Next page | Snapshot without expansion | Snapshot with family |
+|---|---|---|---|---|---|---|
+| narrow (10% of families, parents) | 2,500 | 10,000 | 1.33 s | 0.36 s | 0.79 s | 1.89 s |
+| broad (every family, first attachment) | 25,000 | 100,000 | 0.99 s | 1.02 s | 4.27 s | 14.57 s |
+
+Recorded budget until the reference run (#149): interactive expanded pages ≤ 2 s and an expanded freeze ≤ 0.2 ms per
+member at CI scale. The freeze time grows with the members authorized (the PDP pass over 100,000 members dominates),
+not with the expansion SQL; 1M on reference hardware is open together with ADR-002 §6.1.
+
 ## Consequences
 
 - **Positive:** identity is stable and collision-safe. Family, duplicate and thread ids are reproducible from the

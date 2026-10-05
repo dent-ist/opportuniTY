@@ -37,19 +37,19 @@ public static class RoleCatalog
         ]),
         Role(WorkspaceRole.QcReviewer, "QcReviewer", "QC Reviewer",
         [
-            Permission.DocumentView, Permission.SearchExecute, Permission.SavedSearchShare, Permission.CodingWrite,
+            Permission.DocumentView, Permission.SearchExecute, Permission.SavedSearchShare, Permission.SearchTermReportRun, Permission.CodingWrite,
             Permission.CodingBulk, Permission.RedactionApply, Permission.RedactionRemove,
         ]),
         Role(WorkspaceRole.PrivilegeReviewer, "PrivilegeReviewer", "Privilege Reviewer",
         [
-            Permission.DocumentView, Permission.SearchExecute, Permission.SavedSearchShare, Permission.CodingWrite,
+            Permission.DocumentView, Permission.SearchExecute, Permission.SavedSearchShare, Permission.SearchTermReportRun, Permission.CodingWrite,
             Permission.CodingWritePrivilege, Permission.CodingBulk, Permission.RedactionApply, Permission.RedactionRemove,
             Permission.PrivilegeLogGenerate,
         ]),
         Role(WorkspaceRole.ProductionManager, "ProductionManager", "Production Manager",
         [
             Permission.DocumentView, Permission.DocumentDownloadNative, Permission.DocumentPrint, Permission.SearchExecute,
-            Permission.SavedSearchShare, Permission.CodingBulk, Permission.ExportCreate, Permission.ExportDownload,
+            Permission.SavedSearchShare, Permission.SearchTermReportRun, Permission.CodingBulk, Permission.ExportCreate, Permission.ExportDownload,
             Permission.ProductionCreate, Permission.ProductionFinalize, Permission.PrivilegeLogGenerate, Permission.JobViewAll,
         ]),
         Role(WorkspaceRole.Auditor, "Auditor", "Auditor (read-only)",

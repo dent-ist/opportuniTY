@@ -13,12 +13,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom, map } from 'rxjs';
 import { toApiError } from '../../core/api/problem-details';
 import { CommandRegionDirective, CommandRegistry } from '../../core/commands';
 import { PreferenceStorage } from '../../core/preferences/preference-storage';
 import { SessionService } from '../../core/session/session';
+import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import { Badge, Button, DialogService, Icon, IconButton, ToastService } from '../../ui';
 import {
   HttpSavedSearchApi,
@@ -47,6 +48,13 @@ import {
 } from './review/review-ports';
 import { ReviewWorkspace } from './review/review-workspace';
 import { QueryBar, QuerySubmission } from './search/query-bar';
+import {
+  IncludeRelated,
+  IncludeRelatedToggles,
+  NO_RELATED,
+  includeOf,
+  toExpand,
+} from './search/include-related';
 import { BulkCodingApi, HttpBulkCodingApi } from './mass-edit/bulk-coding-api';
 import { MassActions } from './mass-edit/mass-actions';
 import { MassEditJobs } from './mass-edit/mass-edit-jobs';
@@ -55,6 +63,22 @@ import { FreshnessStatus } from './freshness/freshness-status';
 import { SearchJobBanner } from './freshness/job-banner';
 import { PendingSearchJobs } from './freshness/pending-jobs';
 import { HttpSearchFreshnessApi, SearchFreshnessApi } from '../../core/search/search-freshness';
+import {
+  HttpSearchTermReportApi,
+  ReportTerm,
+  SearchTermReport,
+  SearchTermReportApi,
+} from '../searches/terms-reports/search-term-report-api';
+import {
+  TERM_PARAM,
+  TERM_REPORT_PARAM,
+  reportErrorText,
+} from '../searches/terms-reports/search-term-report-model';
+import {
+  HighlightSetsApi,
+  HighlightState,
+  HttpHighlightSetsApi,
+} from '../../core/highlights/highlight-sets';
 
 /**
  * Documents: the default landing page of a workspace (familiarity guide §2.1, §3), with two modes on one route.
@@ -81,6 +105,10 @@ import { HttpSearchFreshnessApi, SearchFreshnessApi } from '../../core/search/se
  * names it. `&then=massEdit` then selects all its results and opens Mass Edit (the Searches section's "Mass Edit
  * results").
  *
+ * Search Terms Reports (#180): `?termReport=<reportId>&term=<termId>` lists one term's hits within the report's frozen
+ * set (filtered for the caller); the search panel names the report and the term, and says when filters turn it into a
+ * live search of the term's expression.
+ *
  * Keyboard (guide §4, command registry E15-T03): "Focus keyword search" (Alt+Shift+K, or `/` while single-key
  * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel, the list and the
  * saved searches, or between the review panes.
@@ -99,10 +127,12 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     FreshnessStatus,
     Icon,
     IconButton,
+    IncludeRelatedToggles,
     MassActions,
     QueryBar,
     ReviewGrid,
     ReviewWorkspace,
+    RouterLink,
     SavedSearchBrowser,
     SearchJobBanner,
   ],
@@ -169,7 +199,37 @@ const BROWSER_KEY = 'pane.documentsBrowser';
               </button>
             </div>
           }
+          @if (termView(); as tv) {
+            <div class="documents__saved" role="group" aria-label="Search Terms Report term">
+              <opp-badge tone="neutral" icon="report">Search Terms Report</opp-badge>
+              <span class="opp-visually-hidden">: </span>
+              <strong>{{ tv.report.name }}</strong>
+              <span aria-hidden="true">›</span>
+              <span class="opp-visually-hidden">, term </span>
+              <strong>{{ tv.term.name }}</strong>
+              <span class="documents__saved-note">
+                @if (termFiltered()) {
+                  With your filters this is a live search of the term's expression in the whole
+                  workspace, not the report's frozen set.
+                } @else {
+                  Documents of the report's frozen set that match this term. {{ filteredNotice }}
+                }
+              </span>
+              <a
+                oppButton="ghost"
+                [routerLink]="['/w', workspaceId, 'searches', 'terms-reports', tv.report.reportId]"
+              >
+                <opp-icon name="report" />
+                Back to report
+              </a>
+              <button type="button" oppButton="ghost" (click)="clearTerm()">
+                <opp-icon name="close" />
+                Clear term
+              </button>
+            </div>
+          }
           <opp-query-bar (search)="onSearch($event)" />
+          <opp-include-related [value]="include()" (valueChange)="onInclude($event)" />
         </section>
         <opp-search-job-banner />
         <section aria-labelledby="documents-list-heading" oppCommandRegion>
@@ -212,6 +272,9 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     FreshnessMonitor,
     PendingSearchJobs,
     { provide: SavedSearchApi, useClass: HttpSavedSearchApi },
+    { provide: SearchTermReportApi, useClass: HttpSearchTermReportApi },
+    { provide: HighlightSetsApi, useClass: HttpHighlightSetsApi },
+    HighlightState,
   ],
   host: { '[class.is-reviewing]': 'reviewing()' },
 })
@@ -219,7 +282,9 @@ export class DocumentsPage {
   /** A link to a saved search runs only that search, not every document first. */
   protected readonly search = signal<GridSearch>({
     query: '',
-    deferred: inject(ActivatedRoute).snapshot.queryParamMap.has(SAVED_SEARCH_PARAM),
+    deferred:
+      inject(ActivatedRoute).snapshot.queryParamMap.has(SAVED_SEARCH_PARAM) ||
+      inject(ActivatedRoute).snapshot.queryParamMap.has(TERM_REPORT_PARAM),
   });
   protected readonly reviewing = signal(false);
   private readonly queryBar = viewChild.required(QueryBar);
@@ -235,6 +300,7 @@ export class DocumentsPage {
     positionOf: (index) => this.grid().positionOf(index),
     hasMore: (direction) => this.grid().hasMore(direction),
     fetchMore: (direction) => this.grid().fetchMore(direction),
+    searchId: computed(() => this.grid().searchId()),
   };
   protected readonly cursor = new ReviewCursor(this.source);
   private readonly router = inject(Router);
@@ -258,6 +324,8 @@ export class DocumentsPage {
   protected readonly myId = computed(() => this.principal()?.userId ?? null);
   protected readonly liveLabel = LIVE_LABEL;
   protected readonly filteredNotice = FILTERED_NOTICE;
+  /** "Include: Family / Duplicates / Email thread" of the list (E09-T03); a saved search sets its stored choice. */
+  protected readonly include = signal<IncludeRelated>(NO_RELATED);
   /** The saved search the list shows (run from the browser pane, a link, or just saved). */
   protected readonly saved = signal<SavedSearch | null>(null);
   /** The `?savedSearch=` id applied (or being applied), so the URL echo of our own change is ignored. */
@@ -267,6 +335,19 @@ export class DocumentsPage {
   private readonly params = toSignal(this.route.queryParamMap, {
     initialValue: this.route.snapshot.queryParamMap,
   });
+  // Search Terms Report terms (#180)
+  private readonly termApi = inject(SearchTermReportApi);
+  protected readonly workspaceId = inject(WorkspaceContext).workspaceId;
+  /** The report term the list shows (`?termReport=&term=`). */
+  protected readonly termView = signal<{ report: SearchTermReport; term: ReportTerm } | null>(null);
+  /** `reportId/termId` applied (or being applied), so the URL echo of our own change is ignored. */
+  private appliedTerm: string | null = null;
+  /** Filters (or another query) narrow the term: the list runs its expression live. */
+  protected readonly termFiltered = computed(() => {
+    const tv = this.termView();
+    return !!tv && this.grid().effectiveQuery() !== tv.term.expression;
+  });
+
   protected readonly browserOpen = linkedSignal(
     () => this.storage.read<{ open?: boolean }>(BROWSER_KEY)?.open !== false,
   );
@@ -280,7 +361,24 @@ export class DocumentsPage {
       const params = this.params();
       const id = params.get(SAVED_SEARCH_PARAM);
       const then = params.get(THEN_PARAM);
+      const reportId = params.get(TERM_REPORT_PARAM);
+      const termId = params.get(TERM_PARAM);
       untracked(() => {
+        const termKey = reportId && termId ? `${reportId}/${termId}` : null;
+        if (termKey && termKey !== this.appliedTerm) {
+          void this.applyTerm(reportId!, termId!);
+          return;
+        }
+        if (!termKey && this.appliedTerm) {
+          // Back from a report term to the plain list (or to a saved search, applied below).
+          this.termView.set(null);
+          this.appliedTerm = null;
+          if (!id) {
+            this.queryBar().clear();
+            this.search.set({ query: '' });
+          }
+        }
+        if (termKey) return;
         if (id && then === 'massEdit') this.pendingMassEdit = id;
         if (id && id !== this.appliedId) void this.applySaved(id);
         else if (!id && this.appliedId) {
@@ -288,7 +386,7 @@ export class DocumentsPage {
           this.saved.set(null);
           this.appliedId = null;
           this.queryBar().clear();
-          this.search.set({ query: '' });
+          this.search.set(this.searchFor(''));
         }
       });
     });
@@ -311,14 +409,111 @@ export class DocumentsPage {
   }
 
   protected onSearch(submission: QuerySubmission): void {
+    const tv = this.termView();
+    if (tv) {
+      if (submission.query === tv.term.expression) {
+        this.search.set(this.termSearch(tv.report, tv.term));
+        return;
+      }
+      this.forgetTerm();
+      this.search.set({ query: submission.query });
+      return;
+    }
     const saved = this.saved();
     if (saved && submission.query === saved.query) {
       // Searching the saved query again keeps it a run of the saved search.
-      this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+      this.search.set(this.searchFor(saved.query, saved.savedSearchId));
       return;
     }
     if (saved) this.forgetSaved();
-    this.search.set({ query: submission.query });
+    this.search.set(this.searchFor(submission.query));
+  }
+
+  /** The Include toggles changed: the list runs again with the new expansion. */
+  protected onInclude(value: IncludeRelated): void {
+    this.include.set(value);
+    const search = this.search();
+    if (search.deferred) return;
+    this.search.set(this.searchFor(search.query, search.savedSearchId ?? null));
+  }
+
+  /** What the list runs: a query (or a saved search by id) with the Include choice, always explicit for a saved search. */
+  private searchFor(query: string, savedSearchId: string | null = null): GridSearch {
+    const expand = toExpand(this.include(), savedSearchId !== null);
+    return savedSearchId ? { query, savedSearchId, expand } : { query, expand };
+  }
+
+  // ── Search Terms Report terms ───────────────────────────────────────────────────────────────────────────────
+
+  /** Applies `?termReport=&term=`: loads the report, shows the report and term names and lists the term's hits. */
+  private async applyTerm(reportId: string, termId: string): Promise<void> {
+    const key = `${reportId}/${termId}`;
+    this.appliedTerm = key;
+    let report: SearchTermReport;
+    try {
+      report = await this.termApi.get(reportId);
+    } catch (e) {
+      if (this.appliedTerm !== key) return;
+      this.dropTerm(reportErrorText(toApiError(e)));
+      return;
+    }
+    if (this.appliedTerm !== key) return;
+    const term = report.terms.find((t) => t.termId === termId);
+    if (!term || term.error || report.status !== 'completed') {
+      this.dropTerm(
+        !term
+          ? 'This term is not part of the report.'
+          : term.error
+            ? 'This term has a syntax error, so it has no documents to show.'
+            : 'The report has not finished yet. Open the term again when it has completed.',
+      );
+      return;
+    }
+    if (this.saved()) {
+      this.saved.set(null);
+      this.appliedId = null;
+    }
+    this.termView.set({ report, term });
+    this.queryBar().load(term.expression);
+    this.grid().resetFilters();
+    this.search.set(this.termSearch(report, term));
+  }
+
+  private termSearch(report: SearchTermReport, term: ReportTerm): GridSearch {
+    return {
+      query: term.expression,
+      termReport: { reportId: report.reportId, termId: term.termId },
+    };
+  }
+
+  private dropTerm(message: string): void {
+    this.appliedTerm = null;
+    this.termView.set(null);
+    this.toasts.show(message, { tone: 'error' });
+    this.setTermInUrl(true);
+    if (this.search().deferred) this.search.set({ query: '' });
+  }
+
+  protected clearTerm(): void {
+    this.forgetTerm();
+    this.queryBar().clear();
+    this.search.set({ query: '' });
+  }
+
+  /** The list no longer shows the report term (another query ran, or it was cleared). */
+  private forgetTerm(): void {
+    this.termView.set(null);
+    this.appliedTerm = null;
+    this.setTermInUrl(true);
+  }
+
+  private setTermInUrl(replaceUrl: boolean): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { [TERM_REPORT_PARAM]: null, [TERM_PARAM]: null },
+      queryParamsHandling: 'merge',
+      replaceUrl,
+    });
   }
 
   // ── Saved searches ──────────────────────────────────────────────────────────────────────────────────────────
@@ -327,12 +522,17 @@ export class DocumentsPage {
   protected runSaved(summary: SavedSearchSummary): void {
     if (summary.savedSearchId === this.appliedId) {
       const saved = this.saved();
-      if (saved) this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+      if (saved) this.search.set(this.searchFor(saved.query, saved.savedSearchId));
       return;
     }
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { [SAVED_SEARCH_PARAM]: summary.savedSearchId, [THEN_PARAM]: null },
+      queryParams: {
+        [SAVED_SEARCH_PARAM]: summary.savedSearchId,
+        [THEN_PARAM]: null,
+        [TERM_REPORT_PARAM]: null,
+        [TERM_PARAM]: null,
+      },
       queryParamsHandling: 'merge',
     });
   }
@@ -349,26 +549,39 @@ export class DocumentsPage {
       this.pendingMassEdit = null;
       this.toasts.show(savedSearchErrorText(toApiError(e)), { tone: 'error' });
       this.setSavedInUrl(null, true);
-      if (this.search().deferred) this.search.set({ query: '' });
+      if (this.search().deferred) this.search.set(this.searchFor(''));
       return;
     }
     if (this.appliedId !== id) return;
     this.showSaved(saved);
   }
 
-  /** The list shows `saved`: its name in the search panel, its query in the bar, run by id. */
-  private showSaved(saved: SavedSearch): void {
+  /**
+   * The list shows `saved`: its name in the search panel, its query in the bar, run by id. Its columns and sort (saved
+   * with it from Documents, E16-T09) are applied to the list; a search saved without them keeps the current View.
+   */
+  private showSaved(saved: SavedSearch, applyView = true): void {
+    this.termView.set(null);
+    this.appliedTerm = null;
     this.appliedId = saved.savedSearchId;
     this.saved.set(saved);
     this.queryBar().load(saved.query);
     this.grid().resetFilters();
-    this.search.set({ query: saved.query, savedSearchId: saved.savedSearchId });
+    this.include.set(includeOf(saved));
+    if (applyView && (saved.columns.length > 0 || saved.sort.length > 0)) {
+      this.grid().applyColumns(
+        saved.columns.length > 0 ? saved.columns.map((field) => ({ field })) : null,
+        saved.sort.length > 0 ? saved.sort : null,
+        false,
+      );
+    }
+    this.search.set(this.searchFor(saved.query, saved.savedSearchId));
   }
 
   protected clearSaved(): void {
     this.forgetSaved();
     this.queryBar().clear();
-    this.search.set({ query: '' });
+    this.search.set(this.searchFor(''));
   }
 
   /** The list no longer shows the saved search (another query ran, or it was cleared). */
@@ -388,13 +601,15 @@ export class DocumentsPage {
     });
   }
 
-  /** "Save current search": the list's query (keyword and filters) as a new saved search. */
+  /** "Save current search": the list's query (keyword and filters), columns and sort as a new saved search. */
   protected async saveCurrent(): Promise<void> {
     const query = this.grid().effectiveQuery();
+    const columns = this.grid().savedSearchColumns();
+    const sort = this.grid().sortKeys();
     const folders = await this.savedApi.folders().catch(() => []);
     const { SavedSearchDialog } = await import('../searches/saved-search-dialog');
     const ref = this.dialogs.open<SavedSearch, SavedSearchDialogData>(SavedSearchDialog, {
-      data: { mode: 'create', folders, query },
+      data: { mode: 'create', folders, query, include: this.include(), columns, sort },
       width: '44rem',
       autoFocus: 'input',
       injector: this.injector,
@@ -403,8 +618,8 @@ export class DocumentsPage {
     if (!result) return;
     this.toasts.show(`Saved search “${result.name}” created.`, { tone: 'success' });
     void this.browser()?.reload();
-    // Same documents, run by id from now on, so its last run and hit count are recorded.
-    this.showSaved(result);
+    // Same documents and columns, run by id from now on, so its last run and hit count are recorded.
+    this.showSaved(result, false);
     this.setSavedInUrl(result.savedSearchId, true);
   }
 

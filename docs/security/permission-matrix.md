@@ -18,6 +18,7 @@ permissions in the Break-glass column (Q-45).
 | `Document.Print` | ✔ | | | | ✔ | | |
 | `Document.ViewQuarantined` | ✔ | | | | | | |
 | `Search.Execute` | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `SearchTermReport.Run` | ✔ | | ✔ | ✔ | ✔ | | |
 | `SavedSearch.Share` | ✔ | | ✔ | ✔ | ✔ | | |
 | `Coding.Write` | ✔ | ✔ | ✔ | ✔ | | | |
 | `Coding.WritePrivilege` | ✔ | | | ✔ | | | |
@@ -40,6 +41,8 @@ permissions in the Break-glass column (Q-45).
 | `Workspace.ManageSecurity` | ✔ | | | | | | |
 | `Workspace.ManageFields` | ✔ | | | | | | |
 | `Workspace.RequestDeletion` | ✔ | | | | | | |
+| `View.ManageShared` | ✔ | | | | | | |
+| `HighlightSet.Manage` | ✔ | | | | | | |
 
 Break-glass is not membership on its own: it counts only while the holder has an active activation in the
 workspace (reason and MFA required, default 60 minutes, at most 4 hours). Decisions that rely on it are
@@ -54,6 +57,7 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Document.Print` | Print or save rendered pages. |
 | `Document.ViewQuarantined` | See that a native is quarantined and its scan result; never renders it. |
 | `Search.Execute` | Run searches and see result pages (post-filtered, Q-12). |
+| `SearchTermReport.Run` | Run, rerun and export search term reports (Q-30); with Search.Execute. |
 | `SavedSearch.Share` | Share saved searches with other workspace users. |
 | `Coding.Write` | Change coding fields that are not security-affecting. |
 | `Coding.WritePrivilege` | Change security-affecting fields: privilege, confidentiality, wall membership. |
@@ -76,6 +80,8 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Workspace.ManageSecurity` | Manage restriction classes, class grants and ethical walls. |
 | `Workspace.ManageFields` | Manage fields, choices and coding layouts. |
 | `Workspace.RequestDeletion` | Request workspace deletion (Q-23). |
+| `View.ManageShared` | Create, change and delete the document-list views shared with the whole workspace. |
+| `HighlightSet.Manage` | Create, change and delete the workspace's Highlight Sets (persistent term highlighting). |
 
 ## Role keys
 

@@ -62,6 +62,29 @@
   --opp-color-syntax-field: #1d4c8c;
   --opp-color-syntax-phrase: #175c2d;
   --opp-color-syntax-range: #8a4b00;
+  // Term-hit highlighting (E16-T12): "search" for the current search's hits, the rest is the Highlight Set
+  // palette. Text on fill >= 4.5:1; the underline (line) >= 3:1 on the fill and on every surface.
+  --opp-color-hl-search-bg: #d2f2f9;
+  --opp-color-hl-search-text: #125a68;
+  --opp-color-hl-search-line: #0d8ca5;
+  --opp-color-hl-amber-bg: #f9edd2;
+  --opp-color-hl-amber-text: #684e12;
+  --opp-color-hl-amber-line: #aa7b0e;
+  --opp-color-hl-green-bg: #d2f9dc;
+  --opp-color-hl-green-text: #126828;
+  --opp-color-hl-green-line: #0c972f;
+  --opp-color-hl-blue-bg: #d2e2f9;
+  --opp-color-hl-blue-text: #123668;
+  --opp-color-hl-blue-line: #0f58bd;
+  --opp-color-hl-violet-bg: #e9d2f9;
+  --opp-color-hl-violet-text: #441268;
+  --opp-color-hl-violet-line: #740fbd;
+  --opp-color-hl-rose-bg: #f9d2df;
+  --opp-color-hl-rose-text: #68122f;
+  --opp-color-hl-rose-line: #bd0f49;
+  --opp-color-hl-teal-bg: #d2f9f1;
+  --opp-color-hl-teal-text: #126857;
+  --opp-color-hl-teal-line: #0c9277;
   --opp-focus-ring-width: 2px;
 }
 
@@ -123,6 +146,29 @@
   --opp-color-syntax-field: #a9c8f7;
   --opp-color-syntax-phrase: #93d6a8;
   --opp-color-syntax-range: #f2c866;
+  // Term-hit highlighting (E16-T12): "search" for the current search's hits, the rest is the Highlight Set
+  // palette. Text on fill >= 4.5:1; the underline (line) >= 3:1 on the fill and on every surface.
+  --opp-color-hl-search-bg: #0f5c6b;
+  --opp-color-hl-search-text: #c2ecf4;
+  --opp-color-hl-search-line: #39d1ef;
+  --opp-color-hl-amber-bg: #6b500f;
+  --opp-color-hl-amber-text: #f4e5c2;
+  --opp-color-hl-amber-line: #efb839;
+  --opp-color-hl-green-bg: #0f6b26;
+  --opp-color-hl-green-text: #c2f4cf;
+  --opp-color-hl-green-line: #39ef66;
+  --opp-color-hl-blue-bg: #0f366b;
+  --opp-color-hl-blue-text: #c2d7f4;
+  --opp-color-hl-blue-line: #3985ef;
+  --opp-color-hl-violet-bg: #450f6b;
+  --opp-color-hl-violet-text: #dfc2f4;
+  --opp-color-hl-violet-line: #ac4cf0;
+  --opp-color-hl-rose-bg: #6b0f2e;
+  --opp-color-hl-rose-text: #f4c2d3;
+  --opp-color-hl-rose-line: #ef3e79;
+  --opp-color-hl-teal-bg: #0f6b59;
+  --opp-color-hl-teal-text: #c2f4ea;
+  --opp-color-hl-teal-line: #39efcb;
   --opp-focus-ring-width: 2px;
 }
 
@@ -184,6 +230,29 @@
   --opp-color-syntax-field: #00307a;
   --opp-color-syntax-phrase: #00561f;
   --opp-color-syntax-range: #5c3300;
+  // Term-hit highlighting (E16-T12): "search" for the current search's hits, the rest is the Highlight Set
+  // palette. Text on fill >= 4.5:1; the underline (line) >= 3:1 on the fill and on every surface.
+  --opp-color-hl-search-bg: #c1edf6;
+  --opp-color-hl-search-text: #000000;
+  --opp-color-hl-search-line: #0a687b;
+  --opp-color-hl-amber-bg: #f6e6c1;
+  --opp-color-hl-amber-text: #000000;
+  --opp-color-hl-amber-line: #7b590a;
+  --opp-color-hl-green-bg: #c1f6ce;
+  --opp-color-hl-green-text: #000000;
+  --opp-color-hl-green-line: #0a7b26;
+  --opp-color-hl-blue-bg: #c1d7f6;
+  --opp-color-hl-blue-text: #000000;
+  --opp-color-hl-blue-line: #0a397b;
+  --opp-color-hl-violet-bg: #e0c1f6;
+  --opp-color-hl-violet-text: #000000;
+  --opp-color-hl-violet-line: #4c0a7b;
+  --opp-color-hl-rose-bg: #f6c1d2;
+  --opp-color-hl-rose-text: #000000;
+  --opp-color-hl-rose-line: #7b0a30;
+  --opp-color-hl-teal-bg: #c1f6eb;
+  --opp-color-hl-teal-text: #000000;
+  --opp-color-hl-teal-line: #0a7b64;
   --opp-focus-ring-width: 3px;
 }
 

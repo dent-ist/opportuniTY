@@ -71,6 +71,10 @@ public sealed record SavedSearchExpansion(QueryNode Ast, IReadOnlyList<QueryDiag
 }
 
 /// <summary>A saved search to run: its criteria and the sort it opens with.</summary>
-public sealed record SavedSearchRunSource(Guid SavedSearchId, string Name, string QueryText, IReadOnlyList<SearchSortKey> Sort);
+public sealed record SavedSearchRunSource(Guid SavedSearchId, string Name, string QueryText, IReadOnlyList<SearchSortKey> Sort)
+{
+    /// <summary>The stored "Include family / duplicates / email thread" choice (E09-T03), applied unless the run gives its own.</summary>
+    public Core.Documents.RelationshipExpansion Expansion { get; init; }
+}
 
 public sealed record SavedSearchRunResult(DateTimeOffset At, long HitCount, bool Exact, bool? Current, long? ServedGeneration);

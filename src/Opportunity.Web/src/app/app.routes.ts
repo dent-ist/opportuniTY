@@ -30,6 +30,8 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
     ),
   setup: () =>
     import('./features/workspace-admin/workspace-setup-page').then((m) => m.WorkspaceSetupPage),
+  'highlight-sets': () =>
+    import('./features/highlight-sets/highlight-sets-page').then((m) => m.HighlightSetsPage),
 };
 
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */
@@ -45,18 +47,54 @@ export const workspaceChildren: Routes = [
     path: 'searches',
     children: [
       { path: '', pathMatch: 'full', redirectTo: SEARCH_AREAS[0].path },
-      ...SEARCH_AREAS.map((a): Route => ({
-        path: a.path,
-        title: a.label,
-        canActivate: [requirePermission(a.permission)],
-        data: { section: a.label },
-        // Saved Searches (E16-T11); Search Terms Reports follow with their own ticket.
-        loadComponent:
-          a.path === 'saved'
-            ? () =>
-                import('./features/searches/saved-searches-page').then((m) => m.SavedSearchesPage)
-            : sectionPage,
-      })),
+      ...SEARCH_AREAS.map((a): Route => {
+        const base = {
+          path: a.path,
+          canActivate: [requirePermission(a.permission)],
+          data: { section: a.label },
+        };
+        if (a.path === 'saved')
+          return {
+            ...base,
+            title: a.label,
+            // Saved Searches (E16-T11).
+            loadComponent: () =>
+              import('./features/searches/saved-searches-page').then((m) => m.SavedSearchesPage),
+          };
+        if (a.path === 'terms-reports')
+          return {
+            ...base,
+            // Search Terms Reports (#180): the list, New report, and one report's progress and results.
+            children: [
+              {
+                path: '',
+                pathMatch: 'full',
+                title: a.label,
+                loadComponent: () =>
+                  import('./features/searches/terms-reports/terms-reports-page').then(
+                    (m) => m.TermsReportsPage,
+                  ),
+              },
+              {
+                path: 'new',
+                title: 'New Search Terms Report',
+                loadComponent: () =>
+                  import('./features/searches/terms-reports/new-terms-report-page').then(
+                    (m) => m.NewTermsReportPage,
+                  ),
+              },
+              {
+                path: ':reportId',
+                title: 'Search Terms Report',
+                loadComponent: () =>
+                  import('./features/searches/terms-reports/terms-report-page').then(
+                    (m) => m.TermsReportPage,
+                  ),
+              },
+            ],
+          };
+        return { ...base, title: a.label, loadComponent: sectionPage };
+      }),
     ],
   },
   {

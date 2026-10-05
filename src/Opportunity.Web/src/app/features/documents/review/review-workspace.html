@@ -125,7 +125,7 @@
           <h2 id="review-viewer-title" class="pane__title">Viewer</h2>
         </header>
         @if (viewer(); as doc) {
-          <opp-document-viewer [document]="doc" />
+          <opp-document-viewer [document]="doc" [searchId]="cursor().searchId()" />
         }
       </section>
       <section

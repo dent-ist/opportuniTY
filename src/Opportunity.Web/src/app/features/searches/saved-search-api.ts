@@ -56,6 +56,9 @@ export interface SavedSearch extends SavedSearchSummary {
   readonly columns: readonly string[];
   readonly sort: readonly SavedSearchSortKey[];
   readonly includeFamily: boolean;
+  /** E09-T03: run with the hits' duplicates and email threads (next to `includeFamily`). */
+  readonly includeDuplicates: boolean;
+  readonly includeThread: boolean;
   readonly astVersion: number | null;
 }
 
@@ -67,6 +70,8 @@ export interface SavedSearchDraft {
   readonly columns?: readonly string[];
   readonly sort?: readonly SavedSearchSortKey[];
   readonly includeFamily?: boolean;
+  readonly includeDuplicates?: boolean;
+  readonly includeThread?: boolean;
 }
 
 export interface SavedSearchFolder {
@@ -336,6 +341,8 @@ function toSaved(s: SavedSearch): SavedSearch {
     columns: s.columns ?? [],
     sort: s.sort ?? [],
     includeFamily: !!s.includeFamily,
+    includeDuplicates: !!s.includeDuplicates,
+    includeThread: !!s.includeThread,
     astVersion: num(s.astVersion),
   };
 }

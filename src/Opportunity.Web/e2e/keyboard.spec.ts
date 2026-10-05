@@ -345,7 +345,7 @@ test('reviews with the keyboard only: cursor across pages, panes as regions, Sav
 
   // The splitter collapses the Related Items pane; the cycle skips it while it is hidden.
   const splitter = page.getByRole('separator', { name: 'Resize Related Items pane' });
-  await tabTo(page, splitter);
+  await tabTo(page, splitter, 60); // past the viewer's find and highlight bar
   await page.keyboard.press('Enter');
   await expect(splitter).toHaveAttribute('aria-valuenow', '0');
   await expect(page.getByRole('button', { name: 'Related Items' })).toHaveAttribute(
@@ -481,7 +481,7 @@ test('keeps reviewing when the results refresh and offers Continue from next whe
   );
   await expect(position).toHaveText('Not in the refreshed results · 249');
 
-  await tabTo(page, page.getByRole('button', { name: 'Continue from next' }));
+  await tabTo(page, page.getByRole('button', { name: 'Continue from next' }), 60);
   await page.keyboard.press('Enter');
   await expect(position).toHaveText('Doc 100 of 249');
   await expect(page.locator('.review__control')).toHaveText('ACM0000101');
@@ -562,9 +562,25 @@ test('switches viewer modes, pages, zooms, rotates, finds and downloads with the
     'aria-selected',
     'true',
   );
-  await expect(viewer.getByText('1 search hit')).toBeVisible();
+  // Search hits and the Key terms Highlight Set (server-computed spans): F3 steps through them and announces each.
+  await expect(viewer.getByText('Search hits (1)')).toBeVisible();
+  await expect(viewer.getByText('Set: Key terms (2)')).toBeVisible();
+  const live = page.locator('.cdk-live-announcer-element');
   await page.keyboard.press('F3');
-  await expect(viewer.getByText('Hit 1 of 1')).toBeVisible();
+  await expect(live).toHaveText('Hit 1 of 3 "agreement"');
+  await expect(viewer.getByLabel('Extracted text of ACM0000004')).toBeFocused();
+  await page.keyboard.press('F3');
+  await expect(live).toHaveText('Hit 2 of 3 "agreement"');
+  await page.keyboard.press('F3');
+  await expect(live).toHaveText('Hit 3 of 3 "notice"');
+  await page.keyboard.press('Shift+F3');
+  await expect(live).toHaveText('Hit 2 of 3 "agreement"');
+  await expect(viewer.getByText('Hit 2 of 3 "agreement"')).toBeVisible();
+  // Alt+Shift+H switches all highlighting off and on.
+  await page.keyboard.press('Alt+Shift+KeyH');
+  await expect(live).toHaveText('Highlighting off');
+  await page.keyboard.press('Alt+Shift+KeyH');
+  await expect(live).toHaveText('Highlighting on');
   await viewer.getByLabel('Extracted text of ACM0000004').focus();
   await page.keyboard.press('Control+KeyF');
   const find = viewer.getByRole('searchbox', { name: 'Find in document' });
@@ -908,4 +924,42 @@ test.describe('while a save is indexing', () => {
     await expect(cell).toContainText('Saved, indexing');
     await expect(cell).not.toContainText('Saved, indexing', { timeout: 15_000 });
   });
+});
+
+test('manages Highlight Sets with the keyboard only and reviewers toggle them per user (E16-T12)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/admin/highlight-sets');
+  await tabTo(page, page.getByRole('button', { name: 'New highlight set' }));
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Name' })).toBeFocused();
+  await page.keyboard.type('Pricing');
+  await tabTo(page, page.getByRole('textbox', { name: 'Terms' }));
+  await page.keyboard.type('"pricing schedule"');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('quarter');
+  await tabTo(page, page.getByRole('button', { name: 'Save highlight set' }));
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('list', { name: 'Highlight sets' })).toContainText('Pricing');
+  expect(mock.highlights.sets.map((s) => s.name)).toEqual(['Key terms', 'Pricing']);
+  expect(mock.highlights.sets[1].terms.map((t) => t.expression)).toEqual([
+    '"pricing schedule"',
+    'quarter',
+  ]);
+
+  // Review: the set is on; switching it off is a stored preference and the phrase is no longer marked.
+  await openPage(page, '/w/ws-1/documents');
+  const grid = page.getByRole('grid', { name: 'Documents' });
+  await expect(grid).not.toHaveAttribute('aria-busy', 'true');
+  await tabTo(page, grid);
+  await page.keyboard.press('Enter');
+  const viewer = page.getByRole('region', { name: 'Viewer' });
+  await page.keyboard.press('Alt+Shift+Digit1');
+  const toggle = viewer.getByRole('checkbox', { name: /Set: Pricing/ });
+  await expect(viewer.getByText('Set: Pricing (2)')).toBeVisible();
+  await tabTo(page, toggle);
+  await page.keyboard.press('Space');
+  await expect(toggle).not.toBeChecked();
+  await expect.poll(() => mock.highlights.selection.disabledSetIds).toEqual(['hs-2']);
 });

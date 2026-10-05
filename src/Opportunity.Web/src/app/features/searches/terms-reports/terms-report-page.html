@@ -1,0 +1,297 @@
+<div class="str__header">
+  <div class="str__heading-group">
+    <a class="str__back-link" [routerLink]="['/w', workspaceId, 'searches', 'terms-reports']">
+      <opp-icon name="chevron-left" />
+      Search Terms Reports
+    </a>
+    <h1 class="str__title">{{ item()?.name ?? 'Search Terms Report' }}</h1>
+    @if (item(); as i) {
+      <p class="str__muted">{{ scope() }} · {{ num(i.termCount) }} terms</p>
+    }
+  </div>
+  @if (item(); as i) {
+    <div class="str__actions">
+      @if (completed()) {
+        <a oppButton="secondary" [href]="exportUrl('csv')" download>
+          <opp-icon name="download" />
+          Export CSV
+        </a>
+        <a oppButton="secondary" [href]="exportUrl('xlsx')" download>
+          <opp-icon name="download" />
+          Export XLSX
+        </a>
+      }
+      @if (finished() && i.snapshotId && mayDelete()) {
+        <button type="button" oppButton="secondary" [busy]="rerunning()" (click)="rerun()">
+          <opp-icon name="refresh" />
+          Re-run on the same set
+        </button>
+      }
+      @if (mayDelete()) {
+        <button type="button" oppButton="ghost" (click)="remove()">
+          <opp-icon name="trash" />
+          Delete
+        </button>
+      }
+    </div>
+  }
+</div>
+
+@if (!item()) {
+  @if (error(); as e) {
+    <opp-error-state [error]="e" (retry)="load()" />
+  } @else {
+    <opp-loading-state label="Loading the report…" />
+  }
+} @else {
+  @let i = item()!;
+
+  @if (!finished()) {
+    <section class="str__panel" aria-labelledby="str-progress">
+      <h2 id="str-progress">Progress</h2>
+      <div class="str__actions">
+        <opp-status-pill [status]="pill()" />
+        <span class="str__muted">You can leave this page: the report keeps running.</span>
+        @if (i.jobId) {
+          <a [routerLink]="['/w', workspaceId, 'jobs', i.jobId]">View in Jobs</a>
+        }
+      </div>
+      <div class="str__progress">
+        <opp-progress
+          label="Report progress"
+          [value]="progress() === undefined ? undefined : progress()! * 100"
+          [valueText]="progressText()"
+        />
+        <span class="str__muted">{{ progressText() }}</span>
+      </div>
+      @if (error(); as e) {
+        <p class="str__muted" role="status">
+          Progress cannot be shown right now ({{ e.status || 'no connection' }}). Trying again.
+        </p>
+      }
+    </section>
+  }
+
+  <section class="str__panel" aria-labelledby="str-about">
+    <h2 id="str-about">About this report</h2>
+    <dl class="str__facts">
+      <div>
+        <dt>Status</dt>
+        <dd><opp-status-pill [status]="pill()" /></dd>
+      </div>
+      <div>
+        <dt>Scope</dt>
+        <dd>{{ scope() }}</dd>
+      </div>
+      <div>
+        <dt>Frozen set</dt>
+        <dd>
+          @if (i.snapshotId) {
+            <span class="str__mono">{{ i.snapshotId }}</span>
+            <span class="str__muted str__small">
+              @if (frozenAt(); as at) {
+                Taken {{ at }}
+              } @else {
+                Taken when the report ran
+              }
+              @if (frozenCount(); as c) {
+                · {{ c }}
+              }
+            </span>
+          } @else {
+            Taken when the report runs
+          }
+        </dd>
+      </div>
+      <div>
+        <dt>Run by</dt>
+        <dd>{{ runBy() }}</dd>
+      </div>
+      <div>
+        <dt>Started</dt>
+        <dd>{{ date(i.createdAt) }}</dd>
+      </div>
+      <div>
+        <dt>Completed</dt>
+        <dd>{{ date(i.completedAt) }}</dd>
+      </div>
+      @if (generation(); as g) {
+        <div>
+          <dt>Search generation</dt>
+          <dd class="str__mono">{{ g }}</dd>
+        </div>
+      }
+      @if (i.jobId) {
+        <div>
+          <dt>Job</dt>
+          <dd><a [routerLink]="['/w', workspaceId, 'jobs', i.jobId]">View in Jobs</a></dd>
+        </div>
+      }
+    </dl>
+    <p class="str__notice">
+      <opp-icon name="lock" />
+      <span>{{ visibility() }}</span>
+    </p>
+    @if (i.indexCurrent === false) {
+      <p class="str__notice str__notice--warning">
+        <opp-icon name="warning" />
+        <span><strong>The search index was not up to date.</strong> {{ indexNotCurrent }}</span>
+      </p>
+    }
+    @if (i.status === 'failed') {
+      <p class="str__notice str__notice--danger">
+        <opp-icon name="error" />
+        <span>
+          The report could not finish, so it has no counts.
+          @if (i.jobId) {
+            The job page says what went wrong.
+          }
+          Run it again, or create a new report.
+        </span>
+      </p>
+    }
+  </section>
+
+  <section class="str__panel" aria-labelledby="str-results">
+    <h2 id="str-results">Results</h2>
+    @if (errorCount() > 0) {
+      <p class="str__notice str__notice--warning">
+        <opp-icon name="warning" />
+        <span>
+          {{ errorCount() === 1 ? '1 term has' : errorCount() + ' terms have' }} a syntax error and
+          {{ errorCount() === 1 ? 'was' : 'were' }} not counted. The error is shown in
+          {{ errorCount() === 1 ? 'its row' : 'their rows' }}; every other term was counted.
+        </span>
+      </p>
+    }
+    @if (completed()) {
+      <p class="str__muted">
+        Select a term or its count to open its documents in Documents. Sort by a column with its
+        header.
+      </p>
+    } @else if (!finished()) {
+      <p class="str__muted">Counts appear when the report has finished.</p>
+    }
+    <div class="str__table-wrap" tabindex="0" role="region" aria-label="Counts per term">
+      <table class="str__table">
+        <caption class="opp-visually-hidden">
+          Counts per term.
+          {{
+            visibility()
+          }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" [attr.aria-sort]="ariaSort('name')">
+              <button type="button" class="str__sort" (click)="sortBy('name')">
+                Term
+                <opp-icon
+                  class="str__sort-icon"
+                  [class.str__sort-icon--idle]="!ariaSort('name')"
+                  [name]="sortIcon('name')"
+                />
+              </button>
+            </th>
+            @for (c of columns; track c.key) {
+              <th scope="col" class="str__num" [attr.aria-sort]="ariaSort(c.key)">
+                <button
+                  type="button"
+                  class="str__sort"
+                  [attr.title]="c.description"
+                  (click)="sortBy(c.key)"
+                >
+                  {{ c.label }}
+                  <opp-icon
+                    class="str__sort-icon"
+                    [class.str__sort-icon--idle]="!ariaSort(c.key)"
+                    [name]="sortIcon(c.key)"
+                  />
+                </button>
+              </th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (t of terms(); track t.termId) {
+            <tr [class.str__row--error]="!!t.error">
+              <th scope="row" class="str__name">
+                @if (completed() && !t.error) {
+                  <a
+                    [routerLink]="['/w', workspaceId, 'documents']"
+                    [queryParams]="termParams(t)"
+                    [attr.title]="'Open the documents that match ' + t.name"
+                    >{{ t.name }}</a
+                  >
+                } @else {
+                  {{ t.name }}
+                }
+                @if (t.expression !== t.name) {
+                  <span class="str__expression">{{ t.expression }}</span>
+                }
+              </th>
+              @if (t.error; as err) {
+                <td [attr.colspan]="columns.length">
+                  <div class="str__term-error">
+                    <span class="str__term-error-title">
+                      <opp-icon name="warning" />
+                      {{ errorText(err) }}
+                    </span>
+                    @if (errorParts(t); as p) {
+                      <span class="str__mono" aria-hidden="true"
+                        >{{ p.before
+                        }}<mark class="str__mark" [class.str__mark--end]="!p.at">{{ p.at }}</mark
+                        >{{ p.after }}</span
+                      >
+                    }
+                    <span>Not counted. Fix the expression and run a new report.</span>
+                  </div>
+                </td>
+              } @else {
+                <td class="str__num">
+                  @if (completed() && t.documentsWithHits !== null) {
+                    <a
+                      [routerLink]="['/w', workspaceId, 'documents']"
+                      [queryParams]="termParams(t)"
+                      [attr.aria-label]="
+                        num(t.documentsWithHits) +
+                        ' documents with hits for ' +
+                        t.name +
+                        ': open in Documents'
+                      "
+                      >{{ num(t.documentsWithHits) }}</a
+                    >
+                  } @else {
+                    {{ num(t.documentsWithHits) }}
+                  }
+                </td>
+                <td class="str__num">{{ num(t.documentsWithHitsIncludingFamily) }}</td>
+                <td class="str__num">{{ num(t.uniqueHits) }}</td>
+                <td class="str__num">{{ num(t.uniqueHitsIncludingFamily) }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+        @if (i.totals; as tot) {
+          <tfoot>
+            <tr>
+              <th scope="row">Documents with at least one hit</th>
+              <td class="str__num">{{ num(tot.documentsWithHits) }}</td>
+              <td class="str__num">{{ num(tot.documentsWithHitsIncludingFamily) }}</td>
+              <td class="str__num" colspan="2"></td>
+            </tr>
+            <tr>
+              <th scope="row">Documents without hits</th>
+              <td class="str__num">{{ num(tot.documentsWithoutHits) }}</td>
+              <td class="str__num" colspan="3"></td>
+            </tr>
+            <tr>
+              <th scope="row">Documents in scope</th>
+              <td class="str__num">{{ num(tot.documentsInScope) }}</td>
+              <td class="str__num" colspan="3"></td>
+            </tr>
+          </tfoot>
+        }
+      </table>
+    </div>
+  </section>
+}

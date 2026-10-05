@@ -466,7 +466,8 @@ public sealed class SavedSearchEndpoints : IApiEndpointModule
     {
         var s = ToSummary(r);
         return new SavedSearchResource(s.SavedSearchId, s.Name, s.FolderId, s.Owner, s.Scope, s.SharedWith, s.LastRunAt, s.LastHitCount, s.LastHitRelation,
-            s.LastRunFreshness, s.ModifiedAt, s.Version, r.QueryText, r.Columns, r.Sort, r.IncludeFamily, r.AstVersion);
+            s.LastRunFreshness, s.ModifiedAt, s.Version, r.QueryText, r.Columns, r.Sort, r.IncludeFamily, r.AstVersion, r.IncludeDuplicates,
+            r.IncludeThread);
     }
 
     private static SavedSearchFolderResource ToResource(SavedSearchFolderRecord f) => new(f.FolderId, f.Name, f.ParentFolderId, f.Version);

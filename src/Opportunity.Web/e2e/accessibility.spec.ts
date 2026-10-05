@@ -16,6 +16,11 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/documents',
   '/w/ws-1/documents?savedSearch=ss-3',
   '/w/ws-1/searches/saved',
+  '/w/ws-1/searches/terms-reports',
+  '/w/ws-1/searches/terms-reports/new?savedSearch=ss-1',
+  '/w/ws-1/searches/terms-reports/str-1',
+  '/w/ws-1/searches/terms-reports/str-2',
+  '/w/ws-1/documents?termReport=str-1&term=str-1-t1',
   '/w/ws-1/jobs',
   '/w/ws-1/jobs/job-exp-3',
   '/w/ws-1/jobs/job-bulk-7',
@@ -25,6 +30,7 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/admin/audit',
   '/w/ws-1/admin/settings',
   '/w/ws-1/admin/setup',
+  '/w/ws-1/admin/highlight-sets',
 ];
 
 /** Popups are rendered only while open, so each is opened and checked separately. */
@@ -104,6 +110,53 @@ for (const theme of THEMES) {
       await expect(page.getByRole('region', { name: 'Frozen sets' })).toContainText(
         'Mass Edit 2026-10-03',
       );
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('search terms reports: new report with preview and errors, running report, actions menu (#180)', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/searches/terms-reports/new');
+      await page.getByRole('radio', { name: /Frozen set/ }).check();
+      await page.getByRole('button', { name: 'Run report' }).click();
+      await expect(page.getByRole('alert')).toContainText('Choose the frozen set to count in.');
+      await page
+        .getByRole('textbox', { name: /Terms, one per line/ })
+        .fill('terminat*\nA\tb\nA\tc\nterminat*');
+      await expect(page.getByRole('heading', { name: 'Preview: 2 terms' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await page.getByRole('radio', { name: /Whole workspace/ }).check();
+      await page.getByRole('textbox', { name: /Terms, one per line/ }).fill('terminat*');
+      await page.getByRole('button', { name: 'Run report' }).click();
+      await expect(page.getByRole('progressbar', { name: 'Report progress' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await openPage(page, '/w/ws-1/searches/terms-reports');
+      await page.getByRole('button', { name: /Actions for Key terms/ }).click();
+      await expect(page.getByRole('menu', { name: /Actions for Key terms/ })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('document list views: a shared view with a pinned coding column, the Columns dialog, the Views menu and Save view', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      const viewSelect = page.getByRole('combobox', { name: 'View', exact: true });
+      await viewSelect.selectOption({ label: 'First pass review' });
+      await expect(
+        page.locator('[role="columnheader"]', { hasText: 'Responsiveness' }),
+      ).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('button', { name: 'Columns', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Columns and sort' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Views', exact: true }).click();
+      await expect(page.getByRole('menu', { name: 'Views' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('menuitem', { name: 'Save as new view…' }).click();
+      await expect(page.getByRole('dialog', { name: 'Save view' })).toBeVisible();
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
@@ -231,7 +284,11 @@ for (const theme of THEMES) {
       await viewer.getByRole('searchbox', { name: 'Find in document' }).fill('pricing');
       await viewer.getByRole('button', { name: 'Next match' }).click();
       await expect(viewer.locator('#viewer-find-count')).toHaveText('1 of 1');
-      await expect(viewer.getByText('1 search hit')).toBeVisible();
+      // Search hits and a Highlight Set (two colours, underlined), the current hit and the per-term panel.
+      await expect(viewer.getByText('Search hits (1)')).toBeVisible();
+      await viewer.getByRole('button', { name: 'Next hit', exact: true }).click();
+      await viewer.getByRole('button', { name: 'Terms' }).click();
+      await expect(viewer.locator('#viewer-hit-panel')).toContainText('notice');
       await expectNoSeriousAxeViolations(page, testInfo);
 
       // Metadata, with an imported-value tooltip open.
@@ -248,6 +305,33 @@ for (const theme of THEMES) {
       await viewer.getByRole('tab', { name: 'Extracted Text' }).click();
       for (let i = 0; i < 3; i++) await page.keyboard.press('BracketRight');
       await expect(viewer.getByText('No extracted text for this document.')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('highlight sets: the editor with per-line term errors (E16-T12)', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/admin/highlight-sets');
+      await page.getByRole('button', { name: 'New highlight set' }).click();
+      await page.getByRole('textbox', { name: 'Name' }).fill('Names');
+      await page.getByRole('textbox', { name: 'Terms' }).fill('smith\nte*');
+      await page.route('**/api/v1/workspaces/ws-1/highlight-sets', (route) =>
+        route.request().method() === 'POST'
+          ? route.fulfill({
+              status: 400,
+              contentType: 'application/problem+json',
+              body: JSON.stringify({
+                title: 'Validation',
+                status: 400,
+                errors: {
+                  'terms[1].expression': ['LEADING_WILDCARD: A wildcard needs 3 letters.'],
+                },
+              }),
+            })
+          : route.fallback(),
+      );
+      await page.getByRole('button', { name: 'Save highlight set' }).click();
+      await expect(page.getByRole('alert')).toContainText('Line 2');
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 

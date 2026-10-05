@@ -57,7 +57,8 @@ public interface IDocumentSetSnapshotStore
     /// <summary>
     /// The freeze (ADR-002 §5.2), one <c>REPEATABLE READ</c> transaction: joins the staged candidates to live documents
     /// (reading each <c>DocumentVersion</c> as the member's Q-07 baseline), asks <paramref name="authorize"/> about every
-    /// remaining candidate and drops the excluded ones, orders the rest by (family sort key, family, family sequence,
+    /// remaining candidate and drops the excluded ones, adds the header's relationship expansion of what remains (E09-T03,
+    /// authorized the same way), orders the rest by (family sort key, family, family sequence,
     /// document), writes dense ordinals 1…N in pages with their SHA-256, the root hash and the header counts, moves the
     /// header to Ready and clears the stage. Membership becomes visible at commit, all or nothing.
     /// </summary>

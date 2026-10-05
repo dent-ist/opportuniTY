@@ -73,6 +73,7 @@ describe('Document list columns', () => {
   it('falls back to the structural columns without a catalogue', () => {
     expect(defaultColumns(null).view.map((c) => c.queryName)).toEqual([
       'date',
+      'familydate',
       'filename',
       'filetype',
       'extension',

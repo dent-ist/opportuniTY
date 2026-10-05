@@ -31,6 +31,7 @@ const caller = (userId: string | null, permissions: string[] = []) => ({
 describe('job model (E06-T07)', () => {
   it('names types and statuses in plain language', () => {
     expect(typeLabel('bulkCoding')).toBe('Mass Edit');
+    expect(typeLabel('searchTermReport')).toBe('Search Terms Report');
     expect(typeLabel('import')).toBe('Import');
     expect(typeLabel('reindexWorkspace')).toBe('Reindex workspace');
     expect(statusLabel('completedWithErrors')).toBe('Completed with errors');

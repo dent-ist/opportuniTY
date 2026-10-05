@@ -29,6 +29,9 @@ internal static class ProtectedOperation
     public const string Coding = "Coding (interactive read/write, bulk coding)";
     public const string Search = "Search hits, counts, facets, handles and cursors";
     public const string SavedSearch = "Saved searches and their folders";
+    public const string TermReport = "Search term reports (counts, export, term hit sets)";
+    public const string GridView = "Document-list views and layouts";
+    public const string HighlightSet = "Highlight Sets and highlighting toggles";
     public const string Snapshot = "Frozen sets (snapshots)";
     public const string Import = "Import jobs, reports and profiles";
     public const string Job = "Job status";
@@ -92,7 +95,11 @@ internal static class RouteAttackCatalog
             new RouteProbe("saved search in the body", HttpMethod.Post, (o, _) => W(o) + "/searches", HttpStatusCode.OK,
                 (_, t) => J(new JsonObject { ["savedSearchId"] = t.SavedSearchId.ToString() })),
             new RouteProbe("query references another workspace's saved search", HttpMethod.Post, (o, _) => W(o) + "/searches", HttpStatusCode.OK,
-                (_, t) => J(new JsonObject { ["query"] = $"savedsearch:{t.SavedSearchId}" }), Expectation: ForeignExpectation.SameAsUnknown)),
+                (_, t) => J(new JsonObject { ["query"] = $"savedsearch:{t.SavedSearchId}" }), Expectation: ForeignExpectation.SameAsUnknown),
+            new RouteProbe("search term report term in the body", HttpMethod.Post, (o, _) => W(o) + "/searches", HttpStatusCode.OK,
+                (_, t) => J(new JsonObject { ["searchTermReportId"] = t.TermReportId.ToString(), ["termId"] = t.TermId.ToString() })),
+            new RouteProbe("own report, another workspace's term", HttpMethod.Post, (o, _) => W(o) + "/searches", HttpStatusCode.OK,
+                (o, t) => J(new JsonObject { ["searchTermReportId"] = o.TermReportId.ToString(), ["termId"] = t.TermId.ToString() }))),
         Case("GET", Ws + "/searches/{searchId}/pages", ProtectedOperation.Search,
             new RouteProbe("search handle and its cursor", HttpMethod.Get, (o, t) => $"{W(o)}/searches/{t.SearchId:N}/pages?cursor={t.SearchCursor}", HttpStatusCode.OK),
             new RouteProbe("own handle, another workspace's cursor", HttpMethod.Get, (o, t) => $"{W(o)}/searches/{o.SearchId:N}/pages?cursor={t.SearchCursor}", HttpStatusCode.OK),
@@ -101,6 +108,30 @@ internal static class RouteAttackCatalog
         Case("GET", Ws + "/search-freshness", ProtectedOperation.Search, WorkspaceOnly(HttpMethod.Get, "/search-freshness", HttpStatusCode.OK)),
 
         // Saved searches and their folders (E07-T09).
+        // Highlight Sets (E16-T12).
+        Case("GET", Ws + "/highlight-sets", ProtectedOperation.HighlightSet, WorkspaceOnly(HttpMethod.Get, "/highlight-sets", HttpStatusCode.OK)),
+        Case("POST", Ws + "/highlight-sets", ProtectedOperation.HighlightSet,
+            WorkspaceOnly(HttpMethod.Post, "/highlight-sets", HttpStatusCode.Created, _ => J(new JsonObject
+            {
+                ["name"] = "Probe " + Guid.NewGuid().ToString("N"), ["color"] = "blue", ["terms"] = new JsonArray(new JsonObject { ["expression"] = "memo" }),
+            }))),
+        Case("GET", Ws + "/highlight-sets/{highlightSetId}", ProtectedOperation.HighlightSet,
+            new RouteProbe("highlight set", HttpMethod.Get, (o, t) => $"{W(o)}/highlight-sets/{t.HighlightSetId}", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/highlight-sets/{highlightSetId}", ProtectedOperation.HighlightSet,
+            new RouteProbe("highlight set", HttpMethod.Put, (o, t) => $"{W(o)}/highlight-sets/{t.HighlightSetId}", HttpStatusCode.OK,
+                (o, _) => J(new JsonObject
+                {
+                    ["name"] = "Key terms " + o.Name, ["color"] = "violet", ["terms"] = new JsonArray(new JsonObject { ["expression"] = "memo OR terminat*" }),
+                }), IfMatch: "*")),
+        Case("DELETE", Ws + "/highlight-sets/{highlightSetId}", ProtectedOperation.HighlightSet,
+            new RouteProbe("highlight set", HttpMethod.Delete, (o, t) => $"{W(o)}/highlight-sets/{t.SpareHighlightSetId}", HttpStatusCode.NoContent, IfMatch: "*")),
+        Case("GET", Ws + "/highlight-set-selection", ProtectedOperation.HighlightSet,
+            WorkspaceOnly(HttpMethod.Get, "/highlight-set-selection", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/highlight-set-selection", ProtectedOperation.HighlightSet,
+            new RouteProbe("highlight set ids in the body", HttpMethod.Put, (o, _) => W(o) + "/highlight-set-selection", HttpStatusCode.OK,
+                (_, t) => J(new JsonObject { ["disabledSetIds"] = new JsonArray(t.HighlightSetId.ToString()), ["searchHits"] = true }),
+                HasForeignIdentifier: false)),
+
         Case("GET", Ws + "/saved-search-folders", ProtectedOperation.SavedSearch, WorkspaceOnly(HttpMethod.Get, "/saved-search-folders", HttpStatusCode.OK)),
         Case("POST", Ws + "/saved-search-folders", ProtectedOperation.SavedSearch,
             WorkspaceOnly(HttpMethod.Post, "/saved-search-folders", HttpStatusCode.Created, _ => J(new JsonObject { ["name"] = "Probe " + Guid.NewGuid().ToString("N") })),
@@ -139,8 +170,51 @@ internal static class RouteAttackCatalog
         Case("PUT", Ws + "/saved-searches/{savedSearchId}/sharing", ProtectedOperation.SavedSearch,
             new RouteProbe("saved search", HttpMethod.Put, (o, t) => $"{W(o)}/saved-searches/{t.SavedSearchId}/sharing", HttpStatusCode.OK,
                 (_, _) => J(new JsonObject { ["sharedWith"] = new JsonArray() }))),
+
+        // Document-list views and the caller's layout (E16-T09).
+        Case("GET", Ws + "/grid-views", ProtectedOperation.GridView, WorkspaceOnly(HttpMethod.Get, "/grid-views", HttpStatusCode.OK)),
+        Case("POST", Ws + "/grid-views", ProtectedOperation.GridView,
+            WorkspaceOnly(HttpMethod.Post, "/grid-views", HttpStatusCode.Created, _ => J(new JsonObject { ["name"] = "Probe " + Guid.NewGuid().ToString("N") }))),
+        Case("GET", Ws + "/grid-views/layout", ProtectedOperation.GridView, WorkspaceOnly(HttpMethod.Get, "/grid-views/layout", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/grid-views/layout", ProtectedOperation.GridView,
+            new RouteProbe("view in the body", HttpMethod.Put, (o, _) => W(o) + "/grid-views/layout", HttpStatusCode.OK,
+                (_, t) => J(new JsonObject { ["viewId"] = t.GridViewId.ToString() }), Expectation: ForeignExpectation.SameAsUnknown)),
+        Case("GET", Ws + "/grid-views/{viewId}", ProtectedOperation.GridView,
+            new RouteProbe("view", HttpMethod.Get, (o, t) => $"{W(o)}/grid-views/{t.GridViewId}", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/grid-views/{viewId}", ProtectedOperation.GridView,
+            new RouteProbe("view", HttpMethod.Put, (o, t) => $"{W(o)}/grid-views/{t.GridViewId}", HttpStatusCode.OK,
+                (o, _) => J(new JsonObject { ["name"] = "Renamed view " + o.Name, ["visibility"] = "shared" }), IfMatch: "*")),
+        Case("DELETE", Ws + "/grid-views/{viewId}", ProtectedOperation.GridView,
+            new RouteProbe("view", HttpMethod.Delete, (o, t) => $"{W(o)}/grid-views/{t.SpareGridViewId}", HttpStatusCode.NoContent, IfMatch: "*")),
         Case("POST", Ws + "/query-history", ProtectedOperation.Search,
             WorkspaceOnly(HttpMethod.Post, "/query-history", HttpStatusCode.NoContent, _ => J(new JsonObject { ["query"] = "memo" }))),
+
+        // Search term reports (E07-T10). The rerun probe comes after every probe that needs the report completed.
+        Case("POST", Ws + "/search-term-reports", ProtectedOperation.TermReport,
+            new RouteProbe("snapshot scope in the body", HttpMethod.Post, (o, _) => W(o) + "/search-term-reports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject
+                {
+                    ["name"] = "Probe",
+                    ["terms"] = new JsonArray(new JsonObject { ["name"] = "Memo", ["expression"] = "memo" }),
+                    ["scope"] = new JsonObject { ["kind"] = "snapshot", ["id"] = t.ExportSnapshotId.ToString() },
+                })),
+            new RouteProbe("saved search scope in the body", HttpMethod.Post, (o, _) => W(o) + "/search-term-reports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject
+                {
+                    ["name"] = "Probe",
+                    ["termsCsv"] = "Name,Expression\r\nMemo,memo",
+                    ["scope"] = new JsonObject { ["kind"] = "savedSearch", ["id"] = t.SavedSearchId.ToString() },
+                }))),
+        Case("GET", Ws + "/search-term-reports", ProtectedOperation.TermReport, WorkspaceOnly(HttpMethod.Get, "/search-term-reports", HttpStatusCode.OK)),
+        Case("GET", Ws + "/search-term-reports/{reportId}", ProtectedOperation.TermReport,
+            new RouteProbe("report", HttpMethod.Get, (o, t) => $"{W(o)}/search-term-reports/{t.TermReportId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/search-term-reports/{reportId}/export", ProtectedOperation.TermReport,
+            new RouteProbe("report as CSV", HttpMethod.Get, (o, t) => $"{W(o)}/search-term-reports/{t.TermReportId}/export?format=csv", HttpStatusCode.OK),
+            new RouteProbe("report as XLSX", HttpMethod.Get, (o, t) => $"{W(o)}/search-term-reports/{t.TermReportId}/export?format=xlsx", HttpStatusCode.OK)),
+        Case("POST", Ws + "/search-term-reports/{reportId}/rerun", ProtectedOperation.TermReport,
+            new RouteProbe("report", HttpMethod.Post, (o, t) => $"{W(o)}/search-term-reports/{t.TermReportId}/rerun", HttpStatusCode.Accepted)),
+        Case("DELETE", Ws + "/search-term-reports/{reportId}", ProtectedOperation.TermReport,
+            new RouteProbe("report", HttpMethod.Delete, (o, t) => $"{W(o)}/search-term-reports/{t.SpareTermReportId}", HttpStatusCode.NoContent)),
 
         // Jobs.
         Case("GET", Ws + "/jobs/{jobId}", ProtectedOperation.Job,
@@ -175,6 +249,12 @@ internal static class RouteAttackCatalog
         Case("GET", Ws + "/documents/{documentId}/pages", ProtectedOperation.Open,
             new RouteProbe("document", HttpMethod.Get, (o, t) => Doc(o, t) + "/pages", HttpStatusCode.OK),
             new RouteProbe("document, review-mode prefetch", HttpMethod.Get, (o, t) => Doc(o, t) + "/pages?purpose=prefetch", HttpStatusCode.OK)),
+        Case("GET", Ws + "/documents/{documentId}/text/hits", ProtectedOperation.View,
+            new RouteProbe("document", HttpMethod.Get, (o, t) => Doc(o, t) + "/text/hits", HttpStatusCode.OK),
+            new RouteProbe("search handle", HttpMethod.Get, (o, t) => $"{Doc(o, o)}/text/hits?searchId={t.SearchId:N}", HttpStatusCode.OK),
+            new RouteProbe("highlight set", HttpMethod.Get, (o, t) => $"{Doc(o, o)}/text/hits?highlightSetId={t.HighlightSetId}", HttpStatusCode.OK),
+            new RouteProbe("document, search handle and highlight set", HttpMethod.Get,
+                (o, t) => $"{Doc(o, t)}/text/hits?searchId={t.SearchId:N}&highlightSetId={t.HighlightSetId}&fromChunk=0", HttpStatusCode.OK)),
         Case("GET", Ws + "/documents/{documentId}/text/chunks/{chunkIndex}", ProtectedOperation.View,
             new RouteProbe("document", HttpMethod.Get, (o, t) => Doc(o, t) + "/text/chunks/0", HttpStatusCode.OK),
             new RouteProbe("document, review-mode prefetch", HttpMethod.Get, (o, t) => Doc(o, t) + "/text/chunks/0?purpose=prefetch", HttpStatusCode.OK)),

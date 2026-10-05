@@ -200,12 +200,12 @@ test('Mass Edit results opens Mass Edit over every result of the saved search (E
   await expect(page).not.toHaveURL(/then=/);
 });
 
-test('Search Terms Report and Export say why they are not available (E16-T11)', async ({
-  page,
-}) => {
+test('Export from a saved search says why it is not available (E16-T11)', async ({ page }) => {
   await openPage(page, '/w/ws-1/searches/saved');
-  await rowAction(page, 'PDF attachments', /Add to new Search Terms Report/);
-  await expect(toast(page, 'Search Terms Reports is not available in this version.')).toBeVisible();
+  await rowAction(page, 'PDF attachments', /Export results/);
+  await expect(
+    toast(page, 'Export from a saved search is not available in this version.'),
+  ).toBeVisible();
 });
 
 test.describe('without SavedSearch.Share or admin rights', () => {

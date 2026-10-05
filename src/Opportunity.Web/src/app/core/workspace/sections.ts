@@ -9,6 +9,7 @@
 export const PERMISSIONS = {
   documentView: 'Document.View',
   searchExecute: 'Search.Execute',
+  searchTermReportRun: 'SearchTermReport.Run',
   codingWrite: 'Coding.Write',
   downloadNative: 'Document.DownloadNative',
   productionCreate: 'Production.Create',
@@ -19,6 +20,9 @@ export const PERMISSIONS = {
   manageUsers: 'Workspace.ManageUsers',
   manageSecurity: 'Workspace.ManageSecurity',
   auditRead: 'Audit.Read',
+  /** Create, change and delete shared document-list views (E16-T09, "manage views"). */
+  manageSharedViews: 'View.ManageShared',
+  manageHighlightSets: 'HighlightSet.Manage',
 } as const;
 
 /** Installation-level permissions (`GET /api/v1/me` → `installationPermissions`), not tied to a workspace. */
@@ -47,7 +51,11 @@ export const WORKSPACE_SECTIONS: readonly WorkspaceSection[] = [
 /** Tabs of the Searches section, in order; paths are under `/w/:workspaceId/searches/`. */
 export const SEARCH_AREAS: readonly WorkspaceSection[] = [
   { path: 'saved', label: 'Saved Searches', permission: PERMISSIONS.searchExecute },
-  { path: 'terms-reports', label: 'Search Terms Reports', permission: PERMISSIONS.searchExecute },
+  {
+    path: 'terms-reports',
+    label: 'Search Terms Reports',
+    permission: PERMISSIONS.searchTermReportRun,
+  },
 ];
 
 /** Entries of the Admin ▾ menu, in guide order; paths are under `/w/:workspaceId/admin/`. */
@@ -56,7 +64,7 @@ export const ADMIN_AREAS: readonly WorkspaceSection[] = [
   { path: 'choices', label: 'Choices', permission: PERMISSIONS.manageFields },
   { path: 'coding-layouts', label: 'Coding Layouts', permission: PERMISSIONS.manageFields },
   { path: 'views', label: 'Views', permission: PERMISSIONS.manageFields },
-  { path: 'highlight-sets', label: 'Highlight Sets', permission: PERMISSIONS.manageFields },
+  { path: 'highlight-sets', label: 'Highlight Sets', permission: PERMISSIONS.manageHighlightSets },
   { path: 'redaction-sets', label: 'Redaction Sets', permission: PERMISSIONS.manageFields },
   { path: 'users-groups', label: 'Users & Groups', permission: PERMISSIONS.manageUsers },
   { path: 'roles-security', label: 'Roles & Security', permission: PERMISSIONS.manageSecurity },

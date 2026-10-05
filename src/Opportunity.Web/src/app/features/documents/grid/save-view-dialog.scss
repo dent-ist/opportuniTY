@@ -1,0 +1,38 @@
+// Save view / Edit view dialog (E16-T09).
+.svd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+}
+.svd__visibility {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+.svd__visibility legend {
+  padding-inline: var(--opp-space-1);
+  font-weight: var(--opp-font-weight-semibold);
+}
+.svd__visibility label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+.is-disabled {
+  color: var(--opp-color-text-muted);
+}
+.svd__note {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+.svd__error {
+  display: flex;
+  gap: var(--opp-space-2);
+  margin: 0;
+  color: var(--opp-color-danger-text);
+}

@@ -16,6 +16,17 @@ internal sealed record SortKey(string Field, string Path, bool Descending)
 
     public bool IsScore => Path == ScorePath;
 
+    /// <summary>
+    /// The OpenSearch sort clauses of this key. "Date (Family)" sorts by the family date, then the family and its family
+    /// sequence (parent first), so families stay contiguous (ADR-009 R25, E09-T03).
+    /// </summary>
+    public IReadOnlyList<(string Path, bool Descending)> Clauses => Field == SearchSortFields.FamilyDate
+        ? [(ProjectionFields.FamilyDate, Descending), (ProjectionFields.FamilyId, Descending), (ProjectionFields.FamilySequence, false)]
+        : [(Path, Descending)];
+
+    /// <summary>"Date (Family)" ascending: the default order of an expanded search.</summary>
+    public static SortKey Family { get; } = new(SearchSortFields.FamilyDate, ProjectionFields.FamilyDate, Descending: false);
+
     private static readonly Dictionary<string, string> Paths = new(StringComparer.OrdinalIgnoreCase)
     {
         [SearchSortFields.Relevance] = ScorePath,
@@ -51,14 +62,21 @@ internal sealed record SortKey(string Field, string Path, bool Descending)
         _ => false,
     };
 
+    /// <summary>Stored with the resolved path, so pages sort exactly as the first page did even if the catalogue changes.</summary>
     public static string ToJson(IReadOnlyList<SortKey> keys) =>
-        new JsonArray([.. keys.Select(k => (JsonNode)Obj(("field", k.Field), ("direction", k.Descending ? "desc" : "asc")))]).ToJsonString();
+        new JsonArray([.. keys.Select(k => (JsonNode)Obj(("field", k.Field), ("direction", k.Descending ? "desc" : "asc"), ("path", k.Path)))])
+            .ToJsonString();
 
     public static IReadOnlyList<SortKey> FromJson(string json) =>
-        [.. JsonNode.Parse(json)!.AsArray().Select(n => Resolve(
-            n!["field"]!.GetValue<string>(),
-            n["direction"]!.GetValue<string>() == "desc" ? SearchSortDirection.Desc : SearchSortDirection.Asc)
-            ?? throw new InvalidOperationException("A stored sort key is no longer sortable."))];
+        [.. JsonNode.Parse(json)!.AsArray().Select(n =>
+        {
+            var field = n!["field"]!.GetValue<string>();
+            var descending = n["direction"]!.GetValue<string>() == "desc";
+            return n["path"]?.GetValue<string>() is { Length: > 0 } path
+                ? new SortKey(field, path, descending)
+                : Resolve(field, descending ? SearchSortDirection.Desc : SearchSortDirection.Asc)
+                    ?? throw new InvalidOperationException("A stored sort key is no longer sortable.");
+        })];
 }
 
 /// <summary>Everything one search request needs besides the query (built by <see cref="SearchService"/>).</summary>
@@ -71,6 +89,9 @@ internal sealed record SearchBodySpec
     public required TimeSpan KeepAlive { get; init; }
 
     public required IReadOnlyList<SortKey> Sort { get; init; }
+
+    /// <summary>Projection paths fetched besides the grid fields (<c>SearchRequest.Fields</c>).</summary>
+    public IReadOnlyList<string> SourceFields { get; init; } = [];
 
     /// <summary>Walk the sort backwards (previous and last pages, Q-49).</summary>
     public bool Reverse { get; init; }
@@ -91,6 +112,9 @@ internal sealed record SearchBodySpec
     public int SnippetsPerHit { get; init; } = 3;
 
     public IReadOnlyList<string> Facets { get; init; } = [];
+
+    /// <summary>Further aggregations by name (the expanded counts of E09-T03).</summary>
+    public JsonObject? Aggregations { get; init; }
 
     public int FacetBuckets { get; init; } = 25;
 
@@ -140,7 +164,8 @@ internal static class SearchDsl
             ("size", spec.Size),
             ("sort", Sort(spec.Sort, spec.Reverse)),
             ("track_total_hits", spec.TrackTotalHitsUpTo is { } cap ? cap : true),
-            ("_source", Obj(("includes", new JsonArray([.. ProjectionFields.GridSource.Select(f => (JsonNode)f)])))),
+            ("_source", Obj(("includes", new JsonArray([.. ProjectionFields.GridSource.Concat(spec.SourceFields).Distinct(StringComparer.Ordinal)
+                .Select(f => (JsonNode)f)])))),
             ("timeout", Milliseconds(spec.Timeout)),
             ("pit", Obj(("id", spec.PointInTimeId), ("keep_alive", Seconds(spec.KeepAlive)))));
         if (spec.From > 0)
@@ -165,12 +190,17 @@ internal static class SearchDsl
                     ("no_match_size", 0))))));
         }
 
-        if (spec.Facets.Count > 0)
+        if (spec.Facets.Count > 0 || spec.Aggregations is { Count: > 0 })
         {
             var aggs = new JsonObject();
             foreach (var facet in spec.Facets)
             {
                 aggs[FacetPrefix + facet] = Obj(("terms", Obj(("field", facet), ("size", spec.FacetBuckets))));
+            }
+
+            foreach (var (name, aggregation) in spec.Aggregations ?? [])
+            {
+                aggs[name] = aggregation!.DeepClone();
             }
 
             body["aggs"] = aggs;
@@ -179,20 +209,30 @@ internal static class SearchDsl
         return body;
     }
 
-    /// <summary>The sort with the <c>documentId</c> tie-breaker; reversed exactly (including missing values) when asked.</summary>
+    /// <summary>
+    /// The sort with the deterministic tie-breakers: Control Number ascending (unless the sort already uses it, E16-T09),
+    /// then <c>documentId</c> (unique, so equal Control Numbers never reorder). Reversed exactly (including missing values)
+    /// when asked.
+    /// </summary>
     public static JsonArray Sort(IReadOnlyList<SortKey> keys, bool reverse)
     {
         var sort = new JsonArray();
-        foreach (var key in keys.Append(new SortKey(ProjectionFields.DocumentId, ProjectionFields.DocumentId, Descending: false)))
+        var tieBreakers = keys.Any(k => k.Path == ProjectionFields.ControlNumberSort)
+            ? [new SortKey(ProjectionFields.DocumentId, ProjectionFields.DocumentId, Descending: false)]
+            : new[] { SortKey.ControlNumber, new SortKey(ProjectionFields.DocumentId, ProjectionFields.DocumentId, Descending: false) };
+        foreach (var key in keys.Concat(tieBreakers))
         {
-            var descending = key.Descending ^ reverse;
-            var order = Obj(("order", descending ? "desc" : "asc"));
-            if (!key.IsScore)
+            foreach (var (path, keyDescending) in key.Clauses)
             {
-                order["missing"] = reverse ? "_first" : "_last";
-            }
+                var descending = keyDescending ^ reverse;
+                var order = Obj(("order", descending ? "desc" : "asc"));
+                if (!key.IsScore)
+                {
+                    order["missing"] = reverse ? "_first" : "_last";
+                }
 
-            sort.Add(Obj((key.Path, order)));
+                sort.Add(Obj((path, order)));
+            }
         }
 
         return sort;

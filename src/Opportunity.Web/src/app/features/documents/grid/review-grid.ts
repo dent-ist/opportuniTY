@@ -16,13 +16,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 import { ApiError, UserFacingError, toApiError } from '../../../core/api/problem-details';
 import type {
   FieldResource,
+  SearchExpand,
+  SearchExpandedCounts,
   SearchFreshness,
   SearchHit,
   SearchResultPage,
-  SearchSortKey,
   TotalCount,
 } from '../../../core/api/generated/models';
 import { CommandRegistry, CommandScopeDirective } from '../../../core/commands';
@@ -30,8 +32,36 @@ import { PreferenceStorage } from '../../../core/preferences/preference-storage'
 import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
-import { Announcer, Button, EmptyState, ErrorState, Icon, LoadingState, MENU } from '../../../ui';
-import { GridColumn, defaultColumns, familyMarker } from './grid-columns';
+import { SessionService } from '../../../core/session/session';
+import {
+  Announcer,
+  Button,
+  DialogService,
+  EmptyState,
+  ErrorState,
+  Icon,
+  LoadingState,
+  MENU,
+  Tooltip,
+} from '../../../ui';
+import {
+  ColumnSpec,
+  DEFAULT_VIEW,
+  GridColumn,
+  MAX_COLUMN_WIDTH,
+  MAX_SORT_LEVELS,
+  MIN_COLUMN_WIDTH,
+  SortSpec,
+  buildColumns,
+  familyMarker,
+  minRem,
+  requestedFields,
+  toSpecs,
+} from './grid-columns';
+import { GridLayout, GridView, GridViewApi, HttpGridViewApi } from './grid-view-api';
+import { GridViewBar } from './grid-view-bar';
+import type { ColumnChooserData, ColumnChooserResult } from './column-chooser';
+import type { SaveViewDialogData } from './save-view-dialog';
 import { GridFilter, FilterChange } from './grid-filter';
 import {
   CompiledQuery,
@@ -74,8 +104,15 @@ export interface GridSearch {
    * the stored query and records the run and its hit count.
    */
   readonly savedSearchId?: string | null;
+  /**
+   * One term of a Search Terms Report (#180): without filters the list asks for that term's hits within the report's
+   * frozen set (filtered for the caller); `query` is the term's expression, run live once filters narrow it.
+   */
+  readonly termReport?: { readonly reportId: string; readonly termId: string } | null;
   /** The page is still loading what to search (a saved search): show the loading state, run nothing yet. */
   readonly deferred?: boolean;
+  /** "Include: Family / Duplicates / Email thread" (E09-T03); null: the hits only (or a saved search's stored choice). */
+  readonly expand?: SearchExpand | null;
 }
 
 /** A row opened with Enter, double-click (Review mode, E16-T03). */
@@ -91,6 +128,10 @@ export const DEFAULT_PAGE_SIZE = 100;
 const PAGE_SIZE_KEY = 'grid.pageSize';
 /** Whether the filter row is shown (a user preference, #191). */
 export const FILTER_ROW_KEY = 'grid.filterRow';
+/** Wait this long after the last layout change before remembering it (`PUT …/grid-views/layout`). */
+export const LAYOUT_SAVE_DELAY_MS = 500;
+/** Header keyboard resizing step (Shift+Arrow Left/Right on a column header). */
+const RESIZE_STEP_PX = 16;
 /** Selected documents checked per request when a filter changes (control numbers ORed in one query). */
 const VERIFY_CHUNK = 100;
 
@@ -124,7 +165,12 @@ interface RunOptions {
 
 interface ResultInfo {
   readonly searchId: string;
+  /** The size of the list: the hits, or with Include the hits plus the related documents added (E09-T03). */
   readonly total: TotalCount;
+  /** The documents matching the query (the base hits). */
+  readonly hits: TotalCount;
+  /** What Include added, by kind; null without Include. */
+  readonly expanded: SearchExpandedCounts | null;
   readonly freshness: SearchFreshness;
   /** The freshness the result set was served with, read tolerantly (E16-T07). */
   readonly served: ServedFreshness;
@@ -149,6 +195,12 @@ interface ResultInfo {
  * - Filter row (#191): one control per filterable column under the headers, compiled into the query language
  *   and ANDed with the keyword query, so a filtered list is an ordinary, audited, reproducible search. Arrows
  *   move between filters, Escape clears one; active filters stay listed above the grid as removable chips.
+ * - Views (E16-T09): a View is a saved column set and sort, personal or shared with the workspace; the View selector,
+ *   Columns (chooser: reorder, pin, width, show/hide, up to three sort levels) and the Views menu sit above the list.
+ *   The layout (the View last used plus unsaved adjustments) is remembered per user and workspace on the server.
+ *   Headers: Enter or click sorts; Shift+Enter or Shift+click adds a sort level (up to 3, Control Number breaks
+ *   ties); Shift+Arrow Left/Right resizes, Ctrl+Shift+Arrow Left/Right moves the column. Columns that cannot be
+ *   sorted or filtered say why (field capabilities).
  */
 @Component({
   selector: 'opp-review-grid',
@@ -159,14 +211,16 @@ interface ResultInfo {
     ErrorState,
     FilterSummary,
     GridFilter,
+    GridViewBar,
     Icon,
     LoadingState,
     NgTemplateOutlet,
+    Tooltip,
     ...MENU,
   ],
-  providers: [ReviewSearchApi],
+  providers: [ReviewSearchApi, { provide: GridViewApi, useClass: HttpGridViewApi }],
   templateUrl: './review-grid.html',
-  styleUrl: './review-grid.scss',
+  styleUrls: ['./review-grid.scss', './review-grid-expansion.scss', './review-grid-columns.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ReviewGrid implements CursorSource {
@@ -197,11 +251,68 @@ export class ReviewGrid implements CursorSource {
   protected readonly canSearch = this.context.can(PERMISSIONS.searchExecute);
   protected readonly gridId = `grid-${this.context.workspaceId}`;
 
-  // Columns
+  // Columns and Views (E16-T09)
   private readonly fields = signal<FieldResource[] | null>(null);
   /** The workspace's field catalogue once loaded (Review mode's coding pane, E16-T05). */
   readonly fieldCatalogue = this.fields.asReadonly();
-  protected readonly columns = computed(() => defaultColumns(this.fields()));
+  private readonly viewsApi = inject(GridViewApi);
+  private readonly dialogs = inject(DialogService);
+  private readonly session = inject(SessionService, { optional: true });
+  protected readonly canManageShared = this.context.can(PERMISSIONS.manageSharedViews);
+  /** Saved Views the user can see. */
+  readonly views = signal<readonly GridView[]>([]);
+  /** The View in use; null for the workspace's Default view. */
+  readonly activeViewId = signal<string | null>(null);
+  protected readonly activeView = computed(
+    () => this.views().find((v) => v.viewId === this.activeViewId()) ?? null,
+  );
+  protected readonly sharedViews = computed(() =>
+    this.views().filter((v) => v.visibility === 'shared'),
+  );
+  protected readonly myViews = computed(() => {
+    const me = this.session?.principal()?.userId;
+    return this.views().filter(
+      (v) =>
+        v.visibility === 'personal' &&
+        (!me || v.owner.userId === me || v.viewId === this.activeViewId()),
+    );
+  });
+  /** Columns changed since the View was applied (null: the View's own). */
+  private readonly adjustedColumns = signal<readonly ColumnSpec[] | null>(null);
+  /** The stored layout has been read (or could not be): the first search waits for it. */
+  private readonly layoutReady = signal(false);
+  private layoutTimer?: ReturnType<typeof setTimeout>;
+  /** The shown columns as stored (`GridViewColumn`). */
+  readonly columnSpecs = computed<readonly ColumnSpec[]>(
+    () => this.adjustedColumns() ?? this.activeView()?.columns ?? DEFAULT_VIEW,
+  );
+  protected readonly columns = computed(() => buildColumns(this.fields(), this.columnSpecs()));
+  /** The sort levels of the list (at most three; Control Number then breaks ties server-side). */
+  readonly sortKeys = signal<readonly SortSpec[]>([]);
+  /** The list's columns or sort differ from the View's. */
+  protected readonly viewModified = computed(() => {
+    const view = this.activeView();
+    const columns = this.adjustedColumns();
+    const viewColumns = view?.columns ?? DEFAULT_VIEW;
+    return (
+      (columns !== null && !sameJson(columns, viewColumns)) ||
+      !sameJson(this.sortKeys(), view?.sort ?? [])
+    );
+  });
+  /** Offsets of the pinned View columns while the grid scrolls sideways (after the checkbox and Control Number). */
+  protected readonly pinnedLeft = computed(() => {
+    const offsets: (string | null)[] = [];
+    let left = 2.25 + minRem(this.columns().controlNumber.width);
+    for (const c of this.columns().view) {
+      if (!c.pinned) {
+        offsets.push(null);
+        continue;
+      }
+      offsets.push(`${left}rem`);
+      left += minRem(c.width);
+    }
+    return offsets;
+  });
   protected readonly colCount = computed(() => FIXED_COLUMNS + this.columns().view.length);
   protected readonly gridTemplate = computed(() =>
     [
@@ -229,6 +340,11 @@ export class ReviewGrid implements CursorSource {
     const spec = (c: GridColumn) => filterSpec(byName.get(c.queryName), c.label, c.format);
     const { controlNumber, view } = this.columns();
     return [null, spec(controlNumber), null, ...view.map(spec)];
+  });
+  /** Why a column has no filter control (field capabilities), in column order. */
+  protected readonly filterReasons = computed<(string | null)[]>(() => {
+    const { controlNumber, view } = this.columns();
+    return [null, controlNumber.filterReason, null, ...view.map((c) => c.filterReason)];
   });
   private readonly specs = computed(
     () => new Map(this.filterCells().flatMap((s) => (s ? [[s.queryName, s] as const] : []))),
@@ -282,7 +398,8 @@ export class ReviewGrid implements CursorSource {
   /** The loaded rows in list order (the review cursor walks these, E16-T03). */
   readonly rows = computed(() => this.window().rows);
   protected readonly result = signal<ResultInfo | null>(null);
-  protected readonly sort = signal<SearchSortKey | null>(null);
+  /** The current search's handle (Review mode highlights its hits, E16-T12). */
+  readonly searchId = computed(() => this.result()?.searchId ?? null);
   protected readonly busy = signal(false);
   protected readonly loadingMore = signal<'next' | 'previous' | null>(null);
   protected readonly loadError = signal<string | null>(null);
@@ -339,6 +456,27 @@ export class ReviewGrid implements CursorSource {
   readonly countText = computed(() => {
     const r = this.result();
     return r ? countLabel(r.total, r.freshness, this.prefs.locale()) : '';
+  });
+  /** With Include: "2 hits + 4 family, 1 duplicate, 1 email thread" next to the list size (base vs expanded counts). */
+  protected readonly expandedText = computed(() => {
+    const r = this.result();
+    if (!r?.expanded) return null;
+    const n = new Intl.NumberFormat(this.prefs.locale());
+    const hits = countLabel(r.hits, r.freshness, this.prefs.locale());
+    const parts = [
+      [Number(r.expanded.family), 'family'],
+      [
+        Number(r.expanded.duplicates),
+        Number(r.expanded.duplicates) === 1 ? 'duplicate' : 'duplicates',
+      ],
+      [Number(r.expanded.thread), 'email thread'],
+    ]
+      .filter(([count]) => Number(count) > 0)
+      .map(([count, label]) => `${n.format(Number(count))} ${label}`);
+    const hitWord = Number(r.hits.value) === 1 ? 'hit' : 'hits';
+    return parts.length > 0
+      ? `${hits} ${hitWord} + ${parts.join(', ')}`
+      : `${hits} ${hitWord}, no related documents added`;
   });
   protected readonly freshnessText = computed(() => {
     const r = this.result();
@@ -433,14 +571,24 @@ export class ReviewGrid implements CursorSource {
     });
 
     if (this.canSearch) {
-      this.api.fields().then(
-        (fields) => this.fields.set(fields),
-        () => undefined, // the structural defaults stay
-      );
+      // The catalogue, the Views and the remembered layout come first, so the first search has the right columns.
+      void Promise.allSettled([
+        this.api.fields(),
+        this.viewsApi.list(),
+        this.viewsApi.layout(),
+      ]).then(([fields, views, layout]) => {
+        // Failures keep the structural defaults and the Default view.
+        if (fields.status === 'fulfilled') this.fields.set(fields.value);
+        if (views.status === 'fulfilled') this.views.set(views.value);
+        if (layout.status === 'fulfilled') this.applyLayout(layout.value);
+        this.layoutReady.set(true);
+      });
+    } else {
+      this.layoutReady.set(true);
     }
 
     effect(() => {
-      if (this.search().deferred) return;
+      if (this.search().deferred || !this.layoutReady()) return;
       untracked(() => this.run());
     });
 
@@ -472,7 +620,13 @@ export class ReviewGrid implements CursorSource {
       const el = this.viewport()?.nativeElement;
       if (el) resize?.observe(el);
     });
-    inject(DestroyRef).onDestroy(() => resize?.disconnect());
+    inject(DestroyRef).onDestroy(() => {
+      resize?.disconnect();
+      if (this.layoutTimer) {
+        clearTimeout(this.layoutTimer);
+        void this.saveLayout();
+      }
+    });
   }
 
   // ── Searching ────────────────────────────────────────────────────────────────────────────────────────────
@@ -492,25 +646,37 @@ export class ReviewGrid implements CursorSource {
     if (!this.showTable()) this.status.set('loading');
     this.busy.set(true);
     this.loadError.set(null);
-    const sort = this.sort();
+    const sort = this.sortKeys();
+    const fields = requestedFields(this.columns().view);
     const compiled = this.compiled();
     const all = this._allResults();
-    if (all && all.query !== compiled.query) {
+    const search = this.search();
+    if (
+      all &&
+      (all.query !== compiled.query ||
+        JSON.stringify(all.expand ?? null) !== JSON.stringify(search.expand ?? null))
+    ) {
       // "All results" meant the results of the previous search; a new search does not inherit it.
       this.offerAll.set(false);
       this._allResults.set(null);
       this.selectionChange.emit(this._selected());
       this.announcer.announce('Selection of all results cleared: the search changed.');
     }
-    const search = this.search();
     // Filters narrow a saved search ad hoc: then the list runs the combined query text instead of the id.
-    const savedSearchId =
-      search.savedSearchId && compiled.query === search.query ? search.savedSearchId : null;
+    const unfiltered = compiled.query === search.query;
+    const savedSearchId = search.savedSearchId && unfiltered ? search.savedSearchId : null;
+    const termReport = search.termReport && unfiltered ? search.termReport : null;
     let page: SearchResultPage;
     try {
       page = await this.api.run({
-        ...(savedSearchId ? { savedSearchId } : { query: compiled.query }),
-        sort: sort ? [sort] : null,
+        ...(termReport
+          ? { searchTermReportId: termReport.reportId, termId: termReport.termId }
+          : savedSearchId
+            ? { savedSearchId }
+            : { query: compiled.query }),
+        sort: sort.length > 0 ? [...sort] : null,
+        ...(fields.length > 0 ? { fields } : {}),
+        ...(search.expand ? { expand: search.expand } : {}),
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
         // The hits' snippets carry the search terms Review mode highlights in the extracted text (#130).
@@ -629,24 +795,321 @@ export class ReviewGrid implements CursorSource {
     void this.run({ anchor: this.focusedId() });
   }
 
-  /** Header click or Enter on a header: ascending → descending → back to the default order (relevance with a keyword, else Control Number). */
-  protected toggleSort(column: GridColumn): void {
-    if (!column.sortField) return;
-    const current = this.sort();
-    const next: SearchSortKey | null =
-      current?.field !== column.sortField
-        ? { field: column.sortField, direction: 'asc' }
-        : current.direction === 'asc'
-          ? { field: column.sortField, direction: 'desc' }
-          : null;
-    this.sort.set(next);
+  /**
+   * Header click or Enter: sort by this column alone, ascending → descending → back to the default order (relevance with
+   * a keyword, else Control Number). With Shift (`add`): this column becomes the next sort level (up to three), or its
+   * level toggles ascending → descending → removed. A column that cannot be sorted says why.
+   */
+  protected toggleSort(column: GridColumn, add = false): void {
+    if (!column.sortField) {
+      this.announcer.announce(
+        `${column.label} cannot be sorted. ${column.sortReason ?? ''}`.trim(),
+        { politeness: 'assertive' },
+      );
+      return;
+    }
+    const field = column.sortField;
+    const keys = this.sortKeys();
+    const index = keys.findIndex((k) => k.field === field);
+    let next: SortSpec[];
+    if (add) {
+      if (index < 0) {
+        if (keys.length >= MAX_SORT_LEVELS) {
+          this.announcer.announce(
+            `At most ${MAX_SORT_LEVELS} sort levels. Remove one first (Shift+Enter on a sorted column).`,
+            { politeness: 'assertive' },
+          );
+          return;
+        }
+        next = [...keys, { field, direction: 'asc' }];
+      } else if (keys[index].direction === 'asc') {
+        next = keys.map((k, i) => (i === index ? { field, direction: 'desc' } : k));
+      } else {
+        next = keys.filter((_, i) => i !== index);
+      }
+    } else {
+      const only = keys.length === 1 && index === 0;
+      next = !only
+        ? [{ field, direction: 'asc' }]
+        : keys[0].direction === 'asc'
+          ? [{ field, direction: 'desc' }]
+          : [];
+    }
+    this.sortKeys.set(next);
+    this.announcer.announce(this.sortDescription(next));
+    this.layoutChanged();
     void this.run({ anchor: this.focusedId() });
   }
 
+  private sortDescription(keys: readonly SortSpec[]): string {
+    if (keys.length === 0) return 'Sorted in the default order.';
+    const all = [this.columns().controlNumber, ...this.columns().view];
+    const label = (field: string) => all.find((c) => c.sortField === field)?.label ?? field;
+    return `Sorted by ${keys
+      .map((k) => `${label(k.field)} ${k.direction === 'desc' ? 'descending' : 'ascending'}`)
+      .join(', then ')}.`;
+  }
+
+  /** `aria-sort` on the primary sort column only (one per grid); further levels are in the header's text. */
   protected ariaSort(column: GridColumn): string | null {
-    const sort = this.sort();
-    if (!column.sortField || sort?.field !== column.sortField) return null;
-    return sort.direction === 'desc' ? 'descending' : 'ascending';
+    const first = this.sortKeys()[0];
+    if (!column.sortField || first?.field !== column.sortField) return null;
+    return first.direction === 'desc' ? 'descending' : 'ascending';
+  }
+
+  /** The column's sort level (1-based) and direction, or null. */
+  protected sortLevel(column: GridColumn): { level: number; desc: boolean } | null {
+    const keys = this.sortKeys();
+    const index = column.sortField ? keys.findIndex((k) => k.field === column.sortField) : -1;
+    return index < 0 ? null : { level: index + 1, desc: keys[index].direction === 'desc' };
+  }
+
+  protected readonly sortLevels = computed(() => this.sortKeys().length);
+
+  // ── Views and layout (E16-T09) ───────────────────────────────────────────────────────────────────────────
+
+  private applyLayout(layout: GridLayout): void {
+    const view = layout.viewId ? this.views().find((v) => v.viewId === layout.viewId) : undefined;
+    this.activeViewId.set(view?.viewId ?? null);
+    this.adjustedColumns.set(layout.columns ? [...layout.columns] : null);
+    this.sortKeys.set([...(layout.sort ?? view?.sort ?? [])]);
+  }
+
+  /** Remembers the layout shortly after the last change (one request per burst). */
+  private layoutChanged(): void {
+    clearTimeout(this.layoutTimer);
+    this.layoutTimer = setTimeout(() => {
+      this.layoutTimer = undefined;
+      void this.saveLayout();
+    }, LAYOUT_SAVE_DELAY_MS);
+  }
+
+  private async saveLayout(): Promise<void> {
+    const view = this.activeView();
+    const columns = this.adjustedColumns();
+    const sort = this.sortKeys();
+    try {
+      await this.viewsApi.saveLayout({
+        viewId: view?.viewId ?? null,
+        columns: columns && !sameJson(columns, view?.columns ?? DEFAULT_VIEW) ? columns : null,
+        sort: sameJson(sort, view?.sort ?? []) ? null : sort,
+      });
+    } catch {
+      // The layout is a convenience: the list keeps working, and the next change tries again.
+    }
+  }
+
+  /** The View selector: applies a View's columns and sort (null: Default) and runs the search again. */
+  selectView(viewId: string | null): void {
+    const view = viewId ? (this.views().find((v) => v.viewId === viewId) ?? null) : null;
+    this.activeViewId.set(view?.viewId ?? null);
+    this.adjustedColumns.set(null);
+    this.sortKeys.set([...(view?.sort ?? [])]);
+    this.layoutChanged();
+    this.announcer.announce(`View ${view?.name ?? 'Default'} applied.`);
+    void this.run({ anchor: this.focusedId() });
+  }
+
+  /** Applies columns and sort (the column chooser, a saved search) as adjustments to the current View. */
+  applyColumns(
+    columns: readonly ColumnSpec[] | null,
+    sort: readonly SortSpec[] | null,
+    run = true,
+  ): void {
+    const view = this.activeView();
+    if (columns) {
+      this.adjustedColumns.set(
+        sameJson(columns, view?.columns ?? DEFAULT_VIEW) ? null : [...columns],
+      );
+    }
+    if (sort) this.sortKeys.set(sort.slice(0, MAX_SORT_LEVELS));
+    this.layoutChanged();
+    if (run) void this.run({ anchor: this.focusedId() });
+  }
+
+  /** Columns: the chooser dialog (reorder, pin, width, show/hide, sort levels). */
+  async openColumns(): Promise<void> {
+    const { ColumnChooser } = await import('./column-chooser');
+    const ref = this.dialogs.open<ColumnChooserResult, ColumnChooserData>(ColumnChooser, {
+      data: { fields: this.fields(), columns: toSpecs(this.columns().view), sort: this.sortKeys() },
+      width: '56rem',
+      injector: this.injector,
+    });
+    const result = await firstValueFrom(ref.closed);
+    if (!result) return;
+    const fieldsBefore = requestedFields(this.columns().view).join();
+    const sortBefore = JSON.stringify(this.sortKeys());
+    this.applyColumns(result.columns, result.sort, false);
+    // A new search only when the sort or the fields the hits must carry changed.
+    if (
+      JSON.stringify(this.sortKeys()) !== sortBefore ||
+      requestedFields(this.columns().view).join() !== fieldsBefore
+    ) {
+      void this.run({ anchor: this.focusedId() });
+    }
+    this.announcer.announce('Columns and sort applied.');
+  }
+
+  /** Saves the adjustments into the current View (its owner, or "manage views" for a shared one). */
+  async saveViewChanges(): Promise<void> {
+    const view = this.activeView();
+    if (!view?.canEdit) return;
+    try {
+      const saved = await this.viewsApi.update(view, {
+        name: view.name,
+        visibility: view.visibility,
+        columns: toSpecs(this.columns().view),
+        sort: this.sortKeys(),
+      });
+      this.replaceView(saved);
+      this.adjustedColumns.set(null);
+      this.layoutChanged();
+      this.announcer.announce(`View ${saved.name} saved.`);
+    } catch (e) {
+      this.viewError(e);
+    }
+  }
+
+  /** Save as new view, or edit the current View's name and who sees it. */
+  async saveViewAs(mode: 'create' | 'edit' = 'create'): Promise<void> {
+    const view = mode === 'edit' ? this.activeView() : null;
+    if (mode === 'edit' && !view?.canEdit) return;
+    const { SaveViewDialog } = await import('./save-view-dialog');
+    const ref = this.dialogs.open<GridView, SaveViewDialogData>(SaveViewDialog, {
+      data: {
+        mode,
+        view: view ?? undefined,
+        columns: view ? view.columns : toSpecs(this.columns().view),
+        sort: view ? view.sort : this.sortKeys(),
+        canShare: this.canManageShared,
+      },
+      autoFocus: 'input',
+      injector: this.injector,
+    });
+    const saved = await firstValueFrom(ref.closed);
+    if (!saved) return;
+    if (mode === 'edit') {
+      this.replaceView(saved);
+    } else {
+      this.views.update((views) => [...views, saved]);
+      this.activeViewId.set(saved.viewId);
+      this.adjustedColumns.set(null);
+      this.sortKeys.set([...saved.sort]);
+    }
+    this.layoutChanged();
+    this.announcer.announce(`View ${saved.name} saved.`);
+  }
+
+  /** Back to the current View's own columns and sort. */
+  resetView(): void {
+    this.selectView(this.activeViewId());
+  }
+
+  async deleteView(): Promise<void> {
+    const view = this.activeView();
+    if (!view?.canEdit) return;
+    const confirmed = await this.dialogs.confirm({
+      title: 'Delete view',
+      message:
+        view.visibility === 'shared'
+          ? `Delete the shared view “${view.name}”? It disappears for everyone in this workspace.`
+          : `Delete your view “${view.name}”?`,
+      confirmLabel: 'Delete view',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    try {
+      await this.viewsApi.delete(view);
+      this.views.update((views) => views.filter((v) => v.viewId !== view.viewId));
+      this.selectView(null);
+      this.announcer.announce(`View ${view.name} deleted.`);
+    } catch (e) {
+      this.viewError(e);
+    }
+  }
+
+  private replaceView(saved: GridView): void {
+    this.views.update((views) => views.map((v) => (v.viewId === saved.viewId ? saved : v)));
+  }
+
+  private viewError(e: unknown): void {
+    const status = toApiError(e).status;
+    this.announcer.announce(
+      status === 403
+        ? 'You cannot change this view: shared views need the "Manage shared views" permission.'
+        : status === 412
+          ? 'Someone changed this view since it was loaded. Reload the page and try again.'
+          : 'The view could not be changed. Try again.',
+      { politeness: 'assertive' },
+    );
+  }
+
+  /** The columns of the list as a saved search stores them (field query names). */
+  readonly savedSearchColumns = computed(() => this.columns().view.map((c) => c.queryName));
+
+  // ── Resizing and moving columns ──────────────────────────────────────────────────────────────────────────
+
+  private resizeWidth(index: number, width: number): void {
+    const view = this.columns().view;
+    const px = Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width)));
+    this.adjustedColumns.set(
+      toSpecs(view.map((c, i) => (i === index ? { ...c, widthPx: px } : c))),
+    );
+    this.layoutChanged();
+  }
+
+  /** Dragging a header's right edge resizes the column. */
+  protected startResize(event: PointerEvent, index: number): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const cell = (event.target as HTMLElement).closest<HTMLElement>('[role="columnheader"]');
+    const startWidth = cell?.getBoundingClientRect().width ?? 120;
+    const startX = event.clientX;
+    const move = (e: PointerEvent) => this.resizeWidth(index, startWidth + e.clientX - startX);
+    const up = () => {
+      this.document.removeEventListener('pointermove', move);
+      this.document.removeEventListener('pointerup', up);
+      this.measure();
+    };
+    this.document.addEventListener('pointermove', move);
+    this.document.addEventListener('pointerup', up);
+  }
+
+  /** Header keys: Shift+Arrow resizes, Ctrl+Shift+Arrow moves a View column. True when handled. */
+  private headerKey(event: KeyboardEvent): boolean {
+    const col = this.focusCol();
+    const index = col - FIXED_COLUMNS;
+    const view = this.columns().view;
+    if (index < 0 || !event.shiftKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
+      return false;
+    }
+    event.preventDefault();
+    const delta = event.key === 'ArrowLeft' ? -1 : 1;
+    const column = view[index];
+    if (event.ctrlKey) {
+      const to = index + delta;
+      if (to < 0 || to >= view.length || view[to].pinned !== column.pinned) {
+        this.announcer.announce(`${column.label} cannot move further.`);
+        return true;
+      }
+      const next = [...view];
+      [next[index], next[to]] = [next[to], next[index]];
+      this.adjustedColumns.set(toSpecs(next));
+      this.layoutChanged();
+      this.focusCol.set(FIXED_COLUMNS + to);
+      this.announcer.announce(`${column.label} moved to column ${FIXED_COLUMNS + to + 1}.`);
+    } else {
+      const cell = this.document.getElementById(this.headerCellId(col));
+      const current =
+        column.widthPx ?? cell?.getBoundingClientRect().width ?? minRem(column.width) * 16;
+      this.resizeWidth(index, current + delta * RESIZE_STEP_PX);
+      afterNextRender(() => this.measure(), { injector: this.injector });
+      this.announcer.announce(
+        `${column.label} width ${Math.round(Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, current + delta * RESIZE_STEP_PX)))} pixels.`,
+        { throttleKey: `${this.gridId}-resize`, minIntervalMs: 400 },
+      );
+    }
+    return true;
   }
 
   /** Fetches the page after the last (or before the first) loaded page by cursor. */
@@ -1051,6 +1514,7 @@ export class ReviewGrid implements CursorSource {
     // Keys typed in the filter row (inside the grid element) are the filters' own.
     if (event.target !== event.currentTarget) return;
     if (event.altKey || event.metaKey || this.status() !== 'ready') return;
+    if (this.focusRow() === -1 && this.headerKey(event)) return;
     const last = this.rows().length - 1;
     const page = Math.max(1, this.visibleCount() - 1);
     const row = this.focusRow();
@@ -1084,9 +1548,9 @@ export class ReviewGrid implements CursorSource {
         return;
       case 'Enter':
       case ' ':
-        if (row === -1 && !event.ctrlKey && !event.shiftKey) {
+        if (row === -1 && !event.ctrlKey) {
           event.preventDefault();
-          this.activateHeader(this.focusCol());
+          this.activateHeader(this.focusCol(), event.shiftKey);
         }
         return;
       default:
@@ -1106,10 +1570,10 @@ export class ReviewGrid implements CursorSource {
     if (target >= 0) this.scrollTo(target, 'nearest');
   }
 
-  private activateHeader(col: number): void {
+  private activateHeader(col: number, add = false): void {
     if (col === COL_SELECT) this.selectPage(!this.selectedOnPage().all);
-    else if (col === COL_CONTROL) this.toggleSort(this.columns().controlNumber);
-    else if (col >= FIXED_COLUMNS) this.toggleSort(this.columns().view[col - FIXED_COLUMNS]);
+    else if (col === COL_CONTROL) this.toggleSort(this.columns().controlNumber, add);
+    else if (col >= FIXED_COLUMNS) this.toggleSort(this.columns().view[col - FIXED_COLUMNS], add);
   }
 
   protected onRowClick(index: number, col: number): void {
@@ -1118,11 +1582,11 @@ export class ReviewGrid implements CursorSource {
     this.viewport()?.nativeElement.focus({ preventScroll: true });
   }
 
-  protected onHeaderClick(col: number): void {
+  protected onHeaderClick(col: number, event?: MouseEvent): void {
     this.focusRow.set(-1);
     this.focusCol.set(col);
     this.viewport()?.nativeElement.focus({ preventScroll: true });
-    this.activateHeader(col);
+    this.activateHeader(col, !!event?.shiftKey);
   }
 
   protected openRow(index: number): void {
@@ -1229,7 +1693,9 @@ export class ReviewGrid implements CursorSource {
     }
     this.setSelection(next);
     const w = this.window();
-    this.offerAll.set(select && (w.hasNext || w.hasPrevious || w.pages.length > 1));
+    this.offerAll.set(
+      select && !this.termHits() && (w.hasNext || w.hasPrevious || w.pages.length > 1),
+    );
   }
 
   /** Select › This page: the page in view and nothing else. */
@@ -1239,10 +1705,23 @@ export class ReviewGrid implements CursorSource {
     this.selectPage(true);
   }
 
+  /** The list shows a report term's hits in its frozen set (not narrowed by filters). */
+  private termHits(): boolean {
+    return !!this.search().termReport && this.compiled().query === this.search().query;
+  }
+
   /** Selects every result of the search, loaded or not, as the query and the generation it was served at. */
   selectAllResults(): void {
     const r = this.result();
     if (!r || this.status() !== 'ready') return;
+    if (this.termHits()) {
+      // A report term's hits are a frozen set that no query names, so they cannot be selected as "all results".
+      this.offerAll.set(false);
+      this.announcer.announce(
+        'All results of a Search Terms Report term cannot be selected. Select documents on the loaded pages.',
+      );
+      return;
+    }
     this._selected.set(new Set());
     this.controlNumbers.clear();
     this.offerAll.set(false);
@@ -1253,6 +1732,7 @@ export class ReviewGrid implements CursorSource {
         r.freshness.servedGeneration === null ? null : String(r.freshness.servedGeneration),
       total: r.total,
       countText: this.countText(),
+      expand: this.search().expand ?? null,
     });
     this.selectionChange.emit(this._selected());
     this.announceSelection();
@@ -1354,10 +1834,25 @@ export class ReviewGrid implements CursorSource {
   }
 
   protected readonly familyMarker = familyMarker;
+  protected readonly relatedTag = relatedTag;
   protected readonly COL_SELECT = COL_SELECT;
   protected readonly COL_CONTROL = COL_CONTROL;
   protected readonly FIXED_COLUMNS = FIXED_COLUMNS;
   protected readonly PAGE_SIZES = PAGE_SIZES;
+}
+
+/** The tag of a row Include added (E09-T03): why it is in the list although it does not match the query. */
+function relatedTag(hit: SearchHit): { text: string; label: string } | null {
+  switch (hit.expandedBy) {
+    case 'family':
+      return { text: 'Family', label: 'Added as family' };
+    case 'duplicate':
+      return { text: 'Duplicate', label: 'Added as duplicate' };
+    case 'thread':
+      return { text: 'Thread', label: 'Added from the email thread' };
+    default:
+      return null;
+  }
 }
 
 const REFRESHED = 'Results refreshed: the list now includes recent changes.';
@@ -1373,22 +1868,24 @@ function sameValue(a: FilterValue | null, b: FilterValue | null): boolean {
 }
 
 function resultInfo(searchId: string, page: SearchResultPage): ResultInfo {
+  const expanded = page.expanded ?? null;
   return {
     searchId,
-    total: page.total,
+    total: expanded ? { value: expanded.total, relation: 'eq' } : page.total,
+    hits: page.total,
+    expanded,
     freshness: page.freshness,
     served: toServedFreshness(page.freshness),
     pageCount: page.page.pageCount === null ? null : Number(page.page.pageCount),
   };
 }
 
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function storedPageSize(value: number | undefined): number {
   return (PAGE_SIZES as readonly number[]).includes(value ?? NaN)
     ? (value as number)
     : DEFAULT_PAGE_SIZE;
-}
-
-/** The minimum of a CSS track size in rem (`10rem`, `minmax(12rem, 2fr)`). */
-function minRem(track: string): number {
-  return parseFloat(/([\d.]+)rem/.exec(track)?.[1] ?? '6');
 }

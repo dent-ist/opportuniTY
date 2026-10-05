@@ -256,6 +256,48 @@ describe('Searches › Saved Searches and the Documents pane (E16-T11)', () => {
     expect(items[3].getAttribute('aria-selected')).toBe('true');
   });
 
+  it('runs a saved search with the columns and sort saved with it (E16-T09, Q-72)', async () => {
+    await setup();
+    const field = (queryName: string, displayName: string, sortable = true) => ({
+      fieldId: queryName,
+      queryName,
+      displayName,
+      type: 'keyword',
+      storage: 'column',
+      multiValue: false,
+      isSystem: true,
+      isHidden: false,
+      isSecurityAffecting: false,
+      datePrecision: null,
+      reducedCapabilities: false,
+      capabilities: { sortable, filterable: true, leadingWildcard: false },
+    });
+    api
+      .on('GET', `${WS}/fields`, {
+        body: {
+          items: [
+            field('controlnumber', 'Control Number'),
+            field('filename', 'File Name'),
+            field('custodian', 'Custodian'),
+          ],
+          nextCursor: null,
+        },
+      })
+      .on('GET', `${WS}/saved-searches/ss-3`, {
+        body: saved('ss-3', 'By custodian', null, {
+          columns: ['custodian', 'filename'],
+          sort: [{ field: 'custodian', direction: 'desc' }],
+        }),
+      });
+    await go('/w/ws-1/documents?savedSearch=ss-3');
+    const runs = api.requests.filter((r) => r.method === 'POST' && r.url === `${WS}/searches`);
+    expect(runs.at(-1)?.body).toMatchObject({
+      savedSearchId: 'ss-3',
+      sort: [{ field: 'custodian', direction: 'desc' }],
+      fields: ['custodian'],
+    });
+  });
+
   it('says so when a saved search is not available, and lists every document instead', async () => {
     await setup();
     await go('/w/ws-1/documents?savedSearch=gone');

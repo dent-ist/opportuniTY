@@ -1,0 +1,57 @@
+// Column configuration of the document list (E16-T09): header labels, sort levels, pinned and resizable columns,
+// and the "Not filterable" marker of the filter row.
+
+.grid__cell--head {
+  position: relative;
+  gap: var(--opp-space-1);
+}
+
+.grid__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// Not sortable (field capabilities): muted, with the reason in a tooltip.
+.grid__cell--unsortable .grid__label {
+  text-decoration: underline dotted var(--opp-color-text-muted);
+  text-underline-offset: 3px;
+}
+
+.grid__pin {
+  flex: none;
+  color: var(--opp-color-text-muted);
+}
+
+// The right edge of a header resizes its column (drag; Shift+Arrow Left/Right with the header focused).
+.grid__resize {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: 0.5rem;
+  cursor: col-resize;
+  touch-action: none;
+
+  &:hover {
+    background: var(--opp-color-border-strong);
+  }
+}
+
+.grid__nofilter {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+  text-decoration: underline dotted;
+}
+
+// Pinned View columns stick after the checkbox and Control Number while the grid scrolls sideways.
+.grid__viewport.is-wide {
+  .grid__cell--pinned {
+    position: sticky;
+    inset-inline-start: var(--pin-left);
+    z-index: 1;
+  }
+}
+
+.grid__cell--pinned {
+  border-inline-end: var(--opp-border-width) solid var(--opp-color-border);
+}

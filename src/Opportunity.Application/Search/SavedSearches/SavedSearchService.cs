@@ -73,7 +73,8 @@ public sealed class SavedSearchService(
     IAuthorizationService authorization,
     QueryLimits limits,
     TimeProvider time,
-    IQueryBinder? binder = null)
+    IQueryBinder? binder = null,
+    ISearchSortFields? sortFields = null)
 {
     public const int MaxNameLength = 200;
     public const int MaxColumns = 100;
@@ -174,7 +175,11 @@ public sealed class SavedSearchService(
 
         var id = Guid.CreateVersion7();
         var definition = new SavedSearchDefinition(name, request.FolderId ?? source.FolderId, source.QueryText, source.AstVersion, source.Columns,
-            source.Sort, source.IncludeFamily, source.References);
+            source.Sort, source.IncludeFamily, source.References)
+        {
+            IncludeDuplicates = source.IncludeDuplicates,
+            IncludeThread = source.IncludeThread,
+        };
         var details = Details(id, definition, 1);
         details["clonedFrom"] = savedSearchId.ToString();
         var audit = Event(principal, workspaceId, id, AuditTaxonomy.SavedSearch.Created, details, Restricted(definition));
@@ -390,9 +395,10 @@ public sealed class SavedSearchService(
         foreach (var key in request.Sort ?? [])
         {
             if (key is null || !Enum.IsDefined(key.Direction)
-                || SearchSortFields.All.FirstOrDefault(f => string.Equals(f, key.Field, StringComparison.OrdinalIgnoreCase)) is not { } field)
+                || await SortFieldAsync(workspaceId, key.Field, cancellationToken).ConfigureAwait(false) is not { } field)
             {
-                return (null, SavedSearchOutcome.Invalid("sort", $"Sortable fields: {string.Join(", ", SearchSortFields.All)}."));
+                return (null, SavedSearchOutcome.Invalid("sort",
+                    $"Sort by {string.Join(", ", SearchSortFields.All)} or a workspace field that is sortable."));
             }
 
             sort.Add(new SearchSortKey(field, key.Direction));
@@ -426,7 +432,24 @@ public sealed class SavedSearchService(
         }
 
         return (new SavedSearchDefinition(name, request.FolderId, request.Query, QueryNode.AstVersion, columns, sort, request.IncludeFamily ?? false,
-            expansion.DirectReferences), null);
+            expansion.DirectReferences)
+        {
+            IncludeDuplicates = request.IncludeDuplicates ?? false,
+            IncludeThread = request.IncludeThread ?? false,
+        }, null);
+    }
+
+    /// <summary>A fixed sort name, or (with the search module) a sortable workspace field (E16-T09).</summary>
+    private async ValueTask<string?> SortFieldAsync(Guid workspaceId, string? field, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(field) || field.Length > 200)
+        {
+            return null;
+        }
+
+        return sortFields is not null
+            ? await sortFields.ResolveAsync(workspaceId, field, cancellationToken).ConfigureAwait(false)
+            : SearchSortFields.All.FirstOrDefault(f => string.Equals(f, field, StringComparison.OrdinalIgnoreCase));
     }
 
     private static SavedSearchOutcome Write(SavedSearchWriteResult result, SavedSearchOutcomeStatus success) => result.Status switch
@@ -477,6 +500,16 @@ public sealed class SavedSearchService(
         {
             yield return "includeFamily";
         }
+
+        if (current.IncludeDuplicates != next.IncludeDuplicates)
+        {
+            yield return "includeDuplicates";
+        }
+
+        if (current.IncludeThread != next.IncludeThread)
+        {
+            yield return "includeThread";
+        }
     }
 
     /// <summary>IDs and settings only: names are user content and stay out of audit details (ADR-013 §7).</summary>
@@ -488,6 +521,8 @@ public sealed class SavedSearchService(
         ["columns"] = Invariant(definition.Columns.Count),
         ["sort"] = string.Join(',', definition.Sort.Select(s => s.Field + ":" + (s.Direction == SearchSortDirection.Desc ? "desc" : "asc"))),
         ["includeFamily"] = definition.IncludeFamily ? "true" : "false",
+        ["includeDuplicates"] = definition.IncludeDuplicates ? "true" : "false",
+        ["includeThread"] = definition.IncludeThread ? "true" : "false",
         ["references"] = definition.References.Count <= 50 ? string.Join(',', definition.References) : Invariant(definition.References.Count),
         ["version"] = Invariant(version),
     };

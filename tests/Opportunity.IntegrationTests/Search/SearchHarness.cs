@@ -163,6 +163,10 @@ internal sealed class SearchHarness : IAsyncDisposable
         InScopeAsync(s => s.SearchAsync(Caller(workspaceId, userId, session, groups),
             new SearchRequest(query, sort ?? [new SearchSortKey("controlNumber")], pageSize, countExact, Facets: facets), Ct));
 
+    /// <summary>Runs a full search request (expansion, saved search, …) in its own DI scope.</summary>
+    public Task<SearchOutcome> InScopeSearchAsync(Guid workspaceId, Guid userId, SearchRequest request, Guid? session = null) =>
+        InScopeAsync(s => s.SearchAsync(Caller(workspaceId, userId, session), request, Ct));
+
     public Task<SearchOutcome> PageAsync(Guid workspaceId, Guid userId, string? searchId, SearchPageRequest page, Guid? session = null) =>
         InScopeAsync(s => s.GetPageAsync(Caller(workspaceId, userId, session), searchId ?? string.Empty, page, Ct));
 

@@ -59,8 +59,8 @@ test('a reviewer searches, views, codes with Save & Next and finds the coding wi
   codedControlNumber = (await page.locator('.review__control').textContent())!.trim();
   expect(expected).toContain(codedControlNumber);
   await expect(viewer.getByLabel(`Extracted text of ${codedControlNumber}`)).toContainText(term);
-  const hits = viewer.getByRole('group', { name: 'Search hits' });
-  await expect(hits).toContainText(/\d+ search hits?/);
+  const hits = viewer.getByRole('group', { name: 'Highlights' });
+  await expect(hits).toContainText(/Search hits \([1-9]\d*\)/);
   await page.keyboard.press('F3');
   await expect(hits).toContainText(/Hit 1 of \d+/);
 

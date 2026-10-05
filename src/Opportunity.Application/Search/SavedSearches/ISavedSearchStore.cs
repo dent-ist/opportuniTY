@@ -38,6 +38,15 @@ public sealed record SavedSearchRecord
 
     public bool IncludeFamily { get; init; }
 
+    /// <summary>Run with the hits' duplicates (E09-T03).</summary>
+    public bool IncludeDuplicates { get; init; }
+
+    /// <summary>Run with the hits' email threads (E09-T03).</summary>
+    public bool IncludeThread { get; init; }
+
+    /// <summary>The expansion a run applies unless the request gives its own.</summary>
+    public Core.Documents.RelationshipExpansion Expansion => new(IncludeFamily, IncludeDuplicates, IncludeThread);
+
     /// <summary>The saved searches the query references directly (<c>savedsearch:&lt;id&gt;</c>), for cycle checks.</summary>
     public IReadOnlyList<Guid> References { get; init; } = [];
 
@@ -61,7 +70,14 @@ public sealed record SavedSearchDefinition(
     IReadOnlyList<string> Columns,
     IReadOnlyList<SearchSortKey> Sort,
     bool IncludeFamily,
-    IReadOnlyList<Guid> References);
+    IReadOnlyList<Guid> References)
+{
+    /// <summary>Run with the hits' duplicates (E09-T03).</summary>
+    public bool IncludeDuplicates { get; init; }
+
+    /// <summary>Run with the hits' email threads (E09-T03).</summary>
+    public bool IncludeThread { get; init; }
+}
 
 /// <summary>The criteria of one saved search, for nesting (<c>savedsearch:&lt;id&gt;</c>).</summary>
 public sealed record SavedSearchCriteria(Guid SavedSearchId, string Name, string QueryText, IReadOnlyList<Guid> References);

@@ -130,6 +130,7 @@ export const JOB_TYPES: readonly { value: string; label: string }[] = [
   { value: 'reindex', label: 'Reindex' },
   { value: 'relationshipFixup', label: 'Family and duplicate updates' },
   { value: 'render', label: 'Rendering' },
+  { value: 'searchTermReport', label: 'Search Terms Report' },
 ];
 
 export function typeLabel(type: string): string {

@@ -34,8 +34,16 @@ export interface SavedSearchDialogData {
   readonly saved?: SavedSearch;
   /** Create: the query to start from ("Save current search" in Documents) and its view. */
   readonly query?: string;
+  /** Create: the list's columns (field query names) and sort, saved with the search (E16-T09). */
+  readonly columns?: readonly string[];
   readonly sort?: readonly SavedSearchSortKey[];
   readonly folderId?: string | null;
+  /** Create: the list's "Include: Family / Duplicates / Email thread" choice, stored with the search (E09-T03). */
+  readonly include?: {
+    readonly family: boolean;
+    readonly duplicates: boolean;
+    readonly thread: boolean;
+  };
 }
 
 const TITLES: Record<SavedSearchDialogMode, string> = {
@@ -205,7 +213,15 @@ export class SavedSearchDialog {
           name,
           folderId,
           query: query ?? '',
+          ...(this.data.columns?.length ? { columns: this.data.columns } : {}),
           ...(this.data.sort?.length ? { sort: this.data.sort } : {}),
+          ...(this.data.include
+            ? {
+                includeFamily: this.data.include.family,
+                includeDuplicates: this.data.include.duplicates,
+                includeThread: this.data.include.thread,
+              }
+            : {}),
         });
       case 'copy':
         return this.api.clone(saved!.savedSearchId, name, folderId);
@@ -217,6 +233,8 @@ export class SavedSearchDialog {
           columns: saved!.columns,
           sort: saved!.sort,
           includeFamily: saved!.includeFamily,
+          includeDuplicates: saved!.includeDuplicates,
+          includeThread: saved!.includeThread,
         };
         return this.api.update(saved!.savedSearchId, saved!.version, draft);
       }

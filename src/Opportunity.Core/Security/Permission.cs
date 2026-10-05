@@ -37,6 +37,9 @@ public enum Permission
     WorkspaceManageFields = 25,
     WorkspaceRequestDeletion = 26,
     JobReplay = 27,
+    SearchTermReportRun = 28,
+    ViewManageShared = 29,
+    HighlightSetManage = 30,
 }
 
 /// <summary>Catalogue entry: the dotted wire name used in docs, audit details and the API, and what it allows.</summary>
@@ -58,6 +61,7 @@ public static class PermissionCatalog
         new(Permission.DocumentPrint, "Document.Print", "Print or save rendered pages."),
         new(Permission.DocumentViewQuarantined, "Document.ViewQuarantined", "See that a native is quarantined and its scan result; never renders it."),
         new(Permission.SearchExecute, "Search.Execute", "Run searches and see result pages (post-filtered, Q-12)."),
+        new(Permission.SearchTermReportRun, "SearchTermReport.Run", "Run, rerun and export search term reports (Q-30); with Search.Execute."),
         new(Permission.SavedSearchShare, "SavedSearch.Share", "Share saved searches with other workspace users."),
         new(Permission.CodingWrite, "Coding.Write", "Change coding fields that are not security-affecting."),
         new(Permission.CodingWritePrivilege, "Coding.WritePrivilege", "Change security-affecting fields: privilege, confidentiality, wall membership."),
@@ -80,6 +84,8 @@ public static class PermissionCatalog
         new(Permission.WorkspaceManageSecurity, "Workspace.ManageSecurity", "Manage restriction classes, class grants and ethical walls."),
         new(Permission.WorkspaceManageFields, "Workspace.ManageFields", "Manage fields, choices and coding layouts."),
         new(Permission.WorkspaceRequestDeletion, "Workspace.RequestDeletion", "Request workspace deletion (Q-23)."),
+        new(Permission.ViewManageShared, "View.ManageShared", "Create, change and delete the document-list views shared with the whole workspace."),
+        new(Permission.HighlightSetManage, "HighlightSet.Manage", "Create, change and delete the workspace's Highlight Sets (persistent term highlighting)."),
     ];
 
     private static readonly Dictionary<Permission, PermissionInfo> ByPermission = All.ToDictionary(p => p.Permission);
