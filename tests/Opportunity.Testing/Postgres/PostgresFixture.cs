@@ -1,3 +1,5 @@
+using DotNet.Testcontainers.Containers;
+
 using Npgsql;
 
 using Opportunity.Testing.Images;
@@ -65,6 +67,8 @@ public class PostgresFixture : DependencyFixture
 
     /// <summary>Runs once, against the template database, before any test database is cloned.</summary>
     protected virtual Task SeedTemplateAsync(NpgsqlConnection connection, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    protected override IContainer DependencyContainer => _container;
 
     protected override async Task StartDependencyAsync()
     {

@@ -4,6 +4,9 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Search.Indexing;
 using Opportunity.Search.Projection;
 
@@ -76,7 +79,12 @@ public interface IProjectionIndexWriter
     Task<ProjectionWriteReport> WriteAsync(Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, CancellationToken cancellationToken = default);
 }
 
-internal sealed class ProjectionIndexWriter(IIndexManager indexes, OpenSearchConnection connection, ProjectionWriterOptions options)
+internal sealed class ProjectionIndexWriter(
+    IIndexManager indexes, OpenSearchConnection connection, ProjectionWriterOptions options
+#if OPPORTUNITY_FAILPOINTS
+    , IFaultInjector? faults = null
+#endif
+    )
     : IProjectionIndexWriter
 {
     // Only what classification needs, so a 500-item response stays small.
@@ -145,6 +153,12 @@ internal sealed class ProjectionIndexWriter(IIndexManager indexes, OpenSearchCon
     private List<BulkAction> Serialize(IReadOnlyList<ProjectionDocument> documents, IReadOnlyList<IndexTarget> targets, Outcome[] outcomes)
     {
         var actions = new List<BulkAction>();
+#if OPPORTUNITY_FAILPOINTS
+        // Test builds only (E17-T07): a deliberately unversioned write the shadow-ledger oracle must catch.
+        var versioned = faults?.IsArmed(FaultFlags.UnversionedProjectionWrite) != true;
+#else
+        const bool versioned = true;
+#endif
         for (var i = 0; i < documents.Count; i++)
         {
             var pending = new List<BulkAction>();
@@ -155,7 +169,7 @@ internal sealed class ProjectionIndexWriter(IIndexManager indexes, OpenSearchCon
                     : null;
                 foreach (var target in targets)
                 {
-                    var metadata = Metadata(write, target);
+                    var metadata = Metadata(write, target, versioned);
                     pending.Add(new BulkAction(i, write.Kind, metadata, body, metadata.Length + (body?.Length ?? 0)));
                 }
             }
@@ -258,7 +272,7 @@ internal sealed class ProjectionIndexWriter(IIndexManager indexes, OpenSearchCon
         }
     }
 
-    private static byte[] Metadata(ProjectionWrite write, IndexTarget target)
+    private static byte[] Metadata(ProjectionWrite write, IndexTarget target, bool versioned)
     {
         var buffer = new ArrayBufferWriter<byte>(256);
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
@@ -272,7 +286,7 @@ internal sealed class ProjectionIndexWriter(IIndexManager indexes, OpenSearchCon
                 writer.WriteString("routing", routing);
             }
 
-            if (write.Kind != ProjectionWriteKind.DeleteUnconditional)
+            if (write.Kind != ProjectionWriteKind.DeleteUnconditional && versioned)
             {
                 writer.WriteNumber("version", write.Version ?? throw new ArgumentException($"Write {write.Id} carries no version."));
                 writer.WriteString("version_type", "external");

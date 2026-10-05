@@ -1,3 +1,6 @@
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Messaging;
 using Opportunity.Application.Telemetry;
 using Opportunity.Contracts.Messaging.Indexing;
@@ -35,7 +38,11 @@ public sealed record SearchWorkRelayResult(int OutboxPublished, int OutboxUnconf
 /// </summary>
 public sealed class SearchWorkRelay(
     ISearchOutboxRepository outbox, IIndexChunkTaskRepository tasks, IMessagePublisher publisher, SearchWorkRelayOptions options,
-    DispatchMetrics? metrics = null)
+    DispatchMetrics? metrics = null
+#if OPPORTUNITY_FAILPOINTS
+    , IFaultInjector? faults = null
+#endif
+    )
 {
     public async Task<SearchWorkRelayResult> RelayOnceAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {
@@ -65,6 +72,9 @@ public sealed class SearchWorkRelay(
         var unconfirmed = claimed.Where((_, i) => outcomes[i] is not null).ToList();
         if (confirmed.Count > 0)
         {
+#if OPPORTUNITY_FAILPOINTS
+            await HitAsync(workspaceId, "outbox", cancellationToken).ConfigureAwait(false);
+#endif
             await outbox.MarkDispatchedAsync(workspaceId, options.Owner, confirmed, cancellationToken).ConfigureAwait(false);
         }
 
@@ -98,6 +108,9 @@ public sealed class SearchWorkRelay(
         var unconfirmed = claimed.Where((_, i) => outcomes[i] is not null).Select(t => t.TaskId).ToList();
         if (confirmed.Count > 0)
         {
+#if OPPORTUNITY_FAILPOINTS
+            await HitAsync(workspaceId, "index-tasks", cancellationToken).ConfigureAwait(false);
+#endif
             await tasks.MarkDispatchedAsync(workspaceId, options.Owner, confirmed, cancellationToken).ConfigureAwait(false);
         }
 
@@ -110,6 +123,12 @@ public sealed class SearchWorkRelay(
         return new DispatchPassResult(confirmed.Count, unconfirmed.Count, claimed.Count >= options.BatchSize);
     }
 
+#if OPPORTUNITY_FAILPOINTS
+    private ValueTask HitAsync(Guid workspaceId, string work, CancellationToken cancellationToken) =>
+        faults?.HitAsync(Failpoints.RelayAfterPublish, new FailpointContext(null, null) { WorkspaceId = workspaceId, Subject = work }, cancellationToken)
+        ?? ValueTask.CompletedTask;
+
+#endif
     /// <summary>Null when the broker confirmed the message, otherwise the error to record.</summary>
     private async Task<string?> TryPublishAsync<TPayload>(
         OutgoingMessage<TPayload> message, MessageLane lane, DateTimeOffset committedAt, CancellationToken cancellationToken)

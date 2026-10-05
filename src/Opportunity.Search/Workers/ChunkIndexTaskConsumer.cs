@@ -7,6 +7,9 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Audit;
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
 using Opportunity.Application.SearchWork;
@@ -57,6 +60,9 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
     private readonly TimeProvider _time;
     private readonly ILogger<ChunkIndexTaskConsumer> _logger;
     private readonly OpportunityMetrics? _metrics;
+#if OPPORTUNITY_FAILPOINTS
+    private readonly IFaultInjector? _faults;
+#endif
 
     public ChunkIndexTaskConsumer(
         IIndexChunkTaskRepository tasks,
@@ -68,7 +74,11 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
         IMessageProcessingMeter meter,
         TimeProvider time,
         ILogger<ChunkIndexTaskConsumer> logger,
-        OpportunityMetrics? metrics = null)
+        OpportunityMetrics? metrics = null
+#if OPPORTUNITY_FAILPOINTS
+        , IFaultInjector? faults = null
+#endif
+        )
     {
         _tasks = tasks ?? throw new ArgumentNullException(nameof(tasks));
         _membership = membership ?? throw new ArgumentNullException(nameof(membership));
@@ -80,6 +90,9 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metrics = metrics;
+#if OPPORTUNITY_FAILPOINTS
+        _faults = faults;
+#endif
         options.Validate();
     }
 
@@ -147,10 +160,16 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
             return RejectionReason;
         }
 
-        return await ExecuteAsync(task, lease, _time.GetTimestamp(), cancellationToken).ConfigureAwait(false);
+#if OPPORTUNITY_FAILPOINTS
+        await HitAsync(Failpoints.IndexTaskAfterLease, message, task, 1, cancellationToken).ConfigureAwait(false);
+        return await ExecuteAsync(task, lease, message, _time.GetTimestamp(), cancellationToken).ConfigureAwait(false);
+#else
+        return await ExecuteAsync(task, lease, message, _time.GetTimestamp(), cancellationToken).ConfigureAwait(false);
+#endif
     }
 
-    private async Task<string?> ExecuteAsync(IndexChunkTaskInfo task, IndexTaskLease lease, long started, CancellationToken cancellationToken)
+    private async Task<string?> ExecuteAsync(
+        IndexChunkTaskInfo task, IndexTaskLease lease, ReceivedMessage message, long started, CancellationToken cancellationToken)
     {
         var fence = new FenceState();
         IndexRun? run = null;
@@ -163,10 +182,14 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
             var heartbeat = HeartbeatAsync(lease, fence, execution, stopHeartbeat.Token);
             try
             {
-                run = await RunAsync(task, lease, fence, execution.Token).ConfigureAwait(false);
+                run = await RunAsync(task, lease, message, fence, execution.Token).ConfigureAwait(false);
             }
 #pragma warning disable CA1031 // Every failure is classified and recorded in PostgreSQL (the retry ledger).
+#if OPPORTUNITY_FAILPOINTS
+            catch (Exception ex) when (ex is not SimulatedCrashException)
+#else
             catch (Exception ex)
+#endif
 #pragma warning restore CA1031
             {
                 failure = ex;
@@ -205,6 +228,9 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
         {
             LogApplied(_logger, task.TaskId, task.Kind, run.Applied, run.Stale);
             RecordAttempt(task.Lane, Outcomes.Applied, null, started);
+#if OPPORTUNITY_FAILPOINTS
+            await HitAsync(Failpoints.IndexTaskAfterApplied, message, task, 1, cancellationToken).ConfigureAwait(false);
+#endif
             return null;
         }
 
@@ -214,9 +240,10 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
     }
 
     /// <summary>Resolves the membership page by page, writes it, then retries the transiently failed documents.</summary>
-    private async Task<IndexRun> RunAsync(IndexChunkTaskInfo task, IndexTaskLease lease, FenceState fence, CancellationToken cancellationToken)
+    private async Task<IndexRun> RunAsync(
+        IndexChunkTaskInfo task, IndexTaskLease lease, ReceivedMessage message, FenceState fence, CancellationToken cancellationToken)
     {
-        var run = new IndexRun(task, lease, fence);
+        var run = new IndexRun(task, lease, message, fence);
         Guid? after = null;
         while (true)
         {
@@ -334,7 +361,14 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
             return false;
         }
 
+#if OPPORTUNITY_FAILPOINTS
+        var request = ++run.Requests;
+        await HitAsync(Failpoints.IndexTaskBeforeBulk, run.Message, run.Task, request, cancellationToken).ConfigureAwait(false);
+#endif
         var report = await _writer.WriteAsync(run.Task.WorkspaceId, buffer, cancellationToken).ConfigureAwait(false);
+#if OPPORTUNITY_FAILPOINTS
+        await HitAsync(Failpoints.IndexTaskAfterBulk, run.Message, run.Task, request, cancellationToken).ConfigureAwait(false);
+#endif
         run.Throttled |= report.Throttled;
         int applied = 0, stale = 0, transient = 0, permanent = 0;
         foreach (var result in report.Documents)
@@ -594,11 +628,16 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
     }
 
     /// <summary>Progress of one attempt.</summary>
-    private sealed class IndexRun(IndexChunkTaskInfo task, IndexTaskLease lease, FenceState fence)
+    private sealed class IndexRun(IndexChunkTaskInfo task, IndexTaskLease lease, ReceivedMessage message, FenceState fence)
     {
         public IndexChunkTaskInfo Task => task;
 
         public IndexTaskLease Lease => lease;
+
+        public ReceivedMessage Message => message;
+
+        /// <summary><c>_bulk</c> requests sent so far in this attempt.</summary>
+        public int Requests { get; set; }
 
         public FenceState Fence => fence;
 
@@ -615,6 +654,16 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
 
         public bool Throttled { get; set; }
     }
+
+#if OPPORTUNITY_FAILPOINTS
+    private ValueTask HitAsync(string failpoint, ReceivedMessage message, IndexChunkTaskInfo task, int sequence, CancellationToken cancellationToken) =>
+        _faults?.HitAsync(failpoint, new FailpointContext(message, null)
+        {
+            WorkspaceId = task.WorkspaceId,
+            Subject = task.TaskId.ToString("D"),
+            Sequence = sequence,
+        }, cancellationToken) ?? ValueTask.CompletedTask;
+#endif
 
     /// <summary>The latest non-renewal seen by the heartbeat or a fence check.</summary>
     private sealed class FenceState

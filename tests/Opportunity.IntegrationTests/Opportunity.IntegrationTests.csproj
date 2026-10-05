@@ -38,6 +38,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Import\Opportunity.Import.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Production\Opportunity.Production.csproj" />
     <ProjectReference Include="..\..\tools\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
+    <ProjectReference Include="..\..\tools\Opportunity.Correctness\Opportunity.Correctness.csproj" />
   </ItemGroup>
 
 </Project>

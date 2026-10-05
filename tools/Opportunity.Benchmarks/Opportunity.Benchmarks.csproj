@@ -24,6 +24,8 @@
     <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
     <!-- Query sets are generated from (and counted against) the regenerated corpus (E17-T04). -->
     <ProjectReference Include="..\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
+    <!-- The shadow-ledger oracle behind `ledger` (E17-T07). -->
+    <ProjectReference Include="..\Opportunity.Correctness\Opportunity.Correctness.csproj" />
   </ItemGroup>
 
   <ItemGroup>

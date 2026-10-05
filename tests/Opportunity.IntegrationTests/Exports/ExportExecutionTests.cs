@@ -18,7 +18,7 @@ using Opportunity.Import.Volumes;
 using Opportunity.IntegrationTests.Import;
 using Opportunity.IntegrationTests.Migrations;
 #if OPPORTUNITY_FAILPOINTS
-using Opportunity.Jobs.Faults;
+using Opportunity.Application.Faults;
 #endif
 using Opportunity.Production.Exports;
 

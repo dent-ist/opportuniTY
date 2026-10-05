@@ -3,6 +3,9 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
 using Opportunity.Application.SearchWork;
@@ -59,7 +62,11 @@ public static class OutboxDispatcherRegistration
                 sp.GetRequiredService<IIndexChunkTaskRepository>(),
                 sp.GetRequiredService<IMessagePublisher>(),
                 new SearchWorkRelayOptions { Owner = o.Owner, BatchSize = o.BatchSize, ClaimDuration = o.ClaimDuration, TaskRetryDelay = o.RetryDelay },
-                sp.GetRequiredService<DispatchMetricsHolder>().Metrics);
+                sp.GetRequiredService<DispatchMetricsHolder>().Metrics
+#if OPPORTUNITY_FAILPOINTS
+                , sp.GetService<IFaultInjector>()
+#endif
+                );
         });
         services.TryAddSingleton(sp =>
         {
@@ -68,7 +75,11 @@ public static class OutboxDispatcherRegistration
                 sp.GetRequiredService<IJobChunkDispatchRepository>(),
                 sp.GetRequiredService<IMessagePublisher>(),
                 new JobChunkRelayOptions { Owner = o.Owner, ClaimDuration = o.ClaimDuration, RetryDelay = o.RetryDelay, Limits = o.JobChunkLimits },
-                sp.GetRequiredService<DispatchMetricsHolder>().Metrics);
+                sp.GetRequiredService<DispatchMetricsHolder>().Metrics
+#if OPPORTUNITY_FAILPOINTS
+                , sp.GetService<IFaultInjector>()
+#endif
+                );
         });
         // OpportunityMetrics is optional: without telemetry registration the gauges are simply not created.
         services.TryAddSingleton<OutboxBacklogMonitor>();

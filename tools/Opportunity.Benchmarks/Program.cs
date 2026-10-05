@@ -153,7 +153,7 @@ gatesCheck.SetAction(parse =>
     return errors.Count == 0 ? 0 : 1;
 });
 
-var schemaNameOption = new Option<string>("--name") { Description = "result-bundle or environment-manifest.", DefaultValueFactory = _ => "result-bundle" };
+var schemaNameOption = new Option<string>("--name") { Description = "result-bundle, environment-manifest or shadow-ledger-verdict.", DefaultValueFactory = _ => "result-bundle" };
 var schema = new Command("schema", "Print an embedded JSON Schema.") { schemaNameOption };
 schema.SetAction(parse =>
 {
@@ -161,6 +161,7 @@ schema.SetAction(parse =>
     {
         "environment-manifest" => BundleSchemas.EnvironmentManifestResource,
         "result-bundle" => BundleSchemas.ResultBundleResource,
+        "shadow-ledger-verdict" => BundleSchemas.ShadowLedgerVerdictResource,
         var other => throw new ArgumentException($"Unknown schema '{other}'."),
     }));
     return 0;
@@ -325,9 +326,69 @@ ingest.SetAction(async (parse, cancellationToken) =>
     return 0;
 });
 
+// ---- ledger (E17-T07) -------------------------------------------------------------------------------------------
+var ledgerPostgresOption = new Option<string>("--postgres")
+{
+    Description = "Connection string (or env:VAR) of a role that can read the workspace: the owner role, or an app login (the ledger sets the RLS workspace).",
+    Required = true,
+};
+var ledgerOpenSearchOption = new Option<string>("--opensearch") { Description = "OpenSearch REST endpoint (user:password@ allowed), or env:VAR.", Required = true };
+var ledgerWorkspaceOption = new Option<Guid>("--workspace") { Description = "Workspace to reconcile.", Required = true };
+var ledgerIndexOption = new Option<string>("--index") { Description = "Index or alias holding the workspace's projection.", Required = true };
+var ledgerRoutingOption = new Option<string?>("--routing") { Description = "Routing value of a shared-index placement (the workspace id)." };
+var ledgerSinceOption = new Option<DateTimeOffset?>("--since") { Description = "Changes committed from here on are touched (default: when sampling starts; with --scope workspace irrelevant)." };
+var ledgerScopeOption = new Option<string>("--scope") { Description = "touched (documents with coding changes since --since) or workspace (every document).", DefaultValueFactory = _ => "touched" };
+var ledgerCandidateOption = new Option<string?>("--candidate") { Description = "ADR-004 candidate whose projection layout is judged (default A-interim)." };
+var ledgerBatchOption = new Option<int>("--batch-size") { Description = "Documents per reconciliation batch.", DefaultValueFactory = _ => 1_000 };
+var ledgerSampleOption = new Option<TimeSpan>("--sample-for") { Description = "Sample continuously for this long before reconciling (e.g. 00:10:00 while a load runs).", DefaultValueFactory = _ => TimeSpan.Zero };
+var ledgerOutOption = new Option<FileInfo>("--out") { Description = "verdict.json to write.", DefaultValueFactory = _ => new FileInfo("verdict.json") };
+var ledger = new Command("ledger", "Shadow-ledger oracle: sample OpenSearch against PostgreSQL during a run, reconcile after quiescence, write verdict.json (exit 1 when any counter is > 0).")
+{
+    ledgerPostgresOption, ledgerOpenSearchOption, ledgerWorkspaceOption, ledgerIndexOption, ledgerRoutingOption, ledgerSinceOption, ledgerScopeOption,
+    ledgerCandidateOption, ledgerBatchOption, ledgerSampleOption, ledgerOutOption,
+};
+ledger.SetAction(async (parse, cancellationToken) =>
+{
+    var endpoint = new Uri(ResolveEnv(parse.GetValue(ledgerOpenSearchOption)!, "--opensearch"));
+    using var http = HttpJson.CreateClient(endpoint);
+    await using var postgres = Npgsql.NpgsqlDataSource.Create(ResolveEnv(parse.GetValue(ledgerPostgresOption)!, "--postgres"));
+    await using var oracle = await Opportunity.Correctness.ShadowLedger.LedgerOracle.StartAsync(postgres, http, new Opportunity.Correctness.ShadowLedger.ShadowLedgerOptions
+    {
+        WorkspaceId = parse.GetValue(ledgerWorkspaceOption),
+        Index = new Opportunity.Correctness.ShadowLedger.LedgerIndexTarget(parse.GetValue(ledgerIndexOption)!, parse.GetValue(ledgerRoutingOption)),
+        Candidate = parse.GetValue(ledgerCandidateOption),
+        Since = parse.GetValue(ledgerSinceOption),
+        BatchSize = parse.GetValue(ledgerBatchOption),
+        Scope = parse.GetValue(ledgerScopeOption) switch
+        {
+            "touched" => Opportunity.Correctness.ShadowLedger.LedgerScope.Touched,
+            "workspace" => Opportunity.Correctness.ShadowLedger.LedgerScope.Workspace,
+            var other => throw new ArgumentException($"--scope '{other}': touched or workspace."),
+        },
+    }, cancellationToken).ConfigureAwait(false);
+    if (parse.GetValue(ledgerSampleOption) is { } sampleFor && sampleFor > TimeSpan.Zero)
+    {
+        oracle.StartSampling();
+        await Task.Delay(sampleFor, cancellationToken).ConfigureAwait(false);
+    }
+
+    var verdict = await oracle.ReconcileAsync(cancellationToken).ConfigureAwait(false);
+    var outPath = parse.GetValue(ledgerOutOption)!.FullName;
+    await verdict.WriteAsync(outPath, cancellationToken).ConfigureAwait(false);
+    var errors = BundleSchemas.ValidateShadowLedgerVerdict(System.Text.Json.Nodes.JsonNode.Parse(verdict.ToJson()));
+    foreach (var error in errors)
+    {
+        await Console.Error.WriteLineAsync("error: verdict.json " + error).ConfigureAwait(false);
+    }
+
+    Console.WriteLine(verdict.ToString());
+    Console.WriteLine(outPath);
+    return errors.Count > 0 ? 2 : verdict.Passed ? 0 : 1;
+});
+
 var root = new RootCommand($"{HarnessInfo.Name} {HarnessInfo.Version}: opportuniTY benchmark harness (E17). Synthetic data only.")
 {
-    captureEnv, validate, publish, gatesCheck, schema, queries, stubApi, ingest,
+    captureEnv, validate, publish, gatesCheck, schema, queries, stubApi, ingest, ledger,
 };
 
 try

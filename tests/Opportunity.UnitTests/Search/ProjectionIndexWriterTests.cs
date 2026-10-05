@@ -4,6 +4,9 @@ using System.Text.Json.Nodes;
 
 using AwesomeAssertions;
 
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Search;
 using Opportunity.Search.Indexing;
@@ -94,6 +97,37 @@ public sealed class ProjectionIndexWriterTests
         handler.Requests.Should().ContainSingle().Which.Actions.Should().Be(1);
     }
 
+#if OPPORTUNITY_FAILPOINTS
+    /// <summary>E17-T07: the test-only switch the shadow-ledger oracle must catch drops external versioning, nothing else.</summary>
+    [Fact]
+    public async Task The_test_only_unversioned_switch_drops_external_versioning_only_while_armed()
+    {
+        var handler = new FakeBulk();
+        var faults = new Switch();
+        var connection = new OpenSearchConnection(new OpenSearchOptions { Endpoint = new Uri("http://opensearch.invalid:9200") }, handler);
+        var writer = new ProjectionIndexWriter(new FixedPlacement([new IndexTarget("idx", null)]), connection, new ProjectionWriterOptions(), faults);
+
+        await writer.WriteAsync(Workspace, [Index("a", version: 3)], Ct);
+        faults.Armed = true;
+        await writer.WriteAsync(Workspace, [Index("b", version: 3)], Ct);
+
+        var versioned = JsonNode.Parse(handler.Bodies[0].Split('\n')[0])!["index"]!.AsObject();
+        var unversioned = JsonNode.Parse(handler.Bodies[1].Split('\n')[0])!["index"]!.AsObject();
+        versioned["version_type"]!.GetValue<string>().Should().Be("external");
+        unversioned.ContainsKey("version").Should().BeFalse();
+        unversioned.ContainsKey("version_type").Should().BeFalse();
+    }
+
+    private sealed class Switch : IFaultInjector
+    {
+        public bool Armed { get; set; }
+
+        public ValueTask HitAsync(string failpoint, FailpointContext context, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public bool IsArmed(string flag) => Armed && flag == FaultFlags.UnversionedProjectionWrite;
+    }
+
+#endif
     private static ProjectionIndexWriter Writer(FakeBulk handler, ProjectionWriterOptions options, IReadOnlyList<IndexTarget>? targets = null)
     {
         var connection = new OpenSearchConnection(new OpenSearchOptions { Endpoint = new Uri("http://opensearch.invalid:9200") }, handler);

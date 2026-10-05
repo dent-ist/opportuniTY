@@ -10,12 +10,16 @@ public static class BundleSchemas
 {
     public const string EnvironmentManifestResource = "schema/environment-manifest.v1.schema.json";
     public const string ResultBundleResource = "schema/result-bundle.v1.schema.json";
+    public const string ShadowLedgerVerdictResource = "schema/shadow-ledger-verdict.v1.schema.json";
 
-    private static readonly Lazy<(JsonSchema Environment, JsonSchema Bundle)> Schemas = new(Load);
+    private static readonly Lazy<(JsonSchema Environment, JsonSchema Bundle, JsonSchema Verdict)> Schemas = new(Load);
 
     public static JsonSchema EnvironmentManifest => Schemas.Value.Environment;
 
     public static JsonSchema ResultBundle => Schemas.Value.Bundle;
+
+    /// <summary>verdict.json of the shadow-ledger oracle (E17-T07); its <c>shadowLedger</c> is the bundle's oracle object.</summary>
+    public static JsonSchema ShadowLedgerVerdict => Schemas.Value.Verdict;
 
     public static string ReadResource(string name)
     {
@@ -28,6 +32,8 @@ public static class BundleSchemas
     public static IReadOnlyList<string> ValidateEnvironment(JsonNode? instance) => Validate(EnvironmentManifest, instance);
 
     public static IReadOnlyList<string> ValidateBundle(JsonNode? instance) => Validate(ResultBundle, instance);
+
+    public static IReadOnlyList<string> ValidateShadowLedgerVerdict(JsonNode? instance) => Validate(ShadowLedgerVerdict, instance);
 
     /// <summary>Returns one line per failed leaf keyword: <c>/instance/path: message (schema keyword path)</c>.</summary>
     public static IReadOnlyList<string> Validate(JsonSchema schema, JsonNode? instance)
@@ -65,14 +71,16 @@ public static class BundleSchemas
         RequireFormatValidation = true,
     };
 
-    private static (JsonSchema, JsonSchema) Load()
+    private static (JsonSchema, JsonSchema, JsonSchema) Load()
     {
         JsonSchema environment = JsonSchema.FromText(ReadResource(EnvironmentManifestResource));
         JsonSchema bundle = JsonSchema.FromText(ReadResource(ResultBundleResource));
-        // The bundle schema references the environment schema by its $id.
+        JsonSchema verdict = JsonSchema.FromText(ReadResource(ShadowLedgerVerdictResource));
+        // The bundle schema references the environment schema by its $id; the verdict references the bundle's oracle.
         SchemaRegistry.Global.Register(environment);
         SchemaRegistry.Global.Register(bundle);
-        return (environment, bundle);
+        SchemaRegistry.Global.Register(verdict);
+        return (environment, bundle, verdict);
     }
 
     public static JsonNode? ToNode<T>(T value) => JsonSerializer.SerializeToNode(value, Infrastructure.BenchJson.Options);
