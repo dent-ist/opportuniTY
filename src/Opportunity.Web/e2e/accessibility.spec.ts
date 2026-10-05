@@ -16,6 +16,11 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/documents',
   '/w/ws-1/documents?savedSearch=ss-3',
   '/w/ws-1/searches/saved',
+  '/w/ws-1/searches/terms-reports',
+  '/w/ws-1/searches/terms-reports/new?savedSearch=ss-1',
+  '/w/ws-1/searches/terms-reports/str-1',
+  '/w/ws-1/searches/terms-reports/str-2',
+  '/w/ws-1/documents?termReport=str-1&term=str-1-t1',
   '/w/ws-1/jobs',
   '/w/ws-1/jobs/job-exp-3',
   '/w/ws-1/jobs/job-bulk-7',
@@ -104,6 +109,31 @@ for (const theme of THEMES) {
       await expect(page.getByRole('region', { name: 'Frozen sets' })).toContainText(
         'Mass Edit 2026-10-03',
       );
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('search terms reports: new report with preview and errors, running report, actions menu (#180)', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/searches/terms-reports/new');
+      await page.getByRole('radio', { name: /Frozen set/ }).check();
+      await page.getByRole('button', { name: 'Run report' }).click();
+      await expect(page.getByRole('alert')).toContainText('Choose the frozen set to count in.');
+      await page
+        .getByRole('textbox', { name: /Terms, one per line/ })
+        .fill('terminat*\nA\tb\nA\tc\nterminat*');
+      await expect(page.getByRole('heading', { name: 'Preview: 2 terms' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await page.getByRole('radio', { name: /Whole workspace/ }).check();
+      await page.getByRole('textbox', { name: /Terms, one per line/ }).fill('terminat*');
+      await page.getByRole('button', { name: 'Run report' }).click();
+      await expect(page.getByRole('progressbar', { name: 'Report progress' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await openPage(page, '/w/ws-1/searches/terms-reports');
+      await page.getByRole('button', { name: /Actions for Key terms/ }).click();
+      await expect(page.getByRole('menu', { name: /Actions for Key terms/ })).toBeVisible();
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 

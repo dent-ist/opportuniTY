@@ -74,6 +74,11 @@ export interface GridSearch {
    * the stored query and records the run and its hit count.
    */
   readonly savedSearchId?: string | null;
+  /**
+   * One term of a Search Terms Report (#180): without filters the list asks for that term's hits within the report's
+   * frozen set (filtered for the caller); `query` is the term's expression, run live once filters narrow it.
+   */
+  readonly termReport?: { readonly reportId: string; readonly termId: string } | null;
   /** The page is still loading what to search (a saved search): show the loading state, run nothing yet. */
   readonly deferred?: boolean;
 }
@@ -504,12 +509,17 @@ export class ReviewGrid implements CursorSource {
     }
     const search = this.search();
     // Filters narrow a saved search ad hoc: then the list runs the combined query text instead of the id.
-    const savedSearchId =
-      search.savedSearchId && compiled.query === search.query ? search.savedSearchId : null;
+    const unfiltered = compiled.query === search.query;
+    const savedSearchId = search.savedSearchId && unfiltered ? search.savedSearchId : null;
+    const termReport = search.termReport && unfiltered ? search.termReport : null;
     let page: SearchResultPage;
     try {
       page = await this.api.run({
-        ...(savedSearchId ? { savedSearchId } : { query: compiled.query }),
+        ...(termReport
+          ? { searchTermReportId: termReport.reportId, termId: termReport.termId }
+          : savedSearchId
+            ? { savedSearchId }
+            : { query: compiled.query }),
         sort: sort ? [sort] : null,
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
@@ -1229,7 +1239,9 @@ export class ReviewGrid implements CursorSource {
     }
     this.setSelection(next);
     const w = this.window();
-    this.offerAll.set(select && (w.hasNext || w.hasPrevious || w.pages.length > 1));
+    this.offerAll.set(
+      select && !this.termHits() && (w.hasNext || w.hasPrevious || w.pages.length > 1),
+    );
   }
 
   /** Select › This page: the page in view and nothing else. */
@@ -1239,10 +1251,23 @@ export class ReviewGrid implements CursorSource {
     this.selectPage(true);
   }
 
+  /** The list shows a report term's hits in its frozen set (not narrowed by filters). */
+  private termHits(): boolean {
+    return !!this.search().termReport && this.compiled().query === this.search().query;
+  }
+
   /** Selects every result of the search, loaded or not, as the query and the generation it was served at. */
   selectAllResults(): void {
     const r = this.result();
     if (!r || this.status() !== 'ready') return;
+    if (this.termHits()) {
+      // A report term's hits are a frozen set that no query names, so they cannot be selected as "all results".
+      this.offerAll.set(false);
+      this.announcer.announce(
+        'All results of a Search Terms Report term cannot be selected. Select documents on the loaded pages.',
+      );
+      return;
+    }
     this._selected.set(new Set());
     this.controlNumbers.clear();
     this.offerAll.set(false);

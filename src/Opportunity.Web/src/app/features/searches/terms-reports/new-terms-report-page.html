@@ -1,0 +1,246 @@
+<div class="str__heading-group">
+  <a class="str__back-link" routerLink="..">
+    <opp-icon name="chevron-left" />
+    Search Terms Reports
+  </a>
+  <h1 class="str__title">New Search Terms Report</h1>
+  <p class="str__muted">
+    The report freezes the documents in scope when it runs, then counts each term in that frozen
+    set. It runs in the background: you can leave the page.
+  </p>
+</div>
+
+<form class="str__form" novalidate (submit)="run($event)">
+  @if (shownErrors().length || submitError()) {
+    <div
+      #summary
+      class="str__notice str__notice--danger"
+      tabindex="-1"
+      role="alert"
+      aria-labelledby="str-new-errors"
+    >
+      <opp-icon name="error" />
+      <div>
+        <strong id="str-new-errors">The report cannot run yet</strong>
+        <ul>
+          @for (e of shownErrors(); track e.message) {
+            <li>{{ e.message }}</li>
+          }
+          @if (submitError(); as s) {
+            <li>{{ s }}</li>
+          }
+        </ul>
+      </div>
+    </div>
+  }
+
+  <div class="str__panel">
+    <opp-text-field
+      label="Report name"
+      [required]="true"
+      hint="Shown in the list of reports and in the exported file name."
+      [error]="errorFor('name')"
+      [(value)]="name"
+    />
+  </div>
+
+  <fieldset class="str__fieldset">
+    <legend>Scope: the documents to count in</legend>
+    <div class="str__radios">
+      @for (k of scopeKinds; track k.value) {
+        <label class="str__radio">
+          <input
+            type="radio"
+            name="str-scope"
+            [value]="k.value"
+            [checked]="scopeKind() === k.value"
+            (change)="setScope(k.value)"
+          />
+          <span class="str__radio-text">
+            <span>{{ k.label }}</span>
+            <span class="str__radio-hint">{{ k.hint }}</span>
+          </span>
+        </label>
+      }
+    </div>
+    @if (scopeKind() === 'savedSearch') {
+      <opp-select
+        label="Saved search"
+        [placeholder]="
+          savedSearches() === null ? 'Loading saved searches…' : 'Choose a saved search'
+        "
+        hint="Its results are filtered for you, like when you run it in Documents."
+        [options]="savedOptions()"
+        [error]="errorFor('savedSearch')"
+        [(value)]="savedSearchId"
+      />
+    } @else if (scopeKind() === 'snapshot') {
+      <opp-select
+        label="Frozen set"
+        [placeholder]="frozenSets() === null ? 'Loading frozen sets…' : 'Choose a frozen set'"
+        hint="A frozen set keeps the documents it had when it was taken."
+        [options]="frozenOptions()"
+        [error]="errorFor('snapshot')"
+        [(value)]="snapshotId"
+      />
+    }
+    @if (optionsError(); as o) {
+      <p class="str__notice str__notice--warning" role="status">
+        <opp-icon name="warning" />
+        <span>
+          {{ o }}
+          <button type="button" oppButton="ghost" (click)="loadOptions()">Try again</button>
+        </span>
+      </p>
+    }
+  </fieldset>
+
+  <fieldset class="str__fieldset">
+    <legend>Terms</legend>
+    <div class="str__radios" role="radiogroup" aria-label="How to enter the terms">
+      <label class="str__radio">
+        <input
+          type="radio"
+          name="str-source"
+          value="paste"
+          [checked]="source() === 'paste'"
+          (change)="setSource('paste')"
+        />
+        <span class="str__radio-text">
+          <span>Paste or type terms</span>
+          <span class="str__radio-hint">One term per line.</span>
+        </span>
+      </label>
+      <label class="str__radio">
+        <input
+          type="radio"
+          name="str-source"
+          value="csv"
+          [checked]="source() === 'csv'"
+          (change)="setSource('csv')"
+        />
+        <span class="str__radio-text">
+          <span>Upload a CSV file</span>
+          <span class="str__radio-hint">Two columns: Name, Expression.</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="str__terms-input">
+      @if (source() === 'paste') {
+        <div class="str__field-group">
+          <label class="str__label" for="str-terms"
+            >Terms, one per line <span aria-hidden="true">*</span></label
+          >
+          <textarea
+            id="str-terms"
+            class="str__textarea"
+            spellcheck="false"
+            autocomplete="off"
+            aria-required="true"
+            aria-describedby="str-terms-hint"
+            [attr.aria-invalid]="errorFor('terms') ? true : null"
+            [value]="pasted()"
+            (input)="onPaste($event)"
+          ></textarea>
+          <p class="str__muted" id="str-terms-hint">
+            Use the same search syntax as in Documents, for example
+            <span class="str__mono">contract W/10 terminat*</span>. Each line is named after its
+            expression; to name a term, paste two columns from a spreadsheet (name, then
+            expression).
+          </p>
+        </div>
+      } @else {
+        <div class="str__file">
+          <label class="str__label" for="str-csv">CSV file <span aria-hidden="true">*</span></label>
+          <input
+            id="str-csv"
+            type="file"
+            accept=".csv,text/csv"
+            aria-describedby="str-csv-hint"
+            [attr.aria-invalid]="errorFor('terms') || csvError() ? true : null"
+            (change)="onCsv($event)"
+          />
+          <p class="str__muted" id="str-csv-hint">
+            @if (csvFile(); as f) {
+              {{ f.name }} · {{ termCountText() }}
+            } @else {
+              Rows of <span class="str__mono">Name,Expression</span>; a header row is optional. Put
+              an expression in double quotes when it contains commas.
+            }
+          </p>
+          @if (csvError(); as c) {
+            <p class="str__notice str__notice--danger" role="alert">
+              <opp-icon name="error" />
+              <span>{{ c }}</span>
+            </p>
+          }
+        </div>
+      }
+
+      <section class="str__field-group" aria-labelledby="str-preview-heading">
+        <h2 id="str-preview-heading" class="str__label">Preview: {{ termCountText() }}</h2>
+        @if (parsed().terms.length === 0) {
+          <p class="str__muted">The terms to count appear here.</p>
+        } @else {
+          <div
+            class="str__table-wrap str__preview"
+            tabindex="0"
+            role="region"
+            aria-label="Terms to count"
+          >
+            <table class="str__table">
+              <caption class="opp-visually-hidden">
+                Terms to count, in the order entered
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Expression</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (t of parsed().terms.slice(0, previewRows); track $index) {
+                  <tr>
+                    <th scope="row" class="str__name">{{ t.name }}</th>
+                    <td class="str__mono">{{ t.expression }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          @if (parsed().terms.length > previewRows) {
+            <p class="str__muted">
+              The first {{ previewRows }} are shown; all {{ termCountText() }} are counted.
+            </p>
+          }
+        }
+        @if (parsed().issues.length) {
+          <div class="str__notice str__notice--warning">
+            <opp-icon name="warning" />
+            <div>
+              {{ issuesText(parsed().issues.length) }}
+              <ul>
+                @for (i of parsed().issues; track $index) {
+                  <li>Line {{ i.line }}: {{ i.message }}</li>
+                }
+              </ul>
+            </div>
+          </div>
+        }
+      </section>
+    </div>
+    <p class="str__muted">
+      The syntax of each term is checked when the report runs. A term with an error is listed with
+      its error; the other terms are still counted.
+    </p>
+  </fieldset>
+
+  <div class="str__form-actions">
+    <button type="submit" oppButton="primary" [busy]="busy()">
+      <opp-icon name="play" />
+      Run report
+    </button>
+    <a oppButton="ghost" routerLink="..">Cancel</a>
+  </div>
+</form>

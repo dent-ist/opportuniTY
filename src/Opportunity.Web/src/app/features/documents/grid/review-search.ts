@@ -12,9 +12,16 @@ import type {
 } from '../../../core/api/generated/models';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 
-/** `POST …/searches`: a query, or a saved search by id (it runs the stored query, filtered for the caller). */
+/**
+ * `POST …/searches`: a query, a saved search by id (it runs the stored query, filtered for the caller), or one term of a
+ * Search Terms Report (its hits within the report's frozen set, filtered for the caller; wave-11 contract, #72).
+ */
 export type GridSearchRequest = Omit<SearchRequest, 'query'> &
-  ({ query: string | null } | { savedSearchId: string });
+  (
+    | { query: string | null }
+    | { savedSearchId: string }
+    | { searchTermReportId: string; termId: string }
+  );
 
 /** Which page of a running search to fetch (exactly one; `GET …/searches/{id}/pages`, Q-49). */
 export type PageRequest = { cursor: string } | { page: number } | { last: true };
@@ -31,7 +38,8 @@ export class ReviewSearchApi {
 
   /** Runs a search (a query, or a saved search by id) and returns its first page. */
   run(request: GridSearchRequest): Promise<SearchResultPage> {
-    // `savedSearchId` instead of `query` is the wave-9 saved-search contract (#71); the generated type follows it.
+    // `savedSearchId` (wave 9, #71) or `searchTermReportId` + `termId` (wave 11, #72) instead of `query`; the generated
+    // type follows them.
     const body = request as unknown as SearchRequest;
     return firstValueFrom(
       runSearch(this.http, this.rootUrl, { workspaceId: this.workspaceId, body }).pipe(

@@ -5,6 +5,7 @@ import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
+import { SearchTermReportsMock } from './mock-search-term-reports';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -90,6 +91,8 @@ export interface MockControl {
   readonly savedSearches: SavedSearchesMock;
   /** Search freshness (E16-T07): move the index between current, updating and delayed. */
   readonly freshness: FreshnessMock;
+  /** Search Terms Reports (#180): reports, writes received (create with Idempotency-Key, re-run, delete, export). */
+  readonly termReports: SearchTermReportsMock;
 }
 
 /**
@@ -387,11 +390,12 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   );
   const created = new Set<string>();
   const workspaceWrites: MockControl['workspaceWrites'] = [];
+  const termReports = new SearchTermReportsMock();
   const jobsMock = new JobsMock({
     userId: principal.userId,
     viewAll: permissions.includes('Job.ViewAll'),
     stream: options.jobEvents ?? true,
-    lookup: (id) => imports.job(id),
+    lookup: (id) => imports.job(id) ?? termReports.job(id),
   });
   const savedSearches = new SavedSearchesMock();
   const freshness = new FreshnessMock(options.freshness);
@@ -401,6 +405,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     jobs: jobsMock,
     workspaceWrites,
     savedSearches,
+    termReports,
     unhandled,
     audit,
     coding,
@@ -502,9 +507,25 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         pageSize?: number;
         query?: string;
         savedSearchId?: string;
+        searchTermReportId?: string;
+        termId?: string;
         highlight?: boolean | null;
       };
       pageSize = Number(body?.pageSize ?? 100);
+      if (body?.searchTermReportId) {
+        // One term's hits within the report's frozen set (wave-11 contract): unknown → 404.
+        const term = termReports.term(body.searchTermReportId, String(body.termId ?? ''));
+        if (!term || term.documentsWithHits === null)
+          return route.fulfill(problem(404, 'Not found'));
+        total = Math.min(documents, term.documentsWithHits);
+        expired = false;
+        lastQuery = body?.highlight === false ? '' : term.expression;
+        return json(route, {
+          ...searchPage(matching(), pageSize, 1, lastQuery, freshness.served()),
+          searchTermReportId: body.searchTermReportId,
+          termId: body.termId,
+        });
+      }
       if (body?.savedSearchId) {
         // A saved search runs its stored query (wave-9 contract): unknown or not visible → 404.
         const stored = savedSearches.queryOf(body.savedSearchId);
@@ -542,6 +563,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Saved searches (E16-T11): ./mock-saved-searches.ts.
     const savedSearch = signedIn ? savedSearches.handle(route, method, path, url) : undefined;
     if (savedSearch) return savedSearch;
+    // Search Terms Reports (#180): ./mock-search-term-reports.ts.
+    const termReport = signedIn ? termReports.handle(route, method, path, url) : undefined;
+    if (termReport) return termReport;
     // Imports (E08-T08): ./mock-imports.ts.
     const imported = signedIn ? imports.handle(route, method, path) : undefined;
     if (imported) return imported;

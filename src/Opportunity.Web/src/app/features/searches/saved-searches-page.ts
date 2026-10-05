@@ -60,6 +60,7 @@ import {
   sharingLabel,
 } from './saved-search-model';
 import { ShareDialog, ShareDialogData } from './share-dialog';
+import { SCOPE_SAVED_SEARCH_PARAM } from './terms-reports/search-term-report-model';
 
 const ALL = 'all';
 const UNFILED = 'unfiled';
@@ -83,7 +84,8 @@ interface Row {
  * Searches › Saved Searches (E16-T11, familiarity guide §2.3, Q-65): the folder tree, and the saved searches the
  * caller may see (their own, those shared with them or their groups; Workspace Admins see all) with folder,
  * owner, sharing, last run, last hit count with its freshness and modified date. Create, edit, rename, move, copy,
- * delete, share (`SavedSearch.Share`), run in Documents (`?savedSearch=`) and Mass Edit the results. Frozen sets
+ * delete, share (`SavedSearch.Share`), run in Documents (`?savedSearch=`), Mass Edit the results and start a Search
+ * Terms Report on them. Frozen sets
  * (snapshots) are a separate node: they keep the documents they had when frozen, while saved searches are live.
  */
 @Component({
@@ -271,6 +273,13 @@ export class SavedSearchesPage {
         [SAVED_SEARCH_PARAM]: s.savedSearchId,
         ...(then ? { [THEN_PARAM]: then } : {}),
       },
+    });
+  }
+
+  /** "Add to new Search Terms Report": New report with this saved search as its scope (#180). */
+  protected newTermsReport(s: SavedSearchSummary): void {
+    void this.router.navigate(['/w', this.workspaceId, 'searches', 'terms-reports', 'new'], {
+      queryParams: { [SCOPE_SAVED_SEARCH_PARAM]: s.savedSearchId },
     });
   }
 

@@ -13,12 +13,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom, map } from 'rxjs';
 import { toApiError } from '../../core/api/problem-details';
 import { CommandRegionDirective, CommandRegistry } from '../../core/commands';
 import { PreferenceStorage } from '../../core/preferences/preference-storage';
 import { SessionService } from '../../core/session/session';
+import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import { Badge, Button, DialogService, Icon, IconButton, ToastService } from '../../ui';
 import {
   HttpSavedSearchApi,
@@ -55,6 +56,17 @@ import { FreshnessStatus } from './freshness/freshness-status';
 import { SearchJobBanner } from './freshness/job-banner';
 import { PendingSearchJobs } from './freshness/pending-jobs';
 import { HttpSearchFreshnessApi, SearchFreshnessApi } from '../../core/search/search-freshness';
+import {
+  HttpSearchTermReportApi,
+  ReportTerm,
+  SearchTermReport,
+  SearchTermReportApi,
+} from '../searches/terms-reports/search-term-report-api';
+import {
+  TERM_PARAM,
+  TERM_REPORT_PARAM,
+  reportErrorText,
+} from '../searches/terms-reports/search-term-report-model';
 
 /**
  * Documents: the default landing page of a workspace (familiarity guide §2.1, §3), with two modes on one route.
@@ -81,6 +93,10 @@ import { HttpSearchFreshnessApi, SearchFreshnessApi } from '../../core/search/se
  * names it. `&then=massEdit` then selects all its results and opens Mass Edit (the Searches section's "Mass Edit
  * results").
  *
+ * Search Terms Reports (#180): `?termReport=<reportId>&term=<termId>` lists one term's hits within the report's frozen
+ * set (filtered for the caller); the search panel names the report and the term, and says when filters turn it into a
+ * live search of the term's expression.
+ *
  * Keyboard (guide §4, command registry E15-T03): "Focus keyword search" (Alt+Shift+K, or `/` while single-key
  * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel, the list and the
  * saved searches, or between the review panes.
@@ -103,6 +119,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     QueryBar,
     ReviewGrid,
     ReviewWorkspace,
+    RouterLink,
     SavedSearchBrowser,
     SearchJobBanner,
   ],
@@ -169,6 +186,35 @@ const BROWSER_KEY = 'pane.documentsBrowser';
               </button>
             </div>
           }
+          @if (termView(); as tv) {
+            <div class="documents__saved" role="group" aria-label="Search Terms Report term">
+              <opp-badge tone="neutral" icon="report">Search Terms Report</opp-badge>
+              <span class="opp-visually-hidden">: </span>
+              <strong>{{ tv.report.name }}</strong>
+              <span aria-hidden="true">›</span>
+              <span class="opp-visually-hidden">, term </span>
+              <strong>{{ tv.term.name }}</strong>
+              <span class="documents__saved-note">
+                @if (termFiltered()) {
+                  With your filters this is a live search of the term's expression in the whole
+                  workspace, not the report's frozen set.
+                } @else {
+                  Documents of the report's frozen set that match this term. {{ filteredNotice }}
+                }
+              </span>
+              <a
+                oppButton="ghost"
+                [routerLink]="['/w', workspaceId, 'searches', 'terms-reports', tv.report.reportId]"
+              >
+                <opp-icon name="report" />
+                Back to report
+              </a>
+              <button type="button" oppButton="ghost" (click)="clearTerm()">
+                <opp-icon name="close" />
+                Clear term
+              </button>
+            </div>
+          }
           <opp-query-bar (search)="onSearch($event)" />
         </section>
         <opp-search-job-banner />
@@ -212,6 +258,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     FreshnessMonitor,
     PendingSearchJobs,
     { provide: SavedSearchApi, useClass: HttpSavedSearchApi },
+    { provide: SearchTermReportApi, useClass: HttpSearchTermReportApi },
   ],
   host: { '[class.is-reviewing]': 'reviewing()' },
 })
@@ -219,7 +266,9 @@ export class DocumentsPage {
   /** A link to a saved search runs only that search, not every document first. */
   protected readonly search = signal<GridSearch>({
     query: '',
-    deferred: inject(ActivatedRoute).snapshot.queryParamMap.has(SAVED_SEARCH_PARAM),
+    deferred:
+      inject(ActivatedRoute).snapshot.queryParamMap.has(SAVED_SEARCH_PARAM) ||
+      inject(ActivatedRoute).snapshot.queryParamMap.has(TERM_REPORT_PARAM),
   });
   protected readonly reviewing = signal(false);
   private readonly queryBar = viewChild.required(QueryBar);
@@ -267,6 +316,19 @@ export class DocumentsPage {
   private readonly params = toSignal(this.route.queryParamMap, {
     initialValue: this.route.snapshot.queryParamMap,
   });
+  // Search Terms Report terms (#180)
+  private readonly termApi = inject(SearchTermReportApi);
+  protected readonly workspaceId = inject(WorkspaceContext).workspaceId;
+  /** The report term the list shows (`?termReport=&term=`). */
+  protected readonly termView = signal<{ report: SearchTermReport; term: ReportTerm } | null>(null);
+  /** `reportId/termId` applied (or being applied), so the URL echo of our own change is ignored. */
+  private appliedTerm: string | null = null;
+  /** Filters (or another query) narrow the term: the list runs its expression live. */
+  protected readonly termFiltered = computed(() => {
+    const tv = this.termView();
+    return !!tv && this.grid().effectiveQuery() !== tv.term.expression;
+  });
+
   protected readonly browserOpen = linkedSignal(
     () => this.storage.read<{ open?: boolean }>(BROWSER_KEY)?.open !== false,
   );
@@ -280,7 +342,24 @@ export class DocumentsPage {
       const params = this.params();
       const id = params.get(SAVED_SEARCH_PARAM);
       const then = params.get(THEN_PARAM);
+      const reportId = params.get(TERM_REPORT_PARAM);
+      const termId = params.get(TERM_PARAM);
       untracked(() => {
+        const termKey = reportId && termId ? `${reportId}/${termId}` : null;
+        if (termKey && termKey !== this.appliedTerm) {
+          void this.applyTerm(reportId!, termId!);
+          return;
+        }
+        if (!termKey && this.appliedTerm) {
+          // Back from a report term to the plain list (or to a saved search, applied below).
+          this.termView.set(null);
+          this.appliedTerm = null;
+          if (!id) {
+            this.queryBar().clear();
+            this.search.set({ query: '' });
+          }
+        }
+        if (termKey) return;
         if (id && then === 'massEdit') this.pendingMassEdit = id;
         if (id && id !== this.appliedId) void this.applySaved(id);
         else if (!id && this.appliedId) {
@@ -311,6 +390,16 @@ export class DocumentsPage {
   }
 
   protected onSearch(submission: QuerySubmission): void {
+    const tv = this.termView();
+    if (tv) {
+      if (submission.query === tv.term.expression) {
+        this.search.set(this.termSearch(tv.report, tv.term));
+        return;
+      }
+      this.forgetTerm();
+      this.search.set({ query: submission.query });
+      return;
+    }
     const saved = this.saved();
     if (saved && submission.query === saved.query) {
       // Searching the saved query again keeps it a run of the saved search.
@@ -319,6 +408,79 @@ export class DocumentsPage {
     }
     if (saved) this.forgetSaved();
     this.search.set({ query: submission.query });
+  }
+
+  // ── Search Terms Report terms ───────────────────────────────────────────────────────────────────────────────
+
+  /** Applies `?termReport=&term=`: loads the report, shows the report and term names and lists the term's hits. */
+  private async applyTerm(reportId: string, termId: string): Promise<void> {
+    const key = `${reportId}/${termId}`;
+    this.appliedTerm = key;
+    let report: SearchTermReport;
+    try {
+      report = await this.termApi.get(reportId);
+    } catch (e) {
+      if (this.appliedTerm !== key) return;
+      this.dropTerm(reportErrorText(toApiError(e)));
+      return;
+    }
+    if (this.appliedTerm !== key) return;
+    const term = report.terms.find((t) => t.termId === termId);
+    if (!term || term.error || report.status !== 'completed') {
+      this.dropTerm(
+        !term
+          ? 'This term is not part of the report.'
+          : term.error
+            ? 'This term has a syntax error, so it has no documents to show.'
+            : 'The report has not finished yet. Open the term again when it has completed.',
+      );
+      return;
+    }
+    if (this.saved()) {
+      this.saved.set(null);
+      this.appliedId = null;
+    }
+    this.termView.set({ report, term });
+    this.queryBar().load(term.expression);
+    this.grid().resetFilters();
+    this.search.set(this.termSearch(report, term));
+  }
+
+  private termSearch(report: SearchTermReport, term: ReportTerm): GridSearch {
+    return {
+      query: term.expression,
+      termReport: { reportId: report.reportId, termId: term.termId },
+    };
+  }
+
+  private dropTerm(message: string): void {
+    this.appliedTerm = null;
+    this.termView.set(null);
+    this.toasts.show(message, { tone: 'error' });
+    this.setTermInUrl(true);
+    if (this.search().deferred) this.search.set({ query: '' });
+  }
+
+  protected clearTerm(): void {
+    this.forgetTerm();
+    this.queryBar().clear();
+    this.search.set({ query: '' });
+  }
+
+  /** The list no longer shows the report term (another query ran, or it was cleared). */
+  private forgetTerm(): void {
+    this.termView.set(null);
+    this.appliedTerm = null;
+    this.setTermInUrl(true);
+  }
+
+  private setTermInUrl(replaceUrl: boolean): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { [TERM_REPORT_PARAM]: null, [TERM_PARAM]: null },
+      queryParamsHandling: 'merge',
+      replaceUrl,
+    });
   }
 
   // ── Saved searches ──────────────────────────────────────────────────────────────────────────────────────────
@@ -332,7 +494,12 @@ export class DocumentsPage {
     }
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { [SAVED_SEARCH_PARAM]: summary.savedSearchId, [THEN_PARAM]: null },
+      queryParams: {
+        [SAVED_SEARCH_PARAM]: summary.savedSearchId,
+        [THEN_PARAM]: null,
+        [TERM_REPORT_PARAM]: null,
+        [TERM_PARAM]: null,
+      },
       queryParamsHandling: 'merge',
     });
   }
@@ -358,6 +525,8 @@ export class DocumentsPage {
 
   /** The list shows `saved`: its name in the search panel, its query in the bar, run by id. */
   private showSaved(saved: SavedSearch): void {
+    this.termView.set(null);
+    this.appliedTerm = null;
     this.appliedId = saved.savedSearchId;
     this.saved.set(saved);
     this.queryBar().load(saved.query);
