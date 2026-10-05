@@ -1,11 +1,4 @@
-import {
-  TextSegments,
-  SEGMENT_CHARS,
-  findPattern,
-  matchOffsets,
-  snippetTerms,
-  termsPattern,
-} from './text-segments';
+import { TextSegments, SEGMENT_CHARS, findPattern, matchOffsets, segmentAt } from './text-segments';
 import { documentResource } from './viewer-fixtures.testing';
 import { initialMode, modeAvailability } from './viewer-modes';
 
@@ -54,30 +47,26 @@ describe('streamed text', () => {
     segments.append('first line\nsecond li');
     const all = segments.append('ne continues\nthird\n');
     expect(all.map((s) => s.text)).toEqual(['first line\nsecond line continues\nthird\n']);
+    expect(all[0].start).toBe(0);
 
     const long = new TextSegments().append(`${'word '.repeat(SEGMENT_CHARS)}\n`);
     expect(long.length).toBeGreaterThan(1);
     expect(long.every((s) => s.text.length <= 2 * SEGMENT_CHARS)).toBe(true);
     expect(long.map((s) => s.text).join('')).toBe(`${'word '.repeat(SEGMENT_CHARS)}\n`);
+    // Every block knows where it starts, so server hit offsets map onto the rendered text.
+    long.forEach((s, i) =>
+      expect(s.start).toBe(i === 0 ? 0 : long[i - 1].start + long[i - 1].text.length),
+    );
+    expect(segmentAt(long, long[1].start)).toBe(1);
+    expect(segmentAt(long, long[1].start - 1)).toBe(0);
+    expect(segmentAt(long, 10 ** 9)).toBe(-1);
   });
 
-  it('finds literal text and whole-word terms, case-insensitively', () => {
+  it('finds literal text, case-insensitively', () => {
     expect(matchOffsets('a.b A.B axb', findPattern('a.b')!, 10)).toEqual([
       { start: 0, end: 3 },
       { start: 4, end: 7 },
     ]);
     expect(findPattern('  ')).toBeNull();
-    const terms = termsPattern(['term', 'Terminate']);
-    expect(matchOffsets('term terminate terms Term', terms!, 10)).toEqual([
-      { start: 0, end: 4 },
-      { start: 5, end: 14 },
-      { start: 21, end: 25 },
-    ]);
-    expect(
-      snippetTerms([
-        { text: 'may Terminate the deal', highlights: [{ start: 4, end: 13 }] },
-        { text: 'terminate now', highlights: [{ start: 0, end: 9 }] },
-      ]),
-    ).toEqual(['terminate']);
   });
 });

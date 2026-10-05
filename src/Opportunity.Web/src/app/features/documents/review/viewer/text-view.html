@@ -65,17 +65,35 @@
           </button>
         }
       </div>
-      @if (hasTerms()) {
-        <div class="viewer-tools__group" role="group" aria-label="Search hits">
-          <opp-checkbox [checked]="showHits()" (checkedChange)="toggleHits()"
-            >Highlight hits</opp-checkbox
+    </div>
+    @if (hasHighlighting()) {
+      <div class="hits" role="group" aria-label="Highlights">
+        <div class="hits__bar">
+          <span class="hits__title">Highlights</span>
+          <opp-checkbox
+            [checked]="showHits()"
+            aria-keyshortcuts="Alt+Shift+H"
+            (checkedChange)="toggleHits()"
+            >All highlighting</opp-checkbox
           >
-          <span class="viewer-tools__count">{{ hitLabel() }}</span>
+          @for (group of groups(); track group.key) {
+            <opp-checkbox
+              [checked]="group.on"
+              [disabled]="!showHits()"
+              (checkedChange)="toggleGroup(group, $event)"
+              >{{ group.highlightSetId ? 'Set: ' + group.label : group.label }}
+              <span class="hits__count">({{ group.on ? group.count : '–' }})</span></opp-checkbox
+            >
+          }
+        </div>
+        <div class="hits__stepper">
+          <span class="viewer-tools__count hits__position" aria-live="off">{{ hitLabel() }}</span>
           <button
             type="button"
             oppIconButton
             label="Previous hit"
-            [disabled]="!showHits() || !hitCount()"
+            aria-keyshortcuts="Shift+F3"
+            [disabled]="!hitCount()"
             (click)="stepHit(-1)"
           >
             <opp-icon name="chevron-left" />
@@ -84,14 +102,90 @@
             type="button"
             oppIconButton
             label="Next hit"
-            [disabled]="!showHits() || !hitCount()"
+            aria-keyshortcuts="F3"
+            [disabled]="!hitCount()"
             (click)="stepHit(1)"
           >
             <opp-icon name="chevron-right" />
           </button>
+          <button
+            type="button"
+            oppButton="ghost"
+            aria-controls="viewer-hit-panel"
+            [attr.aria-expanded]="panelOpen()"
+            (click)="panelOpen.set(!panelOpen())"
+          >
+            <opp-icon [name]="panelOpen() ? 'chevron-up' : 'chevron-down'" />
+            Terms
+          </button>
+          @if (hitsState() === 'loading') {
+            <span class="hits__note" role="status">
+              Counting hits{{
+                hitsProgress()
+                  ? ': part ' + hitsProgress()!.done + ' of ' + hitsProgress()!.total
+                  : ''
+              }}…
+            </span>
+          }
+          @if (hitsState() === 'error') {
+            <span class="hits__note hits__note--warning" role="alert">
+              <opp-icon name="warning" /> Hits could not be loaded.
+              <button type="button" oppButton="ghost" (click)="retryHits()">Try again</button>
+            </span>
+          }
         </div>
-      }
-    </div>
+        @if (searchExpired()) {
+          <p class="hits__note" role="status">
+            <opp-icon name="info" />
+            Search hits are not shown: the search expired. Run it again to highlight its hits.
+          </p>
+        }
+        @if (panelOpen()) {
+          <div id="viewer-hit-panel" class="hits__panel">
+            @for (group of groups(); track group.key) {
+              <section class="hits__group" [attr.aria-label]="group.label">
+                <h3 class="hits__group-title">{{ group.label }}</h3>
+                @if (!group.units.length) {
+                  <p class="hits__empty">
+                    {{
+                      hitsState() === 'loading'
+                        ? 'Counting…'
+                        : group.on
+                          ? 'No terms to highlight'
+                          : 'Switched off'
+                    }}
+                  </p>
+                } @else {
+                  <ul class="hits__terms">
+                    @for (unit of group.units; track unit.unit) {
+                      <li class="hits__term">
+                        <span
+                          class="hits__swatch"
+                          [attr.data-color]="swatch(unit.color)"
+                          [attr.title]="colorLabel(unit.color)"
+                          aria-hidden="true"
+                        ></span>
+                        <span class="hits__label">{{ unit.label }}</span>
+                        <span class="hits__term-count">{{ unit.count }}</span>
+                        <button
+                          type="button"
+                          oppIconButton
+                          [label]="'Next hit of ' + unit.label"
+                          [disabled]="!unit.count || !group.on || !showHits()"
+                          (click)="stepUnit(unit)"
+                        >
+                          <opp-icon name="chevron-right" />
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+              </section>
+            }
+          </div>
+        }
+      </div>
+    }
     @if (truncated()) {
       <p class="viewer-banner">
         <opp-icon name="info" />
@@ -106,7 +200,7 @@
     }
     @if (loadingAll(); as all) {
       <p class="viewer-banner" role="status">
-        Loading the rest of the text to search it: part {{ all.loaded }} of {{ all.total }}…
+        {{ all.why }}: part {{ all.loaded }} of {{ all.total }}…
       </p>
     }
     <div

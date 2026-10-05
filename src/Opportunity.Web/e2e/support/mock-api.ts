@@ -5,6 +5,7 @@ import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
+import { HighlightsMock } from './mock-highlights';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -88,6 +89,8 @@ export interface MockControl {
   }[];
   /** Saved searches (E16-T11): folders, searches, writes received and runs by id. */
   readonly savedSearches: SavedSearchesMock;
+  /** Highlight Sets, toggles and term hits (E16-T12). */
+  readonly highlights: HighlightsMock;
   /** Search freshness (E16-T07): move the index between current, updating and delayed. */
   readonly freshness: FreshnessMock;
 }
@@ -214,6 +217,7 @@ export const ALL_PERMISSIONS = [
   'Workspace.ManageSecurity',
   'Workspace.ManageFields',
   'Workspace.RequestDeletion',
+  'HighlightSet.Manage',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -394,6 +398,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     lookup: (id) => imports.job(id),
   });
   const savedSearches = new SavedSearchesMock();
+  const highlights = new HighlightsMock(() => lastQuery);
   const freshness = new FreshnessMock(options.freshness);
   const control: MockControl = {
     freshness,
@@ -401,6 +406,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     jobs: jobsMock,
     workspaceWrites,
     savedSearches,
+    highlights,
     unhandled,
     audit,
     coding,
@@ -542,6 +548,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Saved searches (E16-T11): ./mock-saved-searches.ts.
     const savedSearch = signedIn ? savedSearches.handle(route, method, path, url) : undefined;
     if (savedSearch) return savedSearch;
+    // Highlight Sets and term hits (E16-T12): ./mock-highlights.ts.
+    const highlighted = signedIn ? highlights.handle(route, method, path, url) : undefined;
+    if (highlighted) return highlighted;
     // Imports (E08-T08): ./mock-imports.ts.
     const imported = signedIn ? imports.handle(route, method, path) : undefined;
     if (imported) return imported;

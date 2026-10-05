@@ -7,6 +7,7 @@ using Microsoft.Net.Http.Headers;
 using Opportunity.Api.Conventions;
 using Opportunity.Application.Authorization;
 using Opportunity.Application.Content;
+using Opportunity.Application.Search.HighlightSets;
 using Opportunity.Application.Storage;
 using Opportunity.Contracts.Api;
 using Opportunity.Security.Authorization;
@@ -174,6 +175,71 @@ public sealed partial class ProtectedContentGateway(
             Missing: false,
             flags.TextEncodingWarning));
     }
+
+    /// <summary>
+    /// Term hits over the extracted text (E16-T12): the access service decides <c>Document.View</c> and audits the
+    /// retrieval (rendition Text, the first chunk of the page, use <c>termHits</c>) before any byte is read; then a page
+    /// of chunks is scanned in process (<see cref="TextHitPages"/>). Only offsets leave the server, never text. A
+    /// document without stored text answers chunk 0 with <c>missing: true</c> and no hits.
+    /// </summary>
+    public async Task<IResult> DeliverTextHitsAsync(
+        HttpContext context, WorkspaceAccess workspace, ContentRequest request, TermHitUnitSet units, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(workspace);
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(units);
+        var from = request.TextChunk ?? throw new ArgumentException("A term-hit request names its first chunk.", nameof(request));
+        var store = services.GetService<IObjectStore>();
+        if (store is null)
+        {
+            return Problems.Create(StatusCodes.Status503ServiceUnavailable, ProblemCodes.ServiceUnavailable, "Document content storage is not configured.");
+        }
+
+        var result = await access.OpenAsync(workspace.Principal, request, ObjectDeliveryMode.Stream, cancellationToken).ConfigureAwait(false);
+        switch (result.Outcome)
+        {
+            case ContentAccessOutcome.Denied:
+                return result.Decision.Outcome == AuthorizationOutcome.NotFound ? DocumentNotFound() : AuthorizationResults.Problem(result.Decision);
+            case ContentAccessOutcome.Unavailable
+                when from == 0 && result.Reason == DocumentAccessService.Reasons.RenditionUnavailable && result.Document is { } document:
+                context.Response.Headers.CacheControl = "no-store";
+                return TypedResults.Ok(new DocumentTextHitsResource(
+                    request.DocumentId, 0, 0, 0, null, document.TextTruncated, Missing: true, ToUnits(units, []), []));
+            case ContentAccessOutcome.Unavailable:
+                return Problems.Create(StatusCodes.Status404NotFound, ProblemCodes.ContentUnavailable, "This rendition is not available for the document.");
+            case ContentAccessOutcome.RangeNotSatisfiable:
+                return Problems.Create(StatusCodes.Status404NotFound, ProblemCodes.ContentUnavailable, "The text has no chunk with this index.");
+        }
+
+        var grant = result.Grant!;
+        var page = await TextHitPages.ScanAsync(store, grant.Key, grant.Length, from, [.. units.Units.Select(u => u.Unit)], cancellationToken)
+            .ConfigureAwait(false);
+        SetCommonHeaders(context.Response, grant.AuditEventId);
+        return TypedResults.Ok(new DocumentTextHitsResource(
+            request.DocumentId,
+            page.ChunkCount,
+            page.FromChunk,
+            page.ToChunk,
+            page.ToChunk < page.ChunkCount ? page.ToChunk : null,
+            result.Document!.TextTruncated,
+            Missing: false,
+            ToUnits(units, page.Counts),
+            page.Hits));
+    }
+
+    private static List<TermHitUnitResource> ToUnits(TermHitUnitSet units, long[] counts) =>
+    [
+        .. units.Units.Select((u, i) => new TermHitUnitResource(
+            i,
+            u.Source,
+            u.HighlightSetId,
+            u.TermId,
+            u.Unit.Label,
+            (TermHitKind)(int)u.Unit.Kind,
+            u.Color,
+            i < counts.Length ? counts[i] : 0)),
+    ];
 
     /// <summary>
     /// A JSON view of a document read from PostgreSQL (metadata, page list) under the gateway's contract: PDP decision,

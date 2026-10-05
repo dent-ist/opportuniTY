@@ -50,6 +50,18 @@ public static class AuditTaxonomy
         public const string Shared = "SavedSearch.Shared";
     }
 
+    /// <summary>Highlight Sets (E16-T12): a set's terms, colours and name changed. Toggling a set is not audited.</summary>
+    public static class HighlightSet
+    {
+        public const string Category = "Search";
+        public const string Created = "HighlightSet.Created";
+        public const string Modified = "HighlightSet.Modified";
+        public const string Deleted = "HighlightSet.Deleted";
+
+        /// <summary>The audit resource type of highlight-set events.</summary>
+        public const string ResourceType = "HighlightSet";
+    }
+
     public static class Coding
     {
         public const string Category = "Coding";
@@ -147,7 +159,8 @@ public static class AuditTaxonomy
         .. Expand("AuthZ", "Denied"),
         .. Expand("Document", "Retrieved", "Viewed", "NativeDownloaded", "Printed", "TextDownloaded"),
         .. Expand("Search", "Executed", "ResultsPageServed", "CountExact", "TermReportGenerated",
-            "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted", "SavedSearch.Shared"),
+            "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted", "SavedSearch.Shared",
+            "HighlightSet.Created", "HighlightSet.Modified", "HighlightSet.Deleted"),
         .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled"),
         .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded"),
         .. Expand("Redaction", "Added", "Modified", "Removed"),

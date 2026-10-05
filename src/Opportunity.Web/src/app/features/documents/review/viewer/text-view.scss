@@ -40,11 +40,14 @@
   font-size: var(--opp-font-size-sm);
 }
 
-// Find matches and search hits use colour and an underline, so they never rely on colour alone (E16-T12).
-.text__segment::highlight(opp-hit) {
-  background-color: var(--opp-color-info-bg);
-  color: var(--opp-color-info-text);
-  text-decoration: underline 2px var(--opp-color-info-border);
+// Term hits (E16-T12): one highlight per palette colour; colour plus an underline, so a hit never relies on colour
+// alone. The tokens give text >= 4.5:1 on the fill and the underline >= 3:1 on the fill and the page.
+@each $color in 'search', 'amber', 'green', 'blue', 'violet', 'rose', 'teal' {
+  .text__segment::highlight(opp-hl-#{$color}) {
+    background-color: var(--opp-color-hl-#{$color}-bg);
+    color: var(--opp-color-hl-#{$color}-text);
+    text-decoration: underline 2px var(--opp-color-hl-#{$color}-line);
+  }
 }
 
 .text__segment::highlight(opp-find) {
@@ -53,14 +56,21 @@
   text-decoration: underline dotted 2px var(--opp-color-warning-border);
 }
 
+// The current match or hit: the accent fill with a thicker underline (registered last, so it paints on top).
 .text__segment::highlight(opp-find-current) {
   background-color: var(--opp-color-accent);
   color: var(--opp-color-on-accent);
-  text-decoration: underline 2px var(--opp-color-on-accent);
+  text-decoration: underline 3px var(--opp-color-on-accent);
 }
 
 @media (forced-colors: active) {
-  .text__segment::highlight(opp-hit),
+  .text__segment::highlight(opp-hl-search),
+  .text__segment::highlight(opp-hl-amber),
+  .text__segment::highlight(opp-hl-green),
+  .text__segment::highlight(opp-hl-blue),
+  .text__segment::highlight(opp-hl-violet),
+  .text__segment::highlight(opp-hl-rose),
+  .text__segment::highlight(opp-hl-teal),
   .text__segment::highlight(opp-find) {
     background-color: Mark;
     color: MarkText;

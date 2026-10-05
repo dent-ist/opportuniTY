@@ -30,6 +30,8 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
     ),
   setup: () =>
     import('./features/workspace-admin/workspace-setup-page').then((m) => m.WorkspaceSetupPage),
+  'highlight-sets': () =>
+    import('./features/highlight-sets/highlight-sets-page').then((m) => m.HighlightSetsPage),
 };
 
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */

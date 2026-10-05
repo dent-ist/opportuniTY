@@ -228,9 +228,12 @@ and may relax it only through an amendment to this ADR.
    | `Workspace.ManageSecurity` (classes, walls) | ✔ | | | | | | |
    | `Workspace.ManageFields` | ✔ | | | | | | |
    | `Workspace.RequestDeletion` (Q-23) | ✔ | | | | | | |
+   | `HighlightSet.Manage` (Highlight Sets; E16-T12, ticket-named) | ✔ | | | | | | |
 
    Users always see their own jobs and may cancel them. *Amendment 2026-10-04 (E06-T06, #61):* replay was split out of
-   `Job.Manage` into `Job.Replay`, the permission the ticket names, so it can be granted on its own later. Installation-level permissions (`Installation.ManageWorkspaces`,
+   `Job.Manage` into `Job.Replay`, the permission the ticket names, so it can be granted on its own later. *Amendment
+   2026-10-05 (E16-T12, #138):* `HighlightSet.Manage` creates, changes and deletes the workspace's Highlight Sets; every
+   member reads them and toggles them for themselves. Installation-level permissions (`Installation.ManageWorkspaces`,
    `Installation.ManageIdentity`, `Installation.AssignBreakGlass`, `Installation.ApproveDeletion`,
    `Installation.ManageLegalHold`) belong to the **Installation Admin** role. That role grants **no** document access
    by itself: an installation admin who needs content must hold a workspace role and is subject to walls.

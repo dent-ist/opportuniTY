@@ -122,6 +122,7 @@ M1 events ship with `E14-T01`/`E05-T04`; the rest with the owning feature, and `
 | **Search** | `Executed` | SavedSearch or none | AST hash and version, hit count with an exact/approximate flag, facet fields, PIT or snapshot ID, `SearchGeneration`; **full query text in `RestrictedDetails`** (Q-16) |
 | | `ResultsPageServed` | none | DocumentIds actually returned after the Q-12 post-filter (≤ page size), count dropped by the post-filter. Proves what a user could have seen, including that walled documents were not served |
 | | `CountExact`, `TermReportGenerated`, `SavedSearch.Created/Modified/Deleted/Shared` | | STR ID and snapshot (Q-30); saved-search criteria in `RestrictedDetails`, sharing as user IDs and group counts (E07-T09) |
+| | `HighlightSet.Created/Modified/Deleted` | HighlightSet | name, colour, term count; the term expressions in `RestrictedDetails` (E16-T12). A reviewer toggling a set is not audited |
 | **Coding** | `Changed` | Document | `CodingEventId`s, field IDs, `SecurityAffecting`; old and new **values only for security-affecting fields** (privilege, confidentiality, wall membership) |
 | | `FamilyApplied` | Document | family ID, conflict preview accepted (Q-14) |
 | | `BulkSubmitted`, `BulkChunkApplied`, `BulkCompleted` | Job | `SnapshotId`, field operations, counts applied/skipped (Q-07); one event per job state and per chunk, **never per document** |

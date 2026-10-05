@@ -1,5 +1,5 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, Injectable, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -11,6 +11,12 @@ import type {
 import { CommandRegistry } from '../../../../core/commands';
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
+import {
+  HighlightSet,
+  HighlightSetsApi,
+  HighlightState,
+  HighlightToggles,
+} from '../../../../core/highlights/highlight-sets';
 import { expectNoAxeViolations } from '../../../../ui/testing/axe.testing';
 import { hit } from '../../grid/grid-fixtures.testing';
 import type { LoadedDocument } from '../document-loader';
@@ -20,6 +26,8 @@ import {
   DocumentContentApi,
   PageImageKind,
   TextChunk,
+  TextHitsPage,
+  TextHitsRequest,
   toTextChunk,
 } from '../review-ports';
 import { DocumentViewer, ViewerDocument } from './document-viewer';
@@ -33,6 +41,9 @@ class FakeContentApi extends DocumentContentApi {
   readonly downloads: string[] = [];
   chunks: Record<number, TextChunk[]> = {};
   pageList: DocumentPageResource[] = [];
+  /** Hit pages by document number and first chunk, as `…/text/hits` would answer them. */
+  hitPages: Record<number, Record<number, TextHitsPage>> = {};
+  expiredSearches = new Set<string>();
 
   async document(id: string, purpose: ContentPurpose): Promise<Delivered<DocumentResource>> {
     this.calls.push(`metadata:${id}:${purpose}`);
@@ -43,6 +54,21 @@ class FakeContentApi extends DocumentContentApi {
     const chunk = this.chunks[Number(id.slice(4))]?.[index];
     if (!chunk) throw new Error('no chunk');
     return chunk;
+  }
+  async textHits(id: string, request: TextHitsRequest): Promise<TextHitsPage> {
+    this.calls.push(
+      `hits:${id}:${request.fromChunk}:${request.searchId ?? '-'}:${request.highlightSetIds.join(',')}`,
+    );
+    if (request.searchId && this.expiredSearches.has(request.searchId)) {
+      throw new HttpErrorResponse({ status: 404, error: { status: 404, title: 'Not Found' } });
+    }
+    const page = this.hitPages[Number(id.slice(4))]?.[request.fromChunk];
+    if (!page) throw new Error('no hits');
+    const sets = new Set(request.highlightSetIds);
+    const keep = page.units.map((u) =>
+      u.source === 'search' ? !!request.searchId : sets.has(u.highlightSetId ?? ''),
+    );
+    return { ...page, hits: page.hits.filter((h) => keep[h.unit]) };
   }
   async pages(id: string, purpose: ContentPurpose) {
     this.calls.push(`pages:${id}:${purpose}`);
@@ -64,12 +90,37 @@ class FakeContentApi extends DocumentContentApi {
   selector: 'opp-test-host',
   imports: [DocumentViewer],
   template: `<section aria-label="Viewer" data-command-scope="viewer">
-    <opp-document-viewer [document]="doc()" />
+    <opp-document-viewer [document]="doc()" [searchId]="searchId()" />
   </section>`,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class Host {
   readonly doc = signal<ViewerDocument>({ hit: hit(1), state: 'loading', content: null });
+  readonly searchId = signal<string | null>(null);
+}
+
+/** Highlight Sets answered in memory; toggles are remembered like the API would. */
+@Injectable()
+class FakeHighlightSetsApi extends HighlightSetsApi {
+  sets: HighlightSet[] = [];
+  saved: HighlightToggles = { disabledSetIds: [], searchHits: true };
+  async list() {
+    return { sets: this.sets, colors: ['amber', 'green'] };
+  }
+  async create(): Promise<HighlightSet> {
+    throw new Error('not used');
+  }
+  async update(): Promise<HighlightSet> {
+    throw new Error('not used');
+  }
+  async delete(): Promise<void> {}
+  async toggles() {
+    return this.saved;
+  }
+  async setToggles(toggles: HighlightToggles) {
+    this.saved = toggles;
+    return toggles;
+  }
 }
 
 /** Chunks of `text` split every `size` characters, as the gateway would deliver them. */
@@ -118,6 +169,8 @@ describe('Document viewer (E16-T04)', () => {
         provideHttpClientTesting(),
         { provide: DocumentContentApi, useClass: FakeContentApi },
         { provide: WorkspaceContext, useValue: { can: () => canDownload } },
+        { provide: HighlightSetsApi, useClass: FakeHighlightSetsApi },
+        HighlightState,
       ],
     });
     localStorage.clear();
@@ -276,23 +329,116 @@ describe('Document viewer (E16-T04)', () => {
     expect(root.querySelector('#viewer-find-count')?.textContent).toBe('1 of 1');
   });
 
-  it('highlights the search hit terms and steps through them (hook for Highlight Sets, E16-T12)', async () => {
+  it('highlights server hits: a phrase as one span, steps across unloaded chunks and announces each hit (E16-T12)', async () => {
     await setup();
-    api.chunks[6] = chunksOf(6, 'The agreement ends. Agreement terms. Agreements differ.', 1000);
-    const withHits = hit(6, {
-      snippets: [{ text: 'the agreement ends', highlights: [{ start: 4, end: 13 }] }],
-    });
-    await show({ hit: withHits, state: 'ready', content: loaded(6, documentResource(6)) });
+    const sets = TestBed.inject(HighlightSetsApi) as FakeHighlightSetsApi;
+    sets.sets = [
+      {
+        highlightSetId: 'set-1',
+        name: 'Key terms',
+        description: null,
+        color: 'amber',
+        terms: [{ termId: 't-1', expression: 'termination', color: null }],
+        modifiedBy: 'Admin',
+        modifiedAt: '2026-10-01T00:00:00Z',
+        version: 1,
+      },
+    ];
+    // Three chunks: "price increase" in chunk 0, "termination" in chunk 0 and chunk 2 (not loaded at first).
+    const text = 'A price increase.  ' + 'Price adjustments. ' + 'Then termination.';
+    api.chunks[6] = chunksOf(6, text, 19);
+    api.hitPages[6] = {
+      0: {
+        units: [
+          {
+            unit: 0,
+            source: 'search',
+            highlightSetId: null,
+            label: 'price increase',
+            kind: 'phrase',
+            color: 'search',
+            count: 1,
+          },
+          {
+            unit: 1,
+            source: 'highlightSet',
+            highlightSetId: 'set-1',
+            label: 'termination',
+            kind: 'term',
+            color: 'amber',
+            count: 1,
+          },
+        ],
+        hits: [
+          { unit: 0, chunk: 0, start: 2, end: 16 },
+          { unit: 1, chunk: 2, start: 5, end: 16 },
+        ],
+        nextChunk: null,
+        chunkCount: 3,
+        missing: false,
+      },
+    };
+    host.searchId.set('search-1');
+    await show({ hit: hit(6), state: 'ready', content: loaded(6, documentResource(6)) });
+    await settle();
 
-    // Whole words only: "Agreements" is not a hit.
-    expect(root.textContent).toContain('2 search hits');
+    expect(api.calls).toContain('hits:doc-6:0:search-1:set-1');
+    expect(root.textContent).toContain('Search hits (1)');
+    expect(root.textContent).toContain('Set: Key terms (1)');
+    expect(root.textContent).toContain('2 hits');
+    expect(api.calls.filter((c) => c.startsWith('text:doc-6'))).toEqual(['text:doc-6:0:display']);
+
     invoke('viewer.nextHit');
     await settle();
-    expect(root.textContent).toContain('Hit 1 of 2');
-    expect(announced()).toContain("Hit 1 of 2 'agreement'");
+    expect(announced()).toContain('Hit 1 of 2 "price increase"');
+    expect(root.textContent).toContain('Hit 1 of 2 "price increase"');
+
+    // The next hit lies in chunk 2: the text is loaded up to it, then the hit is shown and announced.
+    invoke('viewer.nextHit');
+    await settle();
+    await settle();
+    expect(api.calls).toContain('text:doc-6:2:display');
+    expect(announced()).toContain('Hit 2 of 2 "termination"');
+    expect(root.querySelector('[role="document"]')).toBe(document.activeElement);
+
+    invoke('viewer.previousHit');
+    await settle();
+    expect(announced()).toContain('Hit 1 of 2 "price increase"');
+
+    // The per-term panel lists the units with their counts and colours.
+    button('Terms').click();
+    await settle();
+    const panel = root.querySelector('#viewer-hit-panel')!;
+    expect(panel.textContent).toContain('price increase');
+    expect(panel.querySelector('[data-color="amber"]')).not.toBeNull();
+
+    // Switching the set off persists the toggle and leaves only the search hits.
+    const setToggle = [...root.querySelectorAll('opp-checkbox')].find((c) =>
+      c.textContent?.includes('Key terms'),
+    )!;
+    setToggle.querySelector('input')!.click();
+    await settle();
+    expect(sets.saved.disabledSetIds).toEqual(['set-1']);
+    expect(api.calls.at(-1)).toBe('hits:doc-6:0:search-1:');
+    expect(root.textContent).toContain('1 hit');
+
     invoke('viewer.toggleHighlights');
     await settle();
-    expect(root.querySelector<HTMLInputElement>('opp-checkbox input')!.checked).toBe(false);
+    expect(root.textContent).toContain('Highlighting off');
+    expect(announced()).toContain('Highlighting off');
+  });
+
+  it('keeps the Highlight Sets and says so when the search expired', async () => {
+    await setup();
+    api.chunks[6] = chunksOf(6, 'Then termination.', 1000);
+    api.expiredSearches.add('old');
+    api.hitPages[6] = {
+      0: { units: [], hits: [], nextChunk: null, chunkCount: 1, missing: false },
+    };
+    host.searchId.set('old');
+    await show({ hit: hit(6), state: 'ready', content: loaded(6, documentResource(6)) });
+    await settle();
+    expect(root.textContent).toContain('the search expired');
   });
 
   it('shows page images with page navigation, go to page, zoom, fit and rotate; image URLs do not outlive the page', async () => {

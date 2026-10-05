@@ -77,6 +77,10 @@ public readonly record struct ContentRangeRequest(long? Start, long? End)
 /// <see cref="ContentRendition.Text"/> only: the 0-based chunk of <see cref="TextChunks.ChunkBytes"/> bytes to read
 /// (the access service resolves its byte range; <paramref name="Range"/> is then ignored).
 /// </param>
+/// <param name="Use">
+/// What the server does with the content when it is not delivered as is (audit detail <c>use</c>), e.g.
+/// <c>termHits</c>: hit offsets computed from the text chunks <paramref name="TextChunk"/> onwards (E16-T12).
+/// </param>
 public sealed record ContentRequest(
     Guid WorkspaceId,
     Guid DocumentId,
@@ -84,7 +88,8 @@ public sealed record ContentRequest(
     ContentPurpose Purpose,
     int? PageNumber = null,
     ContentRangeRequest? Range = null,
-    int? TextChunk = null);
+    int? TextChunk = null,
+    string? Use = null);
 
 /// <summary>
 /// Where a document's rendition is stored, read from the PostgreSQL object registry (ADR-011 §2.3). The logical key

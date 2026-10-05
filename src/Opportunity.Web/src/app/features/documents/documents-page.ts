@@ -55,6 +55,11 @@ import { FreshnessStatus } from './freshness/freshness-status';
 import { SearchJobBanner } from './freshness/job-banner';
 import { PendingSearchJobs } from './freshness/pending-jobs';
 import { HttpSearchFreshnessApi, SearchFreshnessApi } from '../../core/search/search-freshness';
+import {
+  HighlightSetsApi,
+  HighlightState,
+  HttpHighlightSetsApi,
+} from '../../core/highlights/highlight-sets';
 
 /**
  * Documents: the default landing page of a workspace (familiarity guide §2.1, §3), with two modes on one route.
@@ -212,6 +217,8 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     FreshnessMonitor,
     PendingSearchJobs,
     { provide: SavedSearchApi, useClass: HttpSavedSearchApi },
+    { provide: HighlightSetsApi, useClass: HttpHighlightSetsApi },
+    HighlightState,
   ],
   host: { '[class.is-reviewing]': 'reviewing()' },
 })
@@ -235,6 +242,7 @@ export class DocumentsPage {
     positionOf: (index) => this.grid().positionOf(index),
     hasMore: (direction) => this.grid().hasMore(direction),
     fetchMore: (direction) => this.grid().fetchMore(direction),
+    searchId: computed(() => this.grid().searchId()),
   };
   protected readonly cursor = new ReviewCursor(this.source);
   private readonly router = inject(Router);

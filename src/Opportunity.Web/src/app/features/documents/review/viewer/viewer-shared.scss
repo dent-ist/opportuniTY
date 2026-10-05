@@ -96,3 +96,11 @@
     outline-color: Highlight;
   }
 }
+
+.viewer-tools__note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
