@@ -1,4 +1,4 @@
-import type { TotalCount } from '../../../core/api/generated/models';
+import type { SearchExpand, TotalCount } from '../../../core/api/generated/models';
 
 /**
  * Most documents a selection may name one by one (E16-T06). A larger set is chosen as "all results", which is
@@ -16,6 +16,8 @@ export interface AllResultsSelection {
   readonly total: TotalCount;
   /** The list's count label when it was selected ("58,330", "≈ 58,330", "≥ 10,000 (approx.)"). */
   readonly countText: string;
+  /** "Include: Family / Duplicates / Email thread" of the list: frozen with the same expansion (E09-T03). */
+  readonly expand?: SearchExpand | null;
 }
 
 /** Documents checked one by one (rows, pages, Shift ranges). */

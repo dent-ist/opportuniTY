@@ -1,4 +1,5 @@
 using Opportunity.Application.Audit;
+using Opportunity.Core.Documents;
 using Opportunity.Core.Snapshots;
 
 namespace Opportunity.Application.Snapshots;
@@ -28,6 +29,9 @@ public sealed record NewSnapshot
     public int? RequestedCount { get; init; }
 
     public int PageSize { get; init; } = SnapshotRules.DefaultPageSize;
+
+    /// <summary>E09-T03: relationships added to the selection before the freeze (part of the selection; immutable).</summary>
+    public RelationshipExpansion Expansion { get; init; }
 
     public required Guid CreatedBy { get; init; }
 
@@ -74,6 +78,9 @@ public sealed record SnapshotRecord
     public int? RequestedCount { get; init; }
 
     public MaterializationStrategy Strategy { get; init; } = MaterializationStrategy.PgMemberPages;
+
+    /// <summary>E09-T03: relationships added to the selection before the freeze.</summary>
+    public RelationshipExpansion Expansion { get; init; }
 
     public int PageSize { get; init; }
 

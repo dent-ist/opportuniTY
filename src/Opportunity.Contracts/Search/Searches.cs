@@ -26,6 +26,12 @@ namespace Opportunity.Contracts.Search;
 /// the term's expression is used for relevance and highlighting.
 /// </param>
 /// <param name="TermId">The term of <see cref="SearchTermReportId"/>.</param>
+/// <param name="Expand">
+/// E09-T03 "Include: Family / Duplicates / Email thread": the results also hold the families, duplicates and email
+/// threads of the hits, each such row flagged with <see cref="SearchHit.ExpandedBy"/>. Members the caller may not see
+/// are never added (Q-52). Null: no expansion, or a saved search's stored choice. Without a sort, an expanded search is
+/// sorted by <c>familyDate</c> so families stay together.
+/// </param>
 public sealed record SearchRequest(
     string? Query,
     IReadOnlyList<SearchSortKey>? Sort = null,
@@ -35,7 +41,35 @@ public sealed record SearchRequest(
     IReadOnlyList<string>? Facets = null,
     Guid? SavedSearchId = null,
     Guid? SearchTermReportId = null,
-    Guid? TermId = null);
+    Guid? TermId = null,
+    SearchExpand? Expand = null);
+
+/// <summary>
+/// Which related documents to add to a document set (E09-T03): used by searches, snapshots ("frozen sets", the targets of
+/// Mass Edit and exports) and saved searches. Absent or false members mean no expansion of that kind. Duplicates and
+/// email threads are taken from the base documents; family is taken from the base documents and from what the duplicate
+/// and thread expansion added (so expanded emails bring their attachments).
+/// </summary>
+public sealed record SearchExpand(bool? Family = null, bool? Duplicates = null, bool? Thread = null);
+
+/// <summary>
+/// The documents an expanded search added, by why each was added (first reason wins: family, then duplicate, then thread).
+/// Exact counts at the page's point in time, excluding documents the caller may not see; shown approximate (≈) under
+/// the same Q-10 rule as <see cref="SearchResultPage.Total"/>.
+/// </summary>
+/// <param name="Family">Family members of the hits (and of added duplicates or thread members) that are not hits.</param>
+/// <param name="Duplicates">Members of the hits' duplicate groups that are neither hits nor family.</param>
+/// <param name="Thread">Members of the hits' email threads added by no earlier kind.</param>
+/// <param name="Total">Base hits plus every added document: the size of the expanded result list.</param>
+public sealed record SearchExpandedCounts(long Family, long Duplicates, long Thread, long Total);
+
+/// <summary>Why a result row is in an expanded search although it does not match the query (E09-T03).</summary>
+public enum SearchExpandedBy
+{
+    Family,
+    Duplicate,
+    Thread,
+}
 
 /// <param name="Field">A sortable field (<see cref="SearchSortFields"/>), case-insensitive.</param>
 public sealed record SearchSortKey(string Field, SearchSortDirection Direction = SearchSortDirection.Asc);
@@ -51,8 +85,14 @@ public static class SearchSortFields
 {
     public const string Relevance = "relevance";
 
+    /// <summary>
+    /// "Date (Family)" (ADR-009 R25, E09-T03): the family date, then the family and its family sequence, so families stay
+    /// contiguous and the parent comes first.
+    /// </summary>
+    public const string FamilyDate = "familyDate";
+
     public static IReadOnlyList<string> All { get; } =
-        [Relevance, "controlNumber", "documentDate", "fileName", "fileType", "fileExtension", "fileSize", "pageCount", "dateSent", "dateReceived"];
+        [Relevance, "controlNumber", "documentDate", "fileName", "fileType", "fileExtension", "fileSize", "pageCount", "dateSent", "dateReceived", FamilyDate];
 }
 
 /// <summary>Facetable (aggregatable keyword) fields of the first slice.</summary>
@@ -81,8 +121,20 @@ public sealed record SearchResultPage
 
     public required SearchPageInfo Page { get; init; }
 
-    /// <summary>Eq up to 10,000 hits (or with <c>countExact</c>), else Gte; shown with "≈" unless the freshness is current (Q-10).</summary>
+    /// <summary>
+    /// The base hits (documents matching the query): Eq up to 10,000 hits (or with <c>countExact</c>, or when expanded),
+    /// else Gte; shown with "≈" unless the freshness is current (Q-10). Expanded members are counted in <see cref="Expanded"/>.
+    /// </summary>
     public required TotalCount Total { get; init; }
+
+    /// <summary>The expansion applied (the request's, or a saved search's stored choice); null when none.</summary>
+    public SearchExpand? Expand { get; init; }
+
+    /// <summary>
+    /// With <see cref="Expand"/>: the added documents by kind and the expanded list size (paging and page numbers follow
+    /// the expanded list). Null for a search without expansion.
+    /// </summary>
+    public SearchExpandedCounts? Expanded { get; init; }
 
     public required SearchFreshness Freshness { get; init; }
 
@@ -170,6 +222,10 @@ public sealed record SearchFreshnessStatus(
 /// The top-level document of a family with at least one other member the caller's search can see (the grid's parent
 /// marker). False for standalone documents and attachments.
 /// </param>
+/// <param name="ExpandedBy">
+/// In an expanded search: why the row was added (family, duplicate or thread); null for a row that matches the query.
+/// </param>
+/// <param name="FamilyDate">"Date (Family)": the family's date (ADR-009 R25), shared by every member.</param>
 public sealed record SearchHit(
     Guid DocumentId,
     string ControlNumber,
@@ -184,7 +240,9 @@ public sealed record SearchHit(
     long? FileSize,
     int? PageCount,
     IReadOnlyList<SearchSnippet> Snippets,
-    bool IsFamilyParent = false);
+    bool IsFamilyParent = false,
+    SearchExpandedBy? ExpandedBy = null,
+    DateTimeOffset? FamilyDate = null);
 
 /// <summary>A snippet as plain text with the matched ranges (UTF-16 offsets), so clients never render markup from the index.</summary>
 public sealed record SearchSnippet(string Text, IReadOnlyList<TextSpan> Highlights);

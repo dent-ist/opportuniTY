@@ -33,6 +33,9 @@
     @if (result()) {
       <p class="grid__count">
         <strong>{{ countText() }}</strong> documents
+        @if (expandedText(); as expanded) {
+          <span class="grid__expanded">({{ expanded }})</span>
+        }
         <span class="grid__freshness">· {{ freshnessText() }}</span>
       </p>
     }
@@ -259,6 +262,12 @@
               [class.is-active]="focusRow() === index && focusCol() === COL_CONTROL"
             >
               {{ hit.controlNumber }}
+              @if (relatedTag(hit); as tag) {
+                <span class="grid__related" [title]="tag.label"
+                  ><span aria-hidden="true">{{ tag.text }}</span
+                  ><span class="opp-visually-hidden">{{ tag.label }}</span></span
+                >
+              }
               @if (pendingCoding?.isPending(hit.documentId)) {
                 <span class="grid__pending" title="Your coding is saved; search is catching up">
                   <opp-icon name="refresh" /><span class="opp-visually-hidden"

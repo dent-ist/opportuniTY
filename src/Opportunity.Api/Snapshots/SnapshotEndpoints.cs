@@ -89,6 +89,7 @@ public sealed class SnapshotEndpoints : IApiEndpointModule
         }
 
         var query = request.Query;
+        var expansion = request.Expand.ToExpansion();
         if (request.SavedSearchId is { } savedSearchId)
         {
             if (request.Query is not null || request.DocumentIds is not null || request.SnapshotId is not null)
@@ -102,9 +103,16 @@ public sealed class SnapshotEndpoints : IApiEndpointModule
             // E07-T09: a saved search the caller can see freezes as its reference, so the snapshot records which search it
             // came from and its criteria are expanded (and filtered for the caller) when the set is selected.
             if (context.RequestServices.GetService<ISavedSearchQueries>() is not { } savedSearches
-                || await savedSearches.FindForRunAsync(caller.Principal, caller.WorkspaceId, savedSearchId, cancellationToken).ConfigureAwait(false) is null)
+                || await savedSearches.FindForRunAsync(caller.Principal, caller.WorkspaceId, savedSearchId, cancellationToken).ConfigureAwait(false)
+                    is not { } saved)
             {
                 return Problems.NotFound("No such saved search.");
+            }
+
+            // E09-T03: the saved search's stored "Include family / duplicates / email thread" unless the request gives its own.
+            if (request.Expand is null)
+            {
+                expansion = saved.Expansion;
             }
 
             query = $"{SavedSearchQuerySyntax.FieldName}:{savedSearchId:D}";
@@ -117,7 +125,8 @@ public sealed class SnapshotEndpoints : IApiEndpointModule
             query,
             request.DocumentIds,
             request.SnapshotId,
-            key.Length > 0 ? key : null), cancellationToken).ConfigureAwait(false);
+            key.Length > 0 ? key : null,
+            expansion), cancellationToken).ConfigureAwait(false);
 
         var ws = caller.WorkspaceId.ToString();
         switch (outcome.Status)
@@ -249,7 +258,8 @@ public sealed class SnapshotEndpoints : IApiEndpointModule
             s.CreatedAt,
             s.MaterializedAt,
             s.Status is SnapshotStatus.Expired || s.Referenced ? null : s.CreatedAt + options.UnreferencedLifetime,
-            s.ExpiredAt);
+            s.ExpiredAt,
+            s.Expansion.ToContract());
     }
 
     private static string Location(string workspaceId, Guid snapshotId) =>

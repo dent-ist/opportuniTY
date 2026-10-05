@@ -48,6 +48,16 @@ public sealed class SearchServiceOptions
     /// <summary>Largest selection page (IDs per OpenSearch request; bounded by the index's max result window).</summary>
     public int MaxSelectionPageSize { get; set; } = 10_000;
 
+    /// <summary>
+    /// E09-T03: most distinct families, duplicate groups and email threads (each kind counted separately) an interactive
+    /// search may expand; above it the search asks to narrow the query or to freeze the set (a snapshot expands in
+    /// PostgreSQL without this bound). Every page sends the keys to OpenSearch, so this bounds the request size.
+    /// </summary>
+    public int MaxExpansionKeys { get; set; } = 250_000;
+
+    /// <summary>Relationship keys read per OpenSearch aggregation page while an expanded search collects them.</summary>
+    public int ExpansionKeyPageSize { get; set; } = 10_000;
+
     internal void Validate(string section)
     {
         Require(DefaultPageSize >= 1 && DefaultPageSize <= MaxPageSize, section, nameof(DefaultPageSize));
@@ -64,6 +74,8 @@ public sealed class SearchServiceOptions
         Require(FieldCatalogCacheTtl >= TimeSpan.Zero && FieldCatalogCacheTtl <= TimeSpan.FromMinutes(5), section, nameof(FieldCatalogCacheTtl));
         Require(SelectionKeepAlive >= TimeSpan.FromSeconds(10) && SelectionKeepAlive <= TimeSpan.FromHours(1), section, nameof(SelectionKeepAlive));
         Require(MaxSelectionPageSize is >= 1 and <= 10_000, section, nameof(MaxSelectionPageSize));
+        Require(MaxExpansionKeys is >= 1 and <= 1_000_000, section, nameof(MaxExpansionKeys));
+        Require(ExpansionKeyPageSize is >= 1 and <= 10_000, section, nameof(ExpansionKeyPageSize));
     }
 
     private static void Require(bool condition, string section, string setting)

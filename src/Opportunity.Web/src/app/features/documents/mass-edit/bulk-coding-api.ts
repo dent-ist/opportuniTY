@@ -44,6 +44,8 @@ export interface FrozenSet {
   /** Some selected documents had changes still being indexed (ADR-002 §4). */
   readonly selectedWhileIndexing: boolean;
   readonly statusReason: string | null;
+  /** Documents added by "Include: Family / Duplicates / Email thread" before freezing (E09-T03). */
+  readonly related: number;
 }
 
 /** Progress and outcome of a bulk coding job, in both phases ("Saved", then "Searchable"). */
@@ -91,7 +93,11 @@ export class HttpBulkCodingApi extends BulkCodingApi {
     // "All results" goes as the query, never as ids (E16-T06); checked rows as ids (at most MAX_SELECTED_IDS).
     const body: CreateSnapshotRequest =
       target.kind === 'all'
-        ? { purpose: 'bulkCoding', query: target.query }
+        ? {
+            purpose: 'bulkCoding',
+            query: target.query,
+            ...(target.expand ? { expand: target.expand } : {}),
+          }
         : { purpose: 'bulkCoding', documentIds: [...target.documentIds] };
     return firstValueFrom(
       createSnapshot(this.http, this.rootUrl, {
@@ -139,6 +145,10 @@ export function toFrozenSet(s: SnapshotResource): FrozenSet {
     frozenAt: (s.selectedAt ?? s.materializedAt ?? s.createdAt ?? null) as string | null,
     selectedWhileIndexing: s.selectedWhileIndexing === true,
     statusReason: s.statusReason,
+    related: ['Family', 'Duplicate', 'Thread'].reduce(
+      (sum, reason) => sum + Number(s.inclusionCounts?.[reason] ?? 0),
+      0,
+    ),
   };
 }
 

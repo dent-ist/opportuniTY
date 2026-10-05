@@ -5,7 +5,9 @@ import { SearchSortKey } from '../models/search-sort-key';
 export interface SavedSearchRequest {
   columns?: Array<string> | null;
   folderId?: string | null;
+  includeDuplicates?: boolean | null;
   includeFamily?: boolean | null;
+  includeThread?: boolean | null;
   name: string | null;
   query?: string | null;
   sort?: Array<SearchSortKey> | null;

@@ -44,6 +44,14 @@ const SOURCES: Readonly<Record<string, ColumnSource>> = {
     sortField: 'documentDate',
     width: '13rem',
   },
+  familydate: {
+    // "Date (Family)" (ADR-009 R25, E09-T03): sorting by it keeps families together, parent first.
+    label: 'Family Date',
+    format: 'date',
+    value: (h) => (h.familyDate as string | null | undefined) ?? null,
+    sortField: 'familyDate',
+    width: '13rem',
+  },
   filename: {
     label: 'File Name',
     format: 'text',
@@ -89,7 +97,15 @@ const SOURCES: Readonly<Record<string, ColumnSource>> = {
 };
 
 /** Default View, in order (familiarity guide §3.1: Control Number pinned first, then the View columns). */
-const DEFAULT_VIEW = ['date', 'filename', 'filetype', 'extension', 'filesize', 'pagecount'];
+const DEFAULT_VIEW = [
+  'date',
+  'familydate',
+  'filename',
+  'filetype',
+  'extension',
+  'filesize',
+  'pagecount',
+];
 
 export const CONTROL_NUMBER = column('controlnumber', SOURCES['controlnumber'], true);
 
