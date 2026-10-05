@@ -28,7 +28,7 @@ using Opportunity.IntegrationTests.Documents;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.Jobs;
 #if OPPORTUNITY_FAILPOINTS
-using Opportunity.Jobs.Faults;
+using Opportunity.Application.Faults;
 #endif
 using Opportunity.Storage;
 using Opportunity.Storage.FileSystem;

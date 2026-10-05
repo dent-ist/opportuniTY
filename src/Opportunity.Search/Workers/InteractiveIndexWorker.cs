@@ -2,6 +2,9 @@ using System.Diagnostics.Metrics;
 
 using Microsoft.Extensions.Logging;
 
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Messaging;
 using Opportunity.Application.SearchWork;
 using Opportunity.Application.Telemetry;
@@ -64,7 +67,11 @@ public sealed partial class InteractiveIndexWorker(
     InteractiveIndexWorkerOptions options,
     TimeProvider time,
     ILogger<InteractiveIndexWorker> logger,
-    OpportunityMetrics? metrics = null) : IMessageHandler<SearchOutboxMessage>
+    OpportunityMetrics? metrics = null
+#if OPPORTUNITY_FAILPOINTS
+    , IFaultInjector? faults = null
+#endif
+    ) : IMessageHandler<SearchOutboxMessage>
 {
     private readonly Counter<long>? _staleRejections = metrics?.Counter(OpportunityMetricCatalog.SearchStaleVersionRejections);
 
@@ -109,7 +116,13 @@ public sealed partial class InteractiveIndexWorker(
                 continue;
             }
 
+#if OPPORTUNITY_FAILPOINTS
+            await HitAsync(Failpoints.OutboxBeforeBulk, message, workspaceId, row.OutboxId, read, cancellationToken).ConfigureAwait(false);
+#endif
             result = (await writer.WriteAsync(workspaceId, documents, cancellationToken).ConfigureAwait(false)).Documents.Single();
+#if OPPORTUNITY_FAILPOINTS
+            await HitAsync(Failpoints.OutboxAfterBulk, message, workspaceId, row.OutboxId, read, cancellationToken).ConfigureAwait(false);
+#endif
         }
 
         if (result is null)
@@ -144,6 +157,16 @@ public sealed partial class InteractiveIndexWorker(
                 break;
         }
     }
+
+#if OPPORTUNITY_FAILPOINTS
+    private ValueTask HitAsync(string failpoint, ReceivedMessage message, Guid workspaceId, long outboxId, int sequence, CancellationToken cancellationToken) =>
+        faults?.HitAsync(failpoint, new FailpointContext(message, null)
+        {
+            WorkspaceId = workspaceId,
+            Subject = outboxId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Sequence = sequence,
+        }, cancellationToken) ?? ValueTask.CompletedTask;
+#endif
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "SearchOutbox row {OutboxId} of workspace {WorkspaceId} does not exist; message dropped")]
     private static partial void LogUnknownRow(ILogger logger, long outboxId, Guid workspaceId);

@@ -26,7 +26,7 @@ using Opportunity.IntegrationTests.Import;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.Jobs;
 #if OPPORTUNITY_FAILPOINTS
-using Opportunity.Jobs.Faults;
+using Opportunity.Application.Faults;
 #endif
 using Opportunity.Production.Exports;
 using Opportunity.Security.Authorization;

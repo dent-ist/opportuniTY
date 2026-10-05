@@ -156,6 +156,8 @@ coding→searchable probe (samples, poll interval, probe traffic share, HDR late
 shadow-ledger counters (`staleOverwrites`, `versionRegressions`, `missingDocs`, `valueMismatches`), security
 (`unauthorizedRetrievals`) and idempotency (`trials`, `idempotentTrials`, ratio); `not-run` is explicit and counts as
 unproven. A complete example is `tools/Opportunity.Benchmarks/schema/examples/bundle.example.json` (synthetic numbers).
+The shadow-ledger oracle (E17-T07) writes `verdict.json` (`shadow-ledger-verdict.v1.schema.json`); its `shadowLedger`
+object is copied into `oracles.shadowLedger` unchanged (see [fault-injection.md](../testing/fault-injection.md)).
 
 ### 5.1 Completeness rules (`opportunity-bench validate`)
 
@@ -232,6 +234,10 @@ dotnet run --project tools/Opportunity.Benchmarks -- publish  --bundle artifacts
 dotnet run --project tools/Opportunity.Benchmarks -- gates
 dotnet run --project tools/Opportunity.Benchmarks -- schema --name result-bundle
 
+# shadow-ledger oracle (E17-T07): sample during a run, reconcile after quiescence, write verdict.json (exit 1 on any counter > 0)
+dotnet run --project tools/Opportunity.Benchmarks -- ledger --postgres env:PG --opensearch http://127.0.0.1:9200 \
+  --workspace <id> --index <alias> [--routing <workspace id>] --sample-for 00:10:00 --scope touched --out artifacts/bench/<runId>/verdict.json
+
 # workloads (E17-T04, query-taxonomy.md §7)
 dotnet run --project tools/Opportunity.Benchmarks -- queries --corpus-manifest <corpus>/corpus-manifest.json --seed 42 --out queries.json
 QUERIES=queries.json tools/Opportunity.Benchmarks/k6/run.sh mixed.js artifacts/bench/<k6-run>
@@ -243,8 +249,8 @@ dotnet run --project tools/Opportunity.Benchmarks -- stub-api --queries queries.
 
 ## 9. Not in this ticket
 
-- Filling the remaining scenario data: coding→searchable probe and index-lag series (E17-T06), shadow-ledger oracle
-  (E17-T07), gate evaluator and report (E17-T08). They write bundles through `BundleWriter`, which already enforces
+- Filling the remaining scenario data: coding→searchable probe and index-lag series (E17-T06), gate evaluator and
+  report (E17-T08). The shadow-ledger oracle (E17-T07) exists (`ledger`, above). They write bundles through `BundleWriter`, which already enforces
   §5.1. The k6 workloads and `ingest-k6` (E17-T04) are described in [query-taxonomy.md](query-taxonomy.md).
 - Cloud IaC (e.g. Terraform for the shapes in §3.2) waits for a sponsor (Q-03); the Compose definition is the
   reference until then.

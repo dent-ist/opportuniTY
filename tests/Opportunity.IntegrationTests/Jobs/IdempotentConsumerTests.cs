@@ -7,7 +7,7 @@ using Opportunity.Contracts.Messaging.Jobs;
 using Opportunity.Core.Jobs;
 using Opportunity.IntegrationTests.Migrations;
 #if OPPORTUNITY_FAILPOINTS
-using Opportunity.Jobs.Faults;
+using Opportunity.Application.Faults;
 #endif
 
 namespace Opportunity.IntegrationTests.Jobs;
@@ -116,7 +116,7 @@ public sealed class IdempotentConsumerTests(MigrationPostgresFixture postgres)
 
         public ValueTask HitAsync(string failpoint, FailpointContext context, CancellationToken cancellationToken)
         {
-            var chunkId = ((JobChunkMessage)context.Message.Payload).ChunkId;
+            var chunkId = ((JobChunkMessage)context.Message!.Payload).ChunkId;
             var crashes = _perChunk.GetValueOrDefault(chunkId);
             if (crashes < maxPerChunk && random.NextDouble() < probability)
             {

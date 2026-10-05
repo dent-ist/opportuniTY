@@ -123,6 +123,9 @@ jobs:
       # Covers L4 and the L7 cross-workspace suite (E05-T05) under IntegrationTests/Security.
       # Split into a separate required job (or shard) if this exceeds the T1 budget.
       - name: Integration tests
+        # Includes the one-trial PR subset of the fault matrix (E18-T01); each trial's verdict.json lands in the artifact.
+        env:
+          OPPORTUNITY_ORACLE_RESULTS: ${{ github.workspace }}/TestResults/integration/oracles
         run: >-
           dotnet test --project tests/Opportunity.IntegrationTests -c "$CONFIGURATION" --no-build
           --results-directory TestResults/integration

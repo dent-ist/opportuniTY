@@ -16,7 +16,7 @@ using Opportunity.IntegrationTests.Jobs;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.Jobs;
 #if OPPORTUNITY_FAILPOINTS
-using Opportunity.Jobs.Faults;
+using Opportunity.Application.Faults;
 #endif
 using Opportunity.Messaging;
 using Opportunity.Testing.RabbitMq;
@@ -200,7 +200,7 @@ public sealed class JobChunkConsumerTransportTests(RabbitMqFixture fixture, Migr
         var redelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var observeB = new Hook((failpoint, context) =>
         {
-            if (failpoint == Failpoints.BeforeClaim && context.Message.Redelivered)
+            if (failpoint == Failpoints.BeforeClaim && context.Message!.Redelivered)
             {
                 redelivered.TrySetResult();
             }

@@ -62,6 +62,8 @@ public class OpenSearchFixture : DependencyFixture
         response.EnsureSuccessStatusCode();
     }
 
+    protected override IContainer DependencyContainer => _container;
+
     protected override Task StartDependencyAsync() => _container.StartAsync();
 
     protected override async ValueTask StopDependencyAsync()

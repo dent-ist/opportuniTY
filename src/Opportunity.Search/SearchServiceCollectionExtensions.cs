@@ -4,6 +4,9 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Bootstrap;
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Fields;
 using Opportunity.Application.Search;
 using Opportunity.Application.Search.Indexing;
@@ -115,7 +118,11 @@ public static class SearchServiceCollectionExtensions
         AddOpenSearchServices(services, null);
         AddIndexManagement(services);
         services.TryAddSingleton<IProjectionIndexWriter>(sp => new ProjectionIndexWriter(
-            sp.GetRequiredService<IIndexManager>(), sp.GetRequiredService<OpenSearchConnection>(), sp.GetRequiredService<ProjectionWriterOptions>()));
+            sp.GetRequiredService<IIndexManager>(), sp.GetRequiredService<OpenSearchConnection>(), sp.GetRequiredService<ProjectionWriterOptions>()
+#if OPPORTUNITY_FAILPOINTS
+            , sp.GetService<IFaultInjector>()
+#endif
+            ));
         return services;
     }
 

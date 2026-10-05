@@ -1,3 +1,6 @@
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Messaging;
 using Opportunity.Application.Telemetry;
 using Opportunity.Contracts.Messaging.Jobs;
@@ -26,7 +29,11 @@ public sealed class JobChunkRelayOptions
 /// inbox, so a duplicate is acked and dropped (ADR-010 §5.3).
 /// </summary>
 public sealed class JobChunkRelay(
-    IJobChunkDispatchRepository chunks, IMessagePublisher publisher, JobChunkRelayOptions options, DispatchMetrics? metrics = null)
+    IJobChunkDispatchRepository chunks, IMessagePublisher publisher, JobChunkRelayOptions options, DispatchMetrics? metrics = null
+#if OPPORTUNITY_FAILPOINTS
+    , IFaultInjector? faults = null
+#endif
+    )
 {
     /// <summary>Operation kinds that have a work queue today; others wait for the epic that adds their worker.</summary>
     public static IReadOnlyCollection<ChunkOperationKind> DispatchedOperations { get; } =
@@ -46,6 +53,14 @@ public sealed class JobChunkRelay(
         var unconfirmed = claimed.Where((_, i) => !outcomes[i]).Select(c => c.ChunkId).ToList();
         if (confirmed.Count > 0)
         {
+#if OPPORTUNITY_FAILPOINTS
+            if (faults is not null)
+            {
+                await faults.HitAsync(Failpoints.RelayAfterPublish, new FailpointContext(null, null) { WorkspaceId = workspaceId, Subject = "job-chunks" },
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+#endif
             await chunks.MarkDispatchedAsync(workspaceId, options.Owner, confirmed, cancellationToken).ConfigureAwait(false);
         }
 

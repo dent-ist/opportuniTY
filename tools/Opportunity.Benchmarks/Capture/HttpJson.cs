@@ -28,6 +28,26 @@ internal sealed class HttpJson : IDisposable
         }
     }
 
+    /// <summary>A plain client for <paramref name="endpoint"/> (credentials in the URL become a Basic header).</summary>
+    public static HttpClient CreateClient(Uri endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        var builder = new UriBuilder(endpoint) { UserName = string.Empty, Password = string.Empty };
+        if (!builder.Path.EndsWith('/'))
+        {
+            builder.Path += "/";
+        }
+
+        var client = new HttpClient { BaseAddress = builder.Uri, Timeout = TimeSpan.FromSeconds(60) };
+        if (!string.IsNullOrEmpty(endpoint.UserInfo))
+        {
+            string credentials = Uri.UnescapeDataString(endpoint.UserInfo);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials)));
+        }
+
+        return client;
+    }
+
     /// <summary>The endpoint without credentials; safe to record.</summary>
     public Uri BaseAddress { get; }
 

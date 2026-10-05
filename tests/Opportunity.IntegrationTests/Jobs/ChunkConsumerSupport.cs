@@ -12,7 +12,7 @@ using Opportunity.Contracts.Messaging.Jobs;
 using Opportunity.Core.Jobs;
 using Opportunity.Jobs;
 #if OPPORTUNITY_FAILPOINTS
-using Opportunity.Jobs.Faults;
+using Opportunity.Application.Faults;
 #endif
 
 namespace Opportunity.IntegrationTests.Jobs;

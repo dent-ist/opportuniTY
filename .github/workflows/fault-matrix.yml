@@ -1,0 +1,139 @@
+# Fault-injection idempotency matrix (E18-T01, test-strategy L6, tier T2) with the shadow-ledger oracle (E17-T07):
+# every fault type × failpoint × workload cell of tests/Opportunity.IntegrationTests/Faults, five seeded trials per cell,
+# against real PostgreSQL, OpenSearch and RabbitMQ (Testcontainers, each behind Toxiproxy). Pull requests run a
+# one-trial subset inside the CI integration job; this workflow is the nightly full run and the on-demand run per
+# ADR-004 candidate. It is not part of ci-gate. Each trial's verdict.json and a matrix.jsonl line (seed, replay command)
+# are uploaded; the summary reports "Idempotent %" (§26: must be 100%). See docs/testing/fault-injection.md.
+name: Fault matrix
+
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+    inputs:
+      trials:
+        description: Seeded trials per cell (nightly 5).
+        default: '5'
+      candidate:
+        description: ADR-004 candidate judged by the oracle (only the interim A-interim exists, Q-70).
+        default: A-interim
+      base_seed:
+        description: Base seed (trial seeds derive from it and the cell); empty = the fixed default.
+        default: ''
+      faults:
+        description: JSON list of fault types to run (one parallel job each); default every fault type.
+        default: '["Crash","DuplicateDelivery","RedeliveryAfterAckTimeout","OutOfOrderDelivery","OpenSearch429","OpenSearch503","OpenSearchPartialBulk","OpenSearchPartition","OpenSearchPause","PostgresPartition","PostgresRestart","RabbitMqPartition","RabbitMqRestart"]'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  CONFIGURATION: Release
+
+jobs:
+  matrix:
+    name: Fault matrix (${{ matrix.fault }})
+    runs-on: ubuntu-latest
+    # test-strategy §2 L6: nightly full matrix <= 75 min wall clock, so the cells are sharded by fault type.
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        fault: ${{ fromJSON(inputs.faults || '["Crash","DuplicateDelivery","RedeliveryAfterAckTimeout","OutOfOrderDelivery","OpenSearch429","OpenSearch503","OpenSearchPartialBulk","OpenSearchPartition","OpenSearchPause","PostgresPartition","PostgresRestart","RabbitMqPartition","RabbitMqRestart"]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Raise vm.max_map_count for OpenSearch
+        run: sudo sysctl -w vm.max_map_count=262144
+      # Test builds compile the IFaultInjector failpoints in (Directory.Build.props); release images never do.
+      - name: Build integration tests
+        run: dotnet build tests/Opportunity.IntegrationTests -c "$CONFIGURATION" -warnaserror
+      - name: Fault matrix and shadow-ledger oracle
+        env:
+          OPPORTUNITY_FAULT_MATRIX: full
+          OPPORTUNITY_FAULT_TRIALS: ${{ inputs.trials || '5' }}
+          OPPORTUNITY_FAULT_CANDIDATE: ${{ inputs.candidate || 'A-interim' }}
+          OPPORTUNITY_FAULT_BASE_SEED: ${{ inputs.base_seed }}
+          OPPORTUNITY_FAULT_CELLS: ${{ matrix.fault }}@
+          OPPORTUNITY_ORACLE_RESULTS: ${{ github.workspace }}/TestResults/fault-matrix
+        run: >-
+          dotnet test --project tests/Opportunity.IntegrationTests -c "$CONFIGURATION" --no-build
+          --results-directory TestResults/fault-matrix
+          --report-xunit-trx --report-xunit-trx-filename fault-matrix.trx
+          --report-xunit-markdown --report-xunit-markdown-filename fault-matrix.md
+          --
+          --filter-trait "Category=FaultMatrix"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: fault-matrix-${{ inputs.candidate || 'A-interim' }}-${{ matrix.fault }}
+          path: TestResults/fault-matrix/
+          if-no-files-found: warn
+          retention-days: 30
+
+  summary:
+    name: Fault matrix summary (Idempotent %)
+    if: ${{ !cancelled() }}
+    needs: [matrix]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: fault-matrix-*
+          path: shards
+      - name: Merge the shards
+        run: |
+          mkdir -p TestResults/fault-matrix
+          cat shards/*/matrix.jsonl > TestResults/fault-matrix/matrix.jsonl 2>/dev/null || true
+      - name: Idempotent % and oracle counters
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          path = pathlib.Path("TestResults/fault-matrix/matrix.jsonl")
+          rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()] if path.exists() else []
+          passed = sum(1 for r in rows if r["passed"])
+          ledger = [r["shadowLedger"] for r in rows if r.get("shadowLedger")]
+          oracles = {
+              "idempotency": {"status": "passed" if rows and passed == len(rows) else "failed", "trials": len(rows),
+                              "idempotentTrials": passed, "idempotentRatio": round(passed / len(rows), 6) if rows else 0},
+              "security": {"status": "passed" if rows and all(r["unauthorizedRetrievals"] == 0 for r in rows) else "failed",
+                           "checks": sum(r["securityChecks"] for r in rows),
+                           "unauthorizedRetrievals": sum(r["unauthorizedRetrievals"] for r in rows)},
+              "shadowLedger": {"status": "passed" if ledger and all(l["status"] == "passed" for l in ledger) else "failed",
+                               **{k: sum(l[k] or 0 for l in ledger) for k in ["touchedDocs", "staleOverwrites", "versionRegressions",
+                                                                            "missingDocs", "valueMismatches", "versionConflictRejections"]}},
+          }
+          pathlib.Path("TestResults/fault-matrix/oracles.json").write_text(json.dumps(oracles, indent=2))
+          print("## Fault matrix")
+          print(f"Idempotent %: **{100 * passed / len(rows):.2f}%** ({passed}/{len(rows)} trials)" if rows else "No trial ran.")
+          print("\n```json\n" + json.dumps(oracles, indent=2) + "\n```")
+          for r in rows:
+              if not r["passed"]:
+                  print(f"- FAIL {r['fault']}@{r['failpoint']}/{r['workload']} seed {r['seed']}: {'; '.join(r['failures'])}\n  replay: `{r['replay']}`")
+          EOF
+      - name: Fail unless every trial was idempotent
+        run: python3 -c "import json; d=json.load(open('TestResults/fault-matrix/oracles.json')); raise SystemExit(0 if d['idempotency']['status'] == 'passed' and d['security']['status'] == 'passed' and d['shadowLedger']['status'] == 'passed' else 1)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fault-matrix-summary-${{ inputs.candidate || 'A-interim' }}
+          path: TestResults/fault-matrix/
+          retention-days: 30

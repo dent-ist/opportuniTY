@@ -6,7 +6,7 @@ using AwesomeAssertions;
 namespace Opportunity.ArchitectureTests;
 
 /// <summary>
-/// E06-T05: <c>IFaultInjector</c> failpoints are compiled into test builds only. Release artifacts are produced by
+/// E06-T05: <c>IFaultInjector</c> failpoints (and the E17-T07 unversioned-write switch) are compiled into test builds only. Release artifacts are produced by
 /// <c>dotnet publish -c Release</c> (deploy/docker/dotnet.Dockerfile), for which Directory.Build.props leaves
 /// <c>OPPORTUNITY_FAILPOINTS</c> undefined; every mention of the failpoint API in production code must sit inside
 /// <c>#if OPPORTUNITY_FAILPOINTS</c>, so a release build contains neither the hooks nor their call sites.
@@ -35,14 +35,14 @@ public partial class FailpointBuildTests
     [Fact]
     public void This_test_build_contains_the_failpoint_hooks()
     {
-        typeof(Jobs.AssemblyMarker).Assembly.GetType("Opportunity.Jobs.Faults.IFaultInjector").Should().NotBeNull();
+        typeof(Application.AssemblyMarker).Assembly.GetType("Opportunity.Application.Faults.IFaultInjector").Should().NotBeNull();
     }
 #else
     [Fact]
     public void This_build_contains_no_failpoint_hooks()
     {
-        typeof(Jobs.AssemblyMarker).Assembly.GetTypes()
-            .Where(t => t.Namespace == "Opportunity.Jobs.Faults").Should().BeEmpty();
+        typeof(Application.AssemblyMarker).Assembly.GetTypes()
+            .Where(t => t.Namespace == "Opportunity.Application.Faults").Should().BeEmpty();
     }
 #endif
 
@@ -109,7 +109,7 @@ public partial class FailpointBuildTests
         return (await output).Trim();
     }
 
-    [GeneratedRegex(@"\b(IFaultInjector|FailpointContext|Failpoints\.|SimulatedCrashException|Opportunity\.Jobs\.Faults)\b", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\b(IFaultInjector|FailpointContext|Failpoints\.|FaultFlags\.|SimulatedCrashException|Opportunity\.Application\.Faults)\b", RegexOptions.CultureInvariant)]
     private static partial Regex FailpointApi();
 
     private static string FindRepositoryRoot()
