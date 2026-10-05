@@ -251,6 +251,7 @@ describe('Jobs section (E06-T07)', () => {
     await go('/w/ws-1/jobs/job-2');
     expect(text()).toContain('Failed chunks');
     expect(text()).toContain('chunk-10');
+    expect(text()).toContain('Dead-lettered message');
     expect(text()).toContain('Object storage did not answer in time.');
     expect(button('Retry failed chunks')).toBeUndefined();
     expect(text()).toContain('A workspace admin can retry failed chunks.');

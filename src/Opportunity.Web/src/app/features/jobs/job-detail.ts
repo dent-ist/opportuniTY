@@ -20,6 +20,7 @@ import {
   countText,
   etaText,
   failedChunks,
+  failureKindLabel,
   fraction,
   isFinished,
   isSettled,
@@ -90,6 +91,7 @@ export class JobDetail {
   protected readonly job = signal<Job | null>(null);
   protected readonly error = signal<ApiError | null>(null);
   protected readonly failures = signal<readonly JobFailure[]>([]);
+  protected readonly kindLabel = failureKindLabel;
   protected readonly failuresCursor = signal<string | null>(null);
   protected readonly failuresError = signal<ApiError | null>(null);
   protected readonly retrying = signal(false);

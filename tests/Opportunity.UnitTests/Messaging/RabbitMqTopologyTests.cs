@@ -53,6 +53,24 @@ public sealed class RabbitMqTopologyTests
         dlq.Arguments["x-max-length"].Should().Be(100_000L);
         dlq.Arguments["x-message-ttl"].Should().Be((long)TimeSpan.FromDays(14).TotalMilliseconds);
         Topology.Bindings.Should().Contain(new BindingDefinition($"{queue.Area}.dlx", $"{name}.dlq", name));
+        Topology.Bindings.Should().Contain(new BindingDefinition($"{queue.Area}.dlx", RabbitMqTopology.DeadLetterRecordQueue, name),
+            "the recorder gets its own copy; the DLQ keeps the diagnostic one");
+    }
+
+    [Fact]
+    public void Dead_letter_recorder_queue_receives_every_dead_lettered_and_parked_message()
+    {
+        var queue = Topology.Queues.Single(q => q.Name == "opportunity.dead-letter.record");
+        queue.Arguments["x-max-length"].Should().Be(100_000L);
+        queue.Arguments["x-overflow"].Should().Be("drop-head", "a full recorder queue must never block dead-lettering");
+        queue.Arguments.Should().NotContainKey("x-dead-letter-exchange");
+        foreach (var area in WorkQueues.All.Select(q => q.Area).Distinct())
+        {
+            Topology.Bindings.Should().Contain(new BindingDefinition($"{area}.dlx", queue.Name, RabbitMqTopology.ParkingRoutingKey));
+        }
+
+        Topology.Bindings.Count(b => b.Queue == queue.Name).Should().Be(
+            WorkQueues.All.Count + WorkQueues.All.Select(q => q.Area).Distinct().Count());
     }
 
     [Fact]
@@ -101,13 +119,16 @@ public sealed class RabbitMqTopologyTests
         Regex.IsMatch("index.bulk", index.Read).Should().BeTrue();
         Regex.IsMatch("index.security", index.Read).Should().BeTrue();
         Regex.IsMatch("import.chunks", index.Read).Should().BeFalse();
-        Regex.IsMatch("index.bulk.dlq", index.Read).Should().BeFalse("DLQs are read by the dead-letter recorder only");
+        Regex.IsMatch("index.bulk.dlq", index.Read).Should().BeFalse("workers never read DLQs");
         Regex.IsMatch("index.retry", index.Write).Should().BeTrue();
         Regex.IsMatch("index.dlx", index.Write).Should().BeTrue();
         Regex.IsMatch(RabbitMqTopology.WorkExchange, index.Write).Should().BeFalse("only the dispatcher publishes work");
         Regex.IsMatch("import.retry", index.Write).Should().BeFalse();
         Regex.IsMatch(RabbitMqTopology.WorkExchange, RabbitMqPermissions.Dispatcher.Write).Should().BeTrue();
         Regex.IsMatch("index.bulk", RabbitMqPermissions.Dispatcher.Read).Should().BeFalse();
+        Regex.IsMatch("index.bulk.dlq", RabbitMqPermissions.Dispatcher.Read).Should().BeFalse("the DLQ copies stay for diagnostics");
+        Regex.IsMatch(RabbitMqTopology.DeadLetterRecordQueue, RabbitMqPermissions.Dispatcher.Read).Should().BeTrue("the dispatcher runs the recorder");
+        Regex.IsMatch(RabbitMqTopology.DeadLetterRecordQueue, index.Read).Should().BeFalse();
     }
 
     public static TheoryData<string> QueueNames() => new(WorkQueues.All.Select(q => q.Name));

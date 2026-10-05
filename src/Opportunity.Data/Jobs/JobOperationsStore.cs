@@ -161,7 +161,17 @@ public sealed class JobOperationsStore(NpgsqlDataSource dataSource) : IJobOperat
                 UNION ALL
                 SELECT 1, t.task_id::text, t.attempt_count::bigint, t.last_error, t.updated_at
                 FROM opportunity.index_chunk_task t
-                WHERE t.workspace_id = @ws AND t.job_id = @job AND t.status = 6) f
+                WHERE t.workspace_id = @ws AND t.job_id = @job AND t.status = 6
+                UNION ALL
+                SELECT 3, d.message_id, d.death_count::bigint,
+                       d.queue || ': ' || d.death_reason || coalesce(' — ' || d.error, ''), d.recorded_at
+                FROM opportunity.dead_letter d
+                WHERE d.workspace_id = @ws AND d.job_id = @job
+                  AND (d.subject_id IS NULL
+                       OR EXISTS (SELECT FROM opportunity.job_chunk c
+                                   WHERE c.workspace_id = @ws AND c.job_id = @job AND c.chunk_id = d.subject_id AND c.status = 6)
+                       OR EXISTS (SELECT FROM opportunity.index_chunk_task t
+                                   WHERE t.workspace_id = @ws AND t.job_id = @job AND t.task_id = d.subject_id AND t.status = 6))) f
             WHERE @after_at::timestamptz IS NULL OR (failed_at, kind, id) > (@after_at, @after_kind, @after_id)
             ORDER BY failed_at, kind, id
             LIMIT @limit

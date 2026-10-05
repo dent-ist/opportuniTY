@@ -37,6 +37,7 @@ internal sealed partial class RabbitMqQueueMetrics : BackgroundService
             .. WorkQueues.All.Select(q => (q.Name, "ready", true)),
             .. WorkQueues.All.Select(q => (RabbitMqTopology.DeadLetterQueue(q), "dlq", false)),
             .. WorkQueues.All.Select(q => q.Area).Distinct(StringComparer.Ordinal).Select(a => (RabbitMqTopology.ParkingQueue(a), "parking", false)),
+            (RabbitMqTopology.DeadLetterRecordQueue, "ready", true),
         ];
         metrics.Gauge(OpportunityMetricCatalog.QueueDepth, () => _depths);
         metrics.Gauge(OpportunityMetricCatalog.QueueConsumers, () => _consumers);

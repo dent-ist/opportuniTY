@@ -156,7 +156,7 @@
             <tbody>
               @for (f of failures(); track f.kind + f.id) {
                 <tr>
-                  <td class="jobs__nowrap">{{ f.kind }}</td>
+                  <td class="jobs__nowrap">{{ kindLabel(f.kind) }}</td>
                   <td class="jobs__nowrap">
                     <code>{{ f.id }}</code>
                   </td>

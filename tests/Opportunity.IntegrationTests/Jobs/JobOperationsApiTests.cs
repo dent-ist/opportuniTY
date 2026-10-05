@@ -10,8 +10,10 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 using Opportunity.Application.Jobs;
+using Opportunity.Application.Messaging;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.Security;
+using Opportunity.Data.Messaging;
 using Opportunity.Hosting.Operations;
 using Opportunity.IntegrationTests.Api;
 using Opportunity.IntegrationTests.Coding;
@@ -169,11 +171,17 @@ public sealed class JobOperationsApiTests(MigrationPostgresFixture postgres)
         await w.Db.Chunks.CompleteAsync(committing.Lease, new ChunkCompletion { ItemsApplied = 100, IndexTasks = 1 }, Ct);
         var task = await w.InsertFailedIndexTaskAsync(jobId, committing.Lease.ChunkId);
         (await w.Db.JobAsync(w.Ws, jobId)).Status.Should().Be(JobStatus.CompletedWithErrors);
+        // The recorded broker copy of the failed chunk's message (ADR-010 §7.3) is listed while the chunk is failed.
+        (await new DeadLetterStore(w.Db.Core.AppDataSource).RecordAsync(new DeadLetterMessage(
+            "dl-1", "bulkcoding.chunks", "bulkcoding.dlx", "bulkcoding.chunks", w.Ws, jobId, failing.Lease.ChunkId, "jobs.chunk", "corr-1",
+            "delivery_limit", 5, null, null, null, "{}", "{}"u8.ToArray(), 2), Ct)).Should().Be(DeadLetterWriteOutcome.Workspace);
         using var client = w.Factory.CreateClient();
 
         var failures = await PageAsync(client, w.Reviewer, w.Url($"/jobs/{jobId}/failures"));
         failures.GetProperty("items").EnumerateArray().Select(f => (f.GetProperty("kind").GetString(), f.GetProperty("id").GetString()))
-            .Should().BeEquivalentTo([("chunk", failing.Lease.ChunkId.ToString()), ("indexTask", task.ToString())]);
+            .Should().BeEquivalentTo([("chunk", failing.Lease.ChunkId.ToString()), ("indexTask", task.ToString()), ("deadLetter", "dl-1")]);
+        failures.GetProperty("items").EnumerateArray().Single(f => f.GetProperty("kind").GetString() == "deadLetter")
+            .GetProperty("attempts").GetInt64().Should().Be(5);
         failures.GetProperty("items").EnumerateArray().Single(f => f.GetProperty("kind").GetString() == "chunk")
             .GetProperty("error").GetString().Should().Be("FieldMissing: Field 1005 was deleted.");
         var before = await JsonAsync(client, HttpMethod.Get, w.Url($"/jobs/{jobId}"), w.Reviewer, HttpStatusCode.OK);

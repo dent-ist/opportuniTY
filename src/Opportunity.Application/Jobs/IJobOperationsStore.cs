@@ -16,7 +16,10 @@ public interface IJobOperationsStore
     /// <summary>The job with its chunk breakdown, or null.</summary>
     Task<JobOperationsDetail?> GetDetailAsync(Guid workspaceId, Guid jobId, CancellationToken cancellationToken = default);
 
-    /// <summary>Failed chunks and failed index tasks of the job, oldest failure first (keyset on <paramref name="after"/>).</summary>
+    /// <summary>
+    /// Failed chunks and failed index tasks of the job, and its recorded dead-lettered messages whose chunk or task is
+    /// still failed (or that name none), oldest failure first (keyset on <paramref name="after"/>).
+    /// </summary>
     Task<IReadOnlyList<JobFailureRecord>> ListFailuresAsync(
         Guid workspaceId, Guid jobId, JobFailureRecord? after, int limit, CancellationToken cancellationToken = default);
 
@@ -85,9 +88,13 @@ public enum JobFailureSource
     Chunk,
     IndexTask,
     Outbox,
+
+    /// <summary>A broker message of the job that was dead-lettered or parked (recorded copy, ADR-010 §7.3).</summary>
+    DeadLetter,
 }
 
-/// <param name="Id">Chunk or task id, or the outbox id in invariant decimal.</param>
+/// <param name="Id">Chunk or task id, the outbox id in invariant decimal, or a dead-lettered message's id.</param>
+/// <param name="Attempts">Attempts, or for a dead-lettered message how often the broker dead-lettered it.</param>
 public sealed record JobFailureRecord(JobFailureSource Source, string Id, long Attempts, string? Error, DateTimeOffset FailedAt);
 
 public sealed record JobReplayOutcome(JobTransitionOutcome Outcome, int ChunksReplayed, int IndexTasksReplayed, JobStatus? Status);
