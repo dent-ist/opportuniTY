@@ -1,0 +1,87 @@
+<div class="grid__views" role="group" aria-label="View">
+  <label class="grid__view">
+    View
+    <select (change)="onSelect($event)">
+      <option value="" [selected]="!activeView()?.viewId">Default</option>
+      @if (sharedViews().length > 0) {
+        <optgroup label="Shared views">
+          @for (v of sharedViews(); track v.viewId) {
+            <option [value]="v.viewId" [selected]="v.viewId === activeView()?.viewId">
+              {{ v.name }}
+            </option>
+          }
+        </optgroup>
+      }
+      @if (myViews().length > 0) {
+        <optgroup label="My views">
+          @for (v of myViews(); track v.viewId) {
+            <option [value]="v.viewId" [selected]="v.viewId === activeView()?.viewId">
+              {{ v.name }}
+            </option>
+          }
+        </optgroup>
+      }
+    </select>
+  </label>
+  @if (modified()) {
+    <span class="grid__modified">Modified</span>
+  }
+  <button type="button" oppButton="ghost" (click)="columns.emit()">
+    <opp-icon name="columns" />Columns
+  </button>
+  <button type="button" oppButton="ghost" [cdkMenuTriggerFor]="viewMenu">
+    Views<opp-icon name="chevron-down" />
+  </button>
+</div>
+<ng-template #viewMenu>
+  <div cdkMenu class="opp-menu" aria-label="Views">
+    @if (activeView()?.canEdit && modified()) {
+      <button
+        type="button"
+        cdkMenuItem
+        class="opp-menu__item"
+        (cdkMenuItemTriggered)="saveChanges.emit()"
+      >
+        Save changes to “{{ name() }}”
+      </button>
+    }
+    <button
+      type="button"
+      cdkMenuItem
+      class="opp-menu__item"
+      (cdkMenuItemTriggered)="saveAs.emit('create')"
+    >
+      Save as new view…
+    </button>
+    @if (activeView()?.canEdit) {
+      <button
+        type="button"
+        cdkMenuItem
+        class="opp-menu__item"
+        (cdkMenuItemTriggered)="saveAs.emit('edit')"
+      >
+        Rename or share view…
+      </button>
+    }
+    @if (modified()) {
+      <button
+        type="button"
+        cdkMenuItem
+        class="opp-menu__item"
+        (cdkMenuItemTriggered)="reset.emit()"
+      >
+        Reset to “{{ name() }}”
+      </button>
+    }
+    @if (activeView()?.canEdit) {
+      <button
+        type="button"
+        cdkMenuItem
+        class="opp-menu__item"
+        (cdkMenuItemTriggered)="deleted.emit()"
+      >
+        Delete view
+      </button>
+    }
+  </div>
+</ng-template>

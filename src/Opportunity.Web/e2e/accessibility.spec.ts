@@ -137,6 +137,28 @@ for (const theme of THEMES) {
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
+    test('document list views: a shared view with a pinned coding column, the Columns dialog, the Views menu and Save view', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      const viewSelect = page.getByRole('combobox', { name: 'View', exact: true });
+      await viewSelect.selectOption({ label: 'First pass review' });
+      await expect(
+        page.locator('[role="columnheader"]', { hasText: 'Responsiveness' }),
+      ).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('button', { name: 'Columns', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Columns and sort' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Views', exact: true }).click();
+      await expect(page.getByRole('menu', { name: 'Views' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+      await page.getByRole('menuitem', { name: 'Save as new view…' }).click();
+      await expect(page.getByRole('dialog', { name: 'Save view' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
     test('keyboard shortcut dialogs open', async ({ page }, testInfo) => {
       await openPage(page, '/w/ws-1/documents');
       await page.locator('main#main').focus();

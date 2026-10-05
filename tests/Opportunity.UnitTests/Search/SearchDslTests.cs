@@ -128,9 +128,9 @@ public sealed class SearchDslTests
         IReadOnlyList<SortKey> keys = [SortKey.Resolve("documentDate", SearchSortDirection.Desc)!, SortKey.Resolve("relevance", SearchSortDirection.Desc)!];
 
         SearchDsl.Sort(keys, reverse: false).ToJsonString().Should().Be(
-            """[{"documentDate":{"order":"desc","missing":"_last"}},{"_score":{"order":"desc"}},{"documentId":{"order":"asc","missing":"_last"}}]""");
+            """[{"documentDate":{"order":"desc","missing":"_last"}},{"_score":{"order":"desc"}},{"controlNumberSort":{"order":"asc","missing":"_last"}},{"documentId":{"order":"asc","missing":"_last"}}]""");
         SearchDsl.Sort(keys, reverse: true).ToJsonString().Should().Be(
-            """[{"documentDate":{"order":"asc","missing":"_first"}},{"_score":{"order":"asc"}},{"documentId":{"order":"desc","missing":"_first"}}]""");
+            """[{"documentDate":{"order":"asc","missing":"_first"}},{"_score":{"order":"asc"}},{"controlNumberSort":{"order":"desc","missing":"_first"}},{"documentId":{"order":"desc","missing":"_first"}}]""");
         SortKey.Resolve("controlnumber", SearchSortDirection.Asc)!.Path.Should().Be("controlNumberSort");
         SortKey.Resolve("workspaceId", SearchSortDirection.Asc).Should().BeNull();
         SortKey.FromJson(SortKey.ToJson(keys)).Should().Equal(keys);

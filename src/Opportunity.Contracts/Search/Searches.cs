@@ -32,6 +32,11 @@ namespace Opportunity.Contracts.Search;
 /// are never added (Q-52). Null: no expansion, or a saved search's stored choice. Without a sort, an expanded search is
 /// sorted by <c>familyDate</c> so families stay together.
 /// </param>
+/// <param name="Fields">
+/// Field query names (<c>GET …/fields</c>) whose values every hit carries in <see cref="SearchHit.Fields"/>: the grid's
+/// metadata and coding columns (E16-T09). At most <see cref="SearchResultFields.MaxFields"/>; names that are unknown or
+/// have no search slot are ignored (a column of a deleted field shows nothing). Pages of the search carry the same fields.
+/// </param>
 public sealed record SearchRequest(
     string? Query,
     IReadOnlyList<SearchSortKey>? Sort = null,
@@ -42,7 +47,8 @@ public sealed record SearchRequest(
     Guid? SavedSearchId = null,
     Guid? SearchTermReportId = null,
     Guid? TermId = null,
-    SearchExpand? Expand = null);
+    SearchExpand? Expand = null,
+    IReadOnlyList<string>? Fields = null);
 
 /// <summary>
 /// Which related documents to add to a document set (E09-T03): used by searches, snapshots ("frozen sets", the targets of
@@ -71,7 +77,25 @@ public enum SearchExpandedBy
     Thread,
 }
 
-/// <param name="Field">A sortable field (<see cref="SearchSortFields"/>), case-insensitive.</param>
+/// <summary>Limits of <see cref="SearchRequest.Fields"/> and the values a hit carries for them.</summary>
+public static class SearchResultFields
+{
+    public const int MaxFields = 100;
+
+    /// <summary>Longest field query name accepted.</summary>
+    public const int MaxNameLength = 200;
+
+    /// <summary>Values of a multi-valued field returned per hit; the rest are left out.</summary>
+    public const int MaxValuesPerField = 50;
+
+    /// <summary>Characters of one value returned (long text is cut, never returned whole).</summary>
+    public const int MaxValueLength = 1000;
+}
+
+/// <param name="Field">
+/// A sortable field, case-insensitive: one of <see cref="SearchSortFields.All"/>, or the query name of a workspace field
+/// whose capabilities include <c>sortable</c> (<c>GET …/fields</c>; ADR-007 R8: choice and user fields are not sortable).
+/// </param>
 public sealed record SearchSortKey(string Field, SearchSortDirection Direction = SearchSortDirection.Asc);
 
 public enum SearchSortDirection
@@ -80,7 +104,11 @@ public enum SearchSortDirection
     Desc,
 }
 
-/// <summary>Sortable fields of the first slice; the planner (E07-T07) adds workspace fields.</summary>
+/// <summary>
+/// Sort fields with fixed names. Workspace fields with the <c>sortable</c> capability sort by query name too. Every
+/// sort ends with Control Number ascending (unless it already sorts by it) and then the document ID, so equal values
+/// always come back in the same order and paging is deterministic (E16-T09).
+/// </summary>
 public static class SearchSortFields
 {
     public const string Relevance = "relevance";
@@ -90,6 +118,9 @@ public static class SearchSortFields
     /// contiguous and the parent comes first.
     /// </summary>
     public const string FamilyDate = "familyDate";
+
+    /// <summary>The deterministic tie-breaker appended to every sort.</summary>
+    public const string TieBreaker = "controlNumber";
 
     public static IReadOnlyList<string> All { get; } =
         [Relevance, "controlNumber", "documentDate", "fileName", "fileType", "fileExtension", "fileSize", "pageCount", "dateSent", "dateReceived", FamilyDate];
@@ -226,6 +257,11 @@ public sealed record SearchFreshnessStatus(
 /// In an expanded search: why the row was added (family, duplicate or thread); null for a row that matches the query.
 /// </param>
 /// <param name="FamilyDate">"Date (Family)": the family's date (ADR-009 R25), shared by every member.</param>
+/// <param name="Fields">
+/// Values of the fields the search asked for (<see cref="SearchRequest.Fields"/>) by query name, as strings: dates as
+/// ISO 8601, numbers and booleans invariant, choices as choice IDs, users as user IDs. A field without a value is absent.
+/// Null when the search asked for no fields.
+/// </param>
 public sealed record SearchHit(
     Guid DocumentId,
     string ControlNumber,
@@ -242,7 +278,8 @@ public sealed record SearchHit(
     IReadOnlyList<SearchSnippet> Snippets,
     bool IsFamilyParent = false,
     SearchExpandedBy? ExpandedBy = null,
-    DateTimeOffset? FamilyDate = null);
+    DateTimeOffset? FamilyDate = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Fields = null);
 
 /// <summary>A snippet as plain text with the matched ranges (UTF-16 offsets), so clients never render markup from the index.</summary>
 public sealed record SearchSnippet(string Text, IReadOnlyList<TextSpan> Highlights);

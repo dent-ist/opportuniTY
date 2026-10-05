@@ -1,0 +1,29 @@
+:host {
+  display: contents;
+}
+
+.grid__views {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+
+.grid__view select {
+  margin-inline-start: var(--opp-space-1);
+  max-inline-size: 16rem;
+  min-block-size: var(--opp-target-min);
+  font: inherit;
+  color: var(--opp-color-text);
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+}
+
+.grid__modified {
+  padding: 0 var(--opp-space-2);
+  border-radius: var(--opp-radius-pill);
+  background: var(--opp-color-surface-sunken);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+}

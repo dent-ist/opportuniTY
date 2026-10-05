@@ -10,7 +10,12 @@
    `search_after` and the `documentId` tie-breaker, `track_total_hits` capped at 10,000 (Q-32), bounded snippets.
    Without an explicit sort, a query with a keyword (an unfielded term, phrase, wildcard or proximity outside a NOT)
    sorts by relevance and any other query (empty, filters only) by Control Number ascending (`SortKey.DefaultFor`); an
-   explicit sort always wins.
+   explicit sort always wins. Sort keys are the fixed `SearchSortFields` or the query name of any workspace field with
+   the `sortable` capability (`SearchColumns.SortKeyFor`: text on its `.kw` companion, keyword on its natural-sort
+   key; choice and user fields never), stored with their resolved path in `search_session.sort_keys`. Every sort ends
+   with `controlNumberSort` ascending (unless already sorted by it) and then `documentId`, so ties page deterministically
+   (E16-T09). `SearchRequest.Fields` names the fields whose values each hit carries in `SearchHit.Fields` (strings,
+   bounded); they are resolved once and kept in `search_session.result_fields` for later pages.
 5. **Post-filter** the page: `AuthorizeManyAsync(Document.View, DenialAudit.Summary)` against PostgreSQL (Q-12, Q-59).
    Then one size-0 aggregation on the same reader and outer filter marks family parents (`SearchHit.IsFamilyParent`:
    top-level documents of the page whose family has members with `familySequence >= 1`).

@@ -30,6 +30,7 @@ internal static class ProtectedOperation
     public const string Search = "Search hits, counts, facets, handles and cursors";
     public const string SavedSearch = "Saved searches and their folders";
     public const string TermReport = "Search term reports (counts, export, term hit sets)";
+    public const string GridView = "Document-list views and layouts";
     public const string Snapshot = "Frozen sets (snapshots)";
     public const string Import = "Import jobs, reports and profiles";
     public const string Job = "Job status";
@@ -144,6 +145,22 @@ internal static class RouteAttackCatalog
         Case("PUT", Ws + "/saved-searches/{savedSearchId}/sharing", ProtectedOperation.SavedSearch,
             new RouteProbe("saved search", HttpMethod.Put, (o, t) => $"{W(o)}/saved-searches/{t.SavedSearchId}/sharing", HttpStatusCode.OK,
                 (_, _) => J(new JsonObject { ["sharedWith"] = new JsonArray() }))),
+
+        // Document-list views and the caller's layout (E16-T09).
+        Case("GET", Ws + "/grid-views", ProtectedOperation.GridView, WorkspaceOnly(HttpMethod.Get, "/grid-views", HttpStatusCode.OK)),
+        Case("POST", Ws + "/grid-views", ProtectedOperation.GridView,
+            WorkspaceOnly(HttpMethod.Post, "/grid-views", HttpStatusCode.Created, _ => J(new JsonObject { ["name"] = "Probe " + Guid.NewGuid().ToString("N") }))),
+        Case("GET", Ws + "/grid-views/layout", ProtectedOperation.GridView, WorkspaceOnly(HttpMethod.Get, "/grid-views/layout", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/grid-views/layout", ProtectedOperation.GridView,
+            new RouteProbe("view in the body", HttpMethod.Put, (o, _) => W(o) + "/grid-views/layout", HttpStatusCode.OK,
+                (_, t) => J(new JsonObject { ["viewId"] = t.GridViewId.ToString() }), Expectation: ForeignExpectation.SameAsUnknown)),
+        Case("GET", Ws + "/grid-views/{viewId}", ProtectedOperation.GridView,
+            new RouteProbe("view", HttpMethod.Get, (o, t) => $"{W(o)}/grid-views/{t.GridViewId}", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/grid-views/{viewId}", ProtectedOperation.GridView,
+            new RouteProbe("view", HttpMethod.Put, (o, t) => $"{W(o)}/grid-views/{t.GridViewId}", HttpStatusCode.OK,
+                (o, _) => J(new JsonObject { ["name"] = "Renamed view " + o.Name, ["visibility"] = "shared" }), IfMatch: "*")),
+        Case("DELETE", Ws + "/grid-views/{viewId}", ProtectedOperation.GridView,
+            new RouteProbe("view", HttpMethod.Delete, (o, t) => $"{W(o)}/grid-views/{t.SpareGridViewId}", HttpStatusCode.NoContent, IfMatch: "*")),
         Case("POST", Ws + "/query-history", ProtectedOperation.Search,
             WorkspaceOnly(HttpMethod.Post, "/query-history", HttpStatusCode.NoContent, _ => J(new JsonObject { ["query"] = "memo" }))),
 

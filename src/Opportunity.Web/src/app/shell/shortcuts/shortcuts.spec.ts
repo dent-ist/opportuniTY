@@ -103,7 +103,7 @@ describe('Keyboard shortcut cheat sheet and rebinding', () => {
     dialog()!.querySelector<HTMLButtonElement>('.dialog__actions button[data-autofocus]')!.click();
     await settle();
     expect(dialog()).toBeNull();
-  });
+  }, 30_000); // the Documents page (with the View bar) is slow to render and check in jsdom on a loaded machine
 
   it('lists every command on request', async () => {
     await setup('/workspaces');

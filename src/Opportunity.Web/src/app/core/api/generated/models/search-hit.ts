@@ -11,6 +11,9 @@ export interface SearchHit {
   familyDate?: any;
   familyId: string | null;
   familySequence: number | string | null;
+  fields?: {
+    [key: string]: Array<string>;
+  } | null;
   fileExtension: string | null;
   fileName: string | null;
   fileSize: number | string | null;

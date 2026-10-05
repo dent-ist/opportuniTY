@@ -41,6 +41,7 @@ permissions in the Break-glass column (Q-45).
 | `Workspace.ManageSecurity` | ✔ | | | | | | |
 | `Workspace.ManageFields` | ✔ | | | | | | |
 | `Workspace.RequestDeletion` | ✔ | | | | | | |
+| `View.ManageShared` | ✔ | | | | | | |
 
 Break-glass is not membership on its own: it counts only while the holder has an active activation in the
 workspace (reason and MFA required, default 60 minutes, at most 4 hours). Decisions that rely on it are
@@ -78,6 +79,7 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Workspace.ManageSecurity` | Manage restriction classes, class grants and ethical walls. |
 | `Workspace.ManageFields` | Manage fields, choices and coding layouts. |
 | `Workspace.RequestDeletion` | Request workspace deletion (Q-23). |
+| `View.ManageShared` | Create, change and delete the document-list views shared with the whole workspace. |
 
 ## Role keys
 

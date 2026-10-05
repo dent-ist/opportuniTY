@@ -1,0 +1,165 @@
+// Columns and sort dialog of the document list (E16-T09).
+
+.cc {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--opp-space-4);
+}
+
+.cc__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  min-inline-size: 0;
+}
+
+.cc__heading {
+  margin: 0;
+  font-size: var(--opp-font-size-md);
+}
+
+.cc__subheading {
+  margin: 0;
+  font-size: var(--opp-font-size-sm);
+  color: var(--opp-color-text-muted);
+}
+
+.cc__hint,
+.cc__empty {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.cc__list,
+.cc__fields {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cc__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  max-block-size: 22rem;
+  overflow: auto;
+}
+
+.cc__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-1) var(--opp-space-2);
+  padding: var(--opp-space-1) var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+
+  &:focus-visible {
+    outline: 2px solid var(--opp-color-focus);
+    outline-offset: 1px;
+  }
+}
+
+.cc__handle {
+  display: inline-flex;
+  color: var(--opp-color-text-muted);
+  cursor: grab;
+}
+
+.cc__label {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.cc__pin,
+.cc__width,
+.cc__find {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  font-size: var(--opp-font-size-sm);
+}
+
+.cc__width input {
+  inline-size: 5rem;
+}
+
+.cc__find {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.cc__width input,
+.cc__find input {
+  min-block-size: var(--opp-target-min);
+  padding-inline: var(--opp-space-2);
+  font: inherit;
+  color: var(--opp-color-text);
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+}
+
+.cc__unit {
+  color: var(--opp-color-text-muted);
+}
+
+.cc__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  max-block-size: 22rem;
+  overflow: auto;
+}
+
+.cc__add {
+  inline-size: 100%;
+  justify-content: flex-start;
+
+  &[aria-disabled='true'] {
+    color: var(--opp-color-text-muted);
+    cursor: not-allowed;
+  }
+}
+
+.cc__sort {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+
+  legend {
+    padding-inline: var(--opp-space-1);
+    font-weight: var(--opp-font-weight-semibold);
+  }
+}
+
+.cc__level {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--opp-space-2);
+}
+
+.cdk-drag-preview {
+  box-shadow: var(--opp-elevation-3);
+}
+
+.cdk-drag-placeholder {
+  opacity: 0.4;
+}
+
+@media (max-width: 48rem) {
+  .cc {
+    grid-template-columns: 1fr;
+  }
+}

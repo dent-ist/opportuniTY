@@ -20,6 +20,8 @@ export const PERMISSIONS = {
   manageUsers: 'Workspace.ManageUsers',
   manageSecurity: 'Workspace.ManageSecurity',
   auditRead: 'Audit.Read',
+  /** Create, change and delete shared document-list views (E16-T09, "manage views"). */
+  manageSharedViews: 'View.ManageShared',
 } as const;
 
 /** Installation-level permissions (`GET /api/v1/me` → `installationPermissions`), not tied to a workspace. */

@@ -38,6 +38,7 @@ public enum Permission
     WorkspaceRequestDeletion = 26,
     JobReplay = 27,
     SearchTermReportRun = 28,
+    ViewManageShared = 29,
 }
 
 /// <summary>Catalogue entry: the dotted wire name used in docs, audit details and the API, and what it allows.</summary>
@@ -82,6 +83,7 @@ public static class PermissionCatalog
         new(Permission.WorkspaceManageSecurity, "Workspace.ManageSecurity", "Manage restriction classes, class grants and ethical walls."),
         new(Permission.WorkspaceManageFields, "Workspace.ManageFields", "Manage fields, choices and coding layouts."),
         new(Permission.WorkspaceRequestDeletion, "Workspace.RequestDeletion", "Request workspace deletion (Q-23)."),
+        new(Permission.ViewManageShared, "View.ManageShared", "Create, change and delete the document-list views shared with the whole workspace."),
     ];
 
     private static readonly Dictionary<Permission, PermissionInfo> ByPermission = All.ToDictionary(p => p.Permission);

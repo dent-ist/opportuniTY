@@ -39,6 +39,18 @@
         <span class="grid__freshness">· {{ freshnessText() }}</span>
       </p>
     }
+    <opp-grid-view-bar
+      [sharedViews]="sharedViews()"
+      [myViews]="myViews()"
+      [activeView]="activeView()"
+      [modified]="viewModified()"
+      (selected)="selectView($event)"
+      (columns)="openColumns()"
+      (saveChanges)="saveViewChanges()"
+      (saveAs)="saveViewAs($event)"
+      (reset)="resetView()"
+      (deleted)="deleteView()"
+    />
     <button
       #filtersButton
       type="button"
@@ -179,7 +191,10 @@
         </div>
         @for (column of columns().view; track column.queryName; let i = $index) {
           <ng-container
-            *ngTemplateOutlet="header; context: { $implicit: column, col: FIXED_COLUMNS + i }"
+            *ngTemplateOutlet="
+              header;
+              context: { $implicit: column, col: FIXED_COLUMNS + i, index: i }
+            "
           />
         }
       </div>
@@ -200,6 +215,8 @@
               [attr.aria-colindex]="c + 1"
               [class.grid__cell--select]="c === COL_SELECT"
               [class.grid__cell--control]="c === COL_CONTROL"
+              [class.grid__cell--pinned]="!!pinnedLeft()[c - FIXED_COLUMNS]"
+              [style.--pin-left]="pinnedLeft()[c - FIXED_COLUMNS]"
             >
               @if (cell) {
                 <opp-grid-filter
@@ -208,6 +225,8 @@
                   [error]="filterErrors().get(cell.queryName) ?? null"
                   (filterChange)="onFilterChange(cell.queryName, $event)"
                 />
+              } @else if (filterReasons()[c]; as reason) {
+                <span class="grid__nofilter" [oppTooltip]="reason">Not filterable</span>
               }
             </div>
           }
@@ -291,6 +310,8 @@
               <div
                 class="grid__cell"
                 role="gridcell"
+                [class.grid__cell--pinned]="column.pinned"
+                [style.--pin-left]="pinnedLeft()[c]"
                 [class.grid__cell--numeric]="column.format === 'size' || column.format === 'number'"
                 [id]="cellId(index, FIXED_COLUMNS + c)"
                 [class.is-active]="focusRow() === index && focusCol() === FIXED_COLUMNS + c"
@@ -357,26 +378,44 @@
   }
 }
 
-<ng-template #header let-column let-col="col">
+<ng-template #header let-column let-col="col" let-index="index">
   <div
-    class="grid__cell"
+    class="grid__cell grid__cell--head"
     role="columnheader"
     [class.grid__cell--control]="col === COL_CONTROL"
     [class.grid__cell--sortable]="!!column.sortField"
+    [class.grid__cell--unsortable]="!column.sortField"
+    [class.grid__cell--pinned]="column.pinned"
+    [style.--pin-left]="index === undefined ? null : pinnedLeft()[index]"
     [class.is-active]="focusRow() === -1 && focusCol() === col"
     [id]="headerCellId(col)"
     [attr.aria-colindex]="col + 1"
     [attr.aria-sort]="ariaSort(column)"
-    (click)="onHeaderClick(col)"
+    [oppTooltip]="column.sortReason ? 'Cannot be sorted: ' + column.sortReason : null"
+    (click)="onHeaderClick(col, $event)"
   >
-    {{ column.label }}
-    @switch (ariaSort(column)) {
-      @case ('ascending') {
-        <span class="grid__sort" aria-hidden="true">▲</span>
+    <span class="grid__label">{{ column.label }}</span>
+    @if (column.pinned) {
+      <opp-icon class="grid__pin" name="pin" />
+      <span class="opp-visually-hidden">, pinned</span>
+    }
+    @if (sortLevel(column); as s) {
+      <span class="grid__sort" aria-hidden="true"
+        >{{ s.desc ? '▼' : '▲' }}{{ sortLevels() > 1 ? s.level : '' }}</span
+      >
+      @if (sortLevels() > 1) {
+        <span class="opp-visually-hidden"
+          >, sort level {{ s.level }}, {{ s.desc ? 'descending' : 'ascending' }}</span
+        >
       }
-      @case ('descending') {
-        <span class="grid__sort" aria-hidden="true">▼</span>
-      }
+    }
+    @if (index !== undefined) {
+      <span
+        class="grid__resize"
+        aria-hidden="true"
+        (pointerdown)="startResize($event, index)"
+        (click)="$event.stopPropagation()"
+      ></span>
     }
   </div>
 </ng-template>

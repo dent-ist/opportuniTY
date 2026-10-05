@@ -73,7 +73,8 @@ public sealed class SavedSearchService(
     IAuthorizationService authorization,
     QueryLimits limits,
     TimeProvider time,
-    IQueryBinder? binder = null)
+    IQueryBinder? binder = null,
+    ISearchSortFields? sortFields = null)
 {
     public const int MaxNameLength = 200;
     public const int MaxColumns = 100;
@@ -394,9 +395,10 @@ public sealed class SavedSearchService(
         foreach (var key in request.Sort ?? [])
         {
             if (key is null || !Enum.IsDefined(key.Direction)
-                || SearchSortFields.All.FirstOrDefault(f => string.Equals(f, key.Field, StringComparison.OrdinalIgnoreCase)) is not { } field)
+                || await SortFieldAsync(workspaceId, key.Field, cancellationToken).ConfigureAwait(false) is not { } field)
             {
-                return (null, SavedSearchOutcome.Invalid("sort", $"Sortable fields: {string.Join(", ", SearchSortFields.All)}."));
+                return (null, SavedSearchOutcome.Invalid("sort",
+                    $"Sort by {string.Join(", ", SearchSortFields.All)} or a workspace field that is sortable."));
             }
 
             sort.Add(new SearchSortKey(field, key.Direction));
@@ -435,6 +437,19 @@ public sealed class SavedSearchService(
             IncludeDuplicates = request.IncludeDuplicates ?? false,
             IncludeThread = request.IncludeThread ?? false,
         }, null);
+    }
+
+    /// <summary>A fixed sort name, or (with the search module) a sortable workspace field (E16-T09).</summary>
+    private async ValueTask<string?> SortFieldAsync(Guid workspaceId, string? field, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(field) || field.Length > 200)
+        {
+            return null;
+        }
+
+        return sortFields is not null
+            ? await sortFields.ResolveAsync(workspaceId, field, cancellationToken).ConfigureAwait(false)
+            : SearchSortFields.All.FirstOrDefault(f => string.Equals(f, field, StringComparison.OrdinalIgnoreCase));
     }
 
     private static SavedSearchOutcome Write(SavedSearchWriteResult result, SavedSearchOutcomeStatus success) => result.Status switch

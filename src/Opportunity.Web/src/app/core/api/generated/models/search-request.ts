@@ -7,6 +7,7 @@ export interface SearchRequest {
   countExact?: boolean | null;
   expand?: null | SearchExpand;
   facets?: Array<string> | null;
+  fields?: Array<string> | null;
   highlight?: boolean | null;
   pageSize?: number | string | null;
   query: string | null;
