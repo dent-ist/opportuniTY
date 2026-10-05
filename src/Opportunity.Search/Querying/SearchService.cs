@@ -55,7 +55,10 @@ internal sealed partial class SearchService(
     /// <summary>ReasonCode of a search handle replayed by another user or session (audited, answered 404).</summary>
     internal const string HandleMismatchReason = "SearchHandleMismatch";
 
-    /// <summary>ReasonCode of a cursor that is not one of the (caller's own) handle's live cursors (audited, answered 404).</summary>
+    /// <summary>
+    /// ReasonCode of a cursor issued for another search (another user's, session's or search's) replayed on the caller's
+    /// own handle (audited, answered 404). Expired and unknown cursors get the same 404 without an audit event (Q-71).
+    /// </summary>
     internal const string CursorMismatchReason = "SearchCursorMismatch";
 
     private SearchServiceOptions Settings => options.Search;
@@ -241,9 +244,16 @@ internal sealed partial class SearchService(
             if (!Guid.TryParseExact(raw, "N", out var cursorId)
                 || await sessions.GetCursorAsync(caller.WorkspaceId, id, cursorId, cancellationToken).ConfigureAwait(false) is not { } cursor)
             {
-                // Not one of this handle's live cursors: a tampered, expired or replayed (another user's) cursor. Same 404,
-                // audited like a replayed handle (Q-62).
-                await AuditHandleMismatchAsync(caller, id, cancellationToken, CursorMismatchReason).ConfigureAwait(false);
+                // Not one of this handle's live cursors. Always the same 404 (no existence oracle); audited only when the
+                // cursor was issued for another search (another user's, another session's or another of the caller's own),
+                // not when it is expired, malformed or unknown (Q-71).
+                if (cursorId != Guid.Empty
+                    && await sessions.GetCursorBindingAsync(caller.WorkspaceId, cursorId, cancellationToken).ConfigureAwait(false) is { } binding
+                    && binding.SearchId != id)
+                {
+                    await AuditCursorMismatchAsync(caller, id, binding, cancellationToken).ConfigureAwait(false);
+                }
+
                 return SearchOutcome.NotFound;
             }
 
@@ -837,6 +847,17 @@ internal sealed partial class SearchService(
             new Dictionary<string, string?> { ["permission"] = "Search.Execute" }, null, cancellationToken, AuditOutcome.Denied, reason);
     }
 
+    private Task AuditCursorMismatchAsync(SearchCaller caller, Guid searchId, SearchCursorBinding binding, CancellationToken cancellationToken)
+    {
+        var boundTo = binding.UserId != caller.Principal.UserId ? "anotherUser"
+            : binding.SessionId != caller.SessionId ? "anotherSession"
+            : "anotherSearch";
+        LogCursorMismatch(logger, caller.WorkspaceId, caller.Principal.UserId, boundTo);
+        return WriteAuditAsync(caller, false, AuditTaxonomy.AuthZ.Category, AuditTaxonomy.AuthZ.Denied, searchId,
+            new Dictionary<string, string?> { ["permission"] = "Search.Execute", ["cursorBoundTo"] = boundTo }, null, cancellationToken,
+            AuditOutcome.Denied, CursorMismatchReason);
+    }
+
     private async Task WriteAuditAsync(
         SearchCaller caller,
         bool breakGlass,
@@ -889,6 +910,9 @@ internal sealed partial class SearchService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Search handle of workspace {WorkspaceId} replayed by user {UserId} or another session; answered 404")]
     private static partial void LogHandleMismatch(ILogger logger, Guid workspaceId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Search cursor of workspace {WorkspaceId} replayed by user {UserId} on another search ({BoundTo}); answered 404")]
+    private static partial void LogCursorMismatch(ILogger logger, Guid workspaceId, Guid userId, string boundTo);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Dropped {Count} hit(s) in workspace {WorkspaceId} whose projection row names another workspace or no document")]
     private static partial void LogIntegrityDrop(ILogger logger, Guid workspaceId, int count);

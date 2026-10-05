@@ -210,8 +210,9 @@ public sealed class CrossWorkspaceAttackTests(AttackWorldFixture fixture) : ICla
         var foreignCursor = await SendAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/searches/{ownHandle}/pages?cursor={w.A.SearchCursor}", colleague);
         var unknownCursor = await SendAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/searches/{ownHandle}/pages?cursor={Guid.NewGuid():N}", colleague);
         foreignCursor.Status.Should().Be(HttpStatusCode.NotFound);
-        foreignCursor.SameAs(unknownCursor).Should().BeTrue();
-        (await DeniedAsync(ws, colleague, "SearchCursorMismatch")).Should().Be(2, "both cursors that are not the handle's are audited");
+        foreignCursor.SameAs(unknownCursor).Should().BeTrue("a replayed cursor is indistinguishable from an unknown one");
+        (await DeniedAsync(ws, colleague, "SearchCursorMismatch")).Should().Be(1,
+            "the cursor bound to another user's search is audited; an unknown or expired cursor is not (Q-71)");
         (await SendAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/searches/{ownHandle}/pages?cursor={own.GetProperty("nextCursor").GetString()}", colleague))
             .Status.Should().Be(HttpStatusCode.OK, "the handle's own cursor still works");
 

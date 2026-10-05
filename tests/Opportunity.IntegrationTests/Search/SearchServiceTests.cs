@@ -146,11 +146,35 @@ public sealed class SearchServiceTests(OpenSearchFixture openSearch, MigrationPo
         h.Audit.Events.Where(e => e.Action == AuditTaxonomy.AuthZ.Denied).Select(e => e.ReasonCode)
             .Should().Equal(Enumerable.Repeat("SearchHandleMismatch", 3), "replays by another user or session are audited");
 
-        // Tampered or foreign cursors and handles.
+        // Tampered, unknown, expired or other-workspace cursors and foreign handles: the same 404. A cursor that is merely
+        // not live (unknown, malformed, expired, invisible in this workspace) is not audited (Q-71).
+        h.Audit.Clear();
         foreach (var cursor in new[] { Guid.NewGuid().ToString("N"), "not-a-cursor", first.NextCursor!.ToUpperInvariant() + "0", other.NextCursor!, "" })
         {
             (await h.PageAsync(ws1, alice, first.SearchId, new SearchPageRequest(cursor), session)).Status.Should().Be(SearchStatus.NotFound, cursor);
         }
+
+        var spare = Ok(await h.SearchAsync(ws1, alice, "report", pageSize: 1, session: session));
+        await h.Db.Core.ExecuteAsync(
+            "UPDATE opportunity.search_cursor SET expires_at = now() - interval '1 second' WHERE workspace_id = @ws AND cursor_id = @c",
+            ("ws", ws1), ("c", Guid.ParseExact(spare.NextCursor!, "N")));
+        (await h.PageAsync(ws1, alice, spare.SearchId, new SearchPageRequest(spare.NextCursor), session)).Status
+            .Should().Be(SearchStatus.NotFound, "an expired cursor of the user's own search");
+        h.Audit.Events.Where(e => e.Action == AuditTaxonomy.AuthZ.Denied).Should().BeEmpty("expired and unknown cursors are not misuse");
+
+        // A live cursor issued for another search, replayed on the caller's own handle, is audited with what it was bound to.
+        var bobs = Ok(await h.SearchAsync(ws1, bob, "report", pageSize: 1, session: session));
+        var otherSession = Ok(await h.SearchAsync(ws1, alice, "report", pageSize: 1, session: Guid.CreateVersion7()));
+        var ownOther = Ok(await h.SearchAsync(ws1, alice, "report", pageSize: 1, session: session));
+        h.Audit.Clear();
+        foreach (var cursor in new[] { bobs.NextCursor!, otherSession.NextCursor!, ownOther.NextCursor! })
+        {
+            (await h.PageAsync(ws1, alice, first.SearchId, new SearchPageRequest(cursor), session)).Status.Should().Be(SearchStatus.NotFound, cursor);
+        }
+
+        var denied = h.Audit.Events.Where(e => e.Action == AuditTaxonomy.AuthZ.Denied).ToList();
+        denied.Select(e => e.ReasonCode).Should().Equal(Enumerable.Repeat("SearchCursorMismatch", 3));
+        denied.Select(e => e.Details["cursorBoundTo"]).Should().Equal("anotherUser", "anotherSession", "anotherSearch");
 
         foreach (var handle in new[] { Guid.NewGuid().ToString("N"), other.SearchId!, first.SearchId![..^1] + (first.SearchId[^1] == '0' ? "1" : "0"), "../" + first.SearchId })
         {

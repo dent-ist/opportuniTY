@@ -143,6 +143,32 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
         return record;
     }
 
+    public async Task<SearchCursorBinding?> GetCursorBindingAsync(Guid workspaceId, Guid cursorId, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            """
+            SELECT c.search_id, s.user_id, s.session_id
+              FROM opportunity.search_cursor c
+              JOIN opportunity.search_session s ON s.workspace_id = c.workspace_id AND s.search_id = c.search_id
+             WHERE c.workspace_id = @ws AND c.cursor_id = @cursor
+             LIMIT 1
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("cursor", cursorId);
+        SearchCursorBinding? binding = null;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                binding = new SearchCursorBinding(reader.GetGuid(0), reader.GetGuid(1), reader.IsDBNull(2) ? null : reader.GetGuid(2));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return binding;
+    }
+
     public async Task TouchAsync(
         Guid workspaceId,
         Guid searchId,
