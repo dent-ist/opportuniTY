@@ -235,19 +235,3 @@
   border: var(--opp-border-width) solid var(--opp-color-border-strong);
   border-radius: var(--opp-radius-sm);
 }
-
-// E09-T03: base hits next to the expanded list size, and the tag of a row Include added.
-.grid__expanded {
-  color: var(--opp-color-text-muted);
-}
-
-.grid__related {
-  flex: none;
-  margin-inline-start: var(--opp-space-1);
-  padding: 0 var(--opp-space-1);
-  border: var(--opp-border-width) solid var(--opp-color-border);
-  border-radius: var(--opp-radius-sm);
-  color: var(--opp-color-text-muted);
-  font-size: var(--opp-font-size-xs);
-  line-height: 1.4;
-}

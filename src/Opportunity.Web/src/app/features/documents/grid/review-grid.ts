@@ -175,7 +175,7 @@ interface ResultInfo {
   ],
   providers: [ReviewSearchApi],
   templateUrl: './review-grid.html',
-  styleUrl: './review-grid.scss',
+  styleUrls: ['./review-grid.scss', './review-grid-expansion.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ReviewGrid implements CursorSource {
