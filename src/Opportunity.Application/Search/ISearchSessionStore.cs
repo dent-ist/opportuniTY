@@ -18,6 +18,13 @@ public interface ISearchSessionStore
     Task<SearchCursorRecord?> GetCursorAsync(Guid workspaceId, Guid searchId, Guid cursorId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The search (and its user and session) that a cursor id was issued for in this workspace, live or expired, or null
+    /// when the workspace holds no such cursor. Used only after <see cref="GetCursorAsync"/> missed, to tell a cursor
+    /// replayed from another search (audited) from an expired or unknown one (not audited, Q-71).
+    /// </summary>
+    Task<SearchCursorBinding?> GetCursorBindingAsync(Guid workspaceId, Guid cursorId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Extends the search, records a re-established point-in-time reader (<paramref name="reader"/>, null when the page
     /// ran on the existing one), and adds the cursors of a served page.
     /// </summary>
@@ -70,6 +77,9 @@ public sealed record SearchSessionRecord(
     /// <summary>When <see cref="PointInTimeId"/> was opened (ADR-002 §8 maximum age); null on older rows (use <see cref="CreatedAt"/>).</summary>
     public DateTimeOffset? PointInTimeOpenedAt { get; init; }
 }
+
+/// <summary>The search a cursor belongs to, with the user and session that search is bound to.</summary>
+public sealed record SearchCursorBinding(Guid SearchId, Guid UserId, Guid? SessionId);
 
 public enum SearchCursorDirection
 {

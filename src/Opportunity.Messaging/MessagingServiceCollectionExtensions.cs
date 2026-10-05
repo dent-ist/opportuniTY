@@ -66,6 +66,19 @@ public static class MessagingServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Runs the <see cref="DeadLetterRecorder"/> (one component per installation, the dispatcher). Requires
+    /// <see cref="AddRabbitMqMessaging"/>; the PostgreSQL <see cref="IDeadLetterStore"/> is resolved when it starts.
+    /// </summary>
+    public static IServiceCollection AddDeadLetterRecorder(this IServiceCollection services, DeadLetterRecorderOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.TryAddSingleton(options ?? new DeadLetterRecorderOptions());
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, DeadLetterRecorder>());
+        return services;
+    }
+
     /// <summary>Samples queue depth and consumer metrics (register in one component, the dispatcher).</summary>
     public static IServiceCollection AddRabbitMqQueueMetrics(this IServiceCollection services)
     {

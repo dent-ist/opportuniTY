@@ -123,6 +123,13 @@ public enum JobFailureKind
 
     /// <summary>A SearchOutbox row of an interactive edit (not tied to a job).</summary>
     Outbox,
+
+    /// <summary>
+    /// A broker message of the job that was dead-lettered or parked, as recorded in PostgreSQL (ADR-010 §7.3): the id is
+    /// the message id, attempts how often the broker dead-lettered it, the error its queue, reason and last error.
+    /// Diagnostics only: a replay resets the job's failed chunks and index tasks, never re-publishes this message.
+    /// </summary>
+    DeadLetter,
 }
 
 /// <summary>

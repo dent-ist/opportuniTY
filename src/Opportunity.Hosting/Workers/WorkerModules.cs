@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 using Opportunity.Data.Audit;
+using Opportunity.Data.Messaging;
 using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
 using Opportunity.Jobs;
@@ -77,6 +78,10 @@ public static class WorkerModuleCatalog
         {
             services.AddRabbitMqMessaging(RabbitMqOptions.Bind(configuration));
             services.AddRabbitMqQueueMetrics();
+
+            // Dead-lettered and parked messages are copied into PostgreSQL for diagnostics (ADR-010 §7.3).
+            services.AddPostgresDeadLetterStore();
+            services.AddDeadLetterRecorder(DeadLetterRecorderOptions.Bind(configuration));
         }
 
         services.AddOutboxDispatcher(configuration.GetSection(OutboxDispatcherOptions.SectionName).Get<OutboxDispatcherOptions>());

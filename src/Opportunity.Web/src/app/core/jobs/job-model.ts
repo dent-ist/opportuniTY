@@ -83,6 +83,18 @@ export interface JobFailure {
   readonly failedAt: string;
 }
 
+const FAILURE_KINDS: Record<string, string> = {
+  chunk: 'Chunk',
+  indexTask: 'Index task',
+  outbox: 'Search update',
+  deadLetter: 'Dead-lettered message',
+};
+
+/** A failure's kind in words; a dead-lettered message is the recorded broker copy (diagnostics only). */
+export function failureKindLabel(kind: string): string {
+  return FAILURE_KINDS[kind] ?? kind;
+}
+
 /** One event of `GET …/job-events` (server-sent events). */
 export interface JobEvent {
   readonly jobId: string;

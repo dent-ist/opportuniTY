@@ -84,6 +84,7 @@ internal static class JobMapping
         {
             JobFailureSource.Chunk => JobFailureKind.Chunk,
             JobFailureSource.IndexTask => JobFailureKind.IndexTask,
+            JobFailureSource.DeadLetter => JobFailureKind.DeadLetter,
             _ => JobFailureKind.Outbox,
         };
         return new JobFailure(kind, record.Id, record.Attempts, record.Error, record.FailedAt);

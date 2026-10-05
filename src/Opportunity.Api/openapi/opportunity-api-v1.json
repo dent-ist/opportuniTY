@@ -2729,7 +2729,7 @@
         "tags": [
           "Jobs"
         ],
-        "summary": "Failed chunks and index tasks of the job, oldest failure first (PostgreSQL is the failure ledger).",
+        "summary": "Failed chunks and index tasks of the job, and its dead-lettered messages, oldest failure first (PostgreSQL is the failure ledger).",
         "operationId": "ListJobFailures",
         "parameters": [
           {
@@ -9363,7 +9363,8 @@
         "enum": [
           "chunk",
           "indexTask",
-          "outbox"
+          "outbox",
+          "deadLetter"
         ]
       },
       "JobIndexState": {

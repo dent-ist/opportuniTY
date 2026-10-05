@@ -57,7 +57,7 @@ public sealed class JobEndpoints : IApiEndpointModule
         jobs.MapGet("/{jobId}/failures", ListFailuresAsync)
             .WithName("ListJobFailures")
             .WithTags(Tag)
-            .WithSummary("Failed chunks and index tasks of the job, oldest failure first (PostgreSQL is the failure ledger).")
+            .WithSummary("Failed chunks and index tasks of the job, and its dead-lettered messages, oldest failure first (PostgreSQL is the failure ledger).")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)

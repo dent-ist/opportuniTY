@@ -70,36 +70,98 @@
 
   <section class="imports__panel" aria-labelledby="import-report">
     <h2 id="import-report">Report</h2>
-    <dl class="imports__facts">
-      <div>
-        <dt>Rows read</dt>
-        <dd>{{ num(i.report.rowsRead) }}</dd>
+    @if (summary(); as r) {
+      <p class="imports__note">
+        @if (elapsed(); as t) {
+          {{ t }}.
+        }
+        @if (errored() > 0) {
+          {{ num(r.errorFileRows) }}
+          {{ Number(r.errorFileRows) === 1 ? 'row is' : 'rows are' }} in the error file.
+        }
+      </p>
+      <div class="imports__report-groups">
+        @for (g of groups(); track g.id) {
+          <section class="imports__report-group" [attr.aria-labelledby]="'import-report-' + g.id">
+            <h3 [id]="'import-report-' + g.id">{{ g.title }}</h3>
+            @if (g.empty) {
+              <p class="imports__note">{{ g.empty }}</p>
+            } @else {
+              <dl class="imports__report-list">
+                @for (f of g.facts; track f.label) {
+                  <div [class.imports__report-fact--attention]="f.attention">
+                    <dt>{{ f.label }}</dt>
+                    <dd>
+                      @if (f.attention) {
+                        <opp-icon name="warning" />
+                        <span class="opp-visually-hidden">Needs attention: </span>
+                      }
+                      {{ num(f.value) }}
+                    </dd>
+                  </div>
+                }
+              </dl>
+            }
+          </section>
+        }
       </div>
-      <div>
-        <dt>Imported</dt>
-        <dd>{{ num(i.report.rowsImported) }}</dd>
-      </div>
-      <div>
-        <dt>Overlaid</dt>
-        <dd>{{ num(i.report.rowsOverlaid) }}</dd>
-      </div>
-      <div>
-        <dt>Unchanged</dt>
-        <dd>{{ num(i.report.rowsSkipped) }}</dd>
-      </div>
-      <div>
-        <dt>Errors</dt>
-        <dd>{{ num(i.report.rowsErrored) }}</dd>
-      </div>
-      <div>
-        <dt>Fields created</dt>
-        <dd>{{ num(i.report.fieldsCreated) }}</dd>
-      </div>
-      <div>
-        <dt>Choices created</dt>
-        <dd>{{ num(i.report.choicesCreated) }}</dd>
-      </div>
-    </dl>
+      @if (issues().length) {
+        <div class="imports__table-wrap" tabindex="0" role="region" aria-label="Issues by type">
+          <table class="imports__table">
+            <caption>
+              Issues by type
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Issue</th>
+                <th scope="col">Severity</th>
+                <th scope="col" class="imports__num">Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of issues(); track c.code + c.severity) {
+                <tr>
+                  <td>{{ c.code }}</td>
+                  <td>{{ c.severity }}</td>
+                  <td class="imports__num">{{ num(c.count) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    } @else {
+      <dl class="imports__facts">
+        <div>
+          <dt>Rows read</dt>
+          <dd>{{ num(i.report.rowsRead) }}</dd>
+        </div>
+        <div>
+          <dt>Imported</dt>
+          <dd>{{ num(i.report.rowsImported) }}</dd>
+        </div>
+        <div>
+          <dt>Overlaid</dt>
+          <dd>{{ num(i.report.rowsOverlaid) }}</dd>
+        </div>
+        <div>
+          <dt>Unchanged</dt>
+          <dd>{{ num(i.report.rowsSkipped) }}</dd>
+        </div>
+        <div>
+          <dt>Errors</dt>
+          <dd>{{ num(i.report.rowsErrored) }}</dd>
+        </div>
+        <div>
+          <dt>Fields created</dt>
+          <dd>{{ num(i.report.fieldsCreated) }}</dd>
+        </div>
+        <div>
+          <dt>Choices created</dt>
+          <dd>{{ num(i.report.choicesCreated) }}</dd>
+        </div>
+      </dl>
+    }
     @if (finished()) {
       <div class="imports__actions">
         <a oppButton="secondary" [href]="api.reportCsvUrl(i.importId)" download>

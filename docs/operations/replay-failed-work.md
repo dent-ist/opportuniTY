@@ -74,15 +74,23 @@ document version, so replaying old rows never overwrites newer state.
 
 Each work queue has a `<queue>.dlq` (max 100,000 messages, TTL 14 days) and each area an `<area>.parking` queue for
 unknown message types or unsupported schema majors (ADR-010 §7.2–7.3). Depth > 0 (`opportunity.queue.depth` with
-`opportunity.queue.state` = `dlq`/`parking`) means a message crashed its consumer repeatedly or could not be read.
+`opportunity.queue.state` = `dlq`/`parking`, or `opportunity.dlq.messages` counting up) means a message crashed its
+consumer repeatedly or could not be read. The dispatcher's dead-letter recorder copies every such message into
+PostgreSQL ([README.md#dead-letter-records](README.md#dead-letter-records)); inspect the copies there, not in the
+broker.
 
-1. Inspect in the RabbitMQ management UI (*Queues → `<queue>.dlq` → Get messages*, **Ack mode: Nack message requeue
-   true** so inspection does not remove it): the `x-death` header, the original headers (`workspaceId`, `jobId`,
-   correlation id) and the error headers name the row and the failure.
-2. Find the PostgreSQL row by its id in the payload (`chunkId`, `taskId` or `outboxId`) — it is either `Failed`
-   already (replay it as above once fixed), or still `Pending`/`Dispatched`/`Running`, in which case the sweepers
-   re-dispatch it ([re-dispatch-stuck-work.md](re-dispatch-stuck-work.md)).
-3. Do **not** move or shovel DLQ messages back to a work queue. Purge a DLQ only after its rows are settled, and note it
-   in the incident record.
-4. Parking-queue messages mean a version mismatch between publisher and consumer (deployment out of order): finish the
+1. List the records: `jobs dlq list --workspace <ws> [--job <job>]` (newest first: message id, queue, reason, how often
+   the broker dead-lettered it, message type, job, error), or `GET …/jobs/<job>/failures` (`kind: deadLetter`) for the
+   job's records whose chunk or index task is still failed. Messages that name no existing workspace (unreadable
+   bodies, forged or stale envelopes) are listed by `jobs dlq list` without `--workspace`.
+2. `jobs dlq show [--workspace <ws>] --message <id>` prints one record: the `x-death` header and the transport's
+   failure headers, the envelope fields (`workspaceId`, `jobId`, correlation id) and the body (the payload's `chunkId`,
+   `taskId` or `outboxId` names the row).
+3. Find that PostgreSQL row — it is either `Failed` already (replay it as above once fixed), or still
+   `Pending`/`Dispatched`/`Running`, in which case the sweepers re-dispatch it
+   ([re-dispatch-stuck-work.md](re-dispatch-stuck-work.md)).
+4. Do **not** move or shovel DLQ messages back to a work queue. Purge a DLQ only after its rows are settled, and note it
+   in the incident record; the PostgreSQL records stay for 30 days either way. The RabbitMQ management UI is no longer
+   needed for inspection (if you use it anyway: *Get messages* with **Ack mode: Nack message requeue true**).
+5. Parking-queue messages mean a version mismatch between publisher and consumer (deployment out of order): finish the
    rollout; the rows behind them are re-dispatched from PostgreSQL.

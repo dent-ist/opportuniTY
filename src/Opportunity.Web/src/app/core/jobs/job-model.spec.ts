@@ -8,6 +8,7 @@ import {
   dayEnd,
   dayStart,
   etaText,
+  failureKindLabel,
   filterParams,
   isSettled,
   matchesFilter,
@@ -36,6 +37,13 @@ describe('job model (E06-T07)', () => {
     expect(statusLabel('created')).toBe('Queued');
     expect(pillStatus('failed')).toBe('failed');
     expect(pillStatus('somethingNew')).toBe('running');
+  });
+
+  it('names failure kinds, including recorded dead-lettered messages (ADR-010 §7.3)', () => {
+    expect(failureKindLabel('chunk')).toBe('Chunk');
+    expect(failureKindLabel('indexTask')).toBe('Index task');
+    expect(failureKindLabel('deadLetter')).toBe('Dead-lettered message');
+    expect(failureKindLabel('somethingNew')).toBe('somethingNew');
   });
 
   it('describes the two phases as Saved and Searchable', () => {
