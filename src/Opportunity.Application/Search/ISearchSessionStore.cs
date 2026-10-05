@@ -1,3 +1,5 @@
+using Opportunity.Core.Documents;
+
 namespace Opportunity.Application.Search;
 
 /// <summary>
@@ -76,6 +78,9 @@ public sealed record SearchSessionRecord(
 
     /// <summary>When <see cref="PointInTimeId"/> was opened (ADR-002 §8 maximum age); null on older rows (use <see cref="CreatedAt"/>).</summary>
     public DateTimeOffset? PointInTimeOpenedAt { get; init; }
+
+    /// <summary>The family, duplicate and thread expansion of the results (E09-T03), re-planned for every page.</summary>
+    public RelationshipExpansion Expansion { get; init; }
 }
 
 /// <summary>The search a cursor belongs to, with the user and session that search is bound to.</summary>

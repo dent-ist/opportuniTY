@@ -1,3 +1,5 @@
+using Opportunity.Contracts.Search;
+
 namespace Opportunity.Contracts.Api;
 
 /// <summary>
@@ -11,13 +13,19 @@ namespace Opportunity.Contracts.Api;
 /// <param name="DocumentIds">Explicit documents.</param>
 /// <param name="SnapshotId">A Ready snapshot to re-freeze for you.</param>
 /// <param name="SavedSearchId">A saved search you may see: its criteria are run now, filtered for you.</param>
+/// <param name="Expand">
+/// E09-T03: add the families, duplicates and email threads of the selected documents before the set is frozen (ADR-002
+/// §5.2.1), from the authoritative relationships at freeze time; later family edits never change a frozen set. Members
+/// you may not act on are left out like any other document. Null: none, or a saved search's stored choice.
+/// </param>
 public sealed record CreateSnapshotRequest(
     SnapshotResourcePurpose Purpose,
     string? Name = null,
     string? Query = null,
     IReadOnlyList<Guid>? DocumentIds = null,
     Guid? SnapshotId = null,
-    Guid? SavedSearchId = null);
+    Guid? SavedSearchId = null,
+    SearchExpand? Expand = null);
 
 /// <summary>
 /// A materialized document set (ADR-002). Once <see cref="SnapshotResourceStatus.Ready"/>, <see cref="DocumentCount"/>
@@ -30,6 +38,8 @@ public sealed record CreateSnapshotRequest(
 /// </param>
 /// <param name="SelectedWhileIndexing">The index was still catching up when the set was selected.</param>
 /// <param name="ExpiresAt">When an unused set is removed (no job refers to it); null once used or expired.</param>
+/// <param name="InclusionCounts">Members by why they are in the set: Hit, Explicit, Family, Duplicate, Thread.</param>
+/// <param name="Expand">The expansion applied before freezing (E09-T03); null when none.</param>
 public sealed record SnapshotResource(
     Guid SnapshotId,
     string Name,
@@ -51,7 +61,8 @@ public sealed record SnapshotResource(
     DateTimeOffset CreatedAt,
     DateTimeOffset? MaterializedAt,
     DateTimeOffset? ExpiresAt,
-    DateTimeOffset? ExpiredAt);
+    DateTimeOffset? ExpiredAt,
+    SearchExpand? Expand = null);
 
 /// <param name="Query">The query text; shown to the snapshot's creator only.</param>
 /// <param name="NormalizedQuery">The normalized interpretation; shown to the snapshot's creator only.</param>

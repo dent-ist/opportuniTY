@@ -6301,6 +6301,16 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "expand": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchExpand"
+              }
+            ]
           }
         }
       },
@@ -10558,6 +10568,18 @@
               "null",
               "boolean"
             ]
+          },
+          "includeDuplicates": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "includeThread": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -10677,6 +10699,14 @@
               "string"
             ],
             "format": "int32"
+          },
+          "includeDuplicates": {
+            "type": "boolean",
+            "default": false
+          },
+          "includeThread": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -10836,6 +10866,80 @@
             "format": "date-time"
           },
           "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "SearchExpand": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "duplicates": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "thread": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "SearchExpandedBy": {
+        "enum": [
+          "family",
+          "duplicate",
+          "thread",
+          null
+        ]
+      },
+      "SearchExpandedCounts": {
+        "required": [
+          "family",
+          "duplicates",
+          "thread",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "family": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "duplicates": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "thread": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "total": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -11100,7 +11204,18 @@
           "isFamilyParent": {
             "type": "boolean",
             "default": false
-          }
+          },
+          "expandedBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchExpandedBy"
+              }
+            ]
+          },
+          "familyDate": { }
         }
       },
       "SearchOutboxReplayResource": {
@@ -11220,6 +11335,16 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "expand": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchExpand"
+              }
+            ]
           }
         }
       },
@@ -11260,6 +11385,26 @@
           },
           "total": {
             "$ref": "#/components/schemas/TotalCount"
+          },
+          "expand": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchExpand"
+              }
+            ]
+          },
+          "expanded": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchExpandedCounts"
+              }
+            ]
           },
           "freshness": {
             "$ref": "#/components/schemas/SearchFreshness"
@@ -11462,6 +11607,16 @@
           },
           "expiredAt": {
             "format": "date-time"
+          },
+          "expand": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchExpand"
+              }
+            ]
           }
         }
       },

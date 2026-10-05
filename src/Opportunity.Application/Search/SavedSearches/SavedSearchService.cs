@@ -174,7 +174,11 @@ public sealed class SavedSearchService(
 
         var id = Guid.CreateVersion7();
         var definition = new SavedSearchDefinition(name, request.FolderId ?? source.FolderId, source.QueryText, source.AstVersion, source.Columns,
-            source.Sort, source.IncludeFamily, source.References);
+            source.Sort, source.IncludeFamily, source.References)
+        {
+            IncludeDuplicates = source.IncludeDuplicates,
+            IncludeThread = source.IncludeThread,
+        };
         var details = Details(id, definition, 1);
         details["clonedFrom"] = savedSearchId.ToString();
         var audit = Event(principal, workspaceId, id, AuditTaxonomy.SavedSearch.Created, details, Restricted(definition));
@@ -426,7 +430,11 @@ public sealed class SavedSearchService(
         }
 
         return (new SavedSearchDefinition(name, request.FolderId, request.Query, QueryNode.AstVersion, columns, sort, request.IncludeFamily ?? false,
-            expansion.DirectReferences), null);
+            expansion.DirectReferences)
+        {
+            IncludeDuplicates = request.IncludeDuplicates ?? false,
+            IncludeThread = request.IncludeThread ?? false,
+        }, null);
     }
 
     private static SavedSearchOutcome Write(SavedSearchWriteResult result, SavedSearchOutcomeStatus success) => result.Status switch
@@ -477,6 +485,16 @@ public sealed class SavedSearchService(
         {
             yield return "includeFamily";
         }
+
+        if (current.IncludeDuplicates != next.IncludeDuplicates)
+        {
+            yield return "includeDuplicates";
+        }
+
+        if (current.IncludeThread != next.IncludeThread)
+        {
+            yield return "includeThread";
+        }
     }
 
     /// <summary>IDs and settings only: names are user content and stay out of audit details (ADR-013 §7).</summary>
@@ -488,6 +506,8 @@ public sealed class SavedSearchService(
         ["columns"] = Invariant(definition.Columns.Count),
         ["sort"] = string.Join(',', definition.Sort.Select(s => s.Field + ":" + (s.Direction == SearchSortDirection.Desc ? "desc" : "asc"))),
         ["includeFamily"] = definition.IncludeFamily ? "true" : "false",
+        ["includeDuplicates"] = definition.IncludeDuplicates ? "true" : "false",
+        ["includeThread"] = definition.IncludeThread ? "true" : "false",
         ["references"] = definition.References.Count <= 50 ? string.Join(',', definition.References) : Invariant(definition.References.Count),
         ["version"] = Invariant(version),
     };

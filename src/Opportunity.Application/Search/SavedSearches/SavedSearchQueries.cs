@@ -78,7 +78,9 @@ public sealed class SavedSearchQueries(ISavedSearchStore store, IAuthorizationSe
         ArgumentNullException.ThrowIfNull(caller);
         var viewer = await ViewerAsync(authorization, caller, workspaceId, cancellationToken).ConfigureAwait(false);
         var search = await store.GetAsync(workspaceId, savedSearchId, viewer, cancellationToken).ConfigureAwait(false);
-        return search is null ? null : new SavedSearchRunSource(search.SavedSearchId, search.Name, search.QueryText, search.Sort);
+        return search is null
+            ? null
+            : new SavedSearchRunSource(search.SavedSearchId, search.Name, search.QueryText, search.Sort) { Expansion = search.Expansion };
     }
 
     public Task RecordRunAsync(Guid workspaceId, Guid savedSearchId, SavedSearchRunResult run, CancellationToken cancellationToken = default)

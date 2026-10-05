@@ -9,10 +9,12 @@ using Npgsql;
 using NpgsqlTypes;
 
 using Opportunity.Application.Snapshots;
+using Opportunity.Core.Documents;
 using Opportunity.Core.QueryLanguage;
 using Opportunity.Core.Snapshots;
 using Opportunity.Core.Workspaces;
 using Opportunity.Data.Audit;
+using Opportunity.Data.Relationships;
 using Opportunity.Data.SearchWork;
 
 namespace Opportunity.Data.Snapshots;
@@ -32,7 +34,8 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
         s.excluded_no_access, s.excluded_missing, s.inclusion_counts::text, s.page_count, s.root_sha256, s.materialized_at,
         s.created_by, s.created_by_display, s.created_by_groups, s.correlation_id, s.client_idempotency_key, s.created_at,
         s.attempt_count, s.expired_at,
-        EXISTS (SELECT 1 FROM opportunity.job j WHERE j.workspace_id = s.workspace_id AND j.target_snapshot_id = s.snapshot_id)
+        EXISTS (SELECT 1 FROM opportunity.job j WHERE j.workspace_id = s.workspace_id AND j.target_snapshot_id = s.snapshot_id),
+        s.expansion
         """;
 
     public async Task<SnapshotCreation> CreateAsync(NewSnapshot snapshot, CancellationToken cancellationToken = default)
@@ -44,9 +47,9 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
             INSERT INTO opportunity.document_set_snapshot
                 (workspace_id, snapshot_id, name, purpose, source_kind, query_definition, source_snapshot_id, requested_count,
                  page_size, created_by, created_by_display, created_by_groups, correlation_id, client_idempotency_key,
-                 claimed_by, claimed_until)
+                 claimed_by, claimed_until, expansion)
             VALUES (@ws, @id, @name, @purpose, @kind, @query, @source, @requested, @page_size, @by, @display, @groups,
-                    @correlation, @client_key, @owner, now() + @lease)
+                    @correlation, @client_key, @owner, now() + @lease, @expansion)
             ON CONFLICT (workspace_id, created_by, client_idempotency_key) WHERE client_idempotency_key IS NOT NULL DO NOTHING
             """))
         {
@@ -69,6 +72,7 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
             insert.Parameters.Add(new NpgsqlParameter("client_key", NpgsqlDbType.Text) { Value = (object?)snapshot.ClientIdempotencyKey ?? DBNull.Value });
             insert.Parameters.AddWithValue("owner", snapshot.ClaimOwner);
             insert.Parameters.AddWithValue("lease", snapshot.ClaimLease);
+            insert.Parameters.AddWithValue("expansion", snapshot.Expansion.Flags);
             if (await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
             {
                 var existing = await FindByClientKeyAsync(tx, snapshot.CreatedBy, snapshot.ClientIdempotencyKey!, cancellationToken).ConfigureAwait(false);
@@ -299,37 +303,31 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
 
         // Security filter for the creator (ADR-002 §5.2.2). The PDP reads current security state after this
         // transaction's snapshot was taken, so no member is admitted that was hidden from the creator at the freeze point.
-        long denied = 0;
-        var after = Guid.Empty;
-        while (true)
+        var denied = await AuthorizeMembersAsync(tx, request.AuthorizationBatchSize, authorize, expandedOnly: false, cancellationToken).ConfigureAwait(false);
+
+        // E09-T03 (ADR-002 §5.2.1): expand the authorized seeds from the authoritative relationships before membership is
+        // fixed, then authorize what was added exactly like the seeds (Q-52: hidden family members are simply absent).
+        long added = 0;
+        if (!header.Expansion.IsNone)
         {
-            var batch = new List<Guid>(request.AuthorizationBatchSize);
-            await using (var next = tx.Command(
-                "SELECT document_id FROM snapshot_freeze WHERE document_id > @after ORDER BY document_id LIMIT @n"))
+            await RelationshipExpansionSql.ExpandAsync(tx, "snapshot_freeze", "snapshot_expansion", header.Expansion, cancellationToken).ConfigureAwait(false);
+            await using (var expand = tx.Command(
+                """
+                INSERT INTO snapshot_freeze
+                SELECT e.document_id, ps.document_version, e.reason, r.control_number_sort_key, d.family_id, d.family_sequence
+                  FROM snapshot_expansion e
+                  JOIN opportunity.document d ON d.workspace_id = @ws AND d.document_id = e.document_id
+                  JOIN opportunity.document r ON r.workspace_id = d.workspace_id AND r.document_id = d.family_id
+                  JOIN opportunity.document_projection_state ps
+                    ON ps.workspace_id = d.workspace_id AND ps.document_id = d.document_id AND NOT ps.is_deleted
+                ON CONFLICT (document_id) DO NOTHING
+                """))
             {
-                next.Parameters.AddWithValue("after", after);
-                next.Parameters.AddWithValue("n", request.AuthorizationBatchSize);
-                batch.AddRange(await ReadGuidsAsync(next, cancellationToken).ConfigureAwait(false));
+                expand.Parameters.AddWithValue("ws", ws);
+                added = await expand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            if (batch.Count == 0)
-            {
-                break;
-            }
-
-            var excluded = await authorize(batch, cancellationToken).ConfigureAwait(false);
-            if (excluded.Count > 0)
-            {
-                await using var delete = tx.Command("DELETE FROM snapshot_freeze WHERE document_id = ANY(@ids)");
-                delete.Parameters.AddWithValue("ids", excluded.Keys.ToArray());
-                denied += await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            after = batch[^1];
-            if (batch.Count < request.AuthorizationBatchSize)
-            {
-                break;
-            }
+            denied += await AuthorizeMembersAsync(tx, request.AuthorizationBatchSize, authorize, expandedOnly: true, cancellationToken).ConfigureAwait(false);
         }
 
         await using (var publish = tx.Command(
@@ -355,7 +353,7 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
                    selected_while_indexing = @indexing,
                    selected_at = @selected_at,
                    document_count = c.members,
-                   candidate_count = @staged + @before,
+                   candidate_count = @staged + @added + @before,
                    excluded_no_access = @denied + @before,
                    excluded_missing = @staged - @live,
                    inclusion_counts = c.reasons,
@@ -387,6 +385,7 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
             publish.Parameters.Add(new NpgsqlParameter("selected_at", NpgsqlDbType.TimestampTz) { Value = (object?)request.SelectedAt ?? DBNull.Value });
             publish.Parameters.AddWithValue("staged", staged);
             publish.Parameters.AddWithValue("live", live);
+            publish.Parameters.AddWithValue("added", added);
             publish.Parameters.AddWithValue("denied", denied);
             publish.Parameters.AddWithValue("before", request.ExcludedBeforeStaging);
             publish.Parameters.AddWithValue("prefix", SnapshotHashing.RootPrefix);
@@ -401,6 +400,52 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
 
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new SnapshotFreezeResult(SnapshotFreezeOutcome.Frozen, frozen);
+    }
+
+    /// <summary>
+    /// Asks <paramref name="authorize"/> about the freeze candidates in batches (all of them, or only the expanded ones)
+    /// and drops the excluded ones; returns how many were dropped.
+    /// </summary>
+    private static async Task<long> AuthorizeMembersAsync(
+        WorkspaceTransaction tx, int batchSize, SnapshotMemberAuthorizer authorize, bool expandedOnly, CancellationToken cancellationToken)
+    {
+        long denied = 0;
+        var after = Guid.Empty;
+        var filter = expandedOnly
+            ? $" AND reason IN ({(short)SnapshotInclusionReason.Family}, {(short)SnapshotInclusionReason.Duplicate}, {(short)SnapshotInclusionReason.Thread})"
+            : string.Empty;
+        while (true)
+        {
+            var batch = new List<Guid>(batchSize);
+            await using (var next = tx.Command(
+                $"SELECT document_id FROM snapshot_freeze WHERE document_id > @after{filter} ORDER BY document_id LIMIT @n"))
+            {
+                next.Parameters.AddWithValue("after", after);
+                next.Parameters.AddWithValue("n", batchSize);
+                batch.AddRange(await ReadGuidsAsync(next, cancellationToken).ConfigureAwait(false));
+            }
+
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            var excluded = await authorize(batch, cancellationToken).ConfigureAwait(false);
+            if (excluded.Count > 0)
+            {
+                await using var delete = tx.Command("DELETE FROM snapshot_freeze WHERE document_id = ANY(@ids)");
+                delete.Parameters.AddWithValue("ids", excluded.Keys.ToArray());
+                denied += await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            after = batch[^1];
+            if (batch.Count < batchSize)
+            {
+                break;
+            }
+        }
+
+        return denied;
     }
 
     public async Task<bool> FailAsync(Guid workspaceId, Guid snapshotId, string reason, CancellationToken cancellationToken = default)
@@ -651,6 +696,7 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
             AttemptCount = r.GetInt16(30),
             ExpiredAt = r.IsDBNull(31) ? null : r.GetFieldValue<DateTimeOffset>(31),
             Referenced = r.GetBoolean(32),
+            Expansion = RelationshipExpansion.FromFlags(r.GetInt16(33)),
         };
     }
 

@@ -6,6 +6,7 @@ using Npgsql;
 using NpgsqlTypes;
 
 using Opportunity.Application.Search;
+using Opportunity.Core.Documents;
 
 namespace Opportunity.Data.Search;
 
@@ -19,7 +20,7 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
     private const string SessionColumns =
         """
         workspace_id, search_id, user_id, session_id, query_text, sort_keys::text, page_size, count_exact, highlight,
-        pit_id, total_value, total_exact, created_at, expires_at, served_generation, pit_opened_at
+        pit_id, total_value, total_exact, created_at, expires_at, served_generation, pit_opened_at, expansion
         """;
 
     /// <summary>Expired searches removed per create, so cleanup cost stays bounded.</summary>
@@ -47,9 +48,9 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
             """
             INSERT INTO opportunity.search_session
                 (workspace_id, search_id, user_id, session_id, query_text, sort_keys, page_size, count_exact, highlight,
-                 pit_id, total_value, total_exact, created_at, expires_at, served_generation, pit_opened_at)
+                 pit_id, total_value, total_exact, created_at, expires_at, served_generation, pit_opened_at, expansion)
             VALUES (@ws, @id, @user, @session, @query, @sort, @size, @exact, @highlight, @pit, @total, @totalExact, @created, @expires,
-                    @served, @pitOpened)
+                    @served, @pitOpened, @expansion)
             """))
         {
             insert.Parameters.AddWithValue("ws", search.WorkspaceId);
@@ -69,6 +70,7 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
             insert.Parameters.AddWithValue("served", NpgsqlDbType.Bigint, (object?)search.ServedGeneration ?? DBNull.Value);
             insert.Parameters.AddWithValue("pitOpened", NpgsqlDbType.TimestampTz,
                 search.PointInTimeId is null ? DBNull.Value : search.PointInTimeOpenedAt ?? search.CreatedAt);
+            insert.Parameters.AddWithValue("expansion", search.Expansion.Flags);
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -106,6 +108,7 @@ public sealed class SearchSessionStore(NpgsqlDataSource dataSource) : ISearchSes
                 {
                     ServedGeneration = reader.IsDBNull(14) ? null : reader.GetInt64(14),
                     PointInTimeOpenedAt = reader.IsDBNull(15) ? null : reader.GetFieldValue<DateTimeOffset>(15),
+                    Expansion = RelationshipExpansion.FromFlags(reader.GetInt16(16)),
                 };
             }
         }

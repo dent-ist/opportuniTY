@@ -29,7 +29,8 @@ public sealed class SavedSearchStore(NpgsqlDataSource dataSource) : ISavedSearch
         """
         SELECT s.saved_search_id, s.name, s.folder_id, s.owner_id, coalesce(u.display_name, u.email, s.owner_id::text), s.query_text,
                s.ast_version, s.columns::text, s.sort::text, s.include_family, s.referenced_ids, s.created_at, s.modified_at, s.version,
-               s.last_run_at, s.last_hit_count, s.last_hit_exact, s.last_run_current, s.last_run_generation
+               s.last_run_at, s.last_hit_count, s.last_hit_exact, s.last_run_current, s.last_run_generation,
+               s.include_duplicates, s.include_thread
           FROM opportunity.saved_search s
           LEFT JOIN opportunity.app_user u ON u.user_id = s.owner_id
         """;
@@ -129,8 +130,8 @@ public sealed class SavedSearchStore(NpgsqlDataSource dataSource) : ISavedSearch
         await using (var insert = tx.Command(
             """
             INSERT INTO opportunity.saved_search (workspace_id, saved_search_id, name, folder_id, owner_id, query_text, ast_version, columns,
-                                                  sort, include_family, referenced_ids)
-            VALUES (@ws, @id, @name, @folder, @owner, @query, @astVersion, @columns::jsonb, @sort::jsonb, @family, @refs)
+                                                  sort, include_family, referenced_ids, include_duplicates, include_thread)
+            VALUES (@ws, @id, @name, @folder, @owner, @query, @astVersion, @columns::jsonb, @sort::jsonb, @family, @refs, @duplicates, @thread)
             """))
         {
             insert.Parameters.AddWithValue("ws", workspaceId);
@@ -164,7 +165,8 @@ public sealed class SavedSearchStore(NpgsqlDataSource dataSource) : ISavedSearch
             """
             UPDATE opportunity.saved_search
                SET name = @name, folder_id = @folder, query_text = @query, ast_version = @astVersion, columns = @columns::jsonb,
-                   sort = @sort::jsonb, include_family = @family, referenced_ids = @refs, version = version + 1, modified_at = now()
+                   sort = @sort::jsonb, include_family = @family, referenced_ids = @refs, include_duplicates = @duplicates,
+                   include_thread = @thread, version = version + 1, modified_at = now()
              WHERE workspace_id = @ws AND saved_search_id = @id
             """))
         {
@@ -571,6 +573,8 @@ public sealed class SavedSearchStore(NpgsqlDataSource dataSource) : ISavedSearch
                     Columns = JsonSerializer.Deserialize<string[]>(reader.GetString(7), Json) ?? [],
                     Sort = JsonSerializer.Deserialize<StoredSort[]>(reader.GetString(8), Json)?.Select(s => s.ToKey()).ToList() ?? [],
                     IncludeFamily = reader.GetBoolean(9),
+                    IncludeDuplicates = reader.GetBoolean(19),
+                    IncludeThread = reader.GetBoolean(20),
                     References = reader.GetFieldValue<Guid[]>(10),
                     CreatedAt = reader.GetFieldValue<DateTimeOffset>(11),
                     ModifiedAt = reader.GetFieldValue<DateTimeOffset>(12),
@@ -638,6 +642,8 @@ public sealed class SavedSearchStore(NpgsqlDataSource dataSource) : ISavedSearch
         parameters.AddWithValue("columns", JsonSerializer.Serialize(definition.Columns, Json));
         parameters.AddWithValue("sort", JsonSerializer.Serialize(definition.Sort.Select(StoredSort.From), Json));
         parameters.AddWithValue("family", definition.IncludeFamily);
+        parameters.AddWithValue("duplicates", definition.IncludeDuplicates);
+        parameters.AddWithValue("thread", definition.IncludeThread);
         parameters.AddWithValue("refs", definition.References.Distinct().ToArray());
     }
 

@@ -16,6 +16,17 @@ internal sealed record SortKey(string Field, string Path, bool Descending)
 
     public bool IsScore => Path == ScorePath;
 
+    /// <summary>
+    /// The OpenSearch sort clauses of this key. "Date (Family)" sorts by the family date, then the family and its family
+    /// sequence (parent first), so families stay contiguous (ADR-009 R25, E09-T03).
+    /// </summary>
+    public IReadOnlyList<(string Path, bool Descending)> Clauses => Field == SearchSortFields.FamilyDate
+        ? [(ProjectionFields.FamilyDate, Descending), (ProjectionFields.FamilyId, Descending), (ProjectionFields.FamilySequence, false)]
+        : [(Path, Descending)];
+
+    /// <summary>"Date (Family)" ascending: the default order of an expanded search.</summary>
+    public static SortKey Family { get; } = new(SearchSortFields.FamilyDate, ProjectionFields.FamilyDate, Descending: false);
+
     private static readonly Dictionary<string, string> Paths = new(StringComparer.OrdinalIgnoreCase)
     {
         [SearchSortFields.Relevance] = ScorePath,
@@ -92,6 +103,9 @@ internal sealed record SearchBodySpec
 
     public IReadOnlyList<string> Facets { get; init; } = [];
 
+    /// <summary>Further aggregations by name (the expanded counts of E09-T03).</summary>
+    public JsonObject? Aggregations { get; init; }
+
     public int FacetBuckets { get; init; } = 25;
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
@@ -165,12 +179,17 @@ internal static class SearchDsl
                     ("no_match_size", 0))))));
         }
 
-        if (spec.Facets.Count > 0)
+        if (spec.Facets.Count > 0 || spec.Aggregations is { Count: > 0 })
         {
             var aggs = new JsonObject();
             foreach (var facet in spec.Facets)
             {
                 aggs[FacetPrefix + facet] = Obj(("terms", Obj(("field", facet), ("size", spec.FacetBuckets))));
+            }
+
+            foreach (var (name, aggregation) in spec.Aggregations ?? [])
+            {
+                aggs[name] = aggregation!.DeepClone();
             }
 
             body["aggs"] = aggs;
@@ -185,14 +204,17 @@ internal static class SearchDsl
         var sort = new JsonArray();
         foreach (var key in keys.Append(new SortKey(ProjectionFields.DocumentId, ProjectionFields.DocumentId, Descending: false)))
         {
-            var descending = key.Descending ^ reverse;
-            var order = Obj(("order", descending ? "desc" : "asc"));
-            if (!key.IsScore)
+            foreach (var (path, keyDescending) in key.Clauses)
             {
-                order["missing"] = reverse ? "_first" : "_last";
-            }
+                var descending = keyDescending ^ reverse;
+                var order = Obj(("order", descending ? "desc" : "asc"));
+                if (!key.IsScore)
+                {
+                    order["missing"] = reverse ? "_first" : "_last";
+                }
 
-            sort.Add(Obj((key.Path, order)));
+                sort.Add(Obj((path, order)));
+            }
         }
 
         return sort;

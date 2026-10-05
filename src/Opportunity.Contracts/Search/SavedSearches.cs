@@ -74,7 +74,9 @@ public sealed record SavedSearchSummary(
 /// <c>savedsearch:&lt;savedSearchId&gt;</c>.
 /// </summary>
 /// <param name="Columns">Field query names of the grid columns, in order.</param>
-/// <param name="IncludeFamily">Open the results with their families (applied by consumers that expand families).</param>
+/// <param name="IncludeFamily">Run with the hits' families (E09-T03 expansion; a run's own <c>expand</c> wins).</param>
+/// <param name="IncludeDuplicates">Run with the hits' duplicates (E09-T03).</param>
+/// <param name="IncludeThread">Run with the hits' email threads (E09-T03).</param>
 public sealed record SavedSearchResource(
     Guid SavedSearchId,
     string Name,
@@ -92,7 +94,9 @@ public sealed record SavedSearchResource(
     IReadOnlyList<string> Columns,
     IReadOnlyList<SearchSortKey> Sort,
     bool IncludeFamily,
-    int AstVersion);
+    int AstVersion,
+    bool IncludeDuplicates = false,
+    bool IncludeThread = false);
 
 /// <summary>Body of <c>POST …/saved-searches</c> (create) and <c>PUT …/saved-searches/{id}</c> (replace, with <c>If-Match</c>).</summary>
 /// <param name="Name">1–200 characters.</param>
@@ -100,13 +104,18 @@ public sealed record SavedSearchResource(
 /// <param name="Query">Query-language text (empty: every document the runner may see). It must parse and bind now.</param>
 /// <param name="Columns">Field query names of the grid columns (at most 100, distinct).</param>
 /// <param name="Sort">At most 5 distinct sortable fields (see <see cref="SearchSortFields"/>).</param>
+/// <param name="IncludeFamily">Run with the hits' families (default false).</param>
+/// <param name="IncludeDuplicates">Run with the hits' duplicates (default false).</param>
+/// <param name="IncludeThread">Run with the hits' email threads (default false).</param>
 public sealed record SavedSearchRequest(
     string? Name,
     Guid? FolderId = null,
     string? Query = null,
     IReadOnlyList<string>? Columns = null,
     IReadOnlyList<SearchSortKey>? Sort = null,
-    bool? IncludeFamily = null);
+    bool? IncludeFamily = null,
+    bool? IncludeDuplicates = null,
+    bool? IncludeThread = null);
 
 /// <summary>Body of <c>POST …/saved-searches/{id}/clone</c>: the copy is private to the caller.</summary>
 /// <param name="Name">Default: "Copy of &lt;name&gt;".</param>

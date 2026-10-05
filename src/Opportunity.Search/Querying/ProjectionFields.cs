@@ -35,6 +35,15 @@ public static class ProjectionFields
     public const string MimeType = "mimeType";
     public const string DocumentDate = "documentDate";
     public const string FamilyId = "familyId";
+
+    /// <summary>date: the family's date (ADR-009 R25), the "Date (Family)" sort.</summary>
+    public const string FamilyDate = "familyDate";
+
+    /// <summary>keyword: the duplicate group (ADR-009 R13–R15); absent when the document has none.</summary>
+    public const string DuplicateGroupId = "duplicateGroupId";
+
+    /// <summary>keyword: the email thread (ADR-009 R18); absent on attachments and non-email documents.</summary>
+    public const string EmailThreadId = "emailThreadId";
     public const string ParentDocumentId = "parentDocumentId";
     public const string FamilySequence = "familySequence";
     public const string FileSize = "fileSize";
@@ -44,7 +53,7 @@ public static class ProjectionFields
     public static IReadOnlyList<string> GridSource { get; } =
     [
         WorkspaceId, DocumentId, ControlNumber, FileName, FileType, FileExtension, MimeType, DocumentDate, FamilyId,
-        ParentDocumentId, FamilySequence, FileSize, PageCount,
+        ParentDocumentId, FamilySequence, FileSize, PageCount, FamilyDate,
     ];
 
     /// <summary>Fields the query language may never address (ADR-008 R11): they answer as unknown fields.</summary>
