@@ -73,6 +73,7 @@ public sealed class DispatchSchedulerTests
     [InlineData(ChunkOperationKind.RenderChunk, "render.chunks")]
     [InlineData(ChunkOperationKind.ExportChunk, "export.chunks")]
     [InlineData(ChunkOperationKind.ProductionChunk, "production.chunks")]
+    [InlineData(ChunkOperationKind.RelationshipChunk, "import.chunks")]
     public void Job_chunks_go_to_their_operation_queue_payload_free(ChunkOperationKind operation, string queue)
     {
         var chunk = new ClaimedJobChunk(
@@ -93,7 +94,7 @@ public sealed class DispatchSchedulerTests
     public void Operations_without_a_worker_queue_are_not_dispatched()
     {
         JobChunkRelay.QueueFor(ChunkOperationKind.ReindexChunk).Should().BeNull();
-        JobChunkRelay.DispatchedOperations.Should().NotContain([ChunkOperationKind.RelationshipChunk, ChunkOperationKind.IndexChunk]);
+        JobChunkRelay.DispatchedOperations.Should().NotContain([ChunkOperationKind.ReindexChunk, ChunkOperationKind.IndexChunk]);
         DispatchMetrics.LaneName(MessageLane.SecurityBulk).Should().Be("security-bulk");
     }
 }

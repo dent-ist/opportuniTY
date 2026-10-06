@@ -13,7 +13,8 @@ import { FILTER_DEBOUNCE_MS } from './grid-filter';
 import { LAYOUT_SAVE_DELAY_MS } from './review-grid';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { expectNoAxeViolations } from '../../../ui/testing/axe.testing';
-import { FakeResultOptions, fakePage } from './grid-fixtures.testing';
+import { ToastService } from '../../../ui';
+import { FakeResultOptions, fakePage, hit } from './grid-fixtures.testing';
 
 const SEARCHES = '/api/v1/workspaces/ws-1/searches';
 const PAGES = '/api/v1/workspaces/ws-1/searches/search-1/pages';
@@ -1040,6 +1041,107 @@ describe('Review grid (Documents list)', () => {
       viewSelect().dispatchEvent(new Event('change'));
       await settle();
       expect(searches().at(-1)?.sort).toBeNull();
+    }, 30_000);
+  });
+
+  describe('family groups and the duplicate indicator (E16-T10)', () => {
+    // ACM1 stand-alone; family of ACM2 with two attachments; ACM5 and ACM6 attachments of a parent not in the list;
+    // ACM7 has duplicates.
+    const familyHits = [
+      hit(1),
+      hit(2, { familyId: 'fam-2', isFamilyParent: true }),
+      hit(3, { familyId: 'fam-2', parentDocumentId: 'doc-2', familySequence: 1 }),
+      hit(4, { familyId: 'fam-2', parentDocumentId: 'doc-2', familySequence: 2 }),
+      hit(5, { familyId: 'fam-9', parentDocumentId: 'doc-9', familySequence: 1 }),
+      hit(6, { familyId: 'fam-9', parentDocumentId: 'doc-9', familySequence: 2 }),
+      { ...hit(7), duplicateGroupId: 'dup-7' },
+    ];
+    const tree = () => root().querySelector<HTMLElement>('[role="treegrid"]')!;
+    const treeRows = () => [
+      ...tree().querySelectorAll<HTMLElement>('[role="rowgroup"] + [role="rowgroup"] [role="row"]'),
+    ];
+    const describeRow = (r: HTMLElement) =>
+      `${r.getAttribute('aria-level')}${r.hasAttribute('aria-expanded') ? `:${r.getAttribute('aria-expanded')}` : ''} ${r
+        .querySelectorAll('[role="gridcell"]')[1]
+        .textContent?.replace(/\s+/g, ' ')
+        .trim()}`;
+
+    async function grouped(): Promise<void> {
+      await setup({
+        result: { total: 7, pageSize: 100 },
+        search: () => ({ body: { ...fakePage(result, 1), items: familyHits } }),
+      });
+      button('Group families').click();
+      await settle();
+    }
+
+    it('sorts by Family Date and shows parents with indented attachments in a tree grid', async () => {
+      await grouped();
+      expect(searches().at(-1)?.sort).toEqual([{ field: 'familyDate', direction: 'asc' }]);
+      expect(button('Group families').getAttribute('aria-pressed')).toBe('true');
+      expect(tree().getAttribute('aria-rowcount')).toBe('-1');
+      expect(treeRows().map(describeRow)).toEqual([
+        '1 ACM0000001',
+        '1:true ACM0000002',
+        '2 ACM0000003',
+        '2 ACM0000004',
+        // The parent of ACM5 and ACM6 is not in the results: a placeholder without metadata stands in.
+        '1:true Parent not listedParent not listed: the attachments below are shown without a parent.',
+        '2 ACM0000005',
+        '2 ACM0000006',
+        '1 ACM0000007',
+      ]);
+      await expectNoAxeViolations(root());
+    }, 30_000);
+
+    it('collapses and expands a family with the toggle and with Left / Right on the Family column', async () => {
+      await grouped();
+      treeRows()[1].querySelector<HTMLButtonElement>('.grid__tree')!.click();
+      await settle();
+      expect(treeRows().map(describeRow).slice(0, 3)).toEqual([
+        '1 ACM0000001',
+        '1:false ACM0000002',
+        '1:true Parent not listedParent not listed: the attachments below are shown without a parent.',
+      ]);
+
+      // Keyboard (the toggled row is focused): to the Family column, Right expands, Down to an attachment, Left goes
+      // up to the parent, Left again collapses.
+      tree().focus();
+      key('ArrowRight', {}, tree()); // Control Number → Family column
+      key('ArrowRight', {}, tree());
+      await settle();
+      expect(treeRows()[1].getAttribute('aria-expanded')).toBe('true');
+      key('ArrowDown', {}, tree());
+      key('ArrowLeft', {}, tree());
+      await settle();
+      expect(tree().getAttribute('aria-activedescendant')).toBe(`grid-ws-1-r1-c2`);
+      key('ArrowLeft', {}, tree());
+      await settle();
+      expect(treeRows()[1].getAttribute('aria-expanded')).toBe('false');
+    }, 30_000);
+
+    it('turns grouping off when the list is sorted by another column', async () => {
+      await grouped();
+      const header = [...tree().querySelectorAll<HTMLElement>('[role="columnheader"]')].find(
+        (h) => h.textContent?.trim() === 'File Name',
+      )!;
+      header.click();
+      await settle();
+      expect(root().querySelector('[role="treegrid"]')).toBeNull();
+      expect(button('Group families').getAttribute('aria-pressed')).toBe('false');
+      expect(searches().at(-1)?.sort).toEqual([{ field: 'fileName', direction: 'asc' }]);
+    }, 30_000);
+
+    it('runs the duplicate group as a new search from the duplicate indicator', async () => {
+      await grouped();
+      const indicator = treeRows().at(-1)!.querySelector<HTMLButtonElement>('.grid__dup')!;
+      expect(indicator.textContent).toContain('Has duplicates');
+      indicator.click();
+      await settle();
+      expect(searches().at(-1)?.query).toBe('duplicategroup:"dup-7"');
+      expect(TestBed.inject(ToastService).toasts().at(-1)?.message).toBe(
+        'Showing: Duplicates of ACM0000007.',
+      );
     }, 30_000);
   });
 });

@@ -42,6 +42,9 @@ public static class ProjectionFields
     /// <summary>keyword: the duplicate group (ADR-009 R13–R15); absent when the document has none.</summary>
     public const string DuplicateGroupId = "duplicateGroupId";
 
+    /// <summary>boolean: the document is in its duplicate group's primary family (ADR-009 R15).</summary>
+    public const string IsDuplicatePrimary = "isDuplicatePrimary";
+
     /// <summary>keyword: the email thread (ADR-009 R18); absent on attachments and non-email documents.</summary>
     public const string EmailThreadId = "emailThreadId";
     public const string ParentDocumentId = "parentDocumentId";
@@ -53,7 +56,7 @@ public static class ProjectionFields
     public static IReadOnlyList<string> GridSource { get; } =
     [
         WorkspaceId, DocumentId, ControlNumber, FileName, FileType, FileExtension, MimeType, DocumentDate, FamilyId,
-        ParentDocumentId, FamilySequence, FileSize, PageCount, FamilyDate,
+        ParentDocumentId, FamilySequence, FileSize, PageCount, FamilyDate, DuplicateGroupId, IsDuplicatePrimary, EmailThreadId,
     ];
 
     /// <summary>Fields the query language may never address (ADR-008 R11): they answer as unknown fields.</summary>

@@ -23,6 +23,7 @@ const f = (over: Partial<CodingLayoutField>): CodingLayoutField => ({
   required: false,
   readOnly: false,
   visibleWhen: null,
+  applyToFamilyByDefault: false,
   ...over,
 });
 const choices = (n: number) =>

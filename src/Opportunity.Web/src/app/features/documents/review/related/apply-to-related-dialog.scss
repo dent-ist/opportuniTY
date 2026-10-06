@@ -1,0 +1,134 @@
+.apply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+}
+
+.apply__lead,
+.apply__summary p {
+  margin: 0;
+}
+
+.apply__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  margin: 0;
+}
+
+p.apply__summary {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--opp-space-2);
+}
+
+.apply__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  legend {
+    margin-block-end: var(--opp-space-1);
+    padding: 0;
+    font-weight: 600;
+  }
+}
+
+.apply__option {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+
+.apply__field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  padding: var(--opp-space-1) 0;
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.apply__field-label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+
+// The coding pane's "Affects access" marker.
+.apply__access {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  padding: 0 var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-privileged-border);
+  border-radius: var(--opp-radius-pill);
+  background: var(--opp-color-privileged-bg);
+  color: var(--opp-color-privileged-text);
+  font-size: var(--opp-font-size-xs);
+}
+
+.apply__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apply__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+}
+
+.apply__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-info-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+}
+
+.apply__scroll {
+  max-block-size: 16rem;
+  overflow: auto;
+}
+
+.apply__table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-sm);
+
+  caption {
+    padding-block-end: var(--opp-space-1);
+    font-weight: 600;
+    text-align: start;
+  }
+
+  th,
+  td {
+    padding: var(--opp-space-1) var(--opp-space-2);
+    border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+    text-align: start;
+  }
+
+  th {
+    color: var(--opp-color-text-muted);
+  }
+}
+
+.apply__ack {
+  align-items: flex-start;
+}
+
+.apply__error {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  margin: 0;
+  color: var(--opp-color-danger-text);
+}

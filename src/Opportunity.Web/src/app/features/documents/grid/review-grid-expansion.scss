@@ -13,3 +13,67 @@
   font-size: var(--opp-font-size-xs);
   line-height: 1.4;
 }
+
+// E16-T10: family groups (a tree: attachments indented under their parent), placeholders and page-boundary markers,
+// and the duplicate indicator that shows the duplicate group.
+.grid__row--child .grid__cell--control {
+  padding-inline-start: calc(var(--opp-cell-padding-x) + var(--opp-space-5));
+}
+
+.grid__placeholder {
+  color: var(--opp-color-text-muted);
+  font-style: italic;
+}
+
+.grid__continued {
+  flex: none;
+  margin-inline: var(--opp-space-1);
+  padding: 0 var(--opp-space-1);
+  border: var(--opp-border-width) dashed var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+  line-height: 1.4;
+}
+
+.grid__cell--family {
+  gap: var(--opp-space-1);
+}
+
+.grid__tree,
+.grid__dup {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.grid__tree {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: var(--opp-radius-sm);
+
+  &:hover {
+    background: var(--opp-color-hover);
+  }
+}
+
+.grid__dup {
+  min-inline-size: 1.125rem;
+  padding: 0 var(--opp-space-1);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+  font-size: var(--opp-font-size-xs);
+  font-weight: 600;
+  line-height: 1.4;
+
+  &:hover {
+    background: var(--opp-color-hover);
+  }
+}

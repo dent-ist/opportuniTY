@@ -346,6 +346,11 @@ export const FIXED_KEYS: readonly FixedKey[] = [
   { label: 'Sort by the focused column header', keys: 'Enter', scope: 'grid' },
   { label: 'Extend the selection', keys: 'Shift+↑ / Shift+↓', scope: 'grid' },
   { label: 'Move between the filters of the filter row', keys: '← / →', scope: 'grid' },
+  {
+    label: 'Expand or collapse a family (Family column of the grouped list)',
+    keys: '→ / ←',
+    scope: 'grid',
+  },
   { label: 'Clear the focused filter', keys: 'Esc', scope: 'grid' },
   { label: 'Close a dialog or menu', keys: 'Esc', scope: 'global' },
 ];

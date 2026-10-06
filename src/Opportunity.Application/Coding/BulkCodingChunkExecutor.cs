@@ -62,9 +62,11 @@ public sealed class BulkCodingChunkExecutor(
         }
 
         IReadOnlyList<CodingFieldOperation> operations;
+        PropagationJobParameters? propagation;
         try
         {
             operations = BulkCodingParameters.Parse(chunk.Parameters);
+            propagation = BulkCodingParameters.Propagation(chunk.Parameters);
         }
         catch (FormatException ex)
         {
@@ -87,9 +89,12 @@ public sealed class BulkCodingChunkExecutor(
             Groups = user.Groups,
             CorrelationId = chunk.CorrelationId,
         };
-        if (!(await authorization.AuthorizeAsync(principal, ws, Permission.CodingBulk, cancellationToken).ConfigureAwait(false)).IsAllowed)
+        // A propagation (E09-T05) acts with the reviewer's Coding.Write; a Mass Edit needs Coding.Bulk.
+        var permission = propagation is null ? Permission.CodingBulk : Permission.CodingWrite;
+        if (!(await authorization.AuthorizeAsync(principal, ws, permission, cancellationToken).ConfigureAwait(false)).IsAllowed)
         {
-            return await StopJobAsync(context, "The user who started the job no longer has Coding.Bulk; the remaining chunks were cancelled.", cancellationToken)
+            return await StopJobAsync(context,
+                $"The user who started the job no longer has {permission.Name()}; the remaining chunks were cancelled.", cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -126,7 +131,7 @@ public sealed class BulkCodingChunkExecutor(
 
         // Q-15 / D9.4: every member is re-authorized for the initiator against current PostgreSQL security state.
         var decisions = await authorization.AuthorizeManyAsync(
-            principal, ws, Permission.CodingBulk, [.. members.Select(m => m.DocumentId)], DenialAudit.PerDocument, cancellationToken)
+            principal, ws, permission, [.. members.Select(m => m.DocumentId)], DenialAudit.PerDocument, cancellationToken)
             .ConfigureAwait(false);
         var excluded = new List<JobItemResult>();
         var targets = new List<CodingTarget>(members.Count);
@@ -154,6 +159,7 @@ public sealed class BulkCodingChunkExecutor(
             JobId = chunk.Lease.JobId,
             Documents = targets,
             Operations = operations,
+            OriginEventIds = propagation?.OriginEventIds,
             Audit = ChunkAudit(chunk, snapshotId, excluded.Count),
         }, excluded, cancellationToken).ConfigureAwait(false);
 

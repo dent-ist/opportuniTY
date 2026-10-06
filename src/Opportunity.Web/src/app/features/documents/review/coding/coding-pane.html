@@ -179,6 +179,20 @@
   }
 </div>
 
+@if (canApply()) {
+  <div class="coding__propagate" role="group" aria-label="Apply coding to related documents">
+    @if (relations().family) {
+      <button type="button" oppButton="ghost" (click)="applyTo('family')">
+        <opp-icon name="documents" />Apply to Family…
+      </button>
+    }
+    @if (relations().duplicates) {
+      <button type="button" oppButton="ghost" (click)="applyTo('duplicates')">
+        <opp-icon name="copy" />Apply to Duplicates…
+      </button>
+    }
+  </div>
+}
 @if (showActions()) {
   <div class="coding__actions">
     <button type="button" oppButton="ghost" [disabled]="!dirty()" (click)="discard()">

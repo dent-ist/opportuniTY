@@ -384,8 +384,8 @@ export interface FamilyMarker {
 
 /**
  * `└A` for an attachment (the hit has a parent), `P` for the top-level document of a family with attachments
- * (`isFamilyParent`). Standalone documents show no marker; the duplicate ("D") marker needs a flag the search page does
- * not carry yet.
+ * (`isFamilyParent`). Standalone documents show no marker. The duplicate indicator ("D", a button to the duplicate
+ * group) is rendered next to it from `duplicateGroupId` (family-groups.ts).
  */
 export function familyMarker(hit: SearchHit): FamilyMarker | null {
   if (hit.parentDocumentId) return { symbol: '└A', label: 'Attachment' };

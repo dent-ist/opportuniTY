@@ -14,6 +14,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
 import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { SessionService } from '../../../../core/session/session';
@@ -22,12 +23,20 @@ import {
   Announcer,
   Badge,
   Button,
+  DialogService,
   Icon,
   LoadingState,
   Select,
   SelectOption,
   TextField,
+  ToastService,
 } from '../../../../ui';
+import type { PropagationScope } from '../../relationships/relationships-api';
+import type {
+  ApplyField,
+  ApplyToRelatedData,
+  ApplyToRelatedResult,
+} from '../related/apply-to-related-dialog';
 import type { CodingEditor } from '../review-regions';
 import {
   CodingApi,
@@ -119,6 +128,15 @@ export class ReviewCoding implements CodingEditor {
   readonly canCode = input(false);
   /** Save & Next / Save & Previous: the workspace saves through `save()`, then moves. */
   readonly move = output<'next' | 'previous'>();
+  /** Which relations the document has: "Apply to Family…" / "Apply to Duplicates…" show only then (E16-T10). */
+  readonly relations = input<{ readonly family: boolean; readonly duplicates: boolean }>({
+    family: false,
+    duplicates: false,
+  });
+  /** The document's Control Number, as the Apply dialog names it. */
+  readonly controlNumber = input<string | null>(null);
+  /** Coding was applied to the family or duplicates (or a job was started for it). */
+  readonly propagated = output<ApplyToRelatedResult>();
 
   private readonly api = inject(CodingApi);
   private readonly pending = inject(PendingCoding, { optional: true });
@@ -128,6 +146,8 @@ export class ReviewCoding implements CodingEditor {
   private readonly announcer = inject(Announcer);
   private readonly prefs = inject(UiPreferences);
   private readonly injector = inject(Injector);
+  private readonly dialogs = inject(DialogService);
+  private readonly toasts = inject(ToastService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   protected readonly uid = inject(_IdGenerator).getId('opp-coding-');
   protected readonly accessHint =
@@ -159,6 +179,16 @@ export class ReviewCoding implements CodingEditor {
   protected readonly conflict = signal<DocumentCoding | null>(null);
   /** The reviewer saved the displayed document in this visit (the indexing badge shows). */
   private readonly savedHere = signal(false);
+  /** Fields saved in this visit: Apply to Family… offers them ticked. */
+  private readonly savedFields = signal<ReadonlySet<string>>(new Set());
+  /** "Apply to Family…" / "Apply to Duplicates…" are offered. */
+  protected readonly canApply = computed(
+    () =>
+      this.canCode() &&
+      this.stateKind() === 'ready' &&
+      (this.relations().family || this.relations().duplicates) &&
+      this.rows().some((r) => r.editable),
+  );
   private seq = 0;
   private inFlight: Promise<boolean> | null = null;
 
@@ -268,6 +298,66 @@ export class ReviewCoding implements CodingEditor {
     // At once when the field is on screen, so a digit typed right after lands in it; else after rendering.
     if (!this.focusRow(row.field.queryName)) {
       afterNextRender(() => this.focusRow(row.field.queryName), { injector: this.injector });
+    }
+  }
+
+  /**
+   * Apply to Family… / Apply to Duplicates… (E16-T10, Q-14): unsaved edits are saved first, then the dialog previews and
+   * applies this document's saved values of the chosen fields.
+   */
+  async applyTo(scope: PropagationScope): Promise<void> {
+    const relations = this.relations();
+    if (!this.canApply()) {
+      this.announcer.announce(
+        !this.canCode()
+          ? 'You cannot change coding in this workspace.'
+          : 'This document has no family or duplicates to apply coding to.',
+      );
+      return;
+    }
+    if (scope === 'family' && !relations.family) scope = 'duplicates';
+    if (scope === 'duplicates' && !relations.duplicates) scope = 'family';
+    if (this.dirty() && !(await this.save())) return;
+    const coding = this.coding();
+    if (typeof coding === 'string') return;
+    const saved = this.savedFields();
+    const fields: ApplyField[] = this.rows()
+      .filter((r) => r.editable)
+      .map((r) => ({
+        queryName: r.field.queryName,
+        label: r.field.label,
+        display: r.display,
+        empty: isEmpty(r.value),
+        securityAffecting: r.field.securityAffecting,
+        // Q-48: the layout's "apply to family by default" fields, and those saved in this visit, are offered ticked;
+        // security-affecting fields never are.
+        preselected:
+          (r.field.applyToFamilyByDefault || saved.has(r.field.queryName)) &&
+          !r.field.securityAffecting,
+      }));
+    const { ApplyToRelatedDialog } = await import('../related/apply-to-related-dialog');
+    const ref = this.dialogs.open<ApplyToRelatedResult, ApplyToRelatedData>(ApplyToRelatedDialog, {
+      data: {
+        sourceDocumentId: coding.documentId,
+        controlNumber: this.controlNumber() ?? coding.documentId,
+        scope,
+        fields,
+        hasFamily: relations.family,
+        hasDuplicates: relations.duplicates,
+      },
+      width: '44rem',
+      injector: this.injector,
+    });
+    const result = await firstValueFrom(ref.closed);
+    if (!result) return;
+    this.propagated.emit(result);
+    if (result.mode === 'interactive') {
+      const n = new Intl.NumberFormat(this.prefs.locale());
+      const docs = result.applied === 1 ? 'document' : 'documents';
+      const skipped = result.skipped > 0 ? ` ${n.format(result.skipped)} skipped.` : '';
+      this.toasts.show(`Coding applied to ${n.format(result.applied)} ${docs}.${skipped}`, {
+        tone: result.skipped > 0 ? 'warning' : 'success',
+      });
     }
   }
 
@@ -465,6 +555,7 @@ export class ReviewCoding implements CodingEditor {
     this.message.set(null);
     this.conflict.set(null);
     this.savedHere.set(false);
+    this.savedFields.set(new Set());
     this.api.get(documentId).then(
       (coding) => {
         if (seq !== this.seq) return;
@@ -535,6 +626,7 @@ export class ReviewCoding implements CodingEditor {
         this.edits.set({});
         this.errors.set(new Map());
         this.savedHere.set(true);
+        this.savedFields.update((s) => new Set([...s, ...Object.keys(changes)]));
       }
       return true;
     } catch (e) {

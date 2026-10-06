@@ -137,6 +137,50 @@ public sealed class BulkCodingService(
     }
 
     /// <summary>
+    /// Submits the bulk coding job of a propagation (E09-T05) over <paramref name="snapshot"/>, a Ready BulkCoding
+    /// snapshot of the propagation's targets that the propagation service froze for the caller with <c>Coding.Write</c>.
+    /// The service has authorized the caller and validated <paramref name="operations"/>; the job's chunks re-check both
+    /// (<see cref="BulkCodingChunkExecutor"/>). A retry with the same <paramref name="idempotencyKey"/> returns the job.
+    /// </summary>
+    public async Task<BulkCodingSubmitOutcome> SubmitPropagationAsync(
+        CodingCaller caller, SnapshotRecord snapshot, IReadOnlyList<CodingFieldOperation> operations, bool securityAffecting,
+        PropagationJobParameters propagation, string idempotencyKey, AuditEvent submissionAudit, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(operations);
+        ArgumentNullException.ThrowIfNull(propagation);
+        if (snapshot.Status != SnapshotStatus.Ready || snapshot.DocumentCount is not { } documentCount
+            || !SnapshotStrategyRules.AcceptsSnapshot(SetOperationKind.BulkCoding, snapshot.Purpose))
+        {
+            return BulkCodingSubmitOutcome.Of(BulkCodingSubmitStatus.SnapshotNotReady);
+        }
+
+        var parameters = BulkCodingParameters.ToJson(operations, securityAffecting, propagation);
+        var creation = await jobs.CreateAsync(new NewJob
+        {
+            WorkspaceId = caller.WorkspaceId,
+            JobType = JobType.BulkCoding,
+            InitiatedBy = caller.Principal.UserId,
+            TargetSnapshotId = snapshot.SnapshotId,
+            Parameters = parameters,
+            ClientIdempotencyKey = idempotencyKey,
+            CorrelationId = submissionAudit.CorrelationId,
+            SubmissionAudit = submissionAudit with { SnapshotId = snapshot.SnapshotId },
+        }, cancellationToken).ConfigureAwait(false);
+
+        var job = creation.Job;
+        if (!creation.Created && (job.JobType != JobType.BulkCoding || job.TargetSnapshotId != snapshot.SnapshotId
+            || !JsonNode.DeepEquals(job.Parameters, parameters)))
+        {
+            return BulkCodingSubmitOutcome.Of(BulkCodingSubmitStatus.IdempotencyKeyReuse);
+        }
+
+        job = await StartAsync(job, documentCount, securityAffecting, cancellationToken).ConfigureAwait(false);
+        return new BulkCodingSubmitOutcome { Status = BulkCodingSubmitStatus.Accepted, Job = job, Created = creation.Created };
+    }
+
+    /// <summary>
     /// The bulk coding job <paramref name="jobId"/> when <paramref name="caller"/> may see it (their own, or any with
     /// <c>Job.ViewAll</c>); null when it does not exist, is another job type or is not visible.
     /// </summary>

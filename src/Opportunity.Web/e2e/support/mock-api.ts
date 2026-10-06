@@ -8,6 +8,7 @@ import { SavedSearchesMock } from './mock-saved-searches';
 import { SearchTermReportsMock } from './mock-search-term-reports';
 import { GridViewsMock } from './mock-grid-views';
 import { HighlightsMock } from './mock-highlights';
+import { RelationshipsMock, hitRelations } from './mock-relationships';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -45,6 +46,8 @@ export interface MockApiOptions {
   mfa?: boolean;
   /** Search index state at the start (wave-10 freshness, E16-T07); default current. */
   freshness?: MockFreshnessState;
+  /** Propagation targets above this run as a job (wave-12 contract; the API default is 1,000). */
+  propagationThreshold?: number;
 }
 
 /** A request the mock answered, with its JSON body and Idempotency-Key. */
@@ -101,6 +104,8 @@ export interface MockControl {
   readonly gridViews: GridViewsMock;
   /** The body of the last `POST …/searches` (sort, fields). */
   readonly lastSearch: () => Record<string, unknown> | null;
+  /** Relationships and coding propagation (E16-T10): previews and applies received. */
+  readonly relationships: RelationshipsMock;
 }
 
 /**
@@ -140,10 +145,11 @@ function searchPage(
       isFamilyParent: n % 4 === 3 && n < total,
       mimeType: attachment ? 'application/pdf' : 'application/vnd.ms-outlook',
       pageCount: (n % 7) + 1,
+      ...hitRelations(n, total),
       snippets: snippetsFor(n, query),
       // The values of the columns the search asked for (E16-T09): a choice ID for choice fields.
       ...(fields.length > 0
-        ? { fields: Object.fromEntries(fields.map((f) => [f, [fieldValue(f, n)]])) }
+        ? { fields: Object.fromEntries(fields.map((f) => [f, fieldValues(f, n, total)])) }
         : {}),
     };
   });
@@ -167,10 +173,14 @@ function searchPage(
 }
 
 /** A deterministic value of field `queryName` for document `n` (choice fields: one of their choice IDs). */
-function fieldValue(queryName: string, n: number): string {
+function fieldValues(queryName: string, n: number, total: number): string[] {
+  if (queryName === 'email_thread_group') {
+    const thread = hitRelations(n, total).emailThreadId;
+    return thread ? [thread] : [];
+  }
   const field = CODING_FIELDS.find((f) => f.queryName === queryName);
   const choices = field?.choices;
-  return choices ? String(choices[n % choices.length].choiceId) : `${queryName} ${n}`;
+  return [choices ? String(choices[n % choices.length].choiceId) : `${queryName} ${n}`];
 }
 
 /** The structural columns of the review grid, with their types (GET …/fields, ADR-007 §3). */
@@ -182,6 +192,8 @@ const SYSTEM_FIELDS = [
   ['extension', 'File Extension', 'keyword'],
   ['filesize', 'File Size', 'integer'],
   ['pagecount', 'Page Count', 'integer'],
+  // Email Thread ID (E16-T10): a relationship column, values from the hit's thread.
+  ['email_thread_group', 'Email Thread Group', 'keyword'],
 ].map(([queryName, displayName, type], i) => ({
   fieldId: i + 1,
   queryName,
@@ -426,7 +438,13 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   let lastFields: string[] = [];
   const highlights = new HighlightsMock(() => lastQuery);
   const freshness = new FreshnessMock(options.freshness);
+  const relationships = new RelationshipsMock(
+    coding,
+    () => documents,
+    options.propagationThreshold,
+  );
   const control: MockControl = {
+    relationships,
     freshness,
     imports,
     jobs: jobsMock,
@@ -614,6 +632,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Coding and coding layouts (E10-T01, E04-T03): ./mock-coding.ts.
     const coded = signedIn ? coding.handle(route, method, path) : undefined;
     if (coded) return coded;
+    // Relationships and coding propagation (E16-T10): ./mock-relationships.ts.
+    const related = signedIn ? relationships.handle(route, method, path, url) : undefined;
+    if (related) return related;
     // Document content API (E16-T04 viewer): metadata, text chunks, pages, page images, natives.
     const served =
       signedIn &&

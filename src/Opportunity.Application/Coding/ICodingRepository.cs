@@ -18,6 +18,13 @@ namespace Opportunity.Application.Coding;
 public interface ICodingRepository
 {
     /// <summary>
+    /// The workspace's latest coding event: the coding-state version a production records at finalization (Q-08,
+    /// E12-T02). Null when nothing was ever coded.
+    /// </summary>
+    Task<CodingHighWater?> GetHighWaterAsync(Guid workspaceId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<CodingHighWater?>(null);
+
+    /// <summary>
     /// Applies <paramref name="request"/> (one interactive save, or one bulk chunk). Re-applying a request with the same
     /// idempotency key changes nothing and returns <see cref="CodingWriteOutcome.Replayed"/>.
     /// </summary>
@@ -67,6 +74,21 @@ public interface ICodingRepository
 
     /// <summary>Provenance events in commit order, filtered (e.g. by actor type for reports), keyset-paged.</summary>
     Task<CodingEventPage> GetEventsAsync(CodingEventQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The CodingEvent that set the current value of each of <paramref name="fieldIds"/> on a document (its latest
+    /// <see cref="CodingEventKind.ValueChanged"/> event): the origin a propagation refers to (E09-T05). Fields never
+    /// changed are omitted.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, Guid>> GetLatestChangeEventIdsAsync(
+        Guid workspaceId, Guid documentId, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Current state of <paramref name="fieldIds"/> only, per live document (documents without any of them map to an
+    /// empty dictionary; missing or deleted documents are omitted): the light read of a propagation preview.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<int, FieldCodingState>>> GetFieldStatesAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default);
 }
 
 public sealed record CodingActor(Guid ActorId, CodingActorType Type);
@@ -82,7 +104,8 @@ public sealed record CodingChunkResult(CodingWriteResult Coding, ChunkCommitResu
 /// <param name="DocumentId">Document to code.</param>
 /// <param name="BaselineVersion">
 /// Bulk jobs: the DocumentVersion frozen in the job's snapshot (ADR-010 §8.1). A field changed after it by anyone else
-/// is skipped (Q-07). Null for interactive writes.
+/// is skipped (Q-07). Null for interactive writes, except interactive propagation (actor SystemRule), whose baseline is
+/// the version its preview read: a field changed since is skipped without a skip event (those belong to jobs).
 /// </param>
 public sealed record CodingTarget(Guid DocumentId, long? BaselineVersion = null);
 
@@ -126,6 +149,12 @@ public sealed record CodingWriteRequest
 
     /// <summary>If-Match for a single-document interactive write: nothing is written when the version differs.</summary>
     public long? ExpectedVersion { get; init; }
+
+    /// <summary>
+    /// Propagation (E09-T05): per field, the CodingEvent of the originating edit; every event this write records for
+    /// that field references it (<see cref="CodingEvent.OriginEventId"/>).
+    /// </summary>
+    public IReadOnlyDictionary<int, Guid>? OriginEventIds { get; init; }
 
     /// <summary>
     /// Who, from where and why (actor, client, correlation, access path). When set, an applied write stores its
@@ -213,7 +242,8 @@ public sealed record CodingEvent(
     Guid ActorId,
     CodingActorType ActorType,
     Guid? JobId,
-    string IdempotencyKey);
+    string IdempotencyKey,
+    Guid? OriginEventId = null);
 
 public readonly record struct CodingEventCursor(DateTimeOffset OccurredAt, Guid EventId);
 
@@ -239,3 +269,6 @@ public sealed record CodingEventQuery(Guid WorkspaceId)
 }
 
 public sealed record CodingEventPage(IReadOnlyList<CodingEvent> Events, CodingEventCursor? Next);
+
+/// <summary>The latest coding event of a workspace (its time and id).</summary>
+public sealed record CodingHighWater(DateTimeOffset OccurredAt, Guid EventId);

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 
 using Opportunity.Application.Coding;
+using Opportunity.Application.Documents.Dedupe;
 using Opportunity.Application.Fields;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
@@ -15,6 +16,7 @@ using Opportunity.Data.Audit;
 using Opportunity.Data.Fields;
 using Opportunity.Data.Import;
 using Opportunity.Data.Jobs;
+using Opportunity.Data.Relationships;
 using Opportunity.Data.SearchWork;
 using Opportunity.Data.Workspaces;
 using Opportunity.Import.Jobs;
@@ -56,6 +58,10 @@ public static class ImportWorkerModule
         services.TryAddSingleton<IWorkspaceReader>(sp => new WorkspaceReader(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddJobChunkConsumer();
         services.AddImportJobs(BindOptions(configuration));
+
+        // Dedupe runs (E09-T04): RelationshipChunks on the same queue, over the relationship writers.
+        services.TryAddSingleton<IDedupeStore>(sp => new DedupeStore(sp.GetRequiredService<NpgsqlDataSource>()));
+        services.AddJobChunkExecutor<DedupeChunkExecutor>();
 
         // Volumes whose natives, text (E08-T04) and OPT images the worker reads: Import:VolumeShareRoot.
         services.TryAddSingleton(new ImportVolumeOptions

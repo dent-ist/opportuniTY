@@ -575,6 +575,10 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
                       AND NOT EXISTS (SELECT 1 FROM opportunity.document_set_snapshot d
                                        WHERE d.workspace_id = @ws AND d.source_snapshot_id = c.snapshot_id
                                          AND d.status = 'Materializing')
+                      -- A production's frozen set lives as long as the production (ADR-002 §9, E12-T02); only a
+                      -- discarded draft lets it go.
+                      AND NOT EXISTS (SELECT 1 FROM opportunity.production p
+                                       WHERE p.workspace_id = @ws AND p.snapshot_id = c.snapshot_id AND p.status <> 4)
                     ORDER BY c.created_at
                     LIMIT @limit
                       FOR UPDATE)

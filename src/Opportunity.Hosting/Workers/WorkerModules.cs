@@ -59,6 +59,11 @@ public static class WorkerModuleCatalog
         {
             services.AddBulkCodingWorker(configuration);
         }
+
+        if (type == WorkerTypes.Production)
+        {
+            services.AddProductionWorker(configuration);
+        }
     }
 
     private static void AddDispatcher(IServiceCollection services, IConfiguration configuration)

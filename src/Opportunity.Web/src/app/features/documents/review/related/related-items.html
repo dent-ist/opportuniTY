@@ -1,0 +1,136 @@
+@let view = current();
+<div class="related__top">
+  <ul
+    class="opp-tab-list related__tabs"
+    role="tablist"
+    aria-label="Related items"
+    (keydown)="onTabKey($event)"
+  >
+    @for (t of tabs(); track t.tab) {
+      <li
+        class="opp-tab"
+        role="tab"
+        [id]="uid + '-tab-' + t.tab"
+        [attr.data-tab]="t.tab"
+        [attr.aria-controls]="uid + '-panel'"
+        [attr.aria-selected]="t.tab === tab()"
+        [tabIndex]="t.tab === tab() ? 0 : -1"
+        (click)="choose(t.tab)"
+      >
+        {{ t.label }} <span class="related__count">{{ t.count }}</span>
+      </li>
+    }
+  </ul>
+  @if (codingFields().length > 0) {
+    <button type="button" oppButton="ghost" [cdkMenuTriggerFor]="columnMenu">
+      <opp-icon name="columns" />Coding columns
+    </button>
+  }
+</div>
+<ng-template #columnMenu>
+  <div cdkMenu class="opp-menu" aria-label="Coding columns">
+    @for (c of codingFields(); track c.queryName) {
+      <button
+        type="button"
+        cdkMenuItemCheckbox
+        class="opp-menu__item"
+        [cdkMenuItemChecked]="isShown(c)"
+        (cdkMenuItemTriggered)="toggleColumn(c)"
+      >
+        <span class="related__check" aria-hidden="true">{{ isShown(c) ? '✓' : '' }}</span>
+        {{ c.label }}
+      </button>
+    }
+  </div>
+</ng-template>
+
+@switch (state()) {
+  @case ('loading') {
+    <opp-loading-state label="Loading related items…" />
+  }
+  @case ('unavailable') {
+    <p class="related__muted">The related items of this document could not be loaded.</p>
+  }
+  @default {
+    @if (view) {
+      <div
+        class="related__panel"
+        role="tabpanel"
+        [id]="uid + '-panel'"
+        [attr.aria-labelledby]="uid + '-tab-' + view.tab"
+      >
+        @if (view.rows.length === 0) {
+          <p class="related__muted">{{ view.empty }}</p>
+        } @else {
+          <p class="related__note">
+            Opening an item shows it here; your place in the list stays.
+            @if (view.pivotId) {
+              <button type="button" oppButton="ghost" (click)="showInList(view)">
+                <opp-icon name="search" />{{ view.pivotLabel }}
+              </button>
+            }
+          </p>
+          @if (view.rows.length > 0) {
+            <div class="related__scroll">
+              <table class="related__table">
+                <caption class="opp-visually-hidden">
+                  {{
+                    view.label
+                  }}
+                  of
+                  {{
+                    hit().controlNumber
+                  }}
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Relation</th>
+                    <th scope="col">Control Number</th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Date</th>
+                    @for (c of columns(); track c.queryName) {
+                      <th scope="col">{{ c.label }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of view.rows; track row.member.documentId) {
+                    <tr
+                      [class.is-self]="row.member.isSelf"
+                      [attr.aria-current]="row.member.isSelf ? 'true' : null"
+                    >
+                      <td>{{ row.relation }}</td>
+                      <td>
+                        @if (row.member.isSelf) {
+                          <strong>{{ row.member.controlNumber }}</strong>
+                        } @else {
+                          <button type="button" class="related__open" (click)="open(row)">
+                            {{ row.member.controlNumber }}
+                          </button>
+                        }
+                      </td>
+                      <td class="related__name">{{ row.member.fileName ?? '' }}</td>
+                      <td>{{ row.date }}</td>
+                      @for (value of row.coding; track $index) {
+                        <td>
+                          @if (value) {
+                            {{ value }}
+                          } @else {
+                            <span class="related__muted">Not set</span>
+                          }
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+          @if (view.truncated) {
+            <p class="related__muted">{{ view.truncated }}</p>
+          }
+        }
+      </div>
+    }
+  }
+}
