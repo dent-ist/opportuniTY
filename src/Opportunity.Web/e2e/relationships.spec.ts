@@ -121,12 +121,12 @@ test('Related Items: only visible members, opening a member keeps the cursor, th
   await expect(page.locator('.review__position')).toHaveText('Doc 3 of 250');
   await expect(page.getByText('Viewing related item ACM0000004')).toBeVisible();
 
-  // The grid's duplicate indicator: one click lists the duplicate group.
+  // The grid's duplicate indicator: one click lists the duplicate group. ACM0000005 is its group's primary ("DP", #87).
   await page.getByRole('button', { name: 'Back to list' }).click();
   const list = page.getByRole('grid', { name: 'Documents' });
   await list
     .getByRole('row', { name: /ACM0000005/ })
-    .getByRole('button', { name: 'Has duplicates' })
+    .getByRole('button', { name: 'Primary duplicate' })
     .click();
   await expect.poll(() => mock.lastSearch()?.['query']).toBe('duplicategroup:"dup-5"');
   await expect(
