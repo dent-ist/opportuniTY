@@ -303,6 +303,49 @@ public sealed class DocumentSetSnapshotService(
         return new SnapshotVerification(problems.Count == 0, expected - 1, hashes.Count, problems);
     }
 
+    /// <summary>
+    /// Freezes an explicit set that another use case selected and authorized (E09-T05: the targets of a coding
+    /// propagation), in the request whatever its size: each member is re-authorized for the caller with
+    /// <paramref name="memberPermission"/> instead of the purpose's own permission, which the use case has replaced
+    /// with its own check. A retry with the same <paramref name="clientIdempotencyKey"/> returns the same snapshot.
+    /// </summary>
+    public async Task<SnapshotCreateOutcome> FreezeSelectionAsync(
+        SearchCaller caller, SnapshotPurpose purpose, string name, IReadOnlyList<Guid> documentIds, Permission memberPermission,
+        string clientIdempotencyKey, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(documentIds);
+        ArgumentException.ThrowIfNullOrEmpty(clientIdempotencyKey);
+        var ws = caller.WorkspaceId;
+        if (await store.FindByClientKeyAsync(ws, caller.Principal.UserId, clientIdempotencyKey, cancellationToken).ConfigureAwait(false) is { } existing)
+        {
+            return Existing(existing);
+        }
+
+        var ids = documentIds.Distinct().ToList();
+        var request = new SnapshotCreateRequest(purpose, name, DocumentIds: ids, ClientIdempotencyKey: clientIdempotencyKey);
+        var header = await CreateHeaderAsync(caller, request, Guid.CreateVersion7(), name, SnapshotSourceKind.DocumentIds, cancellationToken)
+            .ConfigureAwait(false);
+        if (!header.Created)
+        {
+            return Existing(header.Snapshot);
+        }
+
+        foreach (var batch in ids.Chunk(SnapshotRules.MaxExplicitDocumentIds))
+        {
+            await store.StageAsync(ws, header.Snapshot.SnapshotId, batch, SnapshotInclusionReason.Explicit, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await FreezeAsync(header.Snapshot, caller.Principal, new SnapshotFreezeRequest
+        {
+            WorkspaceId = ws,
+            SnapshotId = header.Snapshot.SnapshotId,
+            ClaimOwner = options.InstanceId,
+            SelectedAt = time.GetUtcNow(),
+            AuthorizationBatchSize = options.AuthorizationBatchSize,
+        }, null, cancellationToken, memberPermission).ConfigureAwait(false);
+    }
+
     /// <summary>Whether <paramref name="principal"/> may see the snapshot's header: its creator, or holders of <c>Job.ViewAll</c>.</summary>
     public async Task<bool> CanSeeAsync(SecurityPrincipal principal, SnapshotRecord snapshot, CancellationToken cancellationToken = default)
     {
@@ -446,9 +489,9 @@ public sealed class DocumentSetSnapshotService(
 
     private async Task<SnapshotCreateOutcome> FreezeAsync(
         SnapshotRecord snapshot, SecurityPrincipal principal, SnapshotFreezeRequest request, SearchSelectionOutcome? selection,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Permission? memberPermission = null)
     {
-        var permission = SnapshotRules.MemberPermission(snapshot.Purpose);
+        var permission = memberPermission ?? SnapshotRules.MemberPermission(snapshot.Purpose);
         var excluded = new Dictionary<string, long>(StringComparer.Ordinal);
         var result = await store.FreezeAsync(
             request with { Audit = frozen => FreezeAudit(frozen, principal, selection, permission, excluded) },

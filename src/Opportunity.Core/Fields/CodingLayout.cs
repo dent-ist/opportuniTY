@@ -45,6 +45,12 @@ public sealed class CodingLayoutField
     /// <summary>Displayed but not editable; Metadata and Column fields are always read-only.</summary>
     public bool IsReadOnly { get; set; }
 
+    /// <summary>
+    /// Q-48: the coding pane offers "Apply to family" for this field already ticked. Editable, non-security-affecting
+    /// coding fields only; propagation still needs the reviewer's save and shows its conflict preview (Q-14).
+    /// </summary>
+    public bool ApplyToFamilyByDefault { get; set; }
+
     /// <summary>Shown only while the condition holds; null means always shown.</summary>
     public VisibilityCondition? VisibleWhen { get; set; }
 }
@@ -114,6 +120,12 @@ public static class CodingLayoutValidator
             if (field.IsRequired && (field.IsReadOnly || definition.Storage != FieldStorage.Coding))
             {
                 errors.Add(new(key, "required-not-editable", "Only editable coding fields can be required."));
+            }
+
+            if (field.ApplyToFamilyByDefault && (field.IsReadOnly || definition.Storage != FieldStorage.Coding || definition.IsSecurityAffecting))
+            {
+                errors.Add(new(key, "apply-to-family-not-allowed",
+                    "Only editable coding fields that are not privilege, confidentiality or wall fields can apply to the family by default (Q-48)."));
             }
         }
 

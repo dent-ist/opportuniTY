@@ -948,7 +948,10 @@ internal sealed partial class SearchService(
                 out var familyDate)
                 ? familyDate
                 : null,
-            Fields: SearchColumns.Values(s, fields));
+            Fields: SearchColumns.Values(s, fields),
+            DuplicateGroupId: String(s, ProjectionFields.DuplicateGroupId),
+            IsDuplicatePrimary: s[ProjectionFields.IsDuplicatePrimary] is JsonValue primary && primary.TryGetValue<bool>(out var isPrimary) ? isPrimary : null,
+            EmailThreadId: String(s, ProjectionFields.EmailThreadId));
     }
 
     /// <summary>Strips the private-use highlight delimiters and returns the highlighted ranges as offsets.</summary>

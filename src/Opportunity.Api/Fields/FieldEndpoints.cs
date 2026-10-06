@@ -92,7 +92,8 @@ public sealed class FieldEndpoints : IApiEndpointModule
                 f.FieldId,
                 f.IsRequired,
                 f.IsReadOnly,
-                f.VisibleWhen is { } c ? new CodingLayoutConditionResource(c.FieldId, c.ChoiceIds, c.BooleanValue) : null))]))]);
+                f.VisibleWhen is { } c ? new CodingLayoutConditionResource(c.FieldId, c.ChoiceIds, c.BooleanValue) : null,
+                f.ApplyToFamilyByDefault))]))]);
 
     internal static async Task<Results<Ok<CursorPage<FieldResource>>, ProblemHttpResult>> ListFieldsAsync(
         string workspaceId, HttpContext context, IFieldCatalogRepository fields, IFieldAccessFilter access, CancellationToken cancellationToken)

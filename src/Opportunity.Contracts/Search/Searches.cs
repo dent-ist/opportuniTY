@@ -262,6 +262,9 @@ public sealed record SearchFreshnessStatus(
 /// ISO 8601, numbers and booleans invariant, choices as choice IDs, users as user IDs. A field without a value is absent.
 /// Null when the search asked for no fields.
 /// </param>
+/// <param name="DuplicateGroupId">The duplicate group (E09-T05 related items); null when the document has none.</param>
+/// <param name="IsDuplicatePrimary">The primary of its duplicate group; null when the index does not carry it yet.</param>
+/// <param name="EmailThreadId">The email thread; null for attachments and non-email documents.</param>
 public sealed record SearchHit(
     Guid DocumentId,
     string ControlNumber,
@@ -279,7 +282,10 @@ public sealed record SearchHit(
     bool IsFamilyParent = false,
     SearchExpandedBy? ExpandedBy = null,
     DateTimeOffset? FamilyDate = null,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? Fields = null);
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Fields = null,
+    string? DuplicateGroupId = null,
+    bool? IsDuplicatePrimary = null,
+    string? EmailThreadId = null);
 
 /// <summary>A snippet as plain text with the matched ranges (UTF-16 offsets), so clients never render markup from the index.</summary>
 public sealed record SearchSnippet(string Text, IReadOnlyList<TextSpan> Highlights);

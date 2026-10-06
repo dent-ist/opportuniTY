@@ -3239,6 +3239,267 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/relationships": {
+      "get": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "A document's family, duplicates and email thread, as far as you may see them.",
+        "description": "Members you may not see are never listed; those hidden by a restriction class only add to restrictedCount. fields=a,b (query names, at most 20 coding fields) adds each member's current values (choices by name). The thread lists its first 200 visible members; total counts them all.",
+        "operationId": "GetDocumentRelationships",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentRelationshipsResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/coding-propagations/preview": {
+      "post": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "Preview copying a document's coding of some fields to its family and/or duplicates.",
+        "description": "Reads the source document's current values of fields and compares them with every related document you may code: targetCount, conflicts (targets already coded differently; the first 100) and mode (job above the threshold, Q-14). Privilege, confidentiality and wall fields need Coding.WritePrivilege. Apply the preview within 10 minutes with POST …/coding-propagations.",
+        "operationId": "PreviewCodingPropagation",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodingPropagationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingPropagationPreviewResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/coding-propagations": {
+      "post": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "Apply a coding propagation preview: 200 when applied at once, 202 with the job above the threshold.",
+        "description": "Writes exactly what the preview showed. 409 PREVIEW_STALE when the preview is older than 10 minutes or the source's coding of its fields changed since. Interactive: targets changed since the preview are skipped. Job: a bulk coding job over a frozen set of the targets (Q-07 skip rule); follow it at Location and its outcomes at …/bulk-coding/{jobId}/report. Every change references the source's originating coding event.",
+        "operationId": "ApplyCodingPropagation",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodingPropagationApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingPropagationResultResource"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingPropagationResultResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/snapshots": {
       "post": {
         "tags": [
@@ -7401,6 +7662,10 @@
                 "$ref": "#/components/schemas/CodingLayoutConditionResource"
               }
             ]
+          },
+          "applyToFamilyByDefault": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -7459,6 +7724,205 @@
           "set",
           "addChoices",
           "removeChoices"
+        ]
+      },
+      "CodingPropagationApplyRequest": {
+        "required": [
+          "previewId"
+        ],
+        "type": "object",
+        "properties": {
+          "previewId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "CodingPropagationConflictResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "fieldId",
+          "currentValues",
+          "newValues"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "currentValues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "newValues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CodingPropagationModeResource": {
+        "enum": [
+          "interactive",
+          "job"
+        ]
+      },
+      "CodingPropagationPreviewRequest": {
+        "required": [
+          "sourceDocumentId",
+          "scope",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceDocumentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CodingPropagationScopeResource"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "CodingPropagationPreviewResource": {
+        "required": [
+          "previewId",
+          "targetCount",
+          "conflictCount",
+          "conflicts",
+          "restrictedCount",
+          "skippedCount",
+          "mode",
+          "threshold"
+        ],
+        "type": "object",
+        "properties": {
+          "previewId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "conflictCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingPropagationConflictResource"
+            }
+          },
+          "restrictedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "skippedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/CodingPropagationModeResource"
+          },
+          "threshold": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "CodingPropagationResultResource": {
+        "required": [
+          "mode"
+        ],
+        "type": "object",
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/CodingPropagationModeResource"
+          },
+          "applied": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "skipped": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "job": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobResource"
+              }
+            ]
+          }
+        }
+      },
+      "CodingPropagationScopeResource": {
+        "enum": [
+          "family",
+          "duplicates",
+          "familyAndDuplicates"
         ]
       },
       "ColumnMapping": {
@@ -8665,6 +9129,30 @@
           "failed",
           null
         ]
+      },
+      "DocumentRelationshipsResource": {
+        "required": [
+          "documentId",
+          "family",
+          "duplicates",
+          "thread"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "family": {
+            "$ref": "#/components/schemas/RelatedFamilyResource"
+          },
+          "duplicates": {
+            "$ref": "#/components/schemas/RelatedDuplicatesResource"
+          },
+          "thread": {
+            "$ref": "#/components/schemas/RelatedThreadResource"
+          }
+        }
       },
       "DocumentResource": {
         "required": [
@@ -12345,6 +12833,186 @@
           }
         }
       },
+      "RelatedDocumentResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "fileName",
+          "documentDate",
+          "familySequence",
+          "isParent",
+          "isPrimary",
+          "isSelf",
+          "coding"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "documentDate": {
+            "format": "date-time"
+          },
+          "familySequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isParent": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "isSelf": {
+            "type": "boolean"
+          },
+          "coding": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "RelatedDuplicatesResource": {
+        "required": [
+          "duplicateGroupId",
+          "primaryDocumentId",
+          "members",
+          "restrictedCount"
+        ],
+        "type": "object",
+        "properties": {
+          "duplicateGroupId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "primaryDocumentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RelatedDocumentResource"
+            }
+          },
+          "restrictedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "RelatedFamilyResource": {
+        "required": [
+          "familyId",
+          "parent",
+          "members",
+          "restrictedCount"
+        ],
+        "type": "object",
+        "properties": {
+          "familyId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "parent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RelatedDocumentResource"
+              }
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RelatedDocumentResource"
+            }
+          },
+          "restrictedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "RelatedThreadResource": {
+        "required": [
+          "emailThreadId",
+          "members",
+          "total",
+          "restrictedCount"
+        ],
+        "type": "object",
+        "properties": {
+          "emailThreadId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RelatedDocumentResource"
+            }
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "restrictedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "RelationshipSettings": {
         "type": "object",
         "properties": {
@@ -13242,6 +13910,24 @@
                 "type": "string"
               }
             }
+          },
+          "duplicateGroupId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isDuplicatePrimary": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "emailThreadId": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

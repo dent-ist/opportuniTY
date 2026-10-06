@@ -88,6 +88,12 @@ public static class AuditTaxonomy
         public const string Category = "Coding";
         public const string Changed = "Changed";
 
+        /// <summary>
+        /// A document's coding was propagated to its family and/or duplicates (E09-T05, Q-14): one event per apply, on the
+        /// source document, carrying the preview, scope, mode and the originating CodingEvents.
+        /// </summary>
+        public const string FamilyApplied = "FamilyApplied";
+
         /// <summary>A bulk coding job was submitted over a snapshot (E10-T04): one event per job, never per document.</summary>
         public const string BulkSubmitted = "BulkSubmitted";
 
