@@ -88,7 +88,9 @@ test('groups families, codes a parent and applies it to the family after a confl
   await tabTo(page, dialog.getByRole('button', { name: 'Apply to 1 document' }), 20);
   await page.keyboard.press('Enter');
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Coding applied to 1 document.')).toBeVisible();
+  await expect(
+    page.locator('.toast__message').filter({ hasText: 'Coding applied to 1 document.' }),
+  ).toBeVisible();
   await expect(related.getByRole('row', { name: /ACM0000012/ })).toContainText('Not Responsive');
   const apply = mock.relationships.requests.find((r) => r.kind === 'apply');
   expect(apply?.body).toEqual({ previewId: 'preview-1' });
@@ -100,7 +102,10 @@ test('Related Items: a restricted count without metadata, opening a member keeps
   mock,
 }) => {
   await openPage(page, '/w/ws-1/documents');
-  await page.getByRole('grid', { name: 'Documents' }).getByRole('row', { name: /ACM0000003/ }).dblclick();
+  await page
+    .getByRole('grid', { name: 'Documents' })
+    .getByRole('row', { name: /ACM0000003/ })
+    .dblclick();
   const related = page.getByRole('region', { name: 'Related Items' });
   await expect(related.getByText('1 restricted item')).toBeVisible();
   await expect(related.getByRole('row')).toHaveCount(3); // header + ACM3 + ACM4, nothing about the restricted one
@@ -112,9 +117,14 @@ test('Related Items: a restricted count without metadata, opening a member keeps
   // The grid's duplicate indicator: one click lists the duplicate group.
   await page.getByRole('button', { name: 'Back to list' }).click();
   const list = page.getByRole('grid', { name: 'Documents' });
-  await list.getByRole('row', { name: /ACM0000005/ }).getByRole('button', { name: 'Has duplicates' }).click();
+  await list
+    .getByRole('row', { name: /ACM0000005/ })
+    .getByRole('button', { name: 'Has duplicates' })
+    .click();
   await expect.poll(() => mock.lastSearch()?.['query']).toBe('duplicategroup:"dup-5"');
-  await expect(page.getByText('Showing: Duplicates of ACM0000005.')).toBeVisible();
+  await expect(
+    page.locator('.toast__message').filter({ hasText: 'Showing: Duplicates of ACM0000005.' }),
+  ).toBeVisible();
 });
 
 test.describe('above the threshold', () => {
@@ -122,7 +132,10 @@ test.describe('above the threshold', () => {
 
   test('propagation runs as a Mass Edit job linked to the job monitor', async ({ page }) => {
     await openPage(page, '/w/ws-1/documents');
-    await page.getByRole('grid', { name: 'Documents' }).getByRole('row', { name: /ACM0000003/ }).dblclick();
+    await page
+      .getByRole('grid', { name: 'Documents' })
+      .getByRole('row', { name: /ACM0000003/ })
+      .dblclick();
     await page.getByRole('button', { name: 'Apply to Family…' }).click();
     const dialog = page.getByRole('dialog', { name: 'Apply to Family' });
     await dialog.getByRole('checkbox', { name: /Responsiveness/ }).check();

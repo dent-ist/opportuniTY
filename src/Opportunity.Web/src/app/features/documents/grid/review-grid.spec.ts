@@ -1058,9 +1058,7 @@ describe('Review grid (Documents list)', () => {
     ];
     const tree = () => root().querySelector<HTMLElement>('[role="treegrid"]')!;
     const treeRows = () => [
-      ...tree().querySelectorAll<HTMLElement>(
-        '[role="rowgroup"] + [role="rowgroup"] [role="row"]',
-      ),
+      ...tree().querySelectorAll<HTMLElement>('[role="rowgroup"] + [role="rowgroup"] [role="row"]'),
     ];
     const describeRow = (r: HTMLElement) =>
       `${r.getAttribute('aria-level')}${r.hasAttribute('aria-expanded') ? `:${r.getAttribute('aria-expanded')}` : ''} ${r

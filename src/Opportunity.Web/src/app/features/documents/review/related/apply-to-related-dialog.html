@@ -74,7 +74,9 @@
             }
             @if (p.restrictedCount > 0) {
               <p class="apply__restricted">
-                <opp-icon name="lock" />{{ restrictedText(p.restrictedCount) }}
+                <opp-badge tone="restricted" icon="lock">{{
+                  restrictedText(p.restrictedCount)
+                }}</opp-badge>
               </p>
             }
           </div>
@@ -83,8 +85,8 @@
               <opp-icon name="info" />
               <span
                 >More than {{ count(p.threshold) }} documents: this runs as a Mass Edit job.
-                Documents that someone else edits after the job starts are skipped and listed in
-                the job's report.</span
+                Documents that someone else edits after the job starts are skipped and listed in the
+                job's report.</span
               >
             </p>
           }
@@ -171,11 +173,7 @@
         }
       }
       @case ('job') {
-        <a
-          oppButton="ghost"
-          [routerLink]="['/w', workspaceId, 'jobs', jobId()]"
-          (click)="close()"
-        >
+        <a oppButton="ghost" [routerLink]="['/w', workspaceId, 'jobs', jobId()]" (click)="close()">
           <opp-icon name="jobs" />Open job
         </a>
         <button type="button" oppButton="primary" (click)="close()">Close</button>

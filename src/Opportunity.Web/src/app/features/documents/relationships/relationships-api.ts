@@ -152,11 +152,15 @@ export class HttpRelationshipsApi extends RelationshipsApi {
     const raw = await firstValueFrom(
       this.http.post<unknown>(this.context.apiUrl('coding-propagations', 'preview'), body),
     );
-    return toPreview(raw, (id) => byId.get(id)?.queryName ?? id, (id, value) => {
-      // Choice values may come as choice ids: show their names.
-      const choice = byId.get(id)?.choices?.find((c) => String(c.choiceId) === value);
-      return choice?.name ?? value;
-    });
+    return toPreview(
+      raw,
+      (id) => byId.get(id)?.queryName ?? id,
+      (id, value) => {
+        // Choice values may come as choice ids: show their names.
+        const choice = byId.get(id)?.choices?.find((c) => String(c.choiceId) === value);
+        return choice?.name ?? value;
+      },
+    );
   }
 
   async apply(previewId: string, idempotencyKey: string): Promise<PropagationResult> {

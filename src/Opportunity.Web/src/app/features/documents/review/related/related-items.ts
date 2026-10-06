@@ -15,7 +15,7 @@ import type { FieldResource, SearchHit } from '../../../../core/api/generated/mo
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
 import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
-import { Button, Icon, LoadingState, MENU } from '../../../../ui';
+import { Badge, Button, Icon, LoadingState, MENU } from '../../../../ui';
 import type { RelationshipPivot } from '../../grid/review-grid';
 import { CellFormatter } from '../../grid/grid-format';
 import {
@@ -71,7 +71,7 @@ export const MAX_RELATED_COLUMNS = 6;
  */
 @Component({
   selector: 'opp-related-items',
-  imports: [Button, CdkMenuItemCheckbox, Icon, LoadingState, ...MENU],
+  imports: [Badge, Button, CdkMenuItemCheckbox, Icon, LoadingState, ...MENU],
   templateUrl: './related-items.html',
   styleUrl: './related-items.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -248,8 +248,7 @@ export class RelatedItems {
       documentDate: m.documentDate,
       familyId: inFamily ? (family?.familyId ?? null) : null,
       familySequence: m.familySequence,
-      parentDocumentId:
-        inFamily && !m.isParent && family?.parent ? family.parent.documentId : null,
+      parentDocumentId: inFamily && !m.isParent && family?.parent ? family.parent.documentId : null,
       isFamilyParent: inFamily && m.isParent,
       fileName: m.fileName,
       fileExtension: null,

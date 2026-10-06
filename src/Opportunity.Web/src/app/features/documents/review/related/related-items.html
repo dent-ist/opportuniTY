@@ -74,7 +74,13 @@
             <div class="related__scroll">
               <table class="related__table">
                 <caption class="opp-visually-hidden">
-                  {{ view.label }} of {{ hit().controlNumber }}
+                  {{
+                    view.label
+                  }}
+                  of
+                  {{
+                    hit().controlNumber
+                  }}
                 </caption>
                 <thead>
                   <tr>
@@ -125,7 +131,9 @@
           }
           @if (view.restricted > 0) {
             <p class="related__restricted">
-              <opp-icon name="lock" />{{ restrictedText(view.restricted) }}
+              <opp-badge tone="restricted" icon="lock">{{
+                restrictedText(view.restricted)
+              }}</opp-badge>
             </p>
           }
         }

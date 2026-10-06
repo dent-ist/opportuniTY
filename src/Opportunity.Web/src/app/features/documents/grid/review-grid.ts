@@ -133,14 +133,22 @@ export interface RelationshipPivot {
 /** The search that lists a relation (relationship fields of the query language, ADR-007 §3). */
 export function pivotQuery(pivot: RelationshipPivot): string {
   const field =
-    pivot.kind === 'duplicates' ? 'duplicategroup' : pivot.kind === 'thread' ? 'threadid' : 'familyid';
+    pivot.kind === 'duplicates'
+      ? 'duplicategroup'
+      : pivot.kind === 'thread'
+        ? 'threadid'
+        : 'familyid';
   return `${field}:${quotePhrase(pivot.id)}`;
 }
 
 /** "Duplicates of ACM0000102" — what the list shows after a pivot. */
 export function pivotLabel(pivot: RelationshipPivot): string {
   const what =
-    pivot.kind === 'duplicates' ? 'Duplicates' : pivot.kind === 'thread' ? 'Email thread' : 'Family';
+    pivot.kind === 'duplicates'
+      ? 'Duplicates'
+      : pivot.kind === 'thread'
+        ? 'Email thread'
+        : 'Family';
   return `${what} of ${pivot.controlNumber}`;
 }
 
@@ -440,9 +448,7 @@ export class ReviewGrid implements CursorSource {
     () => this.storage.read<boolean>(FAMILY_GROUPS_KEY) === true,
   );
   /** Families are grouped: the mode is on and the list is sorted by Family Date (which keeps them contiguous). */
-  readonly grouped = computed(
-    () => this.familyMode() && this.sortKeys()[0]?.field === FAMILY_SORT,
-  );
+  readonly grouped = computed(() => this.familyMode() && this.sortKeys()[0]?.field === FAMILY_SORT);
   /** Collapsed families (keys); the review cursor still walks their attachments. */
   private readonly collapsed = signal<ReadonlySet<string>>(new Set());
   /** The rows on screen: the loaded rows, or in family groups with parent placeholders and collapsed families. */

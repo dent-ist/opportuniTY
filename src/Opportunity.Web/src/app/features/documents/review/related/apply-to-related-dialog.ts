@@ -5,7 +5,7 @@ import { toApiError } from '../../../../core/api/problem-details';
 import { JobFeed } from '../../../../core/jobs/job-feed';
 import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
-import { Announcer, Button, DialogLayout, Icon, LoadingState } from '../../../../ui';
+import { Announcer, Badge, Button, DialogLayout, Icon, LoadingState } from '../../../../ui';
 import {
   PropagationPreview,
   PropagationScope,
@@ -56,7 +56,7 @@ const SCOPES: readonly { value: PropagationScope; label: string }[] = [
  */
 @Component({
   selector: 'opp-apply-to-related-dialog',
-  imports: [Button, DialogLayout, Icon, LoadingState, RouterLink],
+  imports: [Badge, Button, DialogLayout, Icon, LoadingState, RouterLink],
   templateUrl: './apply-to-related-dialog.html',
   styleUrl: './apply-to-related-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -118,7 +118,9 @@ export class ApplyToRelatedDialog {
   });
   protected readonly canApply = computed(() => {
     const p = this.preview();
-    return !!p && p.targetCount > 0 && !this.busy() && (!this.affectsAccess() || this.acknowledged());
+    return (
+      !!p && p.targetCount > 0 && !this.busy() && (!this.affectsAccess() || this.acknowledged())
+    );
   });
 
   protected count(n: number): string {
@@ -141,7 +143,9 @@ export class ApplyToRelatedDialog {
   }
 
   protected restrictedText(n: number): string {
-    return n === 1 ? '1 restricted item is not changed.' : `${this.count(n)} restricted items are not changed.`;
+    return n === 1
+      ? '1 restricted item is not changed.'
+      : `${this.count(n)} restricted items are not changed.`;
   }
 
   /** Counts and conflicts of the chosen fields and scope (nothing changes yet). */

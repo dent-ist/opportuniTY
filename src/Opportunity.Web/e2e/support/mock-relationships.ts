@@ -25,7 +25,9 @@ export function duplicatesOf(n: number, total: number): number[] {
 export function threadOf(n: number, total: number): number[] {
   if (isAttachment(n)) return [];
   const start = n - ((n - 1) % 8);
-  return Array.from({ length: 8 }, (_, i) => start + i).filter((d) => d <= total && !isAttachment(d));
+  return Array.from({ length: 8 }, (_, i) => start + i).filter(
+    (d) => d <= total && !isAttachment(d),
+  );
 }
 
 /** The relationship attributes a search hit carries (wave-12 additions to `SearchHit`). */

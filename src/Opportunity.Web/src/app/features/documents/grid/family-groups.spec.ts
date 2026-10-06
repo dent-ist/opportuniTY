@@ -74,11 +74,7 @@ describe('Family groups (E16-T10)', () => {
     const rows = [single(1), parent(2), child(3, 2), child(4, 2, 2), child(7, 6)];
     const collapsed = new Set(['fam-2', 'fam-6']);
     const display = groupFamilies(rows, { ...none, collapsed, hasNext: true });
-    expect(describeRows(display)).toEqual([
-      'L1 01',
-      'L1 02 [closed]',
-      'orphan (collapsed)',
-    ]);
+    expect(describeRows(display)).toEqual(['L1 01', 'L1 02 [closed]', 'orphan (collapsed)']);
     expect([...displayIndexes(display, rows.length)]).toEqual([0, 1, -1, -1, -1]);
   });
 

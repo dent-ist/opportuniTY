@@ -210,7 +210,13 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
     expect(tab('Family').getAttribute('aria-selected')).toBe('true');
     expect(tab('Family').textContent).toContain('3');
     expect(tableRows()).toEqual([
-      ['Parent (this document)', 'ACM0000001', 'Message 1.msg', '03/01/2024, 02:30 PM UTC', 'Responsive'],
+      [
+        'Parent (this document)',
+        'ACM0000001',
+        'Message 1.msg',
+        '03/01/2024, 02:30 PM UTC',
+        'Responsive',
+      ],
       ['Attachment 1', 'ACM0000002', 'Message 2.msg', '03/01/2024, 02:30 PM UTC', 'Not Responsive'],
       ['Attachment 2', 'ACM0000003', 'Message 3.msg', '03/01/2024, 02:30 PM UTC', 'Not set'],
     ]);
@@ -234,9 +240,9 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
     await settle();
     expect(bar()).toContain('Doc 1 of 4');
     expect(bar()).toContain('Viewing related item ACM0000003');
-    expect(root().querySelector('[data-viewer-document]')?.getAttribute('data-viewer-document')).toBe(
-      'doc-3',
-    );
+    expect(
+      root().querySelector('[data-viewer-document]')?.getAttribute('data-viewer-document'),
+    ).toBe('doc-3');
   }, 30_000);
 
   it('shows the duplicates in the list from Related Items', async () => {
@@ -303,8 +309,9 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
       },
       headers: { ETag: '"8"' },
     });
-    const notResponsive = [...root().querySelectorAll<HTMLInputElement>('input[type="radio"]')]
-      .find((i) => i.closest('label')?.textContent?.includes('Not Responsive'))!;
+    const notResponsive = [
+      ...root().querySelectorAll<HTMLInputElement>('input[type="radio"]'),
+    ].find((i) => i.closest('label')?.textContent?.includes('Not Responsive'))!;
     notResponsive.click();
     await settle();
     buttonIn(root(), 'Apply to Family…').click();
