@@ -108,6 +108,17 @@ Rules:
    Propagate-to-duplicates and suppression are P2.
 5. **R17** Hashes are stored as `bytea` (MD5/SHA-1/SHA-256) and upstream hashes as lower-case hex text. A DAT hash that
    disagrees with the computed native hash is an import warning (`E08-T04`), and the computed value wins in the column.
+6. **R17a Computed grouping as implemented (E09-T04, #87, V0038).** A workspace saves a dedupe policy
+   (`GET/PUT …/dedupe-policy`, `Workspace.ManageFields`) and applies it with `POST …/dedupe-runs` (202 + a
+   `RelationshipFixup` job; one chunk over the whole workspace, run by the import worker under the family lock).
+   The R14 default is hash source `auto` (upstream dedupe hash, else upstream email hash, else SHA-256) in `global`
+   scope; an administrator may instead choose `sha256`, `md5`, `sha1` (the load file's or computed values; HashKind
+   `Md5` = 5, `Sha1` = 6) or `upstreamHash`, and `custodial` scope (copies are grouped only within one custodian: the
+   value of a single-value Keyword/Text metadata field, by default the workspace's `custodian` field; ids are
+   `UUIDv5(…, "custodial-" + kind, hash ‖ ":" ‖ custodian)`). Each group records source, hash kind, hash value, scope and
+   custodian. Families without the hash (or, custodial, without a custodian) are not grouped. A disabled policy's run
+   removes computed groups. Changed documents (group or primary flag) get a DocumentVersion bump and Relationship
+   IndexChunkTasks; an unchanged workspace produces no change.
 
 ### 4. Email threads
 

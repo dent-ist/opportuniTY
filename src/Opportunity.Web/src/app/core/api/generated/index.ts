@@ -49,6 +49,11 @@ export type { CursorPageOfSearchTermReportSummary } from './models/cursor-page-o
 export type { CursorPageOfSnapshotResource } from './models/cursor-page-of-snapshot-resource';
 export type { CursorPageOfWorkspaceMemberResource } from './models/cursor-page-of-workspace-member-resource';
 export type { CursorPageOfWorkspaceSummary } from './models/cursor-page-of-workspace-summary';
+export type { DedupeHashSourceResource } from './models/dedupe-hash-source-resource';
+export type { DedupePolicyResource } from './models/dedupe-policy-resource';
+export type { DedupePolicyWrite } from './models/dedupe-policy-write';
+export type { DedupeRunSummaryResource } from './models/dedupe-run-summary-resource';
+export type { DedupeScopeResource } from './models/dedupe-scope-resource';
 export type { DelimiterInfo } from './models/delimiter-info';
 export type { DocumentCodingResource } from './models/document-coding-resource';
 export type { DocumentFieldFormat } from './models/document-field-format';
@@ -369,6 +374,12 @@ export type { SubmitBulkCoding$Params as SubmitBulkCoding$Params } from './fn/co
 export { submitBulkCoding as submitBulkCoding } from './fn/coding/submit-bulk-coding';
 export type { GetBulkCodingReport$Params as GetBulkCodingReport$Params } from './fn/coding/get-bulk-coding-report';
 export { getBulkCodingReport as getBulkCodingReport } from './fn/coding/get-bulk-coding-report';
+export type { GetDedupePolicy$Params as GetDedupePolicy$Params } from './fn/relationships/get-dedupe-policy';
+export { getDedupePolicy as getDedupePolicy } from './fn/relationships/get-dedupe-policy';
+export type { UpdateDedupePolicy$Params as UpdateDedupePolicy$Params } from './fn/relationships/update-dedupe-policy';
+export { updateDedupePolicy as updateDedupePolicy } from './fn/relationships/update-dedupe-policy';
+export type { StartDedupeRun$Params as StartDedupeRun$Params } from './fn/relationships/start-dedupe-run';
+export { startDedupeRun as startDedupeRun } from './fn/relationships/start-dedupe-run';
 export type { ListSnapshots$Params as ListSnapshots$Params } from './fn/snapshots/list-snapshots';
 export { listSnapshots as listSnapshots } from './fn/snapshots/list-snapshots';
 export type { CreateSnapshot$Params as CreateSnapshot$Params } from './fn/snapshots/create-snapshot';

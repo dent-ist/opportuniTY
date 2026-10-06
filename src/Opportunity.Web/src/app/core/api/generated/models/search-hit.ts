@@ -7,6 +7,7 @@ export interface SearchHit {
   controlNumber: string;
   documentDate: any;
   documentId: string;
+  duplicateGroupId?: string | null;
   expandedBy?: null | SearchExpandedBy;
   familyDate?: any;
   familyId: string | null;
@@ -18,6 +19,7 @@ export interface SearchHit {
   fileName: string | null;
   fileSize: number | string | null;
   fileType: string | null;
+  isDuplicatePrimary?: boolean | null;
   isFamilyParent?: boolean;
   mimeType: string | null;
   pageCount: number | string | null;

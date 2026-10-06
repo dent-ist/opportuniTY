@@ -242,6 +242,13 @@ internal static class RouteAttackCatalog
         Case("GET", Ws + "/fields", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/fields", HttpStatusCode.OK)),
         Case("GET", Ws + "/coding-layouts", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/coding-layouts", HttpStatusCode.OK)),
 
+        // Computed duplicate grouping (E09-T04): field ids in the policy are workspace-local numbers, not identifiers.
+        Case("GET", Ws + "/dedupe-policy", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/dedupe-policy", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/dedupe-policy", ProtectedOperation.Workspace,
+            new RouteProbe("workspace", HttpMethod.Put, (o, _) => W(o) + "/dedupe-policy", HttpStatusCode.OK,
+                (_, _) => J(new JsonObject { ["enabled"] = true, ["hashSource"] = "sha256", ["scope"] = "global" }), IfMatch: "*", HasForeignIdentifier: false)),
+        Case("POST", Ws + "/dedupe-runs", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Post, "/dedupe-runs", HttpStatusCode.Accepted)),
+
         // Documents through the protected-content gateway.
         Case("GET", Ws + "/documents/{documentId}", ProtectedOperation.Open,
             new RouteProbe("document", HttpMethod.Get, (o, t) => Doc(o, t), HttpStatusCode.OK),

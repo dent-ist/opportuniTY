@@ -2,8 +2,8 @@ using System.Reflection;
 
 using Opportunity.Api.Coding;
 using Opportunity.Api.Content;
-using Opportunity.Api.Dedupe;
 using Opportunity.Api.Conventions;
+using Opportunity.Api.Dedupe;
 using Opportunity.Api.Exports;
 using Opportunity.Api.Fields;
 using Opportunity.Api.Import;

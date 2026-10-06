@@ -131,6 +131,12 @@ export type { SubmitBulkCoding$Params as SubmitBulkCoding$Params } from './fn/co
 export { submitBulkCoding as submitBulkCoding } from './fn/coding/submit-bulk-coding';
 export type { GetBulkCodingReport$Params as GetBulkCodingReport$Params } from './fn/coding/get-bulk-coding-report';
 export { getBulkCodingReport as getBulkCodingReport } from './fn/coding/get-bulk-coding-report';
+export type { GetDedupePolicy$Params as GetDedupePolicy$Params } from './fn/relationships/get-dedupe-policy';
+export { getDedupePolicy as getDedupePolicy } from './fn/relationships/get-dedupe-policy';
+export type { UpdateDedupePolicy$Params as UpdateDedupePolicy$Params } from './fn/relationships/update-dedupe-policy';
+export { updateDedupePolicy as updateDedupePolicy } from './fn/relationships/update-dedupe-policy';
+export type { StartDedupeRun$Params as StartDedupeRun$Params } from './fn/relationships/start-dedupe-run';
+export { startDedupeRun as startDedupeRun } from './fn/relationships/start-dedupe-run';
 export type { ListSnapshots$Params as ListSnapshots$Params } from './fn/snapshots/list-snapshots';
 export { listSnapshots as listSnapshots } from './fn/snapshots/list-snapshots';
 export type { CreateSnapshot$Params as CreateSnapshot$Params } from './fn/snapshots/create-snapshot';
