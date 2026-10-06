@@ -72,6 +72,7 @@ public sealed class BulkCodingService(
         // Values are validated against the catalogue here for complete errors; every chunk re-validates under lock.
         var catalog = await fields.GetCatalogAsync(ws, cancellationToken: cancellationToken).ConfigureAwait(false);
         var restricted = await fieldAccess.RestrictedFieldIdsAsync(ws, principal, catalog, cancellationToken).ConfigureAwait(false);
+        var readOnly = await fieldAccess.ReadOnlyFieldIdsAsync(ws, principal, catalog, cancellationToken).ConfigureAwait(false);
         var errors = new List<FieldError>();
         var operations = new List<CodingFieldOperation>(request.Operations.Count);
         var security = false;
@@ -85,6 +86,10 @@ public sealed class BulkCodingService(
             else if (field.Storage != FieldStorage.Coding)
             {
                 errors.Add(new FieldError(field.Key, "not-coding-field", $"{field.Name} is imported data and cannot be coded."));
+            }
+            else if (readOnly.Contains(field.FieldId))
+            {
+                errors.Add(new FieldError(field.Key, "read-only-field", $"{field.Name} is read-only for your roles."));
             }
             else if (InteractiveCodingService.Canonicalize(field, change, catalog.ChoicesOf(field.FieldId), out var canonical) is { } error)
             {

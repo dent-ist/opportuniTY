@@ -25,8 +25,12 @@ public interface ISearchQueryTranslator
 /// <summary>What a translator may consult. <see cref="ProjectionGeneration"/> selects the mapping the clause must fit.</summary>
 /// <param name="Zone">ADR-008 R8: the zone date-only literals on DateTime fields are read in; null means UTC.</param>
 /// <param name="FieldOptions">Field-binding options of the search (E09-T02 custodian expansion); null means none.</param>
+/// <param name="HiddenFieldIds">
+/// Fields the caller may not see (E05-T06 field-level restrictions): the translator binds as if they did not exist.
+/// </param>
 public sealed record SearchTranslationContext(
-    Guid WorkspaceId, int ProjectionGeneration, QueryLimits Limits, TimeZoneInfo? Zone = null, SearchFieldOptions? FieldOptions = null);
+    Guid WorkspaceId, int ProjectionGeneration, QueryLimits Limits, TimeZoneInfo? Zone = null, SearchFieldOptions? FieldOptions = null,
+    IReadOnlySet<int>? HiddenFieldIds = null);
 
 /// <param name="Query">The user clause; null when <see cref="Errors"/> is not empty.</param>
 /// <param name="Errors">User-facing, positioned errors (e.g. <c>UNKNOWN_FIELD</c>); never a silent match-none.</param>

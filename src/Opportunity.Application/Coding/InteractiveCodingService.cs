@@ -171,6 +171,10 @@ public sealed class InteractiveCodingService(
             {
                 errors.Add(new FieldError(field.Key, "not-coding-field", $"{field.Name} is imported data and cannot be coded."));
             }
+            else if (context.ReadOnly.Contains(field.FieldId))
+            {
+                errors.Add(new FieldError(field.Key, "read-only-field", $"{field.Name} is read-only for your roles."));
+            }
             else if (Canonicalize(field, change, context.Catalog.ChoicesOf(field.FieldId), out var canonical) is { } error)
             {
                 errors.Add(error);
@@ -362,8 +366,9 @@ public sealed class InteractiveCodingService(
 
         var catalog = await fields.GetCatalogAsync(caller.WorkspaceId, cancellationToken: cancellationToken).ConfigureAwait(false);
         var restricted = await fieldAccess.RestrictedFieldIdsAsync(caller.WorkspaceId, caller.Principal, catalog, cancellationToken).ConfigureAwait(false);
+        var readOnly = await fieldAccess.ReadOnlyFieldIdsAsync(caller.WorkspaceId, caller.Principal, catalog, cancellationToken).ConfigureAwait(false);
         var effective = await authorization.GetEffectivePermissionsAsync(caller.Principal, caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
-        return new ViewContext(catalog, restricted, layout, effective.Permissions.ToHashSet());
+        return new ViewContext(catalog, restricted, readOnly, layout, effective.Permissions.ToHashSet());
     }
 
     private async Task<DocumentCodingView?> ViewAsync(CodingCaller caller, Guid documentId, ViewContext context, CancellationToken cancellationToken)
@@ -391,7 +396,7 @@ public sealed class InteractiveCodingService(
             }
 
             var s = state.GetValueOrDefault(field.FieldId);
-            var editable = !readOnly && canWrite && (!field.IsSecurityAffecting || canWritePrivilege);
+            var editable = !readOnly && !context.ReadOnly.Contains(field.FieldId) && canWrite && (!field.IsSecurityAffecting || canWritePrivilege);
             result.Add(new CodedField(field, s?.Value, s?.ChangedAtVersion, s?.ChangedBy, s?.ChangedAt, s?.ChangedByJobId, editable));
         }
 
@@ -413,5 +418,6 @@ public sealed class InteractiveCodingService(
         return new DocumentCodingView(documentId, current.DocumentVersion, projected, indexingState, context.Layout?.LayoutId, result, editor);
     }
 
-    private sealed record ViewContext(FieldCatalog Catalog, IReadOnlySet<int> Restricted, CodingLayout? Layout, HashSet<Permission> Permissions);
+    private sealed record ViewContext(
+        FieldCatalog Catalog, IReadOnlySet<int> Restricted, IReadOnlySet<int> ReadOnly, CodingLayout? Layout, HashSet<Permission> Permissions);
 }

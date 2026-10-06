@@ -176,6 +176,18 @@ public static class AuditTaxonomy
     {
         public const string Category = "Security";
         public const string RoleAssigned = "RoleAssigned";
+
+        /// <summary>A restriction class, its grants or its coding rules changed (E05-T06).</summary>
+        public const string RestrictionChanged = "RestrictionChanged";
+
+        /// <summary>A field-level restriction changed (E05-T06).</summary>
+        public const string PermissionChanged = "PermissionChanged";
+
+        public const string WallCreated = "WallCreated";
+        public const string WallChanged = "WallChanged";
+        public const string WallDeleted = "WallDeleted";
+        public const string BreakGlassActivated = "BreakGlassActivated";
+        public const string BreakGlassEnded = "BreakGlassEnded";
     }
 
     public static class Workspace

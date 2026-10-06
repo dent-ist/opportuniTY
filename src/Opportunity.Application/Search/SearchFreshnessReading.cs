@@ -34,6 +34,16 @@ public sealed record SearchFreshnessReading(
     DateTimeOffset? OldestUnreflectedCommittedAt,
     DateTimeOffset ReadAt)
 {
+    /// <summary>
+    /// Set only by <see cref="ISearchWatermarkStore.AdvanceAsync"/>: the work records this advance made searchable, with
+    /// their lane and the lag from commit to the refresh observation (at most <see cref="MaxReflected"/>, oldest first).
+    /// The watermark ticker records them as <c>opportunity.search.commit_to_searchable</c> and, for the security lanes,
+    /// <c>opportunity.search.security_projection_lag</c> (Q-10).
+    /// </summary>
+    public IReadOnlyList<ReflectedWork> Reflected { get; init; } = [];
+
+    public const int MaxReflected = 10_000;
+
     /// <summary>Work older than this that search does not reflect makes the freshness <see cref="SearchFreshnessLevel.Delayed"/>.</summary>
     public static TimeSpan DelayedAfter { get; } = TimeSpan.FromMinutes(2);
 
@@ -52,6 +62,9 @@ public sealed record SearchFreshnessReading(
         ? SearchFreshnessLevel.Current
         : Lag > DelayedAfter ? SearchFreshnessLevel.Delayed : SearchFreshnessLevel.Updating;
 }
+
+/// <summary>A work record that became searchable: its lane and commit-to-searchable lag.</summary>
+public sealed record ReflectedWork(Messaging.MessageLane Lane, TimeSpan Lag);
 
 /// <summary>
 /// Reads a workspace's search freshness (<see cref="SearchFreshnessReading"/>) for the search service, the job monitor

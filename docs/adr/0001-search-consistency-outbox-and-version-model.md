@@ -220,7 +220,7 @@ backfill move the watermark; dual writes are refreshed by the ticker because eve
 on the old index is already searchable on the new one when reads move. The generation sequence and the watermark row are
 per workspace, not per index, and are not reset by a switch or a move between shared and dedicated placement.
 
-**Implementation (E07-T11, #73).** The reindex coordinator (indexing worker host, `search_reindex` V0041) waits
+**Implementation (E07-T11, #73).** The reindex coordinator (indexing worker host, `search_reindex` V0043) waits
 `WriterSettleDelay` (cache TTL + `MaxReadToWriteAge`) after the dual-target start before planning key ranges; `Reindex`
 tasks write the rebuild target only (`ProjectionWriteScope.RebuildTarget`). After the switch the old dedicated index is
 write-blocked only after the same delay (a writer with a cached placement may still dual-target; a write-block refusal

@@ -2,6 +2,7 @@ using System.Data;
 
 using Npgsql;
 
+using Opportunity.Application.Messaging;
 using Opportunity.Application.Search;
 
 namespace Opportunity.Data.Search;
@@ -48,6 +49,14 @@ public sealed class SearchWatermarkStore(NpgsqlDataSource dataSource) : ISearchW
     {
         ArgumentOutOfRangeException.ThrowIfNegative(indexedThroughGeneration);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        long before;
+        await using (var prior = tx.Command(
+            "SELECT coalesce((SELECT indexed_through_generation FROM opportunity.workspace_search_watermark WHERE workspace_id = @ws FOR UPDATE), 0)"))
+        {
+            prior.Parameters.AddWithValue("ws", workspaceId);
+            before = (long)(await prior.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+        }
+
         await using (var command = tx.Command(
             """
             INSERT INTO opportunity.workspace_search_watermark AS w (workspace_id, indexed_through_generation, refreshed_at)
@@ -65,8 +74,45 @@ public sealed class SearchWatermarkStore(NpgsqlDataSource dataSource) : ISearchW
         }
 
         var reading = await ReadAsync(tx, cancellationToken).ConfigureAwait(false);
+        var reflected = reading.IndexedThroughGeneration > before
+            ? await ReflectedAsync(tx, before, reading.IndexedThroughGeneration, cancellationToken).ConfigureAwait(false)
+            : [];
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return reading;
+        return reading with { Reflected = reflected };
+    }
+
+    /// <summary>
+    /// The work records with a generation in (<paramref name="after"/>, <paramref name="through"/>]: what this advance
+    /// made searchable, with their lag measured on the database clock of the refresh observation (ADR-001 §5.4).
+    /// </summary>
+    private static async Task<IReadOnlyList<ReflectedWork>> ReflectedAsync(
+        WorkspaceTransaction tx, long after, long through, CancellationToken cancellationToken)
+    {
+        var reflected = new List<ReflectedWork>();
+        await using var command = tx.Command(
+            """
+            SELECT lane, extract(epoch FROM (w.refreshed_at - committed_at))::double precision
+            FROM (SELECT o.lane, o.committed_at, o.search_generation FROM opportunity.search_outbox o
+                  WHERE o.workspace_id = @ws AND o.search_generation > @after AND o.search_generation <= @through
+                  UNION ALL
+                  SELECT t.lane, t.committed_at, t.search_generation FROM opportunity.index_chunk_task t
+                  WHERE t.workspace_id = @ws AND t.search_generation > @after AND t.search_generation <= @through) r
+            CROSS JOIN opportunity.workspace_search_watermark w
+            WHERE w.workspace_id = @ws
+            ORDER BY r.search_generation
+            LIMIT @limit
+            """);
+        command.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        command.Parameters.AddWithValue("after", after);
+        command.Parameters.AddWithValue("through", through);
+        command.Parameters.AddWithValue("limit", SearchFreshnessReading.MaxReflected);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            reflected.Add(new ReflectedWork((MessageLane)reader.GetInt16(0), TimeSpan.FromSeconds(Math.Max(0, reader.GetDouble(1)))));
+        }
+
+        return reflected;
     }
 
     /// <summary>The visible watermark alone, in the caller's transaction (job monitor pages).</summary>

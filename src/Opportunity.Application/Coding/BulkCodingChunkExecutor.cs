@@ -100,10 +100,12 @@ public sealed class BulkCodingChunkExecutor(
 
         var catalog = await fields.GetCatalogAsync(ws, cancellationToken: cancellationToken).ConfigureAwait(false);
         var restricted = await fieldAccess.RestrictedFieldIdsAsync(ws, principal, catalog, cancellationToken).ConfigureAwait(false);
+        var readOnly = await fieldAccess.ReadOnlyFieldIdsAsync(ws, principal, catalog, cancellationToken).ConfigureAwait(false);
         var security = false;
         foreach (var operation in operations)
         {
-            if (catalog.Find(operation.FieldId) is not { IsDeleted: false, Storage: FieldStorage.Coding } field || restricted.Contains(operation.FieldId))
+            if (catalog.Find(operation.FieldId) is not { IsDeleted: false, Storage: FieldStorage.Coding } field || restricted.Contains(operation.FieldId)
+                || readOnly.Contains(operation.FieldId))
             {
                 return await StopJobAsync(context,
                     $"Field {operation.FieldId.ToString(CultureInfo.InvariantCulture)} can no longer be coded by this job; the remaining chunks were cancelled.",

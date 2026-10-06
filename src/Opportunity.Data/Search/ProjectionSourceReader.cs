@@ -67,6 +67,29 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
         // Coding tables stay private to the coding adapter (E04-T04); it reads them inside this snapshot.
         var coding = await CodingRepository.ReadCurrentValuesAsync(tx, workspaceId, ids, cancellationToken).ConfigureAwait(false);
 
+        // Document-side security attributes (ADR-015 D8.2): restriction classes and wall coverage, same snapshot.
+        var tags = new Dictionary<Guid, List<string>>();
+        await using (var command = tx.Command(
+            """
+            SELECT document_id, 'class:' || class_key FROM opportunity.document_restriction WHERE workspace_id = @ws AND document_id = ANY(@ids)
+            UNION ALL
+            SELECT document_id, 'wall:' || wall_id::text FROM opportunity.document_wall WHERE workspace_id = @ws AND document_id = ANY(@ids)
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("ids", ids);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (!tags.TryGetValue(reader.GetGuid(0), out var list))
+                {
+                    tags[reader.GetGuid(0)] = list = [];
+                }
+
+                list.Add(reader.GetString(1));
+            }
+        }
+
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
 
         var sources = new List<ProjectionSource>(ids.Length);
@@ -96,10 +119,7 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
                     DocumentVersion = row.Version,
                     Document = row.Document,
                     Coding = coding.GetValueOrDefault(id) ?? [],
-
-                    // Restriction classes and walls (Q-11, M3) have no authoritative store yet; until they do, no
-                    // document carries a security tag.
-                    SecurityTags = [],
+                    SecurityTags = tags.GetValueOrDefault(id) ?? [],
                     TextObjectKey = row.Document.TextObjectId is null ? null : row.TextKey,
                 });
             }

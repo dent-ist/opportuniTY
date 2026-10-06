@@ -23,6 +23,7 @@ using Opportunity.Data.Documents;
 using Opportunity.Data.Jobs;
 using Opportunity.Data.Relationships;
 using Opportunity.Data.SearchWork;
+using Opportunity.Data.Security;
 using Opportunity.Data.Storage;
 
 namespace Opportunity.Data.Import;
@@ -844,6 +845,11 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
         // New documents start at version 1 and changed overlays were bumped above, so the derived date needs no bump.
         await DeriveDocumentDatesAsync(tx, [.. inserted, .. changed], cancellationToken).ConfigureAwait(false);
 
+        // ADR-015 D6.2: walls scoped to custodians cover new and overlaid documents in this transaction. The chunk's
+        // index task re-projects them; a changed coverage of an existing document puts it on the security lane.
+        var walled = await DocumentSecuritySql.SyncWallsAsync(tx, [.. inserted, .. changed], cancellationToken).ConfigureAwait(false);
+        plan.SecurityChanged |= walled.Any(changed.Contains);
+
         // Q-31 coding values of the rows that made it, through the coding store (CodingEvents, version bumps).
         var coding = plan.Members.Select(m => (m.Row, m.DocumentId))
             .Concat(plan.Overlays.Select(o => (o.Row, o.DocumentId)))
@@ -857,7 +863,7 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
                 tx, chunk.Lease.JobId, chunk.InitiatedBy, "import:" + chunk.IdempotencyKey, coding, cancellationToken, restrictions).ConfigureAwait(false);
             codingChanged.UnionWith(outcome.ChangedDocuments);
             plan.CodingChanged = outcome.ChangedDocuments.Count > 0;
-            plan.SecurityChanged = outcome.TouchesSecurityAffectingField;
+            plan.SecurityChanged |= outcome.TouchesSecurityAffectingField;
             if (outcome.EventsWritten > 0)
             {
                 await AuditSql.InsertAsync(tx, ServiceEvent(batch, chunk, AuditTaxonomy.Coding.Category, AuditTaxonomy.Coding.BulkChunkApplied,

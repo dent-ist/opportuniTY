@@ -24,4 +24,18 @@ public sealed class FieldCatalog
 
     /// <summary>Choices of a field in display order (inactive included).</summary>
     public IReadOnlyList<Choice> ChoicesOf(int fieldId) => _choices.GetValueOrDefault(fieldId) ?? NoChoices;
+
+    /// <summary>
+    /// This catalogue without <paramref name="fieldIds"/> and their choices: what a principal with field-level
+    /// restrictions binds against (E05-T06), so a hidden field answers exactly like one that does not exist.
+    /// </summary>
+    public FieldCatalog Without(IReadOnlySet<int> fieldIds)
+    {
+        ArgumentNullException.ThrowIfNull(fieldIds);
+        return fieldIds.Count == 0 || !fieldIds.Any(_fields.ContainsKey)
+            ? this
+            : new FieldCatalog(
+                _fields.Values.Where(f => !fieldIds.Contains(f.FieldId)),
+                _choices.Where(c => !fieldIds.Contains(c.Key)).SelectMany(c => c.Value));
+    }
 }

@@ -116,6 +116,15 @@ internal sealed class AuthorizationService(ISecurityStateReader reader, IAuditEv
         return decision;
     }
 
+    public async Task<AuthorizationDecision> AuthorizeBreakGlassHolderAsync(
+        SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        var decision = Unauthenticated(principal)
+            ?? PolicyEvaluator.EvaluateBreakGlassHolder(await PrincipalStateAsync(principal, workspaceId, cancellationToken).ConfigureAwait(false));
+        await AuditAsync(principal, workspaceId, null, decision, null, cancellationToken).ConfigureAwait(false);
+        return decision;
+    }
+
     public async Task<EffectivePermissions> GetEffectivePermissionsAsync(
         SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default)
     {

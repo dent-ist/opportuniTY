@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Opportunity.Application.Authorization;
 using Opportunity.Application.Identity;
+using Opportunity.Application.Security;
 using Opportunity.Data.Security;
 
 namespace Opportunity.Data.Identity;
@@ -27,6 +28,7 @@ public static class IdentityStoreRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<ISecurityStateReader, PostgresSecurityStateReader>();
+        services.TryAddSingleton<IDocumentSecurityStore, DocumentSecurityStore>();
         return services;
     }
 }

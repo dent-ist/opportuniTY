@@ -115,6 +115,56 @@ internal static class RouteAttackCatalog
         Case("GET", Ws + "/search-freshness", ProtectedOperation.Search, WorkspaceOnly(HttpMethod.Get, "/search-freshness", HttpStatusCode.OK)),
 
         // Saved searches and their folders (E07-T09).
+        // Document security administration (E05-T06): classes and field restrictions are addressed by workspace-local keys.
+        Case("GET", Ws + "/security/restriction-classes", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/security/restriction-classes", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/security/restriction-classes/{classKey}", ProtectedOperation.Workspace,
+            new RouteProbe("workspace-local class key", HttpMethod.Put,
+                (o, _) => W(o) + "/security/restriction-classes/Probe" + Guid.NewGuid().ToString("N")[..8], HttpStatusCode.Created,
+                (_, _) => J(new JsonObject { ["displayName"] = "Probe class", ["roles"] = new JsonArray(), ["rules"] = new JsonArray() }),
+                HasForeignIdentifier: false)),
+        Case("DELETE", Ws + "/security/restriction-classes/{classKey}", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Delete, "/security/restriction-classes/Privileged", HttpStatusCode.PreconditionRequired)),
+        Case("GET", Ws + "/security/walls", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/security/walls", HttpStatusCode.OK)),
+        Case("POST", Ws + "/security/walls", ProtectedOperation.Workspace,
+            new RouteProbe("document ids in the scope", HttpMethod.Post, (o, _) => W(o) + "/security/walls", HttpStatusCode.Created,
+                (o, t) => J(new JsonObject
+                {
+                    ["name"] = "Probe wall " + Guid.NewGuid().ToString("N"),
+                    ["members"] = new JsonObject { ["userIds"] = new JsonArray(Guid.CreateVersion7().ToString()), ["groups"] = new JsonArray() },
+                    ["scope"] = new JsonObject
+                    {
+                        ["documentIds"] = new JsonArray(t.DocumentId.ToString()), ["custodians"] = new JsonArray(), ["choices"] = new JsonArray(),
+                    },
+                }), Expectation: ForeignExpectation.SameAsUnknown)),
+        Case("GET", Ws + "/security/walls/{wallId}", ProtectedOperation.Workspace,
+            new RouteProbe("wall", HttpMethod.Get, (o, t) => $"{W(o)}/security/walls/{t.WallId}", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/security/walls/{wallId}", ProtectedOperation.Workspace,
+            new RouteProbe("wall", HttpMethod.Put, (o, t) => $"{W(o)}/security/walls/{t.WallId}", HttpStatusCode.OK,
+                (o, _) => J(new JsonObject
+                {
+                    ["name"] = "Wall " + o.Name,
+                    ["members"] = new JsonObject { ["userIds"] = new JsonArray(Guid.CreateVersion7().ToString()), ["groups"] = new JsonArray() },
+                    ["scope"] = new JsonObject { ["documentIds"] = new JsonArray(), ["custodians"] = new JsonArray("nobody"), ["choices"] = new JsonArray() },
+                }), IfMatch: "*")),
+        Case("DELETE", Ws + "/security/walls/{wallId}", ProtectedOperation.Workspace,
+            new RouteProbe("wall", HttpMethod.Delete, (o, t) => $"{W(o)}/security/walls/{t.SpareWallId}", HttpStatusCode.NoContent, IfMatch: "*")),
+        Case("GET", Ws + "/security/field-restrictions", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/security/field-restrictions", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/security/field-restrictions/{fieldId}", ProtectedOperation.Workspace,
+            new RouteProbe("workspace-local field id", HttpMethod.Put, (o, _) => $"{W(o)}/security/field-restrictions/{o.Fields.ReviewDate}", null,
+                (_, _) => J(new JsonObject { ["visibleTo"] = new JsonArray("WorkspaceAdmin"), ["editableBy"] = new JsonArray("WorkspaceAdmin") }),
+                IfMatch: "*", HasForeignIdentifier: false)),
+        Case("DELETE", Ws + "/security/field-restrictions/{fieldId}", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Delete, "/security/field-restrictions/999999", HttpStatusCode.NotFound)),
+        Case("GET", Ws + "/security/break-glass/activations", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/security/break-glass/activations", HttpStatusCode.OK)),
+        Case("POST", Ws + "/security/break-glass/activations", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Post, "/security/break-glass/activations", HttpStatusCode.Forbidden,
+                _ => J(new JsonObject { ["reason"] = "Attack suite probe (no MFA step-up)" }))),
+        Case("POST", Ws + "/security/break-glass/activations/{activationId}/end", ProtectedOperation.Workspace,
+            new RouteProbe("activation", HttpMethod.Post, (o, t) => $"{W(o)}/security/break-glass/activations/{t.BreakGlassActivationId}/end", HttpStatusCode.OK)),
+
         // Highlight Sets (E16-T12).
         Case("GET", Ws + "/highlight-sets", ProtectedOperation.HighlightSet, WorkspaceOnly(HttpMethod.Get, "/highlight-sets", HttpStatusCode.OK)),
         Case("POST", Ws + "/highlight-sets", ProtectedOperation.HighlightSet,
