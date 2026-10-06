@@ -21,6 +21,7 @@ using Opportunity.IntegrationTests.Content;
 using Opportunity.IntegrationTests.Exports;
 using Opportunity.IntegrationTests.Import;
 using Opportunity.IntegrationTests.Migrations;
+using Opportunity.IntegrationTests.Productions;
 using Opportunity.IntegrationTests.Search;
 using Opportunity.Search;
 using Opportunity.Search.Projection;
@@ -61,7 +62,12 @@ internal sealed record WorkspaceResources(
     Guid GridViewId,
     Guid SpareGridViewId,
     Guid HighlightSetId,
-    Guid SpareHighlightSetId)
+    Guid SpareHighlightSetId,
+    Guid ProductionSnapshotId,
+    Guid FinalizedProductionId,
+    Guid DraftProductionId,
+    Guid SpareProductionId,
+    string BatesLabel)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -70,7 +76,8 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7(), Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+        "ZZ0000001");
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -80,6 +87,7 @@ internal sealed record WorkspaceResources(
             WorkspaceId, DocumentId, SearchId, BulkSnapshotId, ExportSnapshotId, ExportId, ExportFileId, ImportId, ImportJobId, ImportProfileId,
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
+            ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -107,6 +115,7 @@ internal sealed class AttackWorld : IAsyncDisposable
         Import = import;
         Exports = exports;
         Content = content;
+        Productions = ProductionHarness.Over(db.Core);
         _index = index;
         _scope = scope;
         _openSearch = openSearch;
@@ -121,6 +130,8 @@ internal sealed class AttackWorld : IAsyncDisposable
     public ExportHarness Exports { get; }
 
     public ContentDatabase Content { get; }
+
+    public ProductionHarness Productions { get; }
 
     public WebApplicationFactory<Program> Factory { get; }
 
@@ -270,6 +281,23 @@ internal sealed class AttackWorld : IAsyncDisposable
         var spareHighlightSet = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/highlight-sets", owner, HttpStatusCode.Created,
             new JsonObject { ["name"] = $"Spare set {name}", ["color"] = "green", ["terms"] = new JsonArray(new JsonObject { ["expression"] = "\"price increase\"" }) });
 
+        // Productions (E12-T02/T03): one finalized (Bates <name>0000001, allocated by the production worker), a draft and a spare draft.
+        var productionSnapshot = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/snapshots", owner, HttpStatusCode.Created,
+            new JsonObject { ["purpose"] = "Production", ["documentIds"] = new JsonArray(document.DocumentId.ToString()) });
+        var productionSnapshotId = productionSnapshot.GetProperty("snapshotId").GetGuid();
+        var finalized = await ProductionAsync(ws, owner, productionSnapshotId, name);
+        var allocation = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/productions/{finalized}/bates-allocation", owner, HttpStatusCode.Accepted);
+        await Productions.RunAllocationAsync(ws, allocation.GetProperty("jobId").GetGuid());
+        using (var current = await SendAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/productions/{finalized}", owner))
+        using (var finalize = await SendAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/productions/{finalized}/finalize", owner,
+            ifMatch: current.Headers.ETag!.ToString()))
+        {
+            finalize.StatusCode.Should().Be(HttpStatusCode.OK, await finalize.Content.ReadAsStringAsync(Ct));
+        }
+
+        var draftProduction = await ProductionAsync(ws, owner, productionSnapshotId, name + "D");
+        var spareProduction = await ProductionAsync(ws, owner, productionSnapshotId, name + "S");
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -303,8 +331,22 @@ internal sealed class AttackWorld : IAsyncDisposable
             gridView.GetProperty("viewId").GetGuid(),
             spareView.GetProperty("viewId").GetGuid(),
             highlightSet.GetProperty("highlightSetId").GetGuid(),
-            spareHighlightSet.GetProperty("highlightSetId").GetGuid());
+            spareHighlightSet.GetProperty("highlightSetId").GetGuid(),
+            productionSnapshotId,
+            finalized,
+            draftProduction,
+            spareProduction,
+            $"{name}0000001");
     }
+
+    /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>
+    private async Task<Guid> ProductionAsync(Guid ws, Guid owner, Guid snapshotId, string prefix) =>
+        (await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/productions", owner, HttpStatusCode.Created, new JsonObject
+        {
+            ["snapshotId"] = snapshotId.ToString(),
+            ["name"] = "Production " + prefix,
+            ["specification"] = new JsonObject { ["bates"] = new JsonObject { ["prefix"] = prefix } },
+        })).GetProperty("productionId").GetGuid();
 
     /// <summary>A search term report over the workspace with one term, run to completion by the API host's runner.</summary>
     private async Task<JsonElement> TermReportAsync(Guid ws, Guid owner, string name)

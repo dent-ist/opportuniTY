@@ -71,6 +71,17 @@ internal sealed class ProductionHarness : IAsyncDisposable
     public static async Task<ProductionHarness> CreateAsync(MigrationPostgresFixture postgres, int documentsPerChunk = 4) =>
         new(await CoreSchemaDatabase.CreateAsync(postgres), documentsPerChunk);
 
+    /// <summary>The production worker over another harness's database (not disposed with it).</summary>
+    public static ProductionHarness Over(CoreSchemaDatabase db, int documentsPerChunk = 4) => new(db, documentsPerChunk);
+
+    /// <summary>Plans, runs every chunk and completes the allocation of a job the API started (as the production worker would).</summary>
+    public async Task RunAllocationAsync(Guid ws, Guid jobId)
+    {
+        await CoordinateAsync(ws);
+        await DeliverOpenChunksAsync(ws, jobId);
+        await CoordinateAsync(ws);
+    }
+
     public async Task<Guid> UserAsync(Guid ws, WorkspaceRole role)
     {
         var id = Guid.CreateVersion7();

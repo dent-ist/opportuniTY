@@ -83,6 +83,13 @@ internal static class RouteAttackCatalog
     private static RouteCase Case(string method, string pattern, string operation, params RouteProbe[] probes) =>
         new(method, pattern, operation, probes);
 
+    /// <summary>A draft production request with a source and a Bates prefix unique to the request.</summary>
+    private static JsonObject ProductionBody(JsonObject source)
+    {
+        source["specification"] = new JsonObject { ["bates"] = new JsonObject { ["prefix"] = "P" + Guid.NewGuid().ToString("N")[..8] } };
+        return source;
+    }
+
     public static IReadOnlyList<RouteCase> Cases { get; } =
     [
         // Search: query text, handles and cursors.
@@ -369,6 +376,41 @@ internal static class RouteAttackCatalog
             new RouteProbe("own export, another workspace's file", HttpMethod.Get, (o, t) => $"{W(o)}/exports/{o.ExportId}/files/{t.ExportFileId}/content", HttpStatusCode.OK)),
         Case("GET", Ws + "/exports/{exportId}/package", ProtectedOperation.Export,
             new RouteProbe("export", HttpMethod.Get, (o, t) => $"{W(o)}/exports/{t.ExportId}/package", HttpStatusCode.OK)),
+
+        // Productions (E12-T02/T03). State-changing probes accept any answer PEP-1 admitted for the caller's own production
+        // (they change it once, then answer 409); foreign productions must look exactly like unknown ones.
+        Case("POST", Ws + "/productions", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("frozen set in the body", HttpMethod.Post, (o, _) => W(o) + "/productions", HttpStatusCode.Created,
+                (_, t) => J(ProductionBody(new JsonObject { ["snapshotId"] = t.ProductionSnapshotId.ToString() }))),
+            new RouteProbe("saved search in the body", HttpMethod.Post, (o, _) => W(o) + "/productions", HttpStatusCode.Created,
+                (_, t) => J(ProductionBody(new JsonObject { ["savedSearchId"] = t.SavedSearchId.ToString() }))),
+            new RouteProbe("version to supersede in the body", HttpMethod.Post, (o, _) => W(o) + "/productions", HttpStatusCode.Created,
+                (_, t) => J(new JsonObject { ["previousVersionId"] = t.FinalizedProductionId.ToString() }))),
+        Case("GET", Ws + "/productions", ProtectedOperation.ProductionInclusion, WorkspaceOnly(HttpMethod.Get, "/productions", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/bates-lookup", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("Bates number in the query", HttpMethod.Get, (o, t) => $"{W(o)}/productions/bates-lookup?number={t.BatesLabel}", HttpStatusCode.OK,
+                Expectation: ForeignExpectation.EmptySet),
+            new RouteProbe("document in the query", HttpMethod.Get, (o, t) => $"{W(o)}/productions/bates-lookup?documentId={t.DocumentId}", HttpStatusCode.OK,
+                Expectation: ForeignExpectation.EmptySet)),
+        Case("GET", Ws + "/productions/{productionId}", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/productions/{productionId}", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production", HttpMethod.Put, (o, t) => $"{W(o)}/productions/{t.DraftProductionId}", null,
+                (_, _) => J(new JsonObject { ["specification"] = new JsonObject { ["bates"] = new JsonObject { ["prefix"] = "PROBE", ["startNumber"] = 500 } } }),
+                IfMatch: "*")),
+        Case("POST", Ws + "/productions/{productionId}/bates-allocation", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.DraftProductionId}/bates-allocation", null)),
+        Case("POST", Ws + "/productions/{productionId}/finalize", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.DraftProductionId}/finalize", null, IfMatch: "*")),
+        Case("POST", Ws + "/productions/{productionId}/void", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/void", null,
+                (_, _) => J(new JsonObject { ["reason"] = "Attack probe." }), IfMatch: "*")),
+        Case("POST", Ws + "/productions/{productionId}/discard", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("spare draft production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.SpareProductionId}/discard", null, IfMatch: "*")),
+        Case("GET", Ws + "/productions/{productionId}/documents", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/documents", HttpStatusCode.OK)),
+        Case("POST", Ws + "/productions/{productionId}/verification", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/verification", HttpStatusCode.OK)),
 
         // Routes without a workspace-scoped identifier.
         Exempt("GET", V1 + "/me", "the caller's own session; no identifier"),

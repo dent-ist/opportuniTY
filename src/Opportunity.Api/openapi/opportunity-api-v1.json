@@ -8062,16 +8062,20 @@
       },
       "BatesLookupResource": {
         "required": [
-          "matches",
+          "items",
+          "total",
           "restrictedCount"
         ],
         "type": "object",
         "properties": {
-          "matches": {
+          "items": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BatesLookupMatch"
             }
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
           },
           "restrictedCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",

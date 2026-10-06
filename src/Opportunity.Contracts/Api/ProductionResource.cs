@@ -222,8 +222,9 @@ public sealed record ProductionDocumentResource(
     string? ProdBegAttach,
     string? ProdEndAttach);
 
-/// <summary>A Bates number (or document) found in a production of the workspace.</summary>
-public sealed record BatesLookupResource(IReadOnlyList<BatesLookupMatch> Matches, long RestrictedCount);
+/// <summary>The productions holding a Bates number (or a document), oldest first.</summary>
+/// <param name="RestrictedCount">Matches on documents you may not view: counted, never listed (Q-52).</param>
+public sealed record BatesLookupResource(IReadOnlyList<BatesLookupMatch> Items, TotalCount Total, long RestrictedCount);
 
 public sealed record BatesLookupMatch(
     Guid ProductionId,

@@ -480,6 +480,7 @@ public sealed class ProductionEndpoints : IApiEndpointModule
         return TypedResults.Ok(new BatesLookupResource(
             [.. matches.Select(m => new BatesLookupMatch(m.ProductionId, m.ProductionName, m.ProductionVersion, Status(m.ProductionStatus), m.DocumentId,
                 m.ControlNumber, m.ProdBegBates, m.ProdEndBates, m.ProdBegAttach, m.ProdEndAttach))],
+            new TotalCount(matches.Count, TotalRelation.Eq),
             restricted));
     }
 
