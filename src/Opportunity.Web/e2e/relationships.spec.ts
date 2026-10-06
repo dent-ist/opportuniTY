@@ -102,6 +102,13 @@ test('Related Items: a restricted count without metadata, opening a member keeps
   mock,
 }) => {
   await openPage(page, '/w/ws-1/documents');
+  // The email thread is a column the Columns dialog offers (the workspace's thread field).
+  await page.getByRole('button', { name: 'Columns', exact: true }).click();
+  const chooser = page.getByRole('dialog', { name: 'Columns and sort' });
+  await expect(chooser.getByRole('button', { name: 'Email Thread Group' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(chooser).toBeHidden();
+
   await page
     .getByRole('grid', { name: 'Documents' })
     .getByRole('row', { name: /ACM0000003/ })
