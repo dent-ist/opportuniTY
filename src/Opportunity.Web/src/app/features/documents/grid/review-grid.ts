@@ -130,6 +130,20 @@ export interface RelationshipPivot {
   readonly controlNumber: string;
 }
 
+/** The search that lists a relation (relationship fields of the query language, ADR-007 §3). */
+export function pivotQuery(pivot: RelationshipPivot): string {
+  const field =
+    pivot.kind === 'duplicates' ? 'duplicategroup' : pivot.kind === 'thread' ? 'threadid' : 'familyid';
+  return `${field}:${quotePhrase(pivot.id)}`;
+}
+
+/** "Duplicates of ACM0000102" — what the list shows after a pivot. */
+export function pivotLabel(pivot: RelationshipPivot): string {
+  const what =
+    pivot.kind === 'duplicates' ? 'Duplicates' : pivot.kind === 'thread' ? 'Email thread' : 'Family';
+  return `${what} of ${pivot.controlNumber}`;
+}
+
 /** A row opened with Enter, double-click (Review mode, E16-T03). */
 export interface GridOpenEvent {
   readonly hit: SearchHit;

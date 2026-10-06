@@ -183,6 +183,15 @@
   overflow-wrap: anywhere;
 }
 
+// E16-T10: explicit propagation (Q-14), above the save actions.
+.coding__propagate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-1) var(--opp-space-3);
+  border-block-start: var(--opp-border-width) solid var(--opp-color-border);
+}
+
 .coding__actions {
   display: flex;
   flex-wrap: wrap;

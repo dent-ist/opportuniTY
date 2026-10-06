@@ -149,7 +149,12 @@
           </button>
         </header>
         @if (current) {
-          <opp-review-related [hit]="current" />
+          <opp-related-items
+            [hit]="current"
+            [fields]="fields()"
+            (openItem)="openRelated($event)"
+            (pivot)="showInList($event)"
+          />
         }
       </section>
     </opp-split-pane>
@@ -173,7 +178,10 @@
       <opp-review-coding
         [documentId]="current.documentId"
         [canCode]="canCode"
+        [controlNumber]="current.controlNumber"
+        [relations]="relations()"
         (move)="saveAndMove($event)"
+        (propagated)="onPropagated()"
       />
     }
   </section>

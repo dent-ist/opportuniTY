@@ -36,7 +36,15 @@ import {
   savedSearchErrorText,
 } from '../searches/saved-search-model';
 import { SavedSearchBrowser } from './browser/saved-search-browser';
-import { GridOpenEvent, GridSearch, ReviewGrid } from './grid/review-grid';
+import {
+  GridOpenEvent,
+  GridSearch,
+  RelationshipPivot,
+  ReviewGrid,
+  pivotLabel,
+  pivotQuery,
+} from './grid/review-grid';
+import { HttpRelationshipsApi, RelationshipsApi } from './relationships/relationships-api';
 import { PendingCoding } from './review/coding/pending-coding';
 import { DocumentLoader } from './review/document-loader';
 import { CursorSource, ReviewCursor } from './review/review-cursor';
@@ -239,6 +247,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
             (open)="onOpen($event)"
             (refreshed)="onRefreshed($event)"
             (loaded)="onLoaded($event)"
+            (pivot)="onPivot($event)"
           >
             <opp-freshness-status gridFreshness />
             <opp-mass-actions
@@ -257,6 +266,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
         [cursor]="cursor"
         [fields]="grid().fieldCatalogue()"
         (back)="closeReview()"
+        (pivot)="onPivot($event)"
       />
     }`,
   styleUrl: './documents-page.scss',
@@ -265,6 +275,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     DocumentLoader,
     { provide: DocumentContentApi, useClass: HttpDocumentContentApi },
     { provide: CodingApi, useClass: HttpCodingApi },
+    { provide: RelationshipsApi, useClass: HttpRelationshipsApi },
     PendingCoding,
     { provide: BulkCodingApi, useClass: HttpBulkCodingApi },
     MassEditJobs,
@@ -688,6 +699,21 @@ export class DocumentsPage {
       queryParamsHandling: 'merge',
       replaceUrl,
     });
+  }
+
+  /**
+   * The duplicate indicator, or "Show … in the list" in Related Items (E16-T10): the relation becomes the search of the
+   * list (an ordinary query, so it can be refined, saved or used for Mass Edit). Review mode closes first.
+   */
+  protected onPivot(pivot: RelationshipPivot): void {
+    if (this.reviewing()) this.closeReview();
+    if (this.saved()) this.forgetSaved();
+    if (this.termView()) this.forgetTerm();
+    const query = pivotQuery(pivot);
+    this.grid().resetFilters();
+    this.queryBar().load(query);
+    this.search.set(this.searchFor(query));
+    this.toasts.show(`Showing: ${pivotLabel(pivot)}.`, { tone: 'info' });
   }
 
   protected onRefreshed(message: string): void {
