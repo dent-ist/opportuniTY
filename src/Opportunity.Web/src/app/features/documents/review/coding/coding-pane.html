@@ -14,7 +14,7 @@
         <span class="coding__muted">Layout</span> <strong>{{ current.name }}</strong>
       </p>
     }
-    <div class="coding__status" role="status">
+    <div class="coding__status" role="status" [hidden]="preview()">
       @switch (indexBadge()) {
         @case ('saving') {
           <opp-badge tone="neutral" icon="clock">Saving…</opp-badge>

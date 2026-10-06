@@ -1,0 +1,132 @@
+@let list = choices();
+<p class="fa__hint" id="choice-order-hint">
+  Reviewers see choices in this order, with access digits 1–9 for the first nine. Drag a choice by
+  its handle, use Move up and Move down, or press Alt+Up / Alt+Down in its row.
+</p>
+@if (list.length) {
+  <ol
+    class="fa__choices"
+    cdkDropList
+    aria-describedby="choice-order-hint"
+    [cdkDropListDisabled]="busy()"
+    (cdkDropListDropped)="drop($event)"
+  >
+    @for (choice of list; track choice.choiceId; let i = $index, last = $last) {
+      <li
+        class="fa__choice"
+        cdkDrag
+        [class.is-inactive]="!choice.isActive"
+        [attr.data-choice-id]="choice.choiceId"
+        (keydown)="onRowKeydown($event, i)"
+      >
+        <span class="fa__handle" cdkDragHandle aria-hidden="true">
+          <opp-icon name="grip-vertical" />
+        </span>
+        <span class="fa__position" aria-hidden="true">{{ i + 1 }}</span>
+        @if (renaming() === choice.choiceId) {
+          <form class="fa__rename" novalidate (submit)="rename($event, choice)">
+            <opp-text-field
+              [attr.data-rename]="choice.choiceId"
+              [label]="'New name for ' + choice.name"
+              [value]="renameValue()"
+              (valueChange)="renameValue.set($event)"
+              (keydown.escape)="cancelRename()"
+            />
+            <button type="submit" oppButton="primary" [busy]="busy()">Save name</button>
+            <button type="button" oppButton="ghost" (click)="cancelRename()">Cancel</button>
+          </form>
+        } @else {
+          <span class="fa__choice-name">{{ choice.name }}</span>
+          @if (!choice.isActive) {
+            <opp-badge tone="neutral" icon="eye-off">Inactive</opp-badge>
+          }
+          @if (choice.inUse) {
+            <opp-badge tone="info">In use</opp-badge>
+          }
+          <span class="fa__row-actions">
+            <button
+              type="button"
+              oppIconButton
+              data-action="Move up"
+              [label]="'Move ' + choice.name + ' up'"
+              [disabled]="i === 0 || busy()"
+              (click)="move(i, -1)"
+            >
+              <opp-icon name="chevron-up" />
+            </button>
+            <button
+              type="button"
+              oppIconButton
+              data-action="Move down"
+              [label]="'Move ' + choice.name + ' down'"
+              [disabled]="last || busy()"
+              (click)="move(i, 1)"
+            >
+              <opp-icon name="chevron-down" />
+            </button>
+            <button
+              type="button"
+              oppIconButton
+              data-action="Rename"
+              [label]="'Rename ' + choice.name"
+              [disabled]="busy()"
+              (click)="startRename(choice)"
+            >
+              <opp-icon name="pencil" />
+            </button>
+            @if (choice.isActive) {
+              <button
+                type="button"
+                oppButton="ghost"
+                data-action="Deactivate"
+                [disabled]="busy()"
+                (click)="setActive(choice, false)"
+              >
+                Deactivate<span class="opp-visually-hidden"> {{ choice.name }}</span>
+              </button>
+            } @else {
+              <button
+                type="button"
+                oppButton="ghost"
+                data-action="Reactivate"
+                [disabled]="busy()"
+                (click)="setActive(choice, true)"
+              >
+                Reactivate<span class="opp-visually-hidden"> {{ choice.name }}</span>
+              </button>
+            }
+            @if (!choice.inUse) {
+              <button
+                type="button"
+                oppIconButton
+                [label]="'Delete ' + choice.name"
+                [disabled]="busy()"
+                (click)="remove(choice)"
+              >
+                <opp-icon name="trash" />
+              </button>
+            }
+          </span>
+        }
+      </li>
+    }
+  </ol>
+} @else {
+  <p class="fa__muted">No choices yet. Reviewers can code this field once it has choices.</p>
+}
+
+<form class="fa__add-choice" novalidate (submit)="add($event)">
+  <opp-text-field
+    label="New choice"
+    hint="Added at the end of the list."
+    [value]="newName()"
+    (valueChange)="newName.set($event)"
+  />
+  <button type="submit" oppButton="secondary" [busy]="busy()">
+    <opp-icon name="plus" />Add choice
+  </button>
+</form>
+
+@if (error(); as message) {
+  <p class="fa__error" role="alert"><opp-icon name="error" />{{ message }}</p>
+}

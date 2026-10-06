@@ -137,6 +137,12 @@ export class ReviewCoding implements CodingEditor {
   readonly controlNumber = input<string | null>(null);
   /** Coding was applied to the family or duplicates (or a job was started for it). */
   readonly propagated = output<ApplyToRelatedResult>();
+  /**
+   * Admin › Coding Layouts preview (E04-T06): render this layout instead of the user's layouts, exactly as reviewers
+   * see it, without the save, status and Apply to Family controls. Values can be tried out but are never saved.
+   */
+  readonly previewLayout = input<CodingLayout | null>(null);
+  protected readonly preview = computed(() => this.previewLayout() !== null);
 
   private readonly api = inject(CodingApi);
   private readonly pending = inject(PendingCoding, { optional: true });
@@ -184,6 +190,7 @@ export class ReviewCoding implements CodingEditor {
   /** "Apply to Family…" / "Apply to Duplicates…" are offered. */
   protected readonly canApply = computed(
     () =>
+      !this.preview() &&
       this.canCode() &&
       this.stateKind() === 'ready' &&
       (this.relations().family || this.relations().duplicates) &&
@@ -231,7 +238,10 @@ export class ReviewCoding implements CodingEditor {
   private readonly rows = computed(() => this.sections().flatMap((s) => s.rows));
   /** Save actions: kept while the next document loads, so focus on them survives Save & Next. */
   protected readonly showActions = computed(
-    () => this.canCode() && (this.stateKind() !== 'ready' || this.rows().some((r) => r.editable)),
+    () =>
+      !this.preview() &&
+      this.canCode() &&
+      (this.stateKind() !== 'ready' || this.rows().some((r) => r.editable)),
   );
 
   /** The indexing badge: after the reviewer's save, until search has it, and once it has. */
@@ -264,9 +274,13 @@ export class ReviewCoding implements CodingEditor {
 
   constructor() {
     this.api.layouts().then(
-      (layouts) => this.layouts.set(layouts),
-      () => this.layouts.set([]),
+      (layouts) => this.previewLayout() || this.layouts.set(layouts),
+      () => this.previewLayout() || this.layouts.set([]),
     );
+    effect(() => {
+      const preview = this.previewLayout();
+      if (preview) this.layouts.set([preview]);
+    });
     effect(() => {
       const id = this.documentId();
       untracked(() => this.load(id));

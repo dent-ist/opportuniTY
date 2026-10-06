@@ -31,6 +31,8 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/admin/settings',
   '/w/ws-1/admin/setup',
   '/w/ws-1/admin/highlight-sets',
+  '/w/ws-1/admin/choices',
+  '/w/ws-1/admin/coding-layouts',
 ];
 
 /** Popups are rendered only while open, so each is opened and checked separately. */
@@ -358,6 +360,27 @@ for (const theme of THEMES) {
       );
       await page.getByRole('button', { name: 'Save highlight set' }).click();
       await expect(page.getByRole('alert')).toContainText('Line 2');
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
+    test('fields and coding layouts: the field editor with choices, the layout editor and preview (E04-T06)', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/admin/fields');
+      await page.getByRole('button', { name: 'Edit Privilege Basis' }).click();
+      await expect(page.getByRole('heading', { name: 'Choices' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      // A choice field whose documents hold values: the type is locked with an explanation.
+      await page.getByRole('button', { name: 'Close' }).click();
+      await page.getByRole('button', { name: 'Edit Responsiveness' }).click();
+      await expect(page.getByText('Documents already hold values for this field')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await openPage(page, '/w/ws-1/admin/coding-layouts');
+      await page.getByRole('button', { name: /First Pass Review/ }).click();
+      const preview = page.getByRole('region', { name: 'Preview' });
+      await expect(preview.getByRole('radiogroup', { name: /Responsiveness/ })).toBeVisible();
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 

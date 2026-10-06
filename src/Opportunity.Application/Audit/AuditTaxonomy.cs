@@ -185,6 +185,24 @@ public static class AuditTaxonomy
         public const string SettingsChanged = "SettingsChanged";
     }
 
+    /// <summary>
+    /// Field and coding layout administration (E04-T06): a field or its choices, or a layout, changed. IDs and enums
+    /// only (never names); a field is retired, never purged here (ADR-003 R6).
+    /// </summary>
+    public static class FieldCatalog
+    {
+        public const string Category = "Workspace";
+        public const string FieldCreated = "Field.Created";
+        public const string FieldModified = "Field.Modified";
+        public const string FieldRetired = "Field.Retired";
+        public const string LayoutCreated = "CodingLayout.Created";
+        public const string LayoutModified = "CodingLayout.Modified";
+        public const string LayoutDeleted = "CodingLayout.Deleted";
+
+        public const string FieldResourceType = "Field";
+        public const string LayoutResourceType = "CodingLayout";
+    }
+
     public static class Job
     {
         public const string Category = "Job";
@@ -235,7 +253,8 @@ public static class AuditTaxonomy
             "AcknowledgmentAccepted"),
         .. Expand("Workspace", "Created", "SettingsChanged", "Closed", "Reopened", "HoldPlaced", "HoldReleaseRequested",
             "HoldReleased", "DeletionRequested", "DeletionApproved", "DeletionCancelled", "DeletionStarted",
-            "DeletionStepCompleted", "DeletionHalted", "Deleted"),
+            "DeletionStepCompleted", "DeletionHalted", "Deleted",
+            "Field.Created", "Field.Modified", "Field.Retired", "CodingLayout.Created", "CodingLayout.Modified", "CodingLayout.Deleted"),
         .. Expand("Admin", "ConfigChanged", "UserProvisioned", "UserDeactivated", "KeyCreated", "KeyRotated", "KeyDestroyed",
             "SecretRotated"),
         .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged"),

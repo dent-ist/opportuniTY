@@ -8,6 +8,7 @@ import { SavedSearchesMock } from './mock-saved-searches';
 import { SearchTermReportsMock } from './mock-search-term-reports';
 import { GridViewsMock } from './mock-grid-views';
 import { HighlightsMock } from './mock-highlights';
+import { FieldAdminMock } from './mock-field-admin';
 import { RelationshipsMock, hitRelations } from './mock-relationships';
 
 /**
@@ -70,6 +71,8 @@ export interface MockAuditEvent {
 export interface MockControl {
   /** Requests to endpoints the mock had no answer for. */
   readonly unhandled: string[];
+  /** Field and coding layout administration (E04-T06): the workspace's fields and layouts. */
+  readonly fieldAdmin: FieldAdminMock;
   /** Gateway audit log: `Retrieved` per content delivery (with its purpose), `Viewed` per view beacon. */
   readonly audit: MockAuditEvent[];
   /** Running searches expire: page requests answer 404 until the next search runs (Q-33). */
@@ -437,6 +440,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   let lastSearch: Record<string, unknown> | null = null;
   let lastFields: string[] = [];
   const highlights = new HighlightsMock(() => lastQuery);
+  const fieldAdmin = new FieldAdminMock(FIELDS);
   const freshness = new FreshnessMock(options.freshness);
   const relationships = new RelationshipsMock(
     coding,
@@ -454,6 +458,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     gridViews,
     lastSearch: () => lastSearch,
     highlights,
+    fieldAdmin,
     unhandled,
     audit,
     coding,
@@ -496,6 +501,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         total: { value: items.length, relation: 'eq' },
       });
     }
+    // Fields, choices and coding layouts (E04-T06): ./mock-field-admin.ts.
+    const administered = signedIn ? fieldAdmin.handle(route, method, path) : undefined;
+    if (administered) return administered;
     if (signedIn && method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/members$/.test(path)) {
       const items = [
         member('a-1', 'Alex Reviewer', 'workspaceAdmin'),

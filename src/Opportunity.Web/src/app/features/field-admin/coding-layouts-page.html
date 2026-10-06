@@ -1,0 +1,403 @@
+@let draft = this.draft();
+@let layout = selected();
+<header class="fa__header">
+  <div>
+    <h1 class="fa__title" tabindex="-1">Coding Layouts</h1>
+    <p class="fa__lead">
+      Which fields reviewers see in the coding pane, in which sections and order, which are
+      required, and which roles may choose the layout. The default layout is available to everyone.
+    </p>
+  </div>
+  <button type="button" oppButton="primary" data-action="new-layout" (click)="startNew()">
+    <opp-icon name="plus" /> New layout
+  </button>
+</header>
+
+@if (loading()) {
+  <opp-loading-state label="Loading coding layouts…" />
+} @else if (loadError(); as error) {
+  <opp-error-state [error]="error" (retry)="load()" />
+} @else {
+  <div class="fa__layouts">
+    <nav aria-label="Coding layouts">
+      <ul class="fa__layout-list">
+        @for (l of layouts(); track l.layoutId) {
+          <li>
+            <button
+              type="button"
+              class="fa__layout-item"
+              [attr.aria-current]="isCurrent(l) ? 'true' : null"
+              [disabled]="opening()"
+              (click)="open(l)"
+            >
+              <span>{{ l.name }}</span>
+              @if (l.isDefault) {
+                <opp-badge tone="info">Default</opp-badge>
+              }
+            </button>
+          </li>
+        }
+      </ul>
+    </nav>
+
+    @if (layout !== undefined) {
+      <div class="fa__layout-editor">
+        <section class="fa__card" aria-labelledby="layout-editor-title">
+          <h2 id="layout-editor-title" class="fa__card-title">
+            {{ layout ? 'Edit ' + layout.name : 'New layout' }}
+            @if (dirty()) {
+              <span class="fa__muted"> · unsaved changes</span>
+            }
+          </h2>
+          <form novalidate class="fa__form" (submit)="save($event)">
+            <div class="fa__row">
+              <opp-text-field
+                #nameField
+                label="Layout name"
+                [required]="true"
+                [value]="draft.name"
+                [error]="errors()['name']"
+                [disabled]="saving()"
+                (valueChange)="update({ name: $event })"
+              />
+            </div>
+            <opp-checkbox
+              [checked]="draft.isDefault"
+              [disabled]="saving() || !!layout?.isDefault"
+              (checkedChange)="update({ isDefault: $event })"
+            >
+              Default layout for everyone
+            </opp-checkbox>
+            @if (layout?.isDefault) {
+              <p class="fa__hint">
+                A workspace always has one default layout. To change it, make another layout the
+                default.
+              </p>
+            }
+            @if (errors()['isDefault']; as message) {
+              <p class="fa__error">{{ message }}</p>
+            }
+
+            <fieldset class="fa__fieldset">
+              <legend class="fa__label">Also available to</legend>
+              <div class="fa__roles">
+                @for (role of roles; track role.key) {
+                  <opp-checkbox
+                    [checked]="draft.roles.includes(role.key)"
+                    [disabled]="saving()"
+                    (checkedChange)="toggleRole(role.key, $event)"
+                  >
+                    {{ role.label }}
+                  </opp-checkbox>
+                }
+              </div>
+              <p class="fa__hint">
+                Reviewers choose from the default layout and the layouts of their roles. Workspace
+                Admins can use every layout.
+              </p>
+              @if (errors()['roles']; as message) {
+                <p class="fa__error">{{ message }}</p>
+              }
+            </fieldset>
+
+            <p class="fa__hint" id="layout-order-hint">
+              Drag a field by its handle, or use Move up and Move down (Alt+Up / Alt+Down in its
+              row) and Move to section.
+            </p>
+            @if (errors()['sections']; as message) {
+              <p class="fa__error">{{ message }}</p>
+            }
+
+            <div cdkDropListGroup class="fa__form">
+              @for (
+                section of draft.sections;
+                track section.key;
+                let si = $index, lastSection = $last
+              ) {
+                <section
+                  class="fa__section"
+                  [attr.data-section]="section.key"
+                  [attr.aria-label]="'Section ' + (section.title || si + 1)"
+                >
+                  <div class="fa__section-head">
+                    <opp-text-field
+                      label="Section title"
+                      [required]="true"
+                      [value]="section.title"
+                      [disabled]="saving()"
+                      (valueChange)="renameSection(section.key, $event)"
+                    />
+                    <button
+                      type="button"
+                      oppIconButton
+                      data-action="section-up"
+                      [label]="'Move section ' + (section.title || si + 1) + ' up'"
+                      [disabled]="si === 0 || saving()"
+                      (click)="moveSection(si, -1)"
+                    >
+                      <opp-icon name="chevron-up" />
+                    </button>
+                    <button
+                      type="button"
+                      oppIconButton
+                      data-action="section-down"
+                      [label]="'Move section ' + (section.title || si + 1) + ' down'"
+                      [disabled]="lastSection || saving()"
+                      (click)="moveSection(si, 1)"
+                    >
+                      <opp-icon name="chevron-down" />
+                    </button>
+                    <button
+                      type="button"
+                      oppIconButton
+                      [label]="'Remove section ' + (section.title || si + 1)"
+                      [disabled]="saving()"
+                      (click)="removeSection(si)"
+                    >
+                      <opp-icon name="trash" />
+                    </button>
+                  </div>
+
+                  <ol
+                    class="fa__fields"
+                    cdkDropList
+                    aria-describedby="layout-order-hint"
+                    [id]="section.key"
+                    [cdkDropListData]="section.key"
+                    [cdkDropListConnectedTo]="dropListIds()"
+                    [cdkDropListDisabled]="saving()"
+                    (cdkDropListDropped)="drop($event)"
+                  >
+                    @for (
+                      item of section.fields;
+                      track item.fieldId;
+                      let i = $index, last = $last
+                    ) {
+                      @let meta = fieldOf(item.fieldId);
+                      @let name = labelOf(item.fieldId);
+                      @let blocked = familyBlocked(item);
+                      <li
+                        class="fa__layout-field"
+                        cdkDrag
+                        [attr.data-layout-field]="item.fieldId"
+                        (keydown)="onFieldKeydown($event, si, i)"
+                      >
+                        <span class="fa__handle" cdkDragHandle aria-hidden="true">
+                          <opp-icon name="grip-vertical" />
+                        </span>
+                        <span class="fa__field-name">
+                          {{ name }}
+                          @if (meta) {
+                            <span class="fa__field-type">
+                              {{ typeLabel(meta.type, meta.datePrecision) }} ·
+                              {{ meta.isSystem ? 'System' : storageLabel(meta.storage) }}
+                            </span>
+                          }
+                          @if (meta?.isSecurityAffecting) {
+                            <opp-badge tone="restricted" icon="lock">Affects access</opp-badge>
+                          }
+                        </span>
+                        <span class="fa__row-actions">
+                          <button
+                            type="button"
+                            oppIconButton
+                            data-action="up"
+                            [label]="'Move ' + name + ' up'"
+                            [disabled]="i === 0 || saving()"
+                            (click)="moveField(si, i, -1)"
+                          >
+                            <opp-icon name="chevron-up" />
+                          </button>
+                          <button
+                            type="button"
+                            oppIconButton
+                            data-action="down"
+                            [label]="'Move ' + name + ' down'"
+                            [disabled]="last || saving()"
+                            (click)="moveField(si, i, 1)"
+                          >
+                            <opp-icon name="chevron-down" />
+                          </button>
+                          <button
+                            type="button"
+                            oppIconButton
+                            [label]="'Remove ' + name + ' from the layout'"
+                            [disabled]="saving()"
+                            (click)="removeField(section.key, item.fieldId)"
+                          >
+                            <opp-icon name="close" />
+                          </button>
+                        </span>
+                        <div
+                          class="fa__field-options"
+                          role="group"
+                          [attr.aria-label]="name + ' options'"
+                        >
+                          <opp-checkbox
+                            [checked]="item.required"
+                            [disabled]="saving() || item.readOnly"
+                            (checkedChange)="
+                              setField(section.key, item.fieldId, { required: $event })
+                            "
+                          >
+                            Required
+                          </opp-checkbox>
+                          <opp-checkbox
+                            [checked]="item.readOnly"
+                            [disabled]="saving() || !isCoding(item.fieldId)"
+                            (checkedChange)="setReadOnly(section.key, item, $event)"
+                          >
+                            Read-only
+                          </opp-checkbox>
+                          <opp-checkbox
+                            [checked]="item.applyToFamily"
+                            [disabled]="saving() || !!blocked"
+                            (checkedChange)="
+                              setField(section.key, item.fieldId, { applyToFamily: $event })
+                            "
+                          >
+                            Pre-select in Apply to Family
+                          </opp-checkbox>
+                          @if (sectionOptions().length > 1) {
+                            <opp-select
+                              label="Move to section"
+                              [options]="sectionOptions()"
+                              [value]="section.key"
+                              [disabled]="saving()"
+                              (valueChange)="moveToSection(section.key, item.fieldId, $event)"
+                            />
+                          }
+                          <div class="fa__condition">
+                            <opp-select
+                              label="Show"
+                              [options]="conditionOptions(item.fieldId)"
+                              [value]="item.condition ? '' + item.condition.fieldId : ''"
+                              [disabled]="saving()"
+                              (valueChange)="setConditionField(section.key, item, $event)"
+                            />
+                            @if (item.condition) {
+                              @if (isBooleanCondition(item)) {
+                                <opp-select
+                                  label="Value"
+                                  [options]="[
+                                    { value: 'true', label: 'Yes' },
+                                    { value: 'false', label: 'No' },
+                                  ]"
+                                  [value]="item.condition.booleanValue === false ? 'false' : 'true'"
+                                  [disabled]="saving()"
+                                  (valueChange)="setConditionBoolean(section.key, item, $event)"
+                                />
+                              } @else {
+                                <fieldset class="fa__fieldset">
+                                  <legend class="fa__label">
+                                    Any of the choices of {{ labelOf(item.condition.fieldId) }}
+                                  </legend>
+                                  <div class="fa__roles">
+                                    @for (c of conditionChoices(item); track c.id) {
+                                      <opp-checkbox
+                                        [checked]="c.checked"
+                                        [disabled]="saving()"
+                                        (checkedChange)="
+                                          toggleConditionChoice(section.key, item, c.id, $event)
+                                        "
+                                      >
+                                        {{ c.name }}
+                                      </opp-checkbox>
+                                    }
+                                  </div>
+                                </fieldset>
+                              }
+                            }
+                          </div>
+                        </div>
+                        @if (blocked && meta?.isSecurityAffecting) {
+                          <p class="fa__hint fa__field-error">{{ blocked }}</p>
+                        }
+                        @if (errors()['f' + item.fieldId]; as message) {
+                          <p class="fa__field-error"><opp-icon name="error" /> {{ message }}</p>
+                        }
+                      </li>
+                    } @empty {
+                      <li class="fa__muted">No fields in this section yet.</li>
+                    }
+                  </ol>
+
+                  <div class="fa__add-choice">
+                    <opp-select
+                      data-action="add-field"
+                      label="Field to add"
+                      placeholder="Choose a field…"
+                      [options]="available()"
+                      [value]="picks()[section.key] ?? ''"
+                      [disabled]="saving() || !available().length"
+                      (valueChange)="pick(section.key, $event)"
+                    />
+                    <button
+                      type="button"
+                      oppButton="secondary"
+                      [disabled]="saving() || !picks()[section.key]"
+                      (click)="addField(section.key)"
+                    >
+                      <opp-icon name="plus" />Add to {{ section.title || 'section' }}
+                    </button>
+                  </div>
+                </section>
+              }
+            </div>
+
+            <div>
+              <button
+                type="button"
+                oppButton="secondary"
+                data-action="add-section"
+                [disabled]="saving()"
+                (click)="addSection()"
+              >
+                <opp-icon name="plus" />Add section
+              </button>
+            </div>
+
+            @if (saveError(); as message) {
+              <div class="fa__notice" role="alert">
+                <opp-icon name="error" />
+                <div>
+                  <p class="fa__notice-title">The layout was not saved</p>
+                  <p>{{ message }}</p>
+                </div>
+              </div>
+            }
+
+            <div class="fa__actions">
+              <button type="submit" oppButton="primary" [busy]="saving()">Save layout</button>
+              <button type="button" oppButton="ghost" [disabled]="saving()" (click)="close()">
+                Close
+              </button>
+              @if (layout && !layout.isDefault) {
+                <button
+                  type="button"
+                  oppButton="danger"
+                  class="fa__retire"
+                  [disabled]="saving()"
+                  (click)="remove()"
+                >
+                  <opp-icon name="trash" />Delete layout
+                </button>
+              }
+            </div>
+          </form>
+        </section>
+
+        <section class="fa__preview" aria-labelledby="layout-preview-title">
+          <h2 id="layout-preview-title" class="fa__subtitle">Preview</h2>
+          <p class="fa__hint">
+            Exactly what reviewers see in the coding pane. Try values to check conditional fields;
+            nothing is saved.
+          </p>
+          <opp-layout-preview [layout]="preview()" />
+        </section>
+      </div>
+    } @else {
+      <p class="fa__muted">Choose a layout to edit it, or create a new one.</p>
+    }
+  </div>
+}

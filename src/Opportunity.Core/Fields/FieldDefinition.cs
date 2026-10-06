@@ -63,6 +63,9 @@ public sealed class FieldDefinition
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>Incremented by every change to the field or its choices (the admin API's ETag).</summary>
+    public long Version { get; set; } = 1;
+
     /// <summary>JSONB key (ADR-003 R5).</summary>
     public string Key => FieldKey.For(FieldId);
 
