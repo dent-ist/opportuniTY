@@ -1,4 +1,4 @@
--- V0041: alias-based reindex and projection generation switch (E07-T11, ADR-006 R12/R13, ADR-001 §7.5).
+-- V0043: alias-based reindex and projection generation switch (E07-T11, ADR-006 R12/R13, ADR-001 §7.5).
 --
 -- 1. Dedicated index revisions. The physical name of a dedicated index is derived from (generation, revision); a rebuild
 --    of a dedicated workspace always gets a fresh revision, so the same mapping generation can be rebuilt into a new

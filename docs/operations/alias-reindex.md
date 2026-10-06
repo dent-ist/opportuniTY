@@ -59,3 +59,11 @@ job is cancelled.
 - `_count` with `{"query": {"term": {"workspaceId": "<ws>"}}}` on the alias equals the workspace's live document count in
   PostgreSQL (`SELECT count(*) FROM opportunity.document_projection_state WHERE NOT is_deleted`).
 - A saved or ad-hoc search returns the same hits as before (spot check).
+
+## Small repairs without a reindex
+
+- **A few documents are stale or missing in search:** replay the failed index tasks / outbox rows of the affected jobs
+  ([replay-failed-work.md](replay-failed-work.md)). The workers rebuild each document from current PostgreSQL state; a
+  full reindex is only needed when much of the index is damaged, the mapping generation changes or the workspace moves.
+- **The index is lost or unusable:** restore OpenSearch from its snapshot repository if one is configured and replay, or
+  run a reindex (above), which rebuilds the index from PostgreSQL.

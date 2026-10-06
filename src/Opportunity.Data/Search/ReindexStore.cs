@@ -21,7 +21,7 @@ namespace Opportunity.Data.Search;
 
 /// <summary>
 /// PostgreSQL implementation of <see cref="IReindexStore"/> over <c>search_reindex</c> (tenant, RLS) and the
-/// installation-level <c>search_reindex_active</c> registry (V0041), the job tables and <c>document_projection_state</c>.
+/// installation-level <c>search_reindex_active</c> registry (V0043), the job tables and <c>document_projection_state</c>.
 /// </summary>
 public sealed class ReindexStore(NpgsqlDataSource dataSource) : IReindexStore
 {
