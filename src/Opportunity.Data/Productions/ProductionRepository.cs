@@ -804,25 +804,6 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
         return true;
     }
 
-    public async Task<CodingHighWater?> ReadCodingHighWaterAsync(Guid workspaceId, CancellationToken cancellationToken = default)
-    {
-        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
-        await using var command = tx.Command(
-            "SELECT occurred_at, event_id FROM opportunity.coding_event WHERE workspace_id = @ws ORDER BY occurred_at DESC, event_id DESC LIMIT 1");
-        command.Parameters.AddWithValue("ws", workspaceId);
-        CodingHighWater? mark = null;
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-        {
-            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                mark = new CodingHighWater(reader.GetFieldValue<DateTimeOffset>(0), reader.GetGuid(1));
-            }
-        }
-
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return mark;
-    }
-
     public async Task<ProductionWriteResult> FinalizeAsync(
         Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
         IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default)

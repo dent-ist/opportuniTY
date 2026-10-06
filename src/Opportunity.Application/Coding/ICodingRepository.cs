@@ -18,6 +18,13 @@ namespace Opportunity.Application.Coding;
 public interface ICodingRepository
 {
     /// <summary>
+    /// The workspace's latest coding event: the coding-state version a production records at finalization (Q-08,
+    /// E12-T02). Null when nothing was ever coded.
+    /// </summary>
+    Task<CodingHighWater?> GetHighWaterAsync(Guid workspaceId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<CodingHighWater?>(null);
+
+    /// <summary>
     /// Applies <paramref name="request"/> (one interactive save, or one bulk chunk). Re-applying a request with the same
     /// idempotency key changes nothing and returns <see cref="CodingWriteOutcome.Replayed"/>.
     /// </summary>
@@ -239,3 +246,6 @@ public sealed record CodingEventQuery(Guid WorkspaceId)
 }
 
 public sealed record CodingEventPage(IReadOnlyList<CodingEvent> Events, CodingEventCursor? Next);
+
+/// <summary>The latest coding event of a workspace (its time and id).</summary>
+public sealed record CodingHighWater(DateTimeOffset OccurredAt, Guid EventId);

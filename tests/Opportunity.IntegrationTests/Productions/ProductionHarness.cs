@@ -105,7 +105,7 @@ internal sealed class ProductionHarness : IAsyncDisposable
         new(Snapshots, null!, Pdp(), Audit, new SnapshotOptions(), TimeProvider.System);
 
     public ProductionService Service() => new(
-        Store, Snapshots, Db.Fields, new UnrestrictedFieldAccess(), Pdp(), Jobs, TimeProvider.System, NullLogger<ProductionService>.Instance);
+        Store, Snapshots, Db.Fields, new UnrestrictedFieldAccess(), Pdp(), Jobs, Db.Coding, TimeProvider.System, NullLogger<ProductionService>.Instance);
 
     /// <summary>
     /// Documents in families: each entry is one family (first = parent) of (pages, extension) members, with control

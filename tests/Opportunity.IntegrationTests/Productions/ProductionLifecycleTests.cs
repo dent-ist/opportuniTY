@@ -61,6 +61,7 @@ public sealed class ProductionLifecycleTests(MigrationPostgresFixture postgres)
         var stored = ProductionSpecificationRules.Deserialize(draft.SpecificationJson);
         stored.Images.Should().Be(new ProductionImageSettings(ProductionImageFormatResource.TiffG4, ProductionImageFormatResource.Jpeg, 300), "defaults are stored");
         stored.FileTypeRules![1].Extensions.Should().Equal("exe");
+        (await h.Snapshots.ExpireAsync(ws, TimeSpan.Zero, TimeSpan.Zero, 100, Ct)).Should().BeEmpty("a production's frozen set lives as long as the production");
 
         var allocated = await h.AllocateAsync(ws, user, draft.ProductionId);
         allocated.BatesState.Should().Be(BatesAllocationState.Allocated, allocated.BatesReason);

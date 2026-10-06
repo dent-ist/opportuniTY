@@ -248,9 +248,6 @@ public sealed record BatesLookupRow(
 /// <summary>A Bates label format in use in the workspace (to parse a looked-up label).</summary>
 public sealed record BatesFormatInUse(string Prefix, string Suffix, int Padding);
 
-/// <summary>The latest coding event of the workspace at the freeze (the coding-state version, Q-08).</summary>
-public sealed record CodingHighWater(DateTimeOffset OccurredAt, Guid EventId);
-
 /// <summary>Keyset position of the production list (newest first).</summary>
 public sealed record ProductionListCursor(DateTimeOffset CreatedAt, Guid ProductionId);
 
@@ -324,8 +321,6 @@ public interface IProductionStore
     /// <summary>Allocating → Failed with a reason; the reserved range (if any) is released.</summary>
     Task<bool> FailAllocationAsync(
         Guid workspaceId, Guid productionId, Guid jobId, string reason, IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default);
-
-    Task<CodingHighWater?> ReadCodingHighWaterAsync(Guid workspaceId, CancellationToken cancellationToken = default);
 
     /// <summary>Draft (Allocated) → Finalized: stores the manifest, marks the range Produced, writes the audit events.</summary>
     Task<ProductionWriteResult> FinalizeAsync(

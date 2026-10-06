@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
+using Opportunity.Application.Coding;
 using Opportunity.Application.Fields;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Productions;
@@ -65,6 +66,7 @@ public sealed partial class ProductionService(
     IFieldAccessFilter fieldAccess,
     IAuthorizationService authorization,
     IJobRepository jobs,
+    ICodingRepository codingStore,
     TimeProvider time,
     ILogger<ProductionService> logger)
 {
@@ -103,7 +105,8 @@ public sealed partial class ProductionService(
             return ProductionOutcome.Invalid("snapshotId", "Give the frozen set (snapshotId), a saved search (savedSearchId) or the version to supersede (previousVersionId).");
         }
 
-        if (await UsableSnapshotAsync(principal, workspaceId, sid, cancellationToken).ConfigureAwait(false) is not { } snapshot)
+        if (await UsableSnapshotAsync(principal, workspaceId, sid, ownSnapshotOnly: previousVersion is null, cancellationToken).ConfigureAwait(false)
+            is not { } snapshot)
         {
             return new ProductionOutcome(ProductionOutcomeStatus.NotFound);
         }
@@ -162,7 +165,8 @@ public sealed partial class ProductionService(
         }
 
         var snapshotId = request.SnapshotId ?? current.SnapshotId;
-        if (await UsableSnapshotAsync(principal, workspaceId, snapshotId, cancellationToken).ConfigureAwait(false) is not { } snapshot
+        if (await UsableSnapshotAsync(principal, workspaceId, snapshotId, ownSnapshotOnly: snapshotId != current.SnapshotId, cancellationToken)
+                .ConfigureAwait(false) is not { } snapshot
             || snapshot.Status is not (SnapshotStatus.Ready or SnapshotStatus.Materializing)
             || !SnapshotStrategyRules.AcceptsSnapshot(SetOperationKind.Production, snapshot.Purpose))
         {
@@ -244,7 +248,7 @@ public sealed partial class ProductionService(
             return new ProductionOutcome(ProductionOutcomeStatus.Conflict, current, Reason: "The frozen set is no longer Ready.");
         }
 
-        var coding = await productions.ReadCodingHighWaterAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+        var coding = await codingStore.GetHighWaterAsync(workspaceId, cancellationToken).ConfigureAwait(false);
         var at = time.GetUtcNow();
         var (manifest, sha) = ProductionManifest.Build(current, snapshot, coding, ProductionSoftware.Current, principal.UserId, at);
         var format = new BatesFormat(current.BatesPrefix, current.BatesPadding, current.BatesSuffix, BatesNumberingLevel.Page);
@@ -446,8 +450,12 @@ public sealed partial class ProductionService(
         return (normalized, errors);
     }
 
-    /// <summary>The snapshot when the caller may use it: its creator, or a holder of <c>Job.ViewAll</c> (as for exports).</summary>
-    private async Task<SnapshotRecord?> UsableSnapshotAsync(SecurityPrincipal principal, Guid workspaceId, Guid snapshotId, CancellationToken cancellationToken)
+    /// <summary>
+    /// The snapshot when the caller may use it. A frozen set newly named for a production must be the caller's own (or the
+    /// caller holds <c>Job.ViewAll</c>), as for exports; the frozen set a production already has is the production's.
+    /// </summary>
+    private async Task<SnapshotRecord?> UsableSnapshotAsync(
+        SecurityPrincipal principal, Guid workspaceId, Guid snapshotId, bool ownSnapshotOnly, CancellationToken cancellationToken)
     {
         var snapshot = await snapshots.GetAsync(workspaceId, snapshotId, cancellationToken).ConfigureAwait(false);
         if (snapshot is null)
@@ -455,7 +463,7 @@ public sealed partial class ProductionService(
             return null;
         }
 
-        return snapshot.CreatedBy == principal.UserId
+        return !ownSnapshotOnly || snapshot.CreatedBy == principal.UserId
             || (await authorization.AuthorizeAsync(principal, workspaceId, Permission.JobViewAll, cancellationToken).ConfigureAwait(false)).IsAllowed
                 ? snapshot
                 : null;

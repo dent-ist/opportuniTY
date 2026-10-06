@@ -131,7 +131,7 @@ M1 events ship with `E14-T01`/`E05-T04`; the rest with the owning feature, and `
 | **Privilege** | `LogGenerated`, `ConflictOverride`, `ClawbackRecorded` | Production, Document | log version and hash; override reason |
 | **Redaction** | `Added`, `Modified`, `Removed` | Document | `RedactionId`, `RedactionVersion`, page, reason code; never the note text (ADR-012) |
 | **Export** | `Created`, `Completed`, `DocumentsExcluded`, `Downloaded` | Export | `SnapshotId`; excluded DocumentIds with reasons per chunk (Q-15); manifest hash |
-| **Production** | `Created`, `SpecFrozen`, `Run`, `VerificationFailed`, `QcOverride`, `Finalized`, `Voided`, `Downloaded`, `Rerun` | Production | spec version, Bates range, manifest hash, V1–V5 results (ADR-012) |
+| **Production** | `Created`, `SpecFrozen`, `Run`, `VerificationFailed`, `QcOverride`, `Finalized`, `Voided`, `Downloaded`, `Rerun`, `Modified`, `Discarded`, `BatesAllocated`, `Verified` | Production | spec version, Bates range, manifest hash, V1–V5 results (ADR-012) |
 | **Import** | `Started`, `Completed`, `MalwareDetected`, `HashMismatch` | Import | counts (Completed: the frozen import report figures, E08-T06); quarantined `ObjectId`s |
 | | `PreflightRun`, `ReportDownloaded` | Import | pre-flight counts; downloaded report, error file or pre-flight issue list (E08-T06) |
 | | `Overlaid` | Job | one per overlay chunk (E08-T07): import, rows, document count and the changed column/field keys; old and new values live in `document_overlay_event` (like `CodingEvent`, §6.2), never in audit (§7) |
