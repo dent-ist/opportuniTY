@@ -137,7 +137,11 @@ public sealed class CodingPropagationService(
                 principal, ws, Permission.CodingWrite, [.. batch.Select(c => c.DocumentId)], DenialAudit.Summary, cancellationToken).ConfigureAwait(false);
             foreach (var candidate in batch)
             {
-                var decision = decisions.GetValueOrDefault(candidate.DocumentId);
+                if (!decisions.TryGetValue(candidate.DocumentId, out var decision))
+                {
+                    continue;
+                }
+
                 if (decision.IsAllowed)
                 {
                     targets.Add(candidate);
@@ -276,7 +280,7 @@ public sealed class CodingPropagationService(
             for (var i = 0; i < preview.TargetIds.Count; i++)
             {
                 var id = preview.TargetIds[i];
-                if (decisions.GetValueOrDefault(id).IsAllowed)
+                if (decisions.TryGetValue(id, out var decision) && decision.IsAllowed)
                 {
                     // The preview's version is the baseline: a field changed since is left alone (the reviewer did not see it).
                     targets.Add(new CodingTarget(id, preview.TargetVersions.Count > i ? preview.TargetVersions[i] : null));

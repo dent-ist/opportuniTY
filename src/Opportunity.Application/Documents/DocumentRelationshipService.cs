@@ -161,7 +161,8 @@ public sealed class DocumentRelationshipService(
             r.DocumentId != anchor.DocumentId && decisions.TryGetValue(r.DocumentId, out var d) && !d.IsAllowed
             && d.Reason == AuthorizationReasons.RestrictionClass);
 
-        var familyVisible = group.Family.Where(r => Visible(r.DocumentId)).OrderBy(r => r.FamilySequence).ThenBy(r => r.ControlNumber, StringComparer.Ordinal).ToList();
+        // Family order as read (family sequence, then the natural control-number order).
+        var familyVisible = group.Family.Where(r => Visible(r.DocumentId)).ToList();
         var duplicatesVisible = anchor.DuplicateGroupId is null ? [] : group.Duplicates.Where(r => Visible(r.DocumentId)).ToList();
         var threadVisible = anchor.EmailThreadId is null ? [] : group.Thread.Where(r => Visible(r.DocumentId)).ToList();
         var threadListed = threadVisible.Take(MaxThreadMembers).ToList();
