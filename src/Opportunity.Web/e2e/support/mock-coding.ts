@@ -259,6 +259,47 @@ export class CodingMock {
     doc.indexedAt = Date.now() + this.options.indexDelayMs;
   }
 
+  /** The document's coding version (`DocumentVersion`). */
+  versionOf(n: number): number {
+    return this.doc(n).version;
+  }
+
+  /** The stored value of a field (choice ids for choice fields), as the coding API holds it. */
+  storedValue(n: number, fieldId: number): Value {
+    return this.doc(n).values.get(fieldId) ?? null;
+  }
+
+  /** A field's value as display strings: choice names, Yes/No as `true`/`false`; empty when not set. */
+  rawValues(n: number, fieldId: number): string[] {
+    const value = this.storedValue(n, fieldId);
+    if (value === null || value === undefined || value === '') return [];
+    const field = CODING_FIELDS.find((f) => f.fieldId === fieldId);
+    const name = (v: unknown) =>
+      field?.choices?.find((c) => c.choiceId === Number(v))?.name ?? String(v);
+    return (Array.isArray(value) ? value : [value]).map(name);
+  }
+
+  /** Current values of fields by query name (relationships `coding`). */
+  codingOf(n: number, queryNames: readonly string[]): Record<string, string[]> {
+    return Object.fromEntries(
+      queryNames.flatMap((q) => {
+        const field = CODING_FIELDS.find((f) => f.queryName === q);
+        return field ? [[q, this.rawValues(n, field.fieldId)]] : [];
+      }),
+    );
+  }
+
+  /** A server-side change (a propagation): a new version, searchable after the indexing delay. */
+  setRaw(n: number, fieldId: number, value: Value): void {
+    const doc = this.doc(n);
+    const at = new Date().toISOString();
+    doc.version++;
+    doc.values.set(fieldId, value);
+    doc.changedAt.set(fieldId, at);
+    doc.editor = { userId: 'user-1', displayName: 'Alex Reviewer', changedAt: at };
+    doc.indexedAt = Date.now() + this.options.indexDelayMs;
+  }
+
   /** Answers coding and layout routes; undefined for anything else. */
   handle(route: Route, method: string, path: string): Promise<void> | undefined {
     if (method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/coding-layouts$/.test(path)) {

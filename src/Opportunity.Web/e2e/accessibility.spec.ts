@@ -212,6 +212,32 @@ for (const theme of THEMES) {
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
+    test('family groups, Related Items with a restricted count, and the Apply to Family preview (E16-T10)', async ({
+      page,
+    }, testInfo) => {
+      await openPage(page, '/w/ws-1/documents');
+      await page.getByRole('button', { name: 'Group families' }).click();
+      const tree = page.getByRole('treegrid', { name: 'Documents' });
+      await expect(tree.getByRole('row', { name: /ACM0000004/ })).toHaveAttribute(
+        'aria-level',
+        '2',
+      );
+      await tree.getByRole('button', { name: 'Collapse family of ACM0000007' }).click();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await tree.getByRole('row', { name: /ACM0000003/ }).dblclick();
+      const related = page.getByRole('region', { name: 'Related Items' });
+      await expect(related.getByText('1 restricted item')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+
+      await page.getByRole('button', { name: 'Apply to Family…' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Apply to Family' });
+      await dialog.getByRole('checkbox', { name: /Responsiveness/ }).check();
+      await dialog.getByRole('button', { name: 'Preview' }).click();
+      await expect(dialog.getByText('Applies to')).toBeVisible();
+      await expectNoSeriousAxeViolations(page, testInfo);
+    });
+
     test('mass edit: selection banner, Mass Actions menu, fields, frozen confirmation and progress', async ({
       page,
     }, testInfo) => {
