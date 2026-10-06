@@ -1,0 +1,103 @@
+:host {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  min-block-size: 0;
+  padding: var(--opp-space-2) var(--opp-space-3) var(--opp-space-3);
+  overflow: auto;
+}
+
+.related__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--opp-space-2);
+}
+
+.related__count {
+  margin-inline-start: var(--opp-space-1);
+  padding: 0 var(--opp-space-1);
+  border-radius: var(--opp-radius-pill);
+  background: var(--opp-color-surface-sunken);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+}
+
+.related__check {
+  display: inline-block;
+  inline-size: 1em;
+}
+
+.related__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  min-block-size: 0;
+}
+
+.related__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--opp-space-2);
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.related__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+}
+
+.related__scroll {
+  overflow-x: auto;
+}
+
+.related__table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-sm);
+
+  th,
+  td {
+    padding: var(--opp-space-1) var(--opp-space-2);
+    border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+    text-align: start;
+    white-space: nowrap;
+  }
+
+  th {
+    color: var(--opp-color-text-muted);
+    font-weight: 600;
+  }
+
+  tr.is-self td {
+    background: var(--opp-color-selected);
+  }
+}
+
+.related__name {
+  max-inline-size: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The Control Number opens the item: a link-like button, with the product focus ring.
+.related__open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--opp-color-accent-text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration-thickness: 2px;
+  }
+}

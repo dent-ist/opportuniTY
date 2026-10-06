@@ -61,6 +61,15 @@
     >
       <opp-icon name="filter" />Filters
     </button>
+    <button
+      type="button"
+      oppButton="ghost"
+      [attr.aria-pressed]="grouped()"
+      [attr.aria-controls]="gridId"
+      (click)="toggleFamilyGroups()"
+    >
+      <opp-icon name="unfold" />Group families
+    </button>
     @if (approximateTotal()) {
       <button type="button" oppButton="ghost" [busy]="busy()" (click)="countExactly()">
         Count exactly
@@ -140,8 +149,9 @@
     #viewport
     [id]="gridId"
     class="grid__viewport"
-    role="grid"
     tabindex="0"
+    [attr.role]="grouped() ? 'treegrid' : 'grid'"
+    [class.is-grouped]="grouped()"
     aria-label="Documents"
     aria-multiselectable="true"
     oppCommandScope="grid"
@@ -240,86 +250,136 @@
         [style.transform]="'translateY(' + range().start * rowHeight() + 'px)'"
       >
         <!-- Rows are recycled by slot: scrolling rebinds them instead of rebuilding the DOM. -->
-        @for (hit of visibleRows(); track $index; let i = $index) {
+        @for (row of visibleRows(); track $index; let i = $index) {
           @let index = range().start + i;
-          @let selected = isSelected(hit);
-          @let marker = familyMarker(hit);
-          @let cells = rowCells(hit);
-          <div
-            class="grid__row"
-            role="row"
-            [attr.aria-rowindex]="rowIndex(index)"
-            [attr.aria-selected]="selected"
-            [class.is-selected]="selected"
-            [class.is-focused]="focusRow() === index"
-            (click)="onRowClick(index, focusCol())"
-            (dblclick)="openRow(index)"
-          >
+          @if (row.kind === 'placeholder') {
+            <ng-container
+              *ngTemplateOutlet="placeholder; context: { $implicit: row, index: index }"
+            />
+          } @else {
+            @let hit = row.hit;
+            @let selected = isSelected(hit);
+            @let marker = familyMarker(hit);
+            @let duplicates = duplicateGroupOf(hit);
+            @let cells = rowCells(hit);
             <div
-              class="grid__cell grid__cell--select"
-              role="gridcell"
-              [id]="cellId(index, COL_SELECT)"
-              [class.is-active]="focusRow() === index && focusCol() === COL_SELECT"
+              class="grid__row"
+              role="row"
+              [attr.aria-rowindex]="rowIndex(index)"
+              [attr.aria-selected]="selected"
+              [attr.aria-level]="grouped() ? row.level : null"
+              [attr.aria-expanded]="grouped() && row.hasChildren ? row.expanded : null"
+              [class.is-selected]="selected"
+              [class.is-focused]="focusRow() === index"
+              [class.grid__row--child]="grouped() && row.level === 2"
+              (click)="onRowClick(index, focusCol())"
+              (dblclick)="openRow(index)"
             >
-              <input
-                type="checkbox"
-                tabindex="-1"
-                [attr.aria-label]="'Select ' + hit.controlNumber"
-                [checked]="selected"
-                (mousedown)="$event.preventDefault()"
-                (click)="
-                  $event.stopPropagation();
-                  onRowClick(index, COL_SELECT);
-                  toggleRow(index, $event.shiftKey)
-                "
-              />
-            </div>
-            <div
-              class="grid__cell grid__cell--control"
-              role="gridcell"
-              [id]="cellId(index, COL_CONTROL)"
-              [class.is-active]="focusRow() === index && focusCol() === COL_CONTROL"
-            >
-              {{ hit.controlNumber }}
-              @if (relatedTag(hit); as tag) {
-                <span class="grid__related" [title]="tag.label"
-                  ><span aria-hidden="true">{{ tag.text }}</span
-                  ><span class="opp-visually-hidden">{{ tag.label }}</span></span
-                >
-              }
-              @if (pendingCoding?.isPending(hit.documentId)) {
-                <span class="grid__pending" title="Your coding is saved; search is catching up">
-                  <opp-icon name="refresh" /><span class="opp-visually-hidden"
-                    >Saved, indexing</span
-                  >
-                </span>
-              }
-            </div>
-            <div
-              class="grid__cell grid__cell--family"
-              role="gridcell"
-              [id]="cellId(index, 2)"
-              [class.is-active]="focusRow() === index && focusCol() === 2"
-            >
-              @if (marker) {
-                <span aria-hidden="true">{{ marker.symbol }}</span>
-                <span class="opp-visually-hidden">{{ marker.label }}</span>
-              }
-            </div>
-            @for (column of columns().view; track column.queryName; let c = $index) {
               <div
-                class="grid__cell"
+                class="grid__cell grid__cell--select"
                 role="gridcell"
-                [class.grid__cell--pinned]="column.pinned"
-                [style.--pin-left]="pinnedLeft()[c]"
-                [class.grid__cell--numeric]="column.format === 'size' || column.format === 'number'"
-                [id]="cellId(index, FIXED_COLUMNS + c)"
-                [class.is-active]="focusRow() === index && focusCol() === FIXED_COLUMNS + c"
+                [id]="cellId(index, COL_SELECT)"
+                [class.is-active]="focusRow() === index && focusCol() === COL_SELECT"
               >
-                {{ cells[c] }}
+                <input
+                  type="checkbox"
+                  tabindex="-1"
+                  [attr.aria-label]="'Select ' + hit.controlNumber"
+                  [checked]="selected"
+                  (mousedown)="$event.preventDefault()"
+                  (click)="
+                    $event.stopPropagation();
+                    onRowClick(index, COL_SELECT);
+                    toggleRow(index, $event.shiftKey)
+                  "
+                />
               </div>
-            }
-          </div>
+              <div
+                class="grid__cell grid__cell--control"
+                role="gridcell"
+                [id]="cellId(index, COL_CONTROL)"
+                [class.is-active]="focusRow() === index && focusCol() === COL_CONTROL"
+              >
+                @if (row.continued) {
+                  <span class="grid__continued" title="Family continued from the previous page"
+                    ><span aria-hidden="true">continued</span
+                    ><span class="opp-visually-hidden"
+                      >Family continued from the previous page:
+                    </span></span
+                  >
+                }
+                {{ hit.controlNumber }}
+                @if (row.continues) {
+                  <span class="grid__continued" title="Family continues on the next page"
+                    ><span aria-hidden="true">continues</span
+                    ><span class="opp-visually-hidden"
+                      >, family continues on the next page</span
+                    ></span
+                  >
+                }
+                @if (relatedTag(hit); as tag) {
+                  <span class="grid__related" [title]="tag.label"
+                    ><span aria-hidden="true">{{ tag.text }}</span
+                    ><span class="opp-visually-hidden">{{ tag.label }}</span></span
+                  >
+                }
+                @if (pendingCoding?.isPending(hit.documentId)) {
+                  <span class="grid__pending" title="Your coding is saved; search is catching up">
+                    <opp-icon name="refresh" /><span class="opp-visually-hidden"
+                      >Saved, indexing</span
+                    >
+                  </span>
+                }
+              </div>
+              <div
+                class="grid__cell grid__cell--family"
+                role="gridcell"
+                [id]="cellId(index, 2)"
+                [class.is-active]="focusRow() === index && focusCol() === 2"
+              >
+                @if (grouped() && row.hasChildren) {
+                  <ng-container
+                    *ngTemplateOutlet="
+                      treeToggle;
+                      context: { expanded: row.expanded, index: index, name: hit.controlNumber }
+                    "
+                  />
+                }
+                @if (marker) {
+                  <span class="grid__marker" aria-hidden="true">{{ marker.symbol }}</span>
+                  <span class="opp-visually-hidden">{{ marker.label }}</span>
+                }
+                @if (duplicates) {
+                  <button
+                    type="button"
+                    class="grid__dup"
+                    tabindex="-1"
+                    title="Has duplicates: show the duplicate group"
+                    (mousedown)="$event.preventDefault()"
+                    (click)="showDuplicates(hit, $event)"
+                  >
+                    <span aria-hidden="true">D</span
+                    ><span class="opp-visually-hidden">Has duplicates</span>
+                  </button>
+                }
+              </div>
+              @for (column of columns().view; track column.queryName; let c = $index) {
+                <div
+                  class="grid__cell"
+                  role="gridcell"
+                  [class.grid__cell--pinned]="column.pinned"
+                  [style.--pin-left]="pinnedLeft()[c]"
+                  [class.grid__cell--numeric]="
+                    column.format === 'size' || column.format === 'number'
+                  "
+                  [id]="cellId(index, FIXED_COLUMNS + c)"
+                  [class.is-active]="focusRow() === index && focusCol() === FIXED_COLUMNS + c"
+                >
+                  {{ cells[c] }}
+                </div>
+              }
+            </div>
+          }
         }
       </div>
     </div>
@@ -377,6 +437,85 @@
     </div>
   }
 }
+
+<!-- Family groups (E16-T10): the parent of attachments listed without it. -->
+<ng-template #placeholder let-row let-index="index">
+  <div
+    class="grid__row grid__row--placeholder"
+    role="row"
+    aria-level="1"
+    [attr.aria-rowindex]="rowIndex(index)"
+    [attr.aria-expanded]="row.expanded"
+    [class.is-focused]="focusRow() === index"
+    (click)="onRowClick(index, focusCol())"
+  >
+    <div
+      class="grid__cell grid__cell--select"
+      role="gridcell"
+      [id]="cellId(index, COL_SELECT)"
+      [class.is-active]="focusRow() === index && focusCol() === COL_SELECT"
+    ></div>
+    <div
+      class="grid__cell grid__cell--control grid__placeholder"
+      role="gridcell"
+      [id]="cellId(index, COL_CONTROL)"
+      [class.is-active]="focusRow() === index && focusCol() === COL_CONTROL"
+      [title]="
+        row.reason === 'continued'
+          ? 'The parent and earlier attachments of this family are on the previous page.'
+          : 'These attachments are listed without a parent document.'
+      "
+    >
+      @if (row.reason === 'continued') {
+        <span aria-hidden="true">Continued</span
+        ><span class="opp-visually-hidden"
+          >Family continued from the previous page: its parent is on the previous page.</span
+        >
+      } @else {
+        <span aria-hidden="true">Parent not listed</span
+        ><span class="opp-visually-hidden"
+          >Parent not listed: the attachments below are shown without a parent.</span
+        >
+      }
+    </div>
+    <div
+      class="grid__cell grid__cell--family"
+      role="gridcell"
+      [id]="cellId(index, COL_FAMILY)"
+      [class.is-active]="focusRow() === index && focusCol() === COL_FAMILY"
+    >
+      <ng-container
+        *ngTemplateOutlet="
+          treeToggle;
+          context: { expanded: row.expanded, index: index, name: 'this family' }
+        "
+      />
+    </div>
+    @for (column of columns().view; track column.queryName; let c = $index) {
+      <div
+        class="grid__cell"
+        role="gridcell"
+        [class.grid__cell--pinned]="column.pinned"
+        [style.--pin-left]="pinnedLeft()[c]"
+        [id]="cellId(index, FIXED_COLUMNS + c)"
+        [class.is-active]="focusRow() === index && focusCol() === FIXED_COLUMNS + c"
+      ></div>
+    }
+  </div>
+</ng-template>
+
+<ng-template #treeToggle let-expanded="expanded" let-index="index" let-name="name">
+  <button
+    type="button"
+    class="grid__tree"
+    tabindex="-1"
+    [attr.aria-label]="(expanded ? 'Collapse family of ' : 'Expand family of ') + name"
+    (mousedown)="$event.preventDefault()"
+    (click)="$event.stopPropagation(); toggleFamily(index)"
+  >
+    <opp-icon [name]="expanded ? 'chevron-down' : 'chevron-right'" />
+  </button>
+</ng-template>
 
 <ng-template #header let-column let-col="col" let-index="index">
   <div

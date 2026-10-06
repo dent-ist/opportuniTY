@@ -25,7 +25,9 @@ import { DocumentLoader, LoadedDocument } from './document-loader';
 import { CursorDirection, MoveResult, ReviewCursor } from './review-cursor';
 import { ReviewCoding } from './coding/coding-pane';
 import { DocumentContentApi } from './review-ports';
-import { ReviewRelated } from './review-regions';
+import { RelatedItems } from './related/related-items';
+import { duplicateGroupOf } from '../grid/family-groups';
+import type { RelationshipPivot } from '../grid/review-grid';
 import { DocumentViewer, ViewerDocument } from './viewer/document-viewer';
 import { UnsavedChangesDialog, UnsavedChoice } from './unsaved-changes-dialog';
 
@@ -57,8 +59,8 @@ interface Notice {
     DocumentViewer,
     Icon,
     IconButton,
+    RelatedItems,
     ReviewCoding,
-    ReviewRelated,
     SplitPane,
   ],
   templateUrl: './review-workspace.html',
@@ -72,6 +74,8 @@ export class ReviewWorkspace {
   readonly fields = input<readonly FieldResource[] | null>(null);
   /** Back to the list (after any unsaved edits were saved or discarded). */
   readonly back = output<void>();
+  /** "Show … in the list" from Related Items: leave Review mode and search the relation (after unsaved edits). */
+  readonly pivot = output<RelationshipPivot>();
 
   private readonly loader = inject(DocumentLoader);
   private readonly content = inject(DocumentContentApi);
@@ -83,6 +87,7 @@ export class ReviewWorkspace {
   protected readonly canCode = inject(WorkspaceContext).can(PERMISSIONS.codingWrite);
 
   private readonly editor = viewChild(ReviewCoding);
+  private readonly related = viewChild(RelatedItems);
   private readonly codingSplit = viewChild.required<SplitPane>('codingSplit');
   private readonly relatedSplit = viewChild.required<SplitPane>('relatedSplit');
   private readonly viewerRegion = viewChild.required<ElementRef<HTMLElement>>('viewerRegion');
@@ -98,6 +103,15 @@ export class ReviewWorkspace {
 
   private readonly displayedId = computed(() => this.cursor().displayed()?.documentId ?? null);
   protected readonly hit = computed(() => this.cursor().displayed());
+  /** Whether the displayed document has a family or duplicates (the hit's flags, else what Related Items found). */
+  protected readonly relations = computed(() => {
+    const hit = this.hit();
+    const found = this.related()?.relations();
+    return {
+      family: !!hit && (!!hit.parentDocumentId || !!hit.isFamilyParent || !!found?.family),
+      duplicates: !!hit && (!!duplicateGroupOf(hit) || !!found?.duplicates),
+    };
+  });
   protected readonly positionText = computed(() => {
     const cursor = this.cursor();
     const n = new Intl.NumberFormat(this.prefs.locale());
@@ -128,6 +142,9 @@ export class ReviewWorkspace {
       digit ? this.editor()?.focusField(digit) : this.focusPane('coding'),
     );
     registry.handle('related.focus', () => this.focusPane('related'));
+    registry.handle('actions.applyToFamily', () => void this.editor()?.applyTo('family'), {
+      enabled: () => this.canCode,
+    });
 
     effect(() => {
       const id = this.displayedId();
@@ -182,6 +199,24 @@ export class ReviewWorkspace {
 
   protected async leave(): Promise<void> {
     if (await this.confirmLeave()) this.back.emit();
+  }
+
+  /** A Related Items member: shown in the viewer and coding pane; the review cursor stays where it is. */
+  protected async openRelated(hit: SearchHit): Promise<void> {
+    if (!(await this.confirmLeave())) return;
+    this.cursor().showRelated(hit);
+    this.notice.set(null);
+    this.announcer.announce(`Showing related item ${hit.controlNumber}.`);
+  }
+
+  /** "Show … in the list": back to the list with the relation as the search. */
+  protected async showInList(pivot: RelationshipPivot): Promise<void> {
+    if (await this.confirmLeave()) this.pivot.emit(pivot);
+  }
+
+  /** Coding was applied to related documents: Related Items shows their new coding. */
+  protected onPropagated(): void {
+    this.related()?.reload();
   }
 
   /** The browser's Back button: asks about unsaved edits like "Back to list"; true when Review mode may close. */

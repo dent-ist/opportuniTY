@@ -1,0 +1,176 @@
+@let p = preview();
+<opp-dialog-layout [title]="title()">
+  <div class="apply">
+    @switch (step()) {
+      @case ('choose') {
+        <p class="apply__lead">
+          The saved values of <strong>{{ data.controlNumber }}</strong> are applied to the documents
+          you choose. Nothing changes until you confirm after the preview.
+        </p>
+        @if (scopes.length > 1) {
+          <fieldset class="apply__group">
+            <legend>Apply to</legend>
+            @for (s of scopes; track s.value) {
+              <label class="apply__option">
+                <input
+                  type="radio"
+                  name="apply-scope"
+                  [value]="s.value"
+                  [checked]="scope() === s.value"
+                  (change)="scope.set(s.value)"
+                />
+                {{ s.label }}
+              </label>
+            }
+          </fieldset>
+        }
+        <fieldset class="apply__group">
+          <legend>Fields</legend>
+          @for (f of data.fields; track f.queryName) {
+            <label class="apply__option apply__field">
+              <input
+                type="checkbox"
+                [checked]="selected().has(f.queryName)"
+                (change)="toggle(f.queryName, $any($event.target).checked)"
+              />
+              <span class="apply__field-label">
+                {{ f.label }}
+                @if (f.securityAffecting) {
+                  <span class="apply__access"><opp-icon name="lock" />Affects access</span>
+                }
+              </span>
+              <span class="apply__value" [class.apply__muted]="f.empty">
+                {{ f.empty ? 'Not set (clears it)' : f.display }}
+              </span>
+            </label>
+          } @empty {
+            <p class="apply__muted">This layout has no fields you can apply.</p>
+          }
+        </fieldset>
+      }
+      @case ('preview') {
+        @if (!p && busy()) {
+          <opp-loading-state label="Counting the documents…" />
+        }
+        @if (p) {
+          <div class="apply__summary" role="status">
+            @if (p.targetCount === 0) {
+              <p>There are no other documents to apply these values to.</p>
+            } @else {
+              <p>
+                Applies to <strong>{{ count(p.targetCount) }}</strong>
+                {{ p.targetCount === 1 ? 'document' : 'documents' }}.
+                @if (p.conflictCount > 0) {
+                  <strong>{{ count(p.conflictCount) }}</strong>
+                  {{ p.conflictCount === 1 ? 'is' : 'are' }} already coded differently and will be
+                  replaced.
+                } @else {
+                  None is coded differently.
+                }
+              </p>
+            }
+            @if (p.skippedCount > 0) {
+              <p class="apply__muted">{{ count(p.skippedCount) }} will be skipped.</p>
+            }
+          </div>
+          @if (p.mode === 'job') {
+            <p class="apply__notice">
+              <opp-icon name="info" />
+              <span
+                >More than {{ count(p.threshold) }} documents: this runs as a Mass Edit job.
+                Documents that someone else edits after the job starts are skipped and listed in the
+                job's report.</span
+              >
+            </p>
+          }
+          @if (p.conflicts.length > 0) {
+            <div class="apply__scroll">
+              <table class="apply__table">
+                <caption>
+                  Coded differently
+                  @if (p.conflictCount > p.conflicts.length) {
+                    (first {{ count(p.conflicts.length) }} of {{ count(p.conflictCount) }})
+                  }
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Control Number</th>
+                    <th scope="col">Field</th>
+                    <th scope="col">Current value</th>
+                    <th scope="col">New value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (c of p.conflicts; track c.documentId + c.field) {
+                    <tr>
+                      <td>{{ c.controlNumber }}</td>
+                      <td>{{ fieldLabel(c.field) }}</td>
+                      <td>{{ values(c.currentValues) }}</td>
+                      <td>{{ values(c.newValues) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+          @if (affectsAccess() && p.targetCount > 0) {
+            <label class="apply__option apply__ack">
+              <input
+                type="checkbox"
+                [checked]="acknowledged()"
+                (change)="acknowledged.set($any($event.target).checked)"
+              />
+              I understand that these fields can change who may see these documents.
+            </label>
+          }
+        }
+      }
+      @case ('job') {
+        <p class="apply__summary" role="status">
+          <opp-icon name="jobs" />
+          <span
+            >The change is running as a Mass Edit job. Follow it in the job tray, or open the
+            job.</span
+          >
+        </p>
+      }
+    }
+    @if (error(); as message) {
+      <p class="apply__error" role="alert"><opp-icon name="error" />{{ message }}</p>
+    }
+  </div>
+  <ng-container dialogActions>
+    @switch (step()) {
+      @case ('choose') {
+        <button type="button" oppButton="ghost" (click)="ref.close()">Cancel</button>
+        <button type="button" oppButton="primary" [busy]="busy()" (click)="runPreview()">
+          Preview
+        </button>
+      }
+      @case ('preview') {
+        <button type="button" oppButton="ghost" (click)="back()">Back</button>
+        @if (stale()) {
+          <button type="button" oppButton="primary" [busy]="busy()" (click)="runPreview()">
+            Preview again
+          </button>
+        } @else {
+          <button
+            type="button"
+            oppButton="primary"
+            [busy]="busy() && !!p"
+            [disabled]="!canApply()"
+            (click)="apply()"
+          >
+            {{ applyLabel() }}
+          </button>
+        }
+      }
+      @case ('job') {
+        <a oppButton="ghost" [routerLink]="['/w', workspaceId, 'jobs', jobId()]" (click)="close()">
+          <opp-icon name="jobs" />Open job
+        </a>
+        <button type="button" oppButton="primary" (click)="close()">Close</button>
+      }
+    }
+  </ng-container>
+</opp-dialog-layout>
