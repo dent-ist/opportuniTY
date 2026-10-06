@@ -135,6 +135,37 @@ public static class AuditTaxonomy
         public const string ResourceType = "Export";
     }
 
+    /// <summary>Productions (E12-T02/T03, ADR-013 §5, Q-54).</summary>
+    public static class Production
+    {
+        public const string Category = "Production";
+        public const string Created = "Created";
+
+        /// <summary>A draft's name, frozen set or specification changed (its Bates allocation, if any, was released).</summary>
+        public const string Modified = "Modified";
+
+        /// <summary>A draft's Bates numbers were allocated and passed the integrity check.</summary>
+        public const string BatesAllocated = "BatesAllocated";
+
+        /// <summary>The specification was frozen into the manifest at finalization.</summary>
+        public const string SpecFrozen = "SpecFrozen";
+
+        public const string Finalized = "Finalized";
+        public const string Voided = "Voided";
+
+        /// <summary>A draft was discarded; its never-produced Bates numbers were released for reuse (Q-54).</summary>
+        public const string Discarded = "Discarded";
+
+        /// <summary>A re-verification matched the manifest.</summary>
+        public const string Verified = "Verified";
+
+        /// <summary>A re-verification found differences from the manifest.</summary>
+        public const string VerificationFailed = "VerificationFailed";
+
+        /// <summary>The audit resource type of production events.</summary>
+        public const string ResourceType = "Production";
+    }
+
     public static class Security
     {
         public const string Category = "Security";
@@ -164,6 +195,9 @@ public static class AuditTaxonomy
 
         /// <summary>A worker rejected a message whose envelope disagrees with PostgreSQL (ADR-013 §5, ADR-015 D9.3).</summary>
         public const string EnvelopeMismatch = "EnvelopeMismatch";
+
+        /// <summary>A Bates allocation overlapped another production's range or failed its integrity check (E12-T03).</summary>
+        public const string BatesConflict = "BatesConflict";
     }
 
     public static class Audit
@@ -188,7 +222,7 @@ public static class AuditTaxonomy
         .. Expand("Redaction", "Added", "Modified", "Removed"),
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
-            "Downloaded", "Rerun"),
+            "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified"),
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",
