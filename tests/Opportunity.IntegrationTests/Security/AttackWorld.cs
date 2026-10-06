@@ -277,7 +277,9 @@ internal sealed class AttackWorld : IAsyncDisposable
         var propagation = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/coding-propagations/preview", owner, HttpStatusCode.OK,
             new JsonObject
             {
-                ["sourceDocumentId"] = document.DocumentId.ToString(), ["scope"] = "familyAndDuplicates", ["fields"] = new JsonArray(fields.Notes),
+                ["sourceDocumentId"] = document.DocumentId.ToString(),
+                ["scope"] = "familyAndDuplicates",
+                ["fields"] = new JsonArray(fields.Notes),
             });
 
         var layout = await Db.Core.ScalarAsync<Guid>(
