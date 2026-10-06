@@ -84,6 +84,13 @@ import {
 } from '../../../core/search/search-freshness';
 import { FreshnessMonitor } from '../freshness/freshness-monitor';
 import { PageRequest, ReviewSearchApi } from './review-search';
+import {
+  DisplayRow,
+  displayIndexes,
+  duplicateGroupOf,
+  flatRows,
+  groupFamilies,
+} from './family-groups';
 import { LoadedPage, ResultWindow, toLoadedPage } from './result-window';
 import type { CursorSource } from '../review/review-cursor';
 import { PendingCoding } from '../review/coding/pending-coding';
@@ -115,6 +122,14 @@ export interface GridSearch {
   readonly expand?: SearchExpand | null;
 }
 
+/** One click from a row or Related Items to its related documents as a new search (E16-T10). */
+export interface RelationshipPivot {
+  readonly kind: 'family' | 'duplicates' | 'thread';
+  /** Family id, duplicate group id or email thread id. */
+  readonly id: string;
+  readonly controlNumber: string;
+}
+
 /** A row opened with Enter, double-click (Review mode, E16-T03). */
 export interface GridOpenEvent {
   readonly hit: SearchHit;
@@ -126,6 +141,10 @@ export interface GridOpenEvent {
 export const PAGE_SIZES = [50, 100, 250, 500] as const;
 export const DEFAULT_PAGE_SIZE = 100;
 const PAGE_SIZE_KEY = 'grid.pageSize';
+/** Whether families are grouped (a user preference, E16-T10). */
+export const FAMILY_GROUPS_KEY = 'grid.familyGroups';
+/** The sort that keeps families contiguous, parent first (E09-T03 "Date (Family)"). */
+export const FAMILY_SORT = 'familyDate';
 /** Whether the filter row is shown (a user preference, #191). */
 export const FILTER_ROW_KEY = 'grid.filterRow';
 /** Wait this long after the last layout change before remembering it (`PUT …/grid-views/layout`). */
@@ -144,6 +163,9 @@ const DEFAULT_VISIBLE_ROWS = 20;
 /** Column index of the fixed columns; View columns follow. */
 const COL_SELECT = 0;
 const COL_CONTROL = 1;
+const COL_FAMILY = 2;
+/** The Family column: tree toggle, parent/attachment marker and duplicate indicator. */
+const FAMILY_COLUMN_REM = 3.75;
 const FIXED_COLUMNS = 3;
 
 /** `invalid`: the server rejected a filter; its message is shown under it. */
@@ -231,6 +253,8 @@ export class ReviewGrid implements CursorSource {
   readonly refreshed = output<string>();
   /** A search ran and its first page is shown (or it found nothing). */
   readonly loaded = output<GridSearch>();
+  /** The duplicate indicator was clicked: show the duplicate group as a new search (E16-T10). */
+  readonly pivot = output<RelationshipPivot>();
 
   private readonly api = inject(ReviewSearchApi);
   /** The reviewer's own saves search has not caught up with (E16-T05): their rows are marked until searchable. */
@@ -318,12 +342,12 @@ export class ReviewGrid implements CursorSource {
     [
       '2.25rem',
       this.columns().controlNumber.width,
-      '2.25rem',
+      `${FAMILY_COLUMN_REM}rem`,
       ...this.columns().view.map((c) => c.width),
     ].join(' '),
   );
   protected readonly gridMinWidth = computed(() => {
-    const rem = [2.25, 10, 2.25, ...this.columns().view.map((c) => minRem(c.width))];
+    const rem = [2.25, 10, FAMILY_COLUMN_REM, ...this.columns().view.map((c) => minRem(c.width))];
     return `${rem.reduce((a, b) => a + b, 0)}rem`;
   });
   protected readonly format = computed(
@@ -397,6 +421,30 @@ export class ReviewGrid implements CursorSource {
   protected readonly window = signal(ResultWindow.EMPTY);
   /** The loaded rows in list order (the review cursor walks these, E16-T03). */
   readonly rows = computed(() => this.window().rows);
+  // Family groups (E16-T10)
+  private readonly familyMode = computed(
+    () => this.storage.read<boolean>(FAMILY_GROUPS_KEY) === true,
+  );
+  /** Families are grouped: the mode is on and the list is sorted by Family Date (which keeps them contiguous). */
+  readonly grouped = computed(
+    () => this.familyMode() && this.sortKeys()[0]?.field === FAMILY_SORT,
+  );
+  /** Collapsed families (keys); the review cursor still walks their attachments. */
+  private readonly collapsed = signal<ReadonlySet<string>>(new Set());
+  /** The rows on screen: the loaded rows, or in family groups with parent placeholders and collapsed families. */
+  protected readonly displayRows = computed<DisplayRow[]>(() => {
+    const w = this.window();
+    if (!this.grouped()) return flatRows(w.rows);
+    return groupFamilies(w.rows, {
+      pageStarts: w.pages.slice(1).map((_, i) => w.startOf(i + 1)),
+      hasPrevious: w.hasPrevious,
+      hasNext: w.hasNext,
+      collapsed: this.collapsed(),
+    });
+  });
+  private readonly displayIndex = computed(() =>
+    displayIndexes(this.displayRows(), this.rows().length),
+  );
   protected readonly result = signal<ResultInfo | null>(null);
   /** The current search's handle (Review mode highlights its hits, E16-T12). */
   readonly searchId = computed(() => this.result()?.searchId ?? null);
@@ -442,14 +490,14 @@ export class ReviewGrid implements CursorSource {
   /** The columns are wider than the grid, so Control Number and the checkbox are pinned. */
   protected readonly wide = signal(false);
   protected readonly range = computed(() => {
-    const total = this.rows().length;
+    const total = this.displayRows().length;
     const start = Math.max(0, Math.min(this.scrollRow(), total) - BUFFER_ROWS);
     const end = Math.min(total, this.scrollRow() + this.visibleCount() + BUFFER_ROWS);
     return { start, end };
   });
   protected readonly visibleRows = computed(() => {
     const { start, end } = this.range();
-    return this.rows().slice(start, end);
+    return this.displayRows().slice(start, end);
   });
 
   // Labels
@@ -499,6 +547,8 @@ export class ReviewGrid implements CursorSource {
   protected readonly approximateTotal = computed(() => this.result()?.total.relation === 'gte');
   protected readonly ariaRowCount = computed(() => {
     const r = this.result();
+    // Family groups add placeholder rows and hide collapsed ones: the count is not known.
+    if (this.grouped()) return -1;
     return r && r.total.relation === 'eq' ? Number(r.total.value) + this.headRows() : -1;
   });
   /** The page whose rows the user is looking at: the focused row's when it is on screen, else the top row's. */
@@ -507,7 +557,7 @@ export class ReviewGrid implements CursorSource {
     const focus = this.focusRow();
     const top = this.scrollRow();
     const row = focus >= top && focus < top + this.visibleCount() ? focus : top;
-    return w.pageIndexOf(row);
+    return w.pageIndexOf(this.loadedIndex(row));
   });
   protected readonly pageText = computed(() => {
     const w = this.window();
@@ -528,11 +578,12 @@ export class ReviewGrid implements CursorSource {
   );
   protected readonly rowsText = computed(() => {
     const w = this.window();
-    if (w.rows.length === 0) return '';
-    const first = Math.min(this.scrollRow(), w.rows.length - 1);
-    const last = Math.min(w.rows.length - 1, this.scrollRow() + this.visibleCount() - 1);
-    const a = w.position(first);
-    const b = w.position(last);
+    const shown = this.displayRows().length;
+    if (w.rows.length === 0 || shown === 0) return '';
+    const first = Math.min(this.scrollRow(), shown - 1);
+    const last = Math.min(shown - 1, this.scrollRow() + this.visibleCount() - 1);
+    const a = w.position(this.loadedIndex(first));
+    const b = w.position(this.loadedIndex(last));
     const n = new Intl.NumberFormat(this.prefs.locale());
     return a !== null && b !== null
       ? `Rows ${n.format(a)}–${n.format(b)} of ${this.countText()}`
@@ -549,7 +600,7 @@ export class ReviewGrid implements CursorSource {
     const row = this.focusRow();
     const { start, end } = this.range();
     if (row === -1) return this.headerCellId(this.focusCol());
-    return row >= start && row < end && this.rows().length > 0
+    return row >= start && row < end && this.displayRows().length > 0
       ? this.cellId(row, this.focusCol())
       : null;
   });
@@ -714,7 +765,7 @@ export class ReviewGrid implements CursorSource {
     this.result.set(resultInfo(page.searchId, page));
     this.status.set(window.rows.length > 0 ? 'ready' : 'empty');
     this.loaded.emit(search);
-    const anchor = options.anchor ? window.indexOf(options.anchor) : -1;
+    const anchor = options.anchor ? this.displayOf(window.indexOf(options.anchor)) : -1;
     // A sort started from a header keeps focus there.
     if (this.focusRow() !== -1) this.focusRow.set(Math.max(0, anchor));
     this.scrollTo(Math.max(0, anchor), anchor >= 0 ? 'nearest' : 'start');
@@ -779,7 +830,7 @@ export class ReviewGrid implements CursorSource {
     const row = this.focusRow();
     void this.run({
       anchor: this.focusedId(),
-      anchorPosition: row >= 0 ? this.window().position(row) : null,
+      anchorPosition: row >= 0 ? this.window().position(this.loadedIndex(row)) : null,
     });
   }
 
@@ -835,8 +886,13 @@ export class ReviewGrid implements CursorSource {
           ? [{ field, direction: 'desc' }]
           : [];
     }
+    const wasGrouped = this.grouped();
     this.sortKeys.set(next);
-    this.announcer.announce(this.sortDescription(next));
+    this.announcer.announce(
+      wasGrouped && !this.grouped()
+        ? `${this.sortDescription(next)} Families are no longer grouped.`
+        : this.sortDescription(next),
+    );
     this.layoutChanged();
     void this.run({ anchor: this.focusedId() });
   }
@@ -1151,8 +1207,9 @@ export class ReviewGrid implements CursorSource {
     if (direction === 'next') {
       this.window.set(window.append(loaded));
     } else {
+      const before = this.displayRows().length;
       this.window.set(window.prepend(loaded));
-      this.shiftRows(loaded.items.length);
+      this.shiftRows(this.displayRows().length - before);
     }
     return true;
   }
@@ -1184,8 +1241,9 @@ export class ReviewGrid implements CursorSource {
       this.window.set(window.append(loaded));
       this.focusPage(window.pages.length);
     } else if (adjacent(loaded, window.first)) {
+      const before = this.displayRows().length;
       this.window.set(window.prepend(loaded));
-      this.shiftRows(loaded.items.length);
+      this.shiftRows(this.displayRows().length - before);
       this.focusPage(0);
     } else {
       this.window.set(ResultWindow.of(loaded, window.pageSize));
@@ -1198,7 +1256,7 @@ export class ReviewGrid implements CursorSource {
     const row = this.focusRow();
     return this.run({
       anchor: this.focusedId(),
-      anchorPosition: row >= 0 ? this.window().position(row) : null,
+      anchorPosition: row >= 0 ? this.window().position(this.loadedIndex(row)) : null,
       notice: EXPIRED,
     });
   }
@@ -1417,7 +1475,7 @@ export class ReviewGrid implements CursorSource {
   }
 
   private focusPage(index: number): void {
-    const row = this.window().startOf(index);
+    const row = this.displayOf(this.window().startOf(index));
     this.focusRow.set(row);
     this.scrollTo(row, 'start');
   }
@@ -1440,7 +1498,7 @@ export class ReviewGrid implements CursorSource {
     if (this.status() !== 'ready' || this.loadError()) return;
     const top = this.scrollRow();
     const visible = this.visibleCount();
-    if (this.rows().length - (top + visible) < visible && this.window().hasNext) {
+    if (this.displayRows().length - (top + visible) < visible && this.window().hasNext) {
       void this.loadMore('next');
     } else if (top < visible && this.window().hasPrevious) {
       void this.loadMore('previous');
@@ -1455,7 +1513,7 @@ export class ReviewGrid implements CursorSource {
     let target = top;
     if (mode === 'start' || row < top) target = row;
     else if (row > top + visible - 1) target = row - visible + 1;
-    target = Math.max(0, Math.min(target, Math.max(0, this.rows().length - visible)));
+    target = Math.max(0, Math.min(target, Math.max(0, this.displayRows().length - visible)));
     this.scrollRow.set(target);
     // The body may grow in this change detection; scroll once it has.
     afterNextRender(
@@ -1515,7 +1573,8 @@ export class ReviewGrid implements CursorSource {
     if (event.target !== event.currentTarget) return;
     if (event.altKey || event.metaKey || this.status() !== 'ready') return;
     if (this.focusRow() === -1 && this.headerKey(event)) return;
-    const last = this.rows().length - 1;
+    if (this.treeKey(event)) return;
+    const last = this.displayRows().length - 1;
     const page = Math.max(1, this.visibleCount() - 1);
     const row = this.focusRow();
     let target: number | null = null;
@@ -1589,9 +1648,9 @@ export class ReviewGrid implements CursorSource {
     this.activateHeader(col, !!event?.shiftKey);
   }
 
-  protected openRow(index: number): void {
-    const hit = this.rows()[index];
-    if (hit) this.open.emit({ hit, index });
+  protected openRow(row: number): void {
+    const hit = this.hitAt(row);
+    if (hit) this.open.emit({ hit, index: this.loadedIndex(row) });
   }
 
   private openFocused(): void {
@@ -1599,7 +1658,107 @@ export class ReviewGrid implements CursorSource {
   }
 
   private focusedId(): string | null {
-    return this.rows()[this.focusRow()]?.documentId ?? null;
+    return this.hitAt(this.focusRow())?.documentId ?? null;
+  }
+
+  // ── Family groups and relationships (E16-T10) ────────────────────────────────────────────────────────────
+
+  /** The document of display row `row`; null for a parent placeholder. */
+  private hitAt(row: number): SearchHit | null {
+    const r = this.displayRows()[row];
+    return r?.kind === 'document' ? r.hit : null;
+  }
+
+  /** The loaded-row index behind display row `row` (a placeholder: its first attachment). */
+  private loadedIndex(row: number): number {
+    return this.displayRows()[row]?.index ?? row;
+  }
+
+  /** The display row of loaded row `index`; an attachment of a collapsed family: its family's row. */
+  private displayOf(index: number): number {
+    if (index < 0) return index;
+    const shown = this.displayIndex()[index];
+    if (shown === undefined) return index;
+    if (shown >= 0) return shown;
+    const hit = this.rows()[index];
+    const family = hit?.familyId ?? hit?.documentId;
+    return Math.max(
+      0,
+      this.displayRows().findIndex((r) => r.family === family && r.level === 1),
+    );
+  }
+
+  /**
+   * Group families: on, the list is sorted by Family Date (each family contiguous, parent first) and shown as a tree;
+   * off, the plain list keeps that sort. Sorting by another column turns grouping off.
+   */
+  toggleFamilyGroups(): void {
+    const on = !this.grouped();
+    this.storage.write(FAMILY_GROUPS_KEY, on);
+    if (on && this.sortKeys()[0]?.field !== FAMILY_SORT) {
+      this.sortKeys.set([{ field: FAMILY_SORT, direction: 'asc' }]);
+      this.layoutChanged();
+      void this.run({ anchor: this.focusedId() });
+    }
+    this.collapsed.set(new Set());
+    this.announcer.announce(
+      on
+        ? 'Families grouped: sorted by Family Date, attachments under their parent.'
+        : 'Families no longer grouped.',
+    );
+  }
+
+  /** Expands or collapses the family of display row `row` (its parent row or placeholder). */
+  protected toggleFamily(row: number, expand?: boolean): void {
+    const r = this.displayRows()[row];
+    if (!r || r.level !== 1 || !r.hasChildren) return;
+    const open = expand ?? !r.expanded;
+    if (open === r.expanded) return;
+    const next = new Set(this.collapsed());
+    if (open) next.delete(r.family);
+    else next.add(r.family);
+    this.collapsed.set(next);
+    this.focusRow.set(row);
+    const name = r.kind === 'document' ? r.hit.controlNumber : 'this family';
+    this.announcer.announce(open ? `Family of ${name} expanded.` : `Family of ${name} collapsed.`);
+  }
+
+  /**
+   * Tree keys in family groups (WAI-ARIA treegrid), on the Family column: Right expands a collapsed family, Left
+   * collapses an expanded one, and Left on an attachment moves to its parent row. True when handled.
+   */
+  private treeKey(event: KeyboardEvent): boolean {
+    const row = this.focusRow();
+    if (!this.grouped() || row < 0 || this.focusCol() !== COL_FAMILY) return false;
+    if (event.shiftKey || event.ctrlKey) return false;
+    const r = this.displayRows()[row];
+    if (!r) return false;
+    if (event.key === 'ArrowRight' && r.level === 1 && r.hasChildren && !r.expanded) {
+      event.preventDefault();
+      this.toggleFamily(row, true);
+      return true;
+    }
+    if (event.key === 'ArrowLeft' && r.level === 1 && r.hasChildren && r.expanded) {
+      event.preventDefault();
+      this.toggleFamily(row, false);
+      return true;
+    }
+    if (event.key === 'ArrowLeft' && r.level === 2) {
+      event.preventDefault();
+      let parent = row;
+      while (parent > 0 && this.displayRows()[parent].level !== 1) parent--;
+      this.focusRow.set(parent);
+      this.scrollTo(parent, 'nearest');
+      return true;
+    }
+    return false;
+  }
+
+  /** The duplicate indicator: the hit's duplicate group as a new search. */
+  protected showDuplicates(hit: SearchHit, event: Event): void {
+    event.stopPropagation();
+    const id = duplicateGroupOf(hit);
+    if (id) this.pivot.emit({ kind: 'duplicates', id, controlNumber: hit.controlNumber });
   }
 
   // ── Review cursor source (E16-T03) ───────────────────────────────────────────────────────────────────────
@@ -1625,7 +1784,7 @@ export class ReviewGrid implements CursorSource {
    * keeps the hidden list in step; it fetches pages itself).
    */
   focusDocument(documentId: string): void {
-    const index = this.window().indexOf(documentId);
+    const index = this.displayOf(this.window().indexOf(documentId));
     if (index < 0) return;
     this.focusRow.set(index);
     const top = this.scrollRow();
@@ -1661,12 +1820,12 @@ export class ReviewGrid implements CursorSource {
 
   /** Space or a checkbox click; Shift+click checks the rows between the last toggled row and this one. */
   protected toggleRow(index: number, range = false): void {
-    const hit = this.rows()[index];
+    const hit = this.hitAt(index);
     if (!hit) return;
     const next = new Set(this.rowSelection());
     if (range && this.anchor >= 0 && this.anchor !== index) {
       for (const i of rangeBetween(this.anchor, index)) {
-        const row = this.rows()[i];
+        const row = this.hitAt(i);
         if (row) next.add(row.documentId);
       }
     } else if (next.has(hit.documentId)) next.delete(hit.documentId);
@@ -1677,9 +1836,11 @@ export class ReviewGrid implements CursorSource {
 
   private extendSelection(from: number, to: number): void {
     if (this._allResults()) return; // every row is selected already
-    const rows = this.rows();
     const next = new Set(this.selection());
-    for (const i of [from, to]) if (rows[i]) next.add(rows[i].documentId);
+    for (const i of [from, to]) {
+      const hit = this.hitAt(i);
+      if (hit) next.add(hit.documentId);
+    }
     this.anchor = to;
     this.setSelection(next);
   }
@@ -1794,7 +1955,11 @@ export class ReviewGrid implements CursorSource {
   }
 
   protected rowIndex(index: number): number {
-    const position = this.window().position(index);
+    if (this.grouped()) {
+      // Placeholders and collapsed families: rows are numbered as shown, from the first loaded row's position.
+      return (this.window().position(0) ?? 1) + index + this.headRows();
+    }
+    const position = this.window().position(this.loadedIndex(index));
     // The header (and the filter row) come first. Without a known position (end of an inexact result) rows are
     // numbered as loaded.
     return (position ?? index + 1) + this.headRows();
@@ -1834,9 +1999,11 @@ export class ReviewGrid implements CursorSource {
   }
 
   protected readonly familyMarker = familyMarker;
+  protected readonly duplicateGroupOf = duplicateGroupOf;
   protected readonly relatedTag = relatedTag;
   protected readonly COL_SELECT = COL_SELECT;
   protected readonly COL_CONTROL = COL_CONTROL;
+  protected readonly COL_FAMILY = COL_FAMILY;
   protected readonly FIXED_COLUMNS = FIXED_COLUMNS;
   protected readonly PAGE_SIZES = PAGE_SIZES;
 }
