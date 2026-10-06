@@ -1,3 +1,4 @@
+using Opportunity.Application.Audit;
 using Opportunity.Core.Fields;
 
 namespace Opportunity.Application.Fields;
@@ -56,6 +57,46 @@ public interface IFieldCatalogRepository
 
     /// <summary>Deletes a non-default layout.</summary>
     Task<CatalogResult<CodingLayout>> DeleteLayoutAsync(Guid workspaceId, Guid layoutId, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether any document holds a value for the field (a scan; admin screens only, ADR-003 R12).</summary>
+    Task<bool> FieldHasValuesAsync(Guid workspaceId, int fieldId, CancellationToken cancellationToken = default);
+
+    Task<CatalogResult<FieldDefinition>> CreateFieldAsync(NewField field, CatalogWrite write, CancellationToken cancellationToken = default);
+
+    Task<CatalogResult<FieldDefinition>> UpdateFieldAsync(FieldChange change, CatalogWrite write, CancellationToken cancellationToken = default);
+
+    Task<CatalogResult<FieldDefinition>> DeleteFieldAsync(Guid workspaceId, int fieldId, CatalogWrite write, CancellationToken cancellationToken = default);
+
+    /// <summary>Adds a choice; the field's version is the one checked and incremented.</summary>
+    Task<CatalogResult<Choice>> AddChoiceAsync(
+        Guid workspaceId, int fieldId, string name, CatalogWrite write, CancellationToken cancellationToken = default);
+
+    /// <summary>Renames and/or (de)activates a choice; null members are left unchanged.</summary>
+    Task<CatalogResult<Choice>> UpdateChoiceAsync(
+        Guid workspaceId, int fieldId, int choiceId, string? name, bool? isActive, CatalogWrite write, CancellationToken cancellationToken = default);
+
+    Task<CatalogResult<IReadOnlyList<Choice>>> ReorderChoicesAsync(
+        Guid workspaceId, int fieldId, IReadOnlyList<int> orderedChoiceIds, CatalogWrite write, CancellationToken cancellationToken = default);
+
+    Task<CatalogResult<Choice>> DeleteChoiceAsync(
+        Guid workspaceId, int fieldId, int choiceId, CatalogWrite write, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates (empty <see cref="CodingLayout.LayoutId"/>) or replaces a layout. With an expected version the layout must
+    /// exist (a replace never creates).
+    /// </summary>
+    Task<CatalogResult<CodingLayout>> SaveLayoutAsync(CodingLayout layout, CatalogWrite write, CancellationToken cancellationToken = default);
+
+    Task<CatalogResult<CodingLayout>> DeleteLayoutAsync(Guid workspaceId, Guid layoutId, CatalogWrite write, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// An administrative catalogue change: the version the caller read (<c>If-Match</c>; null skips the check) and the
+/// audit event to write in the same transaction. The store sets the event's resource id and adds the new version.
+/// </summary>
+public sealed record CatalogWrite(long? ExpectedVersion, AuditEvent? Audit)
+{
+    public static CatalogWrite None { get; } = new(null, null);
 }
 
 /// <summary>Input for a new custom field.</summary>
@@ -106,6 +147,9 @@ public enum CatalogOutcome
 
     /// <summary>The change conflicts with existing data (type change with values, delete of a used choice, …).</summary>
     Conflict,
+
+    /// <summary>The expected version is stale (412).</summary>
+    VersionConflict,
 }
 
 public sealed record CatalogResult<T>(CatalogOutcome Outcome, T? Value, IReadOnlyList<FieldError> Errors)
@@ -122,4 +166,6 @@ public static class CatalogResult
     public static CatalogResult<T> Invalid<T>(IReadOnlyList<FieldError> errors) => new(CatalogOutcome.Invalid, default, errors);
 
     public static CatalogResult<T> Conflict<T>(FieldError error) => new(CatalogOutcome.Conflict, default, [error]);
+
+    public static CatalogResult<T> VersionConflict<T>() => new(CatalogOutcome.VersionConflict, default, []);
 }

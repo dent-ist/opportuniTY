@@ -23,6 +23,9 @@ public sealed class CodingLayout
 
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>Incremented by every change to the layout (the admin API's ETag).</summary>
+    public long Version { get; set; } = 1;
+
     public IEnumerable<CodingLayoutField> AllFields => Sections.SelectMany(s => s.Fields);
 }
 

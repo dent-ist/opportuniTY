@@ -1,0 +1,320 @@
+@let form = this.form();
+@let field = current();
+<header class="fa__header">
+  <div>
+    <h1 #heading class="fa__title" tabindex="-1">Fields</h1>
+    <p class="fa__lead">
+      Coding fields that reviewers set and imported fields that load files fill. Renaming a field or
+      its choices never changes documents; a field's type can change only while no document holds a
+      value.
+    </p>
+  </div>
+  <button type="button" oppButton="primary" [disabled]="editing() !== null" (click)="startNew()">
+    <opp-icon name="plus" /> New field
+  </button>
+</header>
+
+@if (editing() !== null) {
+  <section class="fa__card" aria-labelledby="fa-editor-title">
+    <h2 id="fa-editor-title" class="fa__card-title">
+      {{ field ? 'Edit ' + field.displayName : 'New field' }}
+    </h2>
+    @if (field) {
+      <p class="fa__muted">
+        {{ storageLabel(field.storage) }} field · query name <code>{{ field.queryName }}</code>
+        @if (field.isSystem) {
+          · system field
+        }
+      </p>
+    }
+    <form novalidate class="fa__form" (submit)="save($event)">
+      <div class="fa__row">
+        <opp-text-field
+          #nameField
+          label="Name"
+          [required]="true"
+          [value]="form.name"
+          [error]="errors()['name']"
+          [disabled]="saving()"
+          (valueChange)="update({ name: $event })"
+        />
+        <opp-select
+          label="Type"
+          [hint]="typeLock() ?? undefined"
+          [options]="typeOptions"
+          [value]="form.type"
+          [error]="errors()['type']"
+          [disabled]="saving() || !!typeLock()"
+          (valueChange)="setType($event)"
+        />
+        @if (!field) {
+          <opp-select
+            label="Source"
+            hint="Fixed once the field exists."
+            [options]="storageOptions"
+            [value]="form.storage"
+            [disabled]="saving()"
+            (valueChange)="setStorage($event)"
+          />
+        }
+      </div>
+
+      <div class="fa__row">
+        @if (form.type === 'date') {
+          <opp-select
+            label="Precision"
+            [options]="[
+              { value: 'date', label: 'Date only' },
+              { value: 'dateTime', label: 'Date and time' },
+            ]"
+            [value]="form.datePrecision"
+            [disabled]="saving() || !!typeLock()"
+            (valueChange)="setDatePrecision($event)"
+          />
+        }
+        @if (form.type === 'decimal') {
+          <opp-text-field
+            label="Total digits"
+            hint="1 to 18."
+            [value]="form.decimalPrecision"
+            [error]="errors()['decimalPrecision']"
+            [disabled]="saving() || !!typeLock()"
+            (valueChange)="update({ decimalPrecision: $event })"
+          />
+          <opp-text-field
+            label="Digits after the decimal point"
+            hint="0 to 6."
+            [value]="form.decimalScale"
+            [error]="errors()['decimalScale']"
+            [disabled]="saving() || !!typeLock()"
+            (valueChange)="update({ decimalScale: $event })"
+          />
+        }
+        @if (form.type === 'text' && !field) {
+          <opp-select
+            label="Search as"
+            hint="Words suit notes and prose; codes suit ids, numbers and file paths."
+            [options]="[
+              { value: 'prose', label: 'Words and sentences' },
+              { value: 'identifier', label: 'Codes and identifiers' },
+            ]"
+            [value]="form.textAnalysis"
+            [disabled]="saving()"
+            (valueChange)="setAnalysis($event)"
+          />
+        }
+      </div>
+
+      @if (form.type === 'text' || form.type === 'keyword') {
+        <opp-checkbox
+          [checked]="form.multiValue"
+          [disabled]="saving() || !!typeLock()"
+          (checkedChange)="update({ multiValue: $event })"
+        >
+          Several values per document
+        </opp-checkbox>
+      }
+
+      <div class="fa__textarea-field">
+        <label class="fa__label" for="fa-description">Description</label>
+        <textarea
+          id="fa-description"
+          class="fa__textarea"
+          rows="2"
+          aria-describedby="fa-description-hint"
+          [value]="form.description"
+          [disabled]="saving()"
+          (input)="onDescription($event)"
+        ></textarea>
+        <p id="fa-description-hint" class="fa__hint">
+          Optional. Shown to administrators, for example what reviewers should use the field for.
+        </p>
+      </div>
+
+      @if (!field) {
+        <fieldset class="fa__fieldset">
+          <legend class="fa__label">Search and access</legend>
+          <opp-checkbox
+            [checked]="form.searchable"
+            [disabled]="saving()"
+            (checkedChange)="update({ searchable: $event })"
+          >
+            Searchable
+          </opp-checkbox>
+          <opp-checkbox
+            [checked]="!!form.securityClass"
+            [disabled]="saving()"
+            (checkedChange)="update({ securityClass: $event ? 'privilegeStatus' : '' })"
+          >
+            Affects who may see documents
+          </opp-checkbox>
+          @if (form.securityClass) {
+            <opp-select
+              label="Access class"
+              hint="Changes to this field take the security lane and are never pre-selected for Apply to Family. Fixed once the field exists."
+              [options]="securityOptions"
+              [value]="form.securityClass"
+              [disabled]="saving()"
+              (valueChange)="update({ securityClass: $event })"
+            />
+          }
+        </fieldset>
+      } @else {
+        <div class="fa__flags">
+          <opp-checkbox
+            [checked]="form.hidden"
+            [disabled]="saving()"
+            (checkedChange)="update({ hidden: $event })"
+          >
+            Hidden from default lists and pickers
+          </opp-checkbox>
+          @if (field.securityClass) {
+            <opp-badge tone="restricted" icon="lock">Affects access</opp-badge>
+          }
+        </div>
+      }
+
+      <section class="fa__search" aria-labelledby="fa-search-title">
+        <h3 id="fa-search-title" class="fa__subtitle">What search can do with this field</h3>
+        @if (capabilities().length) {
+          <p class="fa__capabilities">{{ capabilities().join(' · ') }}</p>
+        }
+        @if (limitations().length) {
+          <ul class="fa__limitations">
+            @for (limit of limitations(); track limit) {
+              <li><opp-icon name="info" />{{ limit }}</li>
+            }
+          </ul>
+        } @else {
+          <p class="fa__muted">No limitations: it can be searched, filtered and sorted.</p>
+        }
+      </section>
+
+      @if (saveError(); as message) {
+        <div class="fa__notice" role="alert">
+          <opp-icon name="error" />
+          <div>
+            <p class="fa__notice-title">The field was not saved</p>
+            <p>{{ message }}</p>
+          </div>
+        </div>
+      }
+
+      <div class="fa__actions">
+        <button type="submit" oppButton="primary" [busy]="saving()">
+          {{ field ? 'Save field' : 'Create field' }}
+        </button>
+        <button type="button" oppButton="ghost" [disabled]="saving()" (click)="cancel()">
+          {{ field ? 'Close' : 'Cancel' }}
+        </button>
+        @if (field && !field.isSystem) {
+          <button
+            type="button"
+            oppButton="danger"
+            class="fa__retire"
+            [disabled]="saving()"
+            (click)="retire()"
+          >
+            <opp-icon name="trash" />Retire field
+          </button>
+        }
+      </div>
+    </form>
+
+    @if (field && isChoiceType(field.type)) {
+      <section class="fa__choices-section" aria-labelledby="fa-choices-title">
+        <h3 id="fa-choices-title" class="fa__subtitle">Choices</h3>
+        <opp-choice-editor [field]="field" (changed)="choicesChanged($event)" />
+      </section>
+    }
+  </section>
+} @else if (saveError(); as message) {
+  <p class="fa__error" role="alert"><opp-icon name="error" />{{ message }}</p>
+}
+
+@if (loading()) {
+  <opp-loading-state label="Loading fields…" />
+} @else if (loadError(); as error) {
+  <opp-error-state [error]="error" (retry)="load()" />
+} @else {
+  <div class="fa__toolbar" role="search" aria-label="Filter fields">
+    <opp-text-field
+      label="Filter by name"
+      type="search"
+      [value]="filterText()"
+      (valueChange)="filterText.set($event)"
+    />
+    <opp-select
+      label="Show"
+      [options]="sourceFilters"
+      [value]="sourceFilter()"
+      (valueChange)="sourceFilter.set($event)"
+    />
+  </div>
+  @if (!visibleFields().length) {
+    <opp-empty-state title="No fields match" message="Change the filter to see more fields." />
+  } @else {
+    <div class="fa__table-wrap">
+      <table class="fa__table">
+        <caption class="opp-visually-hidden">
+          Fields of this workspace,
+          {{
+            visibleFields().length
+          }}
+          shown
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Type</th>
+            <th scope="col">Source</th>
+            <th scope="col">Search</th>
+            <th scope="col"><span class="opp-visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (f of visibleFields(); track f.fieldId) {
+            <tr [class.is-hidden-field]="f.isHidden">
+              <th scope="row" class="fa__name-cell">
+                <span>{{ f.displayName }}</span>
+                @if (f.isSecurityAffecting) {
+                  <opp-badge tone="restricted" icon="lock">Affects access</opp-badge>
+                }
+                @if (f.isHidden) {
+                  <opp-badge tone="neutral" icon="eye-off">Hidden</opp-badge>
+                }
+              </th>
+              <td>
+                {{ typeLabel(f.type, f.datePrecision) }}
+                @if (f.choices) {
+                  <span class="fa__muted">
+                    ({{ f.choices.length }} {{ f.choices.length === 1 ? 'choice' : 'choices' }})
+                  </span>
+                }
+              </td>
+              <td>{{ f.isSystem ? 'System' : storageLabel(f.storage) }}</td>
+              <td>
+                @if (f.reducedCapabilities) {
+                  <opp-badge tone="warning" icon="warning">Reduced search</opp-badge>
+                } @else {
+                  {{ capabilitySummary(f) }}
+                }
+              </td>
+              <td class="fa__actions-cell">
+                <button
+                  type="button"
+                  oppIconButton
+                  [label]="'Edit ' + f.displayName"
+                  [disabled]="editing() !== null || opening()"
+                  (click)="edit(f)"
+                >
+                  <opp-icon name="pencil" />
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+}

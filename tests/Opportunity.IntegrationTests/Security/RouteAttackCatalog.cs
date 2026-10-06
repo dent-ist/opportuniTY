@@ -249,6 +249,48 @@ internal static class RouteAttackCatalog
         Case("GET", Ws + "/fields", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/fields", HttpStatusCode.OK)),
         Case("GET", Ws + "/coding-layouts", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/coding-layouts", HttpStatusCode.OK)),
 
+        // Field and coding layout administration (E04-T06). Field and choice ids are workspace-local numbers (every
+        // workspace has field 1000), not identifiers of another workspace; layouts are addressed by a global id.
+        Case("GET", Ws + "/field-capacity", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/field-capacity", HttpStatusCode.OK)),
+        Case("POST", Ws + "/fields", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Post, "/fields", HttpStatusCode.Created, _ => J(new JsonObject
+            {
+                ["displayName"] = "Probe " + Guid.NewGuid().ToString("N")[..8], ["type"] = "keyword", ["storage"] = "coding",
+            }))),
+        Case("GET", Ws + "/fields/{fieldId}", ProtectedOperation.Workspace,
+            new RouteProbe("field", HttpMethod.Get, (o, _) => $"{W(o)}/fields/{o.Fields.Issues}", HttpStatusCode.OK, HasForeignIdentifier: false)),
+        Case("PUT", Ws + "/fields/{fieldId}", ProtectedOperation.Workspace,
+            new RouteProbe("field", HttpMethod.Put, (o, _) => $"{W(o)}/fields/{o.Fields.Notes}", HttpStatusCode.OK,
+                (_, _) => J(new JsonObject { ["displayName"] = "Reviewer Notes", ["description"] = "Probe", ["isHidden"] = false, ["type"] = "text" }),
+                IfMatch: "*", HasForeignIdentifier: false)),
+        Case("DELETE", Ws + "/fields/{fieldId}", ProtectedOperation.Workspace,
+            new RouteProbe("system field", HttpMethod.Delete, (o, _) => $"{W(o)}/fields/1", HttpStatusCode.Conflict, IfMatch: "*", HasForeignIdentifier: false)),
+        Case("POST", Ws + "/fields/{fieldId}/choices", ProtectedOperation.Workspace,
+            new RouteProbe("field", HttpMethod.Post, (o, _) => $"{W(o)}/fields/{o.Fields.Issues}/choices", HttpStatusCode.OK,
+                (_, _) => J(new JsonObject { ["name"] = "Probe " + Guid.NewGuid().ToString("N")[..8] }), IfMatch: "*", HasForeignIdentifier: false)),
+        Case("PUT", Ws + "/fields/{fieldId}/choices/{choiceId}", ProtectedOperation.Workspace,
+            new RouteProbe("choice", HttpMethod.Put, (o, _) => $"{W(o)}/fields/{o.Fields.Issues}/choices/{o.Fields.IssueA}", HttpStatusCode.OK,
+                (_, _) => J(new JsonObject { ["isActive"] = true }), IfMatch: "*", HasForeignIdentifier: false)),
+        Case("DELETE", Ws + "/fields/{fieldId}/choices/{choiceId}", ProtectedOperation.Workspace,
+            new RouteProbe("choice", HttpMethod.Delete, (o, _) => $"{W(o)}/fields/{o.Fields.Issues}/choices/{int.MaxValue}", HttpStatusCode.NotFound,
+                IfMatch: "*", HasForeignIdentifier: false)),
+        Case("PUT", Ws + "/fields/{fieldId}/choice-order", ProtectedOperation.Workspace,
+            new RouteProbe("field", HttpMethod.Put, (o, _) => $"{W(o)}/fields/{o.Fields.Confidentiality}/choice-order", HttpStatusCode.OK,
+                (o, _) => J(new JsonObject { ["choiceIds"] = new JsonArray(o.Fields.Confidential, o.Fields.AttorneysEyesOnly) }),
+                IfMatch: "*", HasForeignIdentifier: false)),
+        Case("POST", Ws + "/coding-layouts", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Post, "/coding-layouts", HttpStatusCode.Created, _ => J(new JsonObject
+            {
+                ["name"] = "Probe " + Guid.NewGuid().ToString("N")[..8], ["isDefault"] = false, ["sections"] = new JsonArray(),
+            }))),
+        Case("GET", Ws + "/coding-layouts/{layoutId}", ProtectedOperation.Workspace,
+            new RouteProbe("layout", HttpMethod.Get, (o, t) => $"{W(o)}/coding-layouts/{t.LayoutId}", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/coding-layouts/{layoutId}", ProtectedOperation.Workspace,
+            new RouteProbe("layout", HttpMethod.Put, (o, t) => $"{W(o)}/coding-layouts/{t.LayoutId}", HttpStatusCode.OK,
+                (_, _) => J(new JsonObject { ["name"] = "Default", ["isDefault"] = true, ["sections"] = new JsonArray() }), IfMatch: "*")),
+        Case("DELETE", Ws + "/coding-layouts/{layoutId}", ProtectedOperation.Workspace,
+            new RouteProbe("default layout", HttpMethod.Delete, (o, t) => $"{W(o)}/coding-layouts/{t.LayoutId}", HttpStatusCode.Conflict, IfMatch: "*")),
+
         // Computed duplicate grouping (E09-T04): field ids in the policy are workspace-local numbers, not identifiers.
         Case("GET", Ws + "/dedupe-policy", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/dedupe-policy", HttpStatusCode.OK)),
         Case("PUT", Ws + "/dedupe-policy", ProtectedOperation.Workspace,

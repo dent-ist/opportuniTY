@@ -44,7 +44,8 @@ test('opens a workspace, switches sections and reaches Admin with the keyboard o
   );
   const areas = page.getByRole('navigation', { name: 'Admin' });
   await expect(areas.getByRole('link', { name: 'Fields' })).toHaveAttribute('aria-current', 'page');
-  await tabTo(page, areas.getByRole('link', { name: 'Choices' }));
+  // Focus is on the page heading; the area tabs are above it (Admin › Fields lists every field below).
+  await tabTo(page, areas.getByRole('link', { name: 'Choices' }), 20, { backwards: true });
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/w\/ws-1\/admin\/choices$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Choices' })).toBeVisible();
@@ -962,4 +963,61 @@ test('manages Highlight Sets with the keyboard only and reviewers toggle them pe
   await page.keyboard.press('Space');
   await expect(toggle).not.toBeChecked();
   await expect.poll(() => mock.highlights.selection.disabledSetIds).toEqual(['hs-2']);
+});
+
+test('administers a field, its choices and a coding layout with the keyboard only (E04-T06)', async ({
+  page,
+  mock,
+}) => {
+  await openPage(page, '/w/ws-1/admin/fields');
+  await tabTo(page, page.getByRole('button', { name: 'New field' }));
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
+  await page.keyboard.type('Hot Reason');
+  // Single Choice is the default type; its mapping limitation is shown before saving.
+  await expect(page.getByText('This field will not be sortable.')).toBeVisible();
+  await tabTo(page, page.getByRole('button', { name: 'Create field' }));
+  await page.keyboard.press('Enter');
+
+  // A new choice field stays open on its choices: add two and move the second up.
+  const newChoice = page.getByRole('textbox', { name: 'New choice' });
+  await expect(newChoice).toBeFocused();
+  await page.keyboard.type('Smoking gun');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Rename Smoking gun' })).toBeVisible();
+  await expect(newChoice).toHaveValue('');
+  await page.keyboard.type('Key admission');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Rename Key admission' })).toBeVisible();
+  await tabTo(page, page.getByRole('button', { name: 'Move Key admission up' }), 20, {
+    backwards: true,
+  });
+  await page.keyboard.press('Enter');
+  const created = () => mock.fieldAdmin.fields.find((f) => f.displayName === 'Hot Reason');
+  await expect
+    .poll(() => created()?.choices?.map((c) => c.name))
+    .toEqual(['Key admission', 'Smoking gun']);
+  // Focus stays on the moved choice (its Move up button is now disabled, so the next one takes it).
+  await expect(page.getByRole('button', { name: 'Move Key admission down' })).toBeFocused();
+
+  // Coding layouts: move a section up, see the preview follow, save.
+  await openPage(page, '/w/ws-1/admin/coding-layouts');
+  await tabTo(page, page.getByRole('button', { name: /Privilege Review/ }));
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('textbox', { name: 'Layout name' })).toBeFocused();
+  const preview = page.getByRole('region', { name: 'Preview' });
+  await expect(preview.getByRole('heading', { level: 3 }).first()).toHaveText('Privilege');
+  await tabTo(page, page.getByRole('button', { name: 'Move section Context up' }), 200);
+  await page.keyboard.press('Enter');
+  await expect(preview.getByRole('heading', { level: 3 }).first()).toHaveText('Context');
+  await tabTo(page, page.getByRole('button', { name: 'Save layout' }), 200);
+  await page.keyboard.press('Enter');
+  await expect
+    .poll(() => mock.fieldAdmin.layouts.find((l) => l.layoutId === 'layout-privilege')?.version)
+    .toBe(2);
+  expect(
+    mock.fieldAdmin.layouts
+      .find((l) => l.layoutId === 'layout-privilege')!
+      .sections.map((s) => s.title),
+  ).toEqual(['Context', 'Privilege']);
 });

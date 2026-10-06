@@ -67,7 +67,10 @@ public sealed class CrossWorkspaceAttackTests(AttackWorldFixture fixture) : ICla
             if (route.Pattern.Contains("{workspaceId}", StringComparison.Ordinal))
             {
                 route.Probes.Should().NotBeEmpty("{0}: every workspace route is attacked", route.Key);
-                var identifiers = route.Pattern.Split('/').Where(s => s.StartsWith('{') && s is not "{workspaceId}" and not "{pageNumber}" and not "{chunkIndex}");
+                // Field and choice ids are workspace-local numbers from per-workspace counters (ADR-003 R4): every workspace
+                // has field 1000 and choice 1, so they name nothing outside the URL's workspace.
+                var identifiers = route.Pattern.Split('/').Where(s => s.StartsWith('{')
+                    && s is not "{workspaceId}" and not "{pageNumber}" and not "{chunkIndex}" and not "{fieldId}" and not "{choiceId}");
                 if (identifiers.Any())
                 {
                     route.Probes.Should().Contain(p => p.HasForeignIdentifier, "{0}: its path identifiers are substituted", route.Key);
