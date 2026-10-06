@@ -1,0 +1,15 @@
+<Project>
+  <!--
+    Render pipeline natives (E11-T02): SkiaSharp and PDFium packages ship native libraries for many platforms (about
+    500 MB with debug symbols). A RID-less build (local builds, tests) would copy all of them into runtimes/ of every
+    project. Keep only the build machine's portable runtime identifier (e.g. linux-x64) there. A RID-specific publish (the container images)
+    already selects that RID's libraries and is unaffected.
+  -->
+  <Target Name="OpportunityTrimRenderNatives" AfterTargets="ResolvePackageAssets" Condition="'$(RuntimeIdentifier)' == ''">
+    <ItemGroup>
+      <_OpportunityForeignRenderNative Include="@(RuntimeTargetsCopyLocalItems)"
+        Condition="('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'SkiaSharp' or $([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)').StartsWith('SkiaSharp.NativeAssets.')) or $([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)').StartsWith('bblanchon.PDFium.'))) and '%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' != '$(NETCoreSdkPortableRuntimeIdentifier)'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(_OpportunityForeignRenderNative)" />
+    </ItemGroup>
+  </Target>
+</Project>

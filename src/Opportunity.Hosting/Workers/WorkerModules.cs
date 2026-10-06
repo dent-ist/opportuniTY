@@ -64,6 +64,11 @@ public static class WorkerModuleCatalog
         {
             services.AddProductionWorker(configuration);
         }
+
+        if (type == WorkerTypes.Rendering)
+        {
+            services.AddRenderingWorker(configuration);
+        }
     }
 
     private static void AddDispatcher(IServiceCollection services, IConfiguration configuration)

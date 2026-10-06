@@ -6,6 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Native libraries of the renderer (PDFium, Skia; Linux), kept out of projects that do not render (E11-T02). -->
+    <PackageReference Include="bblanchon.PDFium.Linux" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -37,6 +40,7 @@
     <ProjectReference Include="..\Opportunity.Testing\Opportunity.Testing.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Import\Opportunity.Import.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Production\Opportunity.Production.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Rendering\Opportunity.Rendering.csproj" />
     <ProjectReference Include="..\..\tools\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
     <ProjectReference Include="..\..\tools\Opportunity.Correctness\Opportunity.Correctness.csproj" />
   </ItemGroup>

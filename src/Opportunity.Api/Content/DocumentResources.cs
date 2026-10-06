@@ -31,7 +31,9 @@ internal static class DocumentResources
             new DocumentNativeInfo(record.Native is not null, d.NativeMissing, record.Native?.SizeBytes, d.FileExtension),
             new DocumentImagesInfo(
                 pageSet is not null,
-                d.ImagesIncomplete || pageSet?.Status is PageSetStatus.Pending or PageSetStatus.Incomplete or PageSetStatus.Failed,
+                // The active set decides (a Ready Rendered set replaces an Incomplete Imported one, Q-68); ImagesIncomplete
+                // stays the import's OPT finding and only speaks when there is no active set.
+                pageSet is null ? d.ImagesIncomplete : pageSet.Status is not PageSetStatus.Ready,
                 pageSet?.PageCount ?? 0,
                 pageSet is null ? null : Enum.Parse<DocumentPageSetSource>(pageSet.Source.ToString()),
                 pageSet is null ? null : Enum.Parse<DocumentPageSetStatus>(pageSet.Status.ToString())),

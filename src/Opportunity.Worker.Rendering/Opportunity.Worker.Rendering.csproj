@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <ItemGroup>
+    <!-- Native libraries of the renderer (PDFium, Skia; Linux), kept out of projects that do not render (E11-T02). -->
+    <PackageReference Include="bblanchon.PDFium.Linux" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Opportunity.Hosting\Opportunity.Hosting.csproj" />
   </ItemGroup>
 

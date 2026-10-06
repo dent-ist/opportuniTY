@@ -67,6 +67,12 @@
       "license": "Apache-2.0 OR MPL-2.0",
       "reason": "Dual-licensed: the package lists Apache-2.0 and MPL-2.0 as separate entries, which the checker reads as AND; the project offers them as alternatives (https://github.com/rabbitmq/rabbitmq-dotnet-client/blob/main/LICENSE). Used under Apache-2.0. Pinned to this version so upgrades are re-checked.",
       "approvedBy": "Lead engineer review 2026-10-03 (product owner to confirm)"
+    },
+    {
+      "component": "pkg:nuget/BitMiracle.LibTiff.NET@2.4.660",
+      "license": "BSD-3-Clause",
+      "reason": "Package metadata only has a licenseUrl; LibTiff.Net is BSD-3-Clause (https://github.com/BitMiracle/libtiff.net/blob/master/license.txt). TIFF (incl. CCITT G4) decoding for the render pipeline (E11-T02, docs/architecture/rendering.md). Pinned to this version so upgrades are re-checked.",
+      "approvedBy": "Backend engineer review 2026-10-06 for #96 (product owner to confirm)"
     }
   ]
 }
