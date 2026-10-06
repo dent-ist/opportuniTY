@@ -80,6 +80,12 @@ public static class Failpoints
     /// <summary>Dispatcher: the broker confirmed the publish; the rows/tasks/chunks are not marked Dispatched yet.</summary>
     public const string RelayAfterPublish = "relay.after-publish";
 
+    /// <summary>
+    /// Bates chunk executor (E12-T03): the chunk's numbers are computed from the stored plan; nothing is written yet and
+    /// the chunk is not committed ("mid-chunk").
+    /// </summary>
+    public const string BatesBeforeWrite = "production.bates-before-write";
+
     /// <summary>The job chunk consumer's failpoints, in handling order.</summary>
     public static IReadOnlyList<string> All { get; } = [BeforeClaim, AfterClaim, BeforeCommit, AfterCommit];
 
@@ -87,7 +93,7 @@ public static class Failpoints
     public static IReadOnlyList<string> Catalog { get; } =
     [
         .. All, IndexTaskAfterLease, IndexTaskBeforeBulk, IndexTaskAfterBulk, IndexTaskAfterApplied, OutboxBeforeBulk, OutboxAfterBulk,
-        RelayAfterPublish,
+        RelayAfterPublish, BatesBeforeWrite,
     ];
 }
 

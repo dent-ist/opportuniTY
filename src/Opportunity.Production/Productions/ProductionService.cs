@@ -144,7 +144,8 @@ public sealed partial class ProductionService(
                 ["PreviousVersionId"] = previousVersion?.ToString(),
                 ["SpecificationSha256"] = Convert.ToHexStringLower(normalized.Sha256),
                 ["BatesStart"] = normalized.Format.Format(normalized.Specification.Bates.StartNumber),
-            }) with { SnapshotId = snapshot.SnapshotId },
+            }) with
+            { SnapshotId = snapshot.SnapshotId },
         }, cancellationToken).ConfigureAwait(false);
         return Outcome(result, normalized.Format);
     }
@@ -188,7 +189,8 @@ public sealed partial class ProductionService(
                 ["SpecificationSha256"] = Convert.ToHexStringLower(normalized.Sha256),
                 ["PreviousSpecificationSha256"] = Convert.ToHexStringLower(current.SpecificationSha256),
                 ["AllocationReleased"] = current.BatesState is BatesAllocationState.Allocated or BatesAllocationState.Failed ? "true" : "false",
-            }) with { SnapshotId = snapshot.SnapshotId }, cancellationToken).ConfigureAwait(false);
+            }) with
+            { SnapshotId = snapshot.SnapshotId }, cancellationToken).ConfigureAwait(false);
         return Outcome(result, normalized.Format);
     }
 
@@ -373,13 +375,19 @@ public sealed partial class ProductionService(
             LogDifferences(logger, productionId, string.Join("; ", differences.Select(d => $"{d.Item}: expected {d.Expected ?? "-"}, actual {d.Actual ?? "-"}")));
         }
 
-        await productions.AuditAsync(Resource(UserEvent(principal, consistent ? AuditTaxonomy.Production.Verified : AuditTaxonomy.Production.VerificationFailed,
+        var verified = UserEvent(principal, consistent ? AuditTaxonomy.Production.Verified : AuditTaxonomy.Production.VerificationFailed,
             new Dictionary<string, string?>(StringComparer.Ordinal)
             {
                 ["ProductionId"] = productionId.ToString(),
                 ["Differences"] = Invariant(differences.Count),
                 ["Items"] = string.Join(',', differences.Select(d => d.Item).Distinct()),
-            }) with { Outcome = consistent ? AuditOutcome.Success : AuditOutcome.Failure }, production), cancellationToken).ConfigureAwait(false);
+            });
+        if (!consistent)
+        {
+            verified = verified with { Outcome = AuditOutcome.Failure, ReasonCode = "ManifestMismatch" };
+        }
+
+        await productions.AuditAsync(Resource(verified, production), cancellationToken).ConfigureAwait(false);
         return (new ProductionOutcome(ProductionOutcomeStatus.Ok, production), new ProductionVerification(consistent, differences, integrity));
     }
 

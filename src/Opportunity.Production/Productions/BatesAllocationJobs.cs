@@ -6,6 +6,9 @@ using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Productions;
 using Opportunity.Core.Jobs;
@@ -115,7 +118,8 @@ public sealed partial class BatesAllocationCoordinator(
                     ["Prefix"] = production.BatesPrefix,
                     ["Conflicts"] = string.Join(',', plan.Conflicts.Select(c => string.Create(CultureInfo.InvariantCulture,
                         $"{c.ProductionId:N}:{c.FirstNumber}-{c.LastNumber}"))),
-                }) with { Category = AuditTaxonomy.Integrity.Category, Outcome = AuditOutcome.Failure, ReasonCode = "BatesOverlap" }
+                }) with
+                { Category = AuditTaxonomy.Integrity.Category, Outcome = AuditOutcome.Failure, ReasonCode = "BatesOverlap" }
                 : null;
             return await EndAsync(production, jobId, reason, conflict, cancellationToken).ConfigureAwait(false);
         }
@@ -252,7 +256,14 @@ public sealed partial class BatesAllocationCoordinator(
 /// the stored plan only, so a chunk re-run after a crash or a redelivery writes exactly the same numbers. The initiator
 /// must still hold <c>Production.Create</c>; otherwise the job is cancelled (ADR-015 D9.4).
 /// </summary>
-public sealed class BatesChunkExecutor(IProductionStore productions, IJobRepository jobs, IAuthorizationService authorization) : IJobChunkExecutor
+public sealed class BatesChunkExecutor(
+    IProductionStore productions,
+    IJobRepository jobs,
+    IAuthorizationService authorization
+#if OPPORTUNITY_FAILPOINTS
+    , IFaultInjector? faults = null
+#endif
+    ) : IJobChunkExecutor
 {
     public ChunkOperationKind OperationKind => ChunkOperationKind.ProductionChunk;
 
@@ -305,6 +316,13 @@ public sealed class BatesChunkExecutor(IProductionStore productions, IJobReposit
         {
             throw new PermanentChunkException("BatesOverflow", ex.Message, ex);
         }
+
+#if OPPORTUNITY_FAILPOINTS
+        if (faults is not null)
+        {
+            await faults.HitAsync(Failpoints.BatesBeforeWrite, new FailpointContext(context.Message, chunk.Lease), cancellationToken).ConfigureAwait(false);
+        }
+#endif
 
         // Fence F2 before the PostgreSQL batch; F3 runs inside the store's transaction.
         await context.CheckFenceAsync(cancellationToken).ConfigureAwait(false);
