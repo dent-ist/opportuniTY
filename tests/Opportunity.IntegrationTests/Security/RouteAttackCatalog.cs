@@ -292,6 +292,18 @@ internal static class RouteAttackCatalog
                     ["snapshotId"] = t.BulkSnapshotId.ToString(),
                     ["changes"] = new JsonArray(new JsonObject { ["fieldId"] = o.Fields.Responsive, ["operation"] = "set", ["value"] = false }),
                 }))),
+        Case("GET", Ws + "/documents/{documentId}/relationships", ProtectedOperation.Coding,
+            new RouteProbe("document", HttpMethod.Get, (o, t) => Doc(o, t) + "/relationships", HttpStatusCode.OK),
+            new RouteProbe("document, with coding values", HttpMethod.Get, (o, t) => Doc(o, t) + "/relationships?fields=responsive", HttpStatusCode.OK)),
+        Case("POST", Ws + "/coding-propagations/preview", ProtectedOperation.Coding,
+            new RouteProbe("source document in the body", HttpMethod.Post, (o, _) => W(o) + "/coding-propagations/preview", HttpStatusCode.OK,
+                (o, t) => J(new JsonObject
+                {
+                    ["sourceDocumentId"] = t.DocumentId.ToString(), ["scope"] = "familyAndDuplicates", ["fields"] = new JsonArray(o.Fields.Responsive),
+                }))),
+        Case("POST", Ws + "/coding-propagations", ProtectedOperation.Coding,
+            new RouteProbe("preview in the body", HttpMethod.Post, (o, _) => W(o) + "/coding-propagations", HttpStatusCode.OK,
+                (_, t) => J(new JsonObject { ["previewId"] = t.PropagationPreviewId.ToString() }))),
         Case("GET", Ws + "/bulk-coding/{jobId}/report", ProtectedOperation.Coding,
             new RouteProbe("bulk coding job", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report", HttpStatusCode.OK),
             new RouteProbe("bulk coding job, skippedHidden", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report?outcome=skippedHidden", HttpStatusCode.OK)),
