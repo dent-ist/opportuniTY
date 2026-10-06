@@ -7,7 +7,7 @@ import { tabTo } from './support/tab';
 // (./support/mock-relationships.ts) follows the wave-12 shared contract: ACM n % 4 === 3 is the parent of n + 1,
 // ACM n % 10 === 5 and 6 are duplicates. Hidden members are omitted entirely (Q-52).
 
-const row = (page: Page, controlNumber: string) =>
+const row = (page: Page, controlNumber: string | RegExp) =>
   page.getByRole('treegrid', { name: 'Documents' }).getByRole('row', { name: controlNumber });
 
 /** Presses `key` and waits until the active cell of the list moved. */
