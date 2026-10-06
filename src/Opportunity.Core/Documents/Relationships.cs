@@ -20,6 +20,25 @@ public enum DuplicateHashKind : short
     UpstreamDedupeHash = 2,
     UpstreamEmailHash = 3,
     Sha256Native = 4,
+
+    /// <summary>The document's MD5 (from the load file or computed from the native), E09-T04 computed grouping.</summary>
+    Md5 = 5,
+
+    /// <summary>The document's SHA-1 (from the load file or computed from the native), E09-T04 computed grouping.</summary>
+    Sha1 = 6,
+}
+
+/// <summary>
+/// Where computed duplicates are looked for (E09-T04). Stored as smallint on the group. Upstream groups are always
+/// <see cref="Global"/>: they are whatever the processing tool decided.
+/// </summary>
+public enum DuplicateGroupScope : short
+{
+    /// <summary>Across the whole workspace (ADR-009 R14, the Q-09 default).</summary>
+    Global = 1,
+
+    /// <summary>Within one custodian: copies held by different custodians stay apart.</summary>
+    Custodial = 2,
 }
 
 /// <summary>A duplicate group as the writer records it: its deterministic id and the value that formed it.</summary>
@@ -42,14 +61,34 @@ public static class RelationshipIds
     /// <summary>Longest upstream group or thread value accepted (the stored key's limit).</summary>
     public const int MaxUpstreamValueLength = 255;
 
-    public static Guid DuplicateGroup(Guid workspaceId, DuplicateHashKind kind, string value) => Create(workspaceId, kind switch
+    public static Guid DuplicateGroup(Guid workspaceId, DuplicateHashKind kind, string value) => Create(workspaceId, HashLabel(kind), value);
+
+    /// <summary>
+    /// A computed group of one custodian's copies (E09-T04, <see cref="DuplicateGroupScope.Custodial"/>): label
+    /// <c>custodial-{kind}</c>, value <c>{hash}:{custodian}</c>. The hash is hex, so the first colon ends it.
+    /// </summary>
+    public static Guid CustodialDuplicateGroup(Guid workspaceId, DuplicateHashKind kind, string hash, string custodian)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(hash);
+        ArgumentException.ThrowIfNullOrEmpty(custodian);
+        if (kind == DuplicateHashKind.UpstreamGroup || hash.Contains(':', StringComparison.Ordinal))
+        {
+            throw new ArgumentException("A custodial group is keyed on a hash, never on an upstream group value.", nameof(kind));
+        }
+
+        return Create(workspaceId, "custodial-" + HashLabel(kind), hash + ":" + custodian);
+    }
+
+    private static string HashLabel(DuplicateHashKind kind) => kind switch
     {
         DuplicateHashKind.UpstreamGroup => "upstream",
         DuplicateHashKind.UpstreamDedupeHash => "dedupe-hash",
         DuplicateHashKind.UpstreamEmailHash => "email-hash",
         DuplicateHashKind.Sha256Native => "sha256",
+        DuplicateHashKind.Md5 => "md5",
+        DuplicateHashKind.Sha1 => "sha1",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
-    }, value);
+    };
 
     public static Guid EmailThread(Guid workspaceId, EmailThreadSource source, string value) => Create(workspaceId, source switch
     {

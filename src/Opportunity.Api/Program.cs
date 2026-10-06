@@ -2,6 +2,7 @@ using System.Reflection;
 
 using Opportunity.Api.Coding;
 using Opportunity.Api.Content;
+using Opportunity.Api.Dedupe;
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Exports;
 using Opportunity.Api.Fields;
@@ -56,6 +57,7 @@ builder.Services.AddExportContentEndpoints();
 builder.Services.AddImportContentEndpoints();
 builder.Services.AddSearchTermReportEndpoints(builder.Configuration);
 builder.Services.AddSearchTermReportContentEndpoints();
+builder.Services.AddDedupeEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();

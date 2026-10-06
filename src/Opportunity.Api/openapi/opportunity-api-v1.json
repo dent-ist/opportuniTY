@@ -3239,6 +3239,230 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/dedupe-policy": {
+      "get": {
+        "tags": [
+          "Relationships"
+        ],
+        "summary": "The workspace's computed duplicate grouping policy and what its last run did.",
+        "description": "Version 0 means no policy was saved: the default (disabled, auto hash, global scope) applies.",
+        "operationId": "GetDedupePolicy",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedupePolicyResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Relationships"
+        ],
+        "summary": "Save the computed duplicate grouping policy (If-Match required; \"0\" before the first save).",
+        "description": "Grouping is family-level: top-level parents are compared on the chosen hash (and, in custodial scope, their custodian) and attachments follow their parent. Documents with an upstream duplicate group are never regrouped. Duplicates are labelled, never hidden. Saving changes no document; POST …/dedupe-runs applies the policy.",
+        "operationId": "UpdateDedupePolicy",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DedupePolicyWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedupePolicyResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/dedupe-runs": {
+      "post": {
+        "tags": [
+          "Relationships"
+        ],
+        "summary": "Apply the saved dedupe policy to every document of the workspace; 202 with the job.",
+        "description": "Re-runnable and idempotent: group ids derive from the hash (and custodian), so an unchanged workspace changes nothing. Documents whose duplicate group or primary flag changes are reindexed; follow the job at Location. A disabled policy removes the computed groups.",
+        "operationId": "StartDedupeRun",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/snapshots": {
       "post": {
         "tags": [
@@ -8287,6 +8511,209 @@
           }
         }
       },
+      "DedupeHashSourceResource": {
+        "enum": [
+          "auto",
+          "sha256",
+          "md5",
+          "sha1",
+          "upstreamHash"
+        ]
+      },
+      "DedupePolicyResource": {
+        "required": [
+          "enabled",
+          "hashSource",
+          "scope",
+          "custodianFieldId",
+          "version",
+          "modifiedBy",
+          "modifiedAt",
+          "lastRun"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "hashSource": {
+            "$ref": "#/components/schemas/DedupeHashSourceResource"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DedupeScopeResource"
+          },
+          "custodianFieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "modifiedBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "modifiedAt": {
+            "format": "date-time"
+          },
+          "lastRun": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DedupeRunSummaryResource"
+              }
+            ]
+          }
+        }
+      },
+      "DedupePolicyWrite": {
+        "required": [
+          "enabled"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "hashSource": {
+            "$ref": "#/components/schemas/DedupeHashSourceResource"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DedupeScopeResource"
+          },
+          "custodianFieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "DedupeRunSummaryResource": {
+        "required": [
+          "jobId",
+          "ranAt",
+          "enabled",
+          "hashSource",
+          "scope",
+          "custodianFieldId",
+          "familiesCompared",
+          "familiesWithoutHash",
+          "familiesWithoutCustodian",
+          "familiesWithUpstreamGroup",
+          "groups",
+          "documentsGrouped",
+          "documentsChanged"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ranAt": {
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "hashSource": {
+            "$ref": "#/components/schemas/DedupeHashSourceResource"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DedupeScopeResource"
+          },
+          "custodianFieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "familiesCompared": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "familiesWithoutHash": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "familiesWithoutCustodian": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "familiesWithUpstreamGroup": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "groups": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsGrouped": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsChanged": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "DedupeScopeResource": {
+        "enum": [
+          "global",
+          "custodial"
+        ]
+      },
       "DelimiterInfo": {
         "required": [
           "char",
@@ -13242,6 +13669,18 @@
                 "type": "string"
               }
             }
+          },
+          "duplicateGroupId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isDuplicatePrimary": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -14663,6 +15102,9 @@
     },
     {
       "name": "Coding"
+    },
+    {
+      "name": "Relationships"
     },
     {
       "name": "Snapshots"
