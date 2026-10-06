@@ -42,7 +42,7 @@ public static class ProjectionFields
     /// <summary>keyword: the duplicate group (ADR-009 R13–R15); absent when the document has none.</summary>
     public const string DuplicateGroupId = "duplicateGroupId";
 
-    /// <summary>boolean: the primary of its duplicate group (ADR-009 R15).</summary>
+    /// <summary>boolean: the document is in its duplicate group's primary family (ADR-009 R15).</summary>
     public const string IsDuplicatePrimary = "isDuplicatePrimary";
 
     /// <summary>keyword: the email thread (ADR-009 R18); absent on attachments and non-email documents.</summary>

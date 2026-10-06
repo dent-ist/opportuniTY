@@ -77,11 +77,14 @@ public sealed class JobChunkRelay(
     public static WorkQueue? QueueFor(ChunkOperationKind operation) => operation switch
     {
         ChunkOperationKind.ImportChunk => WorkQueues.Import,
+
+        // Dedupe runs (E09-T04) execute in the import worker, which owns the relationship writers.
+        ChunkOperationKind.RelationshipChunk => WorkQueues.Import,
         ChunkOperationKind.BulkCodingChunk => WorkQueues.BulkCoding,
         ChunkOperationKind.RenderChunk => WorkQueues.Rendering,
         ChunkOperationKind.ExportChunk => WorkQueues.Export,
         ChunkOperationKind.ProductionChunk => WorkQueues.Production,
-        // Relationship fix-ups (E09-T01) and reindex (E07-T11) choose their queue with their worker.
+        // Reindex (E07-T11) chooses its queue with its worker.
         _ => null,
     };
 

@@ -80,6 +80,39 @@ internal static class RelationshipWriter
         return new RelationshipSyncResult(groups, threads, changed.Count, [.. changed.OrderBy(c => c.DocumentId)]);
     }
 
+    /// <summary>
+    /// Existing duplicate groups by id (computed grouping, E09-T04): locks them in id order, recounts, re-elects the
+    /// primaries, updates the members' primary flags (version bumps returned) and removes the ones nothing references.
+    /// </summary>
+    public static async Task<List<(Guid DocumentId, long DocumentVersion)>> RecomputeDuplicateGroupsAsync(
+        WorkspaceTransaction tx, Guid[] groupIds, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(tx);
+        ArgumentNullException.ThrowIfNull(groupIds);
+        if (groupIds.Length == 0)
+        {
+            return [];
+        }
+
+        var ids = groupIds.Distinct().Order().ToArray();
+        await using (var lockRows = tx.Command(
+            """
+            SELECT count(*) FROM (
+                SELECT 1 FROM opportunity.duplicate_group
+                WHERE workspace_id = @ws AND duplicate_group_id = ANY(@ids) ORDER BY duplicate_group_id FOR UPDATE) g
+            """))
+        {
+            lockRows.Parameters.AddWithValue("ws", tx.WorkspaceId);
+            lockRows.Parameters.AddWithValue("ids", ids);
+            await lockRows.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await RecomputeGroupsAsync(tx, ids, cancellationToken).ConfigureAwait(false);
+        var changed = await UpdatePrimaryFlagsAsync(tx, ids, cancellationToken).ConfigureAwait(false);
+        await DeleteUnreferencedAsync(tx, ids, [], cancellationToken).ConfigureAwait(false);
+        return changed;
+    }
+
     // Previous groups of an overlay are recomputed too; their stored key lets them join the one ordered upsert.
     private static async Task<List<DuplicateGroupKey>> WithPreviousGroupsAsync(WorkspaceTransaction tx, RelationshipSync sync, CancellationToken cancellationToken)
     {

@@ -262,8 +262,11 @@ public sealed record SearchFreshnessStatus(
 /// ISO 8601, numbers and booleans invariant, choices as choice IDs, users as user IDs. A field without a value is absent.
 /// Null when the search asked for no fields.
 /// </param>
-/// <param name="DuplicateGroupId">The duplicate group (E09-T05 related items); null when the document has none.</param>
-/// <param name="IsDuplicatePrimary">The primary of its duplicate group; null when the index does not carry it yet.</param>
+/// <param name="DuplicateGroupId">The document's duplicate group (upstream or computed, ADR-009 R13-R14); null when none.</param>
+/// <param name="IsDuplicatePrimary">
+/// Whether the document belongs to its duplicate group's primary family (earliest Family Date, then lowest control
+/// number, Q-63); null when the document has no duplicate group.
+/// </param>
 /// <param name="EmailThreadId">The email thread; null for attachments and non-email documents.</param>
 public sealed record SearchHit(
     Guid DocumentId,

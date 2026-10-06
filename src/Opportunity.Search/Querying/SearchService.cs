@@ -950,7 +950,9 @@ internal sealed partial class SearchService(
                 : null,
             Fields: SearchColumns.Values(s, fields),
             DuplicateGroupId: String(s, ProjectionFields.DuplicateGroupId),
-            IsDuplicatePrimary: s[ProjectionFields.IsDuplicatePrimary] is JsonValue primary && primary.TryGetValue<bool>(out var isPrimary) ? isPrimary : null,
+            IsDuplicatePrimary: String(s, ProjectionFields.DuplicateGroupId) is null
+                ? null
+                : s[ProjectionFields.IsDuplicatePrimary] is JsonValue primary && primary.TryGetValue<bool>(out var isPrimary) && isPrimary,
             EmailThreadId: String(s, ProjectionFields.EmailThreadId));
     }
 

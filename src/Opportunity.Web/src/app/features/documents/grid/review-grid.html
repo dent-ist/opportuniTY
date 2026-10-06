@@ -354,12 +354,18 @@
                     type="button"
                     class="grid__dup"
                     tabindex="-1"
-                    title="Has duplicates: show the duplicate group"
+                    [title]="
+                      hit.isDuplicatePrimary
+                        ? 'Primary of its duplicate group: show the duplicate group'
+                        : 'Has duplicates: show the duplicate group'
+                    "
                     (mousedown)="$event.preventDefault()"
                     (click)="showDuplicates(hit, $event)"
                   >
-                    <span aria-hidden="true">D</span
-                    ><span class="opp-visually-hidden">Has duplicates</span>
+                    <span aria-hidden="true">{{ hit.isDuplicatePrimary ? 'DP' : 'D' }}</span
+                    ><span class="opp-visually-hidden">{{
+                      hit.isDuplicatePrimary ? 'Primary duplicate' : 'Has duplicates'
+                    }}</span>
                   </button>
                 }
               </div>
