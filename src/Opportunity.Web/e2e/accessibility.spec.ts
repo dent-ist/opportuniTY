@@ -212,7 +212,7 @@ for (const theme of THEMES) {
       await expectNoSeriousAxeViolations(page, testInfo);
     });
 
-    test('family groups, Related Items with a restricted count, and the Apply to Family preview (E16-T10)', async ({
+    test('family groups, Related Items and the Apply to Family preview (E16-T10)', async ({
       page,
     }, testInfo) => {
       await openPage(page, '/w/ws-1/documents');
@@ -227,7 +227,7 @@ for (const theme of THEMES) {
 
       await tree.getByRole('row', { name: /ACM0000003/ }).dblclick();
       const related = page.getByRole('region', { name: 'Related Items' });
-      await expect(related.getByText('1 restricted item')).toBeVisible();
+      await expect(related.getByRole('row', { name: /ACM0000004/ })).toBeVisible();
       await expectNoSeriousAxeViolations(page, testInfo);
 
       await page.getByRole('button', { name: 'Apply to Family…' }).click();

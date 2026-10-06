@@ -59,7 +59,7 @@
         [id]="uid + '-panel'"
         [attr.aria-labelledby]="uid + '-tab-' + view.tab"
       >
-        @if (view.rows.length === 0 && view.restricted === 0) {
+        @if (view.rows.length === 0) {
           <p class="related__muted">{{ view.empty }}</p>
         } @else {
           <p class="related__note">
@@ -128,13 +128,6 @@
           }
           @if (view.truncated) {
             <p class="related__muted">{{ view.truncated }}</p>
-          }
-          @if (view.restricted > 0) {
-            <p class="related__restricted">
-              <opp-badge tone="restricted" icon="lock">{{
-                restrictedText(view.restricted)
-              }}</opp-badge>
-            </p>
           }
         }
       </div>

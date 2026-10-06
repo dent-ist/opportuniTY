@@ -34,14 +34,12 @@ export interface FamilyRelations {
   readonly parent: RelatedDocument | null;
   /** In family order (Family Sequence), including the document itself. */
   readonly members: readonly RelatedDocument[];
-  readonly restrictedCount: number;
 }
 
 export interface DuplicateRelations {
   readonly duplicateGroupId: string | null;
   readonly primaryDocumentId: string | null;
   readonly members: readonly RelatedDocument[];
-  readonly restrictedCount: number;
 }
 
 export interface ThreadRelations {
@@ -49,7 +47,6 @@ export interface ThreadRelations {
   /** The first 200 members. */
   readonly members: readonly RelatedDocument[];
   readonly total: number;
-  readonly restrictedCount: number;
 }
 
 /** `GET …/documents/{id}/relationships`. */
@@ -89,7 +86,6 @@ export interface PropagationPreview {
   readonly conflictCount: number;
   /** The first 100 conflicts. */
   readonly conflicts: readonly PropagationConflict[];
-  readonly restrictedCount: number;
   readonly skippedCount: number;
   /** `job` above `threshold` targets (Q-14: a Mass Edit job, Q-07 skip rule). */
   readonly mode: 'interactive' | 'job';
@@ -248,19 +244,16 @@ export function toRelationships(v: unknown): DocumentRelationships {
       familyId: strOrNull(family['familyId']),
       parent: family['parent'] ? toRelatedDocument(family['parent']) : null,
       members: arr(family['members']).map(toRelatedDocument),
-      restrictedCount: num(family['restrictedCount']),
     },
     duplicates: {
       duplicateGroupId: strOrNull(duplicates['duplicateGroupId']),
       primaryDocumentId: strOrNull(duplicates['primaryDocumentId']),
       members: arr(duplicates['members']).map(toRelatedDocument),
-      restrictedCount: num(duplicates['restrictedCount']),
     },
     thread: {
       emailThreadId: strOrNull(thread['emailThreadId']),
       members: threadMembers,
       total: Math.max(num(thread['total']), threadMembers.length),
-      restrictedCount: num(thread['restrictedCount']),
     },
   };
 }
@@ -288,7 +281,6 @@ export function toPreview(
     targetCount: num(raw['targetCount']),
     conflictCount: Math.max(num(raw['conflictCount']), conflicts.length),
     conflicts,
-    restrictedCount: num(raw['restrictedCount']),
     skippedCount: num(raw['skippedCount']),
     mode: raw['mode'] === 'job' ? 'job' : 'interactive',
     threshold: num(raw['threshold']) || 1000,

@@ -18,7 +18,6 @@ describe('Relationships port readers (wave-12 contract)', () => {
             coding: { Responsiveness: ['Responsive'] },
           },
         ],
-        restrictedCount: '2',
       },
       duplicates: { duplicateGroupId: null, members: [] },
       thread: { emailThreadId: 't-1', members: [{ documentId: 'doc-9' }], total: '450' },
@@ -29,12 +28,10 @@ describe('Relationships port readers (wave-12 contract)', () => {
       isParent: false,
       coding: { responsiveness: ['Responsive'] },
     });
-    expect(r.family.restrictedCount).toBe(2);
     expect(r.duplicates).toEqual({
       duplicateGroupId: null,
       primaryDocumentId: null,
       members: [],
-      restrictedCount: 0,
     });
     expect(r.thread.total).toBe(450);
   });
@@ -64,7 +61,6 @@ describe('Relationships port readers (wave-12 contract)', () => {
       targetCount: 1500,
       mode: 'job',
       threshold: 1000,
-      restrictedCount: 0,
       conflicts: [
         { field: 'responsiveness', currentValues: ['Not Responsive'], newValues: ['Responsive'] },
       ],

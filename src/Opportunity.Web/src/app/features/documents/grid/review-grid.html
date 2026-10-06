@@ -463,7 +463,7 @@
       [title]="
         row.reason === 'continued'
           ? 'The parent and earlier attachments of this family are on the previous page.'
-          : 'The parent of these attachments is not in these results.'
+          : 'These attachments are listed without a parent document.'
       "
     >
       @if (row.reason === 'continued') {
@@ -474,7 +474,7 @@
       } @else {
         <span aria-hidden="true">Parent not listed</span
         ><span class="opp-visually-hidden"
-          >Parent not in these results: the attachments below belong to it.</span
+          >Parent not listed: the attachments below are shown without a parent.</span
         >
       }
     </div>

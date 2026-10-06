@@ -5,7 +5,7 @@ import type { CodingMock } from './mock-coding';
 // backend, #136 UI): `GET …/documents/{id}/relationships`, `POST …/coding-propagations/preview` and
 // `POST …/coding-propagations`. Families follow the document list of ./mock-api.ts (n % 4 === 3 is the parent of
 // n + 1); documents n % 10 === 5 and 6 are duplicates (5 is the Primary); emails (not attachments) form threads of
-// up to four. The family of ACM0000003 has one attachment the reviewer may not see: it is only counted.
+// up to four. Members the reviewer may not see are omitted entirely (Q-52): no list entry, no count.
 
 const pad = (n: number) => `ACM${String(n).padStart(7, '0')}`;
 
@@ -119,20 +119,16 @@ export class RelationshipsMock {
         familyId: family.length > 1 ? `doc-${family[0]}` : null,
         parent: family.length > 1 ? m(family[0]) : null,
         members: family.length > 1 ? family.map(m) : [],
-        // One attachment of ACM0000003 is restricted: counted, never listed.
-        restrictedCount: family[0] === 3 && family.length > 1 ? 1 : 0,
       },
       duplicates: {
         duplicateGroupId: duplicates.length > 1 ? `dup-${duplicates[0]}` : null,
         primaryDocumentId: duplicates.length > 1 ? `doc-${duplicates[0]}` : null,
         members: duplicates.length > 1 ? duplicates.map(m) : [],
-        restrictedCount: 0,
       },
       thread: {
         emailThreadId: thread.length > 1 ? `thread-${thread[0]}` : null,
         members: thread.length > 1 ? thread.map(m) : [],
         total: thread.length > 1 ? thread.length : 0,
-        restrictedCount: 0,
       },
     };
   }
@@ -164,7 +160,6 @@ export class RelationshipsMock {
       }),
     );
     const previewId = `preview-${this.previews.size + 1}`;
-    const restricted = scope !== 'duplicates' && familyOf(source, total)[0] === 3 ? 1 : 0;
     this.previews.set(previewId, {
       source,
       version: this.coding.versionOf(source),
@@ -176,7 +171,6 @@ export class RelationshipsMock {
       targetCount: targets.size,
       conflictCount: conflicts.length,
       conflicts: conflicts.slice(0, 100),
-      restrictedCount: restricted,
       skippedCount: 0,
       mode: targets.size > this.threshold ? 'job' : 'interactive',
       threshold: this.threshold,

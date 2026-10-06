@@ -1086,7 +1086,7 @@ describe('Review grid (Documents list)', () => {
         '2 ACM0000003',
         '2 ACM0000004',
         // The parent of ACM5 and ACM6 is not in the results: a placeholder without metadata stands in.
-        '1:true Parent not listedParent not in these results: the attachments below belong to it.',
+        '1:true Parent not listedParent not listed: the attachments below are shown without a parent.',
         '2 ACM0000005',
         '2 ACM0000006',
         '1 ACM0000007',
@@ -1101,7 +1101,7 @@ describe('Review grid (Documents list)', () => {
       expect(treeRows().map(describeRow).slice(0, 3)).toEqual([
         '1 ACM0000001',
         '1:false ACM0000002',
-        '1:true Parent not listedParent not in these results: the attachments below belong to it.',
+        '1:true Parent not listedParent not listed: the attachments below are shown without a parent.',
       ]);
 
       // Keyboard (the toggled row is focused): to the Family column, Right expands, Down to an attachment, Left goes

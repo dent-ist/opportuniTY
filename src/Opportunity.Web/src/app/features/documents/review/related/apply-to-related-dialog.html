@@ -72,13 +72,6 @@
             @if (p.skippedCount > 0) {
               <p class="apply__muted">{{ count(p.skippedCount) }} will be skipped.</p>
             }
-            @if (p.restrictedCount > 0) {
-              <p class="apply__restricted">
-                <opp-badge tone="restricted" icon="lock">{{
-                  restrictedText(p.restrictedCount)
-                }}</opp-badge>
-              </p>
-            }
           </div>
           @if (p.mode === 'job') {
             <p class="apply__notice">

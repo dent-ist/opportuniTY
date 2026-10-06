@@ -5,7 +5,7 @@ import { tabTo } from './support/tab';
 // Families and duplicates (E16-T10): the family-grouped list (a tree grid), Related Items in Review mode, Apply to
 // Family with its conflict preview, the duplicate pivot, and propagation above the threshold as a job. The mock
 // (./support/mock-relationships.ts) follows the wave-12 shared contract: ACM n % 4 === 3 is the parent of n + 1,
-// ACM n % 10 === 5 and 6 are duplicates, and the family of ACM0000003 has one restricted attachment.
+// ACM n % 10 === 5 and 6 are duplicates. Hidden members are omitted entirely (Q-52).
 
 const row = (page: Page, controlNumber: string) =>
   page.getByRole('treegrid', { name: 'Documents' }).getByRole('row', { name: controlNumber });
@@ -97,7 +97,7 @@ test('groups families, codes a parent and applies it to the family after a confl
   expect(apply?.idempotencyKey).toBeTruthy();
 });
 
-test('Related Items: a restricted count without metadata, opening a member keeps the cursor, the duplicate pivot', async ({
+test('Related Items: only visible members, opening a member keeps the cursor, the duplicate pivot', async ({
   page,
   mock,
 }) => {
@@ -114,8 +114,8 @@ test('Related Items: a restricted count without metadata, opening a member keeps
     .getByRole('row', { name: /ACM0000003/ })
     .dblclick();
   const related = page.getByRole('region', { name: 'Related Items' });
-  await expect(related.getByText('1 restricted item')).toBeVisible();
-  await expect(related.getByRole('row')).toHaveCount(3); // header + ACM3 + ACM4, nothing about the restricted one
+  await expect(related.getByRole('row')).toHaveCount(3); // header + ACM3 + ACM4
+  await expect(related).not.toContainText(/restricted|hidden/i);
 
   await related.getByRole('button', { name: 'ACM0000004' }).click();
   await expect(page.locator('.review__position')).toHaveText('Doc 3 of 250');

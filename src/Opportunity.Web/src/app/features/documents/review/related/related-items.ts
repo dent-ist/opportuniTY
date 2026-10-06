@@ -15,7 +15,7 @@ import type { FieldResource, SearchHit } from '../../../../core/api/generated/mo
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
 import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
-import { Badge, Button, Icon, LoadingState, MENU } from '../../../../ui';
+import { Button, Icon, LoadingState, MENU } from '../../../../ui';
 import type { RelationshipPivot } from '../../grid/review-grid';
 import { CellFormatter } from '../../grid/grid-format';
 import {
@@ -47,7 +47,6 @@ interface TabView {
   readonly label: string;
   readonly count: number;
   readonly rows: readonly MemberRow[];
-  readonly restricted: number;
   /** Id for "Show … in the list"; null when the document has none of this relation. */
   readonly pivotId: string | null;
   readonly pivotLabel: string;
@@ -65,13 +64,13 @@ export const MAX_RELATED_COLUMNS = 6;
  * Related Items of Review mode (E16-T10, familiarity guide §3.2, ticket review E16-T10): the Family, Duplicates and
  * Email Thread members of the displayed document in tabs, each with relation, Control Number, name, date and the
  * coding columns the reviewer picks (their current values: who is coded how). Opening a member shows it in the viewer
- * without moving the review cursor. Members the reviewer may not see are never listed (Q-52); the API only counts
- * them, shown as "N restricted items" without any of their metadata. "Show … in the list" runs the relation as a new
+ * without moving the review cursor. Members the reviewer may not see are omitted entirely (Q-52): neither listed
+ * nor counted, so nothing reveals that they exist. "Show … in the list" runs the relation as a new
  * search in Documents.
  */
 @Component({
   selector: 'opp-related-items',
-  imports: [Badge, Button, CdkMenuItemCheckbox, Icon, LoadingState, ...MENU],
+  imports: [Button, CdkMenuItemCheckbox, Icon, LoadingState, ...MENU],
   templateUrl: './related-items.html',
   styleUrl: './related-items.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -139,7 +138,6 @@ export class RelatedItems {
         label: 'Family',
         count: family.members.length,
         rows: family.members.map((m) => this.row(m, familyRelation(m))),
-        restricted: family.restrictedCount,
         pivotId: family.members.length > 1 ? family.familyId : null,
         pivotLabel: 'Show family in the list',
         empty: 'This document is not part of a family.',
@@ -150,7 +148,6 @@ export class RelatedItems {
         label: 'Duplicates',
         count: duplicates.members.length,
         rows: duplicates.members.map((m) => this.row(m, m.isPrimary ? 'Primary' : 'Duplicate')),
-        restricted: duplicates.restrictedCount,
         pivotId: duplicates.duplicateGroupId,
         pivotLabel: 'Show duplicates in the list',
         empty: 'This document has no duplicates.',
@@ -161,7 +158,6 @@ export class RelatedItems {
         label: 'Email Thread',
         count: thread.total,
         rows: thread.members.map((m) => this.row(m, m.isSelf ? 'This document' : 'Thread member')),
-        restricted: thread.restrictedCount,
         pivotId: thread.emailThreadId,
         pivotLabel: 'Show email thread in the list',
         empty: 'This document is not part of an email thread.',
@@ -263,11 +259,6 @@ export class RelatedItems {
   protected showInList(view: TabView): void {
     if (!view.pivotId) return;
     this.pivot.emit({ kind: view.tab, id: view.pivotId, controlNumber: this.hit().controlNumber });
-  }
-
-  protected restrictedText(count: number): string {
-    const n = new Intl.NumberFormat(this.prefs.locale()).format(count);
-    return count === 1 ? '1 restricted item' : `${n} restricted items`;
   }
 
   private load(documentId: string, fields: readonly string[]): void {

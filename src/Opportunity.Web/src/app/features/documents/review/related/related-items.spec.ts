@@ -66,15 +66,13 @@ function relationships(self: number) {
       familyId: 'fam-1',
       parent: mark(1),
       members: [1, 2, 3].map(mark),
-      restrictedCount: 1,
     },
     duplicates: {
       duplicateGroupId: 'dup-1',
       primaryDocumentId: 'doc-1',
       members: [1, 4].map(mark),
-      restrictedCount: 0,
     },
-    thread: { emailThreadId: null, members: [], total: 0, restrictedCount: 0 },
+    thread: { emailThreadId: null, members: [], total: 0 },
   };
 }
 
@@ -123,7 +121,6 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
               newValues: ['1'],
             },
           ],
-          restrictedCount: 1,
           skippedCount: 0,
           mode: previewMode,
           threshold: 1000,
@@ -203,7 +200,7 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
       Record<string, unknown>
     >[];
 
-  it('lists the family with relation, coding status and a restricted count without metadata', async () => {
+  it('lists the family with relation and coding status; hidden members are never mentioned (Q-52)', async () => {
     await setup();
     const asked = api.requests.find((r) => r.url.endsWith('/doc-1/relationships'))!;
     expect(asked.params.get('fields')).toBe('responsiveness');
@@ -220,7 +217,7 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
       ['Attachment 1', 'ACM0000002', 'Message 2.msg', '03/01/2024, 02:30 PM UTC', 'Not Responsive'],
       ['Attachment 2', 'ACM0000003', 'Message 3.msg', '03/01/2024, 02:30 PM UTC', 'Not set'],
     ]);
-    expect(related().textContent).toContain('1 restricted item');
+    expect(related().textContent).not.toMatch(/restricted|hidden/i);
 
     tab('Duplicates').click();
     await settle();
@@ -279,7 +276,7 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
       [...r.querySelectorAll('td')].map((td) => td.textContent?.trim()),
     );
     expect(conflicts).toEqual([['ACM0000002', 'Responsiveness', 'Not Responsive', 'Responsive']]);
-    expect(text).toContain('1 restricted item is not changed.');
+    expect(text).not.toMatch(/restricted|hidden/i);
     await expectNoAxeViolations(dialog()!);
 
     buttonIn(dialog()!, 'Apply to 2 documents').click();

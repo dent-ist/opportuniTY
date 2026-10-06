@@ -43,8 +43,9 @@ export interface DocumentRow {
 }
 
 /**
- * A row standing in for a parent that is not in the list: `orphan` when the parent is not among the results (or not
- * visible to the reviewer), `continued` when the family started on the previous page, before the loaded rows.
+ * A row standing in for a parent that is not in the list: `orphan` when no parent is among the loaded results (the UI
+ * never says why, so it reveals nothing about hidden documents, Q-52), `continued` when the family started on the
+ * previous page, before the loaded rows.
  */
 export interface PlaceholderRow {
   readonly kind: 'placeholder';

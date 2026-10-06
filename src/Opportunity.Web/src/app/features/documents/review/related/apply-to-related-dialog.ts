@@ -5,7 +5,7 @@ import { toApiError } from '../../../../core/api/problem-details';
 import { JobFeed } from '../../../../core/jobs/job-feed';
 import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
-import { Announcer, Badge, Button, DialogLayout, Icon, LoadingState } from '../../../../ui';
+import { Announcer, Button, DialogLayout, Icon, LoadingState } from '../../../../ui';
 import {
   PropagationPreview,
   PropagationScope,
@@ -56,7 +56,7 @@ const SCOPES: readonly { value: PropagationScope; label: string }[] = [
  */
 @Component({
   selector: 'opp-apply-to-related-dialog',
-  imports: [Badge, Button, DialogLayout, Icon, LoadingState, RouterLink],
+  imports: [Button, DialogLayout, Icon, LoadingState, RouterLink],
   templateUrl: './apply-to-related-dialog.html',
   styleUrl: './apply-to-related-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -140,12 +140,6 @@ export class ApplyToRelatedDialog {
 
   protected values(values: readonly string[]): string {
     return values.length ? values.join('; ') : 'Not set';
-  }
-
-  protected restrictedText(n: number): string {
-    return n === 1
-      ? '1 restricted item is not changed.'
-      : `${this.count(n)} restricted items are not changed.`;
   }
 
   /** Counts and conflicts of the chosen fields and scope (nothing changes yet). */
