@@ -21,11 +21,16 @@ public sealed record CodingLayoutSectionResource(Guid SectionId, string Title, I
 /// <param name="IsRequired">Must have a value while visible.</param>
 /// <param name="IsReadOnly">Shown but never editable in this layout.</param>
 /// <param name="VisibleWhen">Shown only while the condition holds; null means always shown.</param>
+/// <param name="ApplyToFamilyByDefault">
+/// Q-48: the coding pane shows "Apply to family" for this field already ticked (never for privilege, confidentiality or
+/// wall fields); propagation then goes through <c>POST …/coding-propagations/preview</c>.
+/// </param>
 public sealed record CodingLayoutFieldResource(
     int FieldId,
     bool IsRequired,
     bool IsReadOnly,
-    CodingLayoutConditionResource? VisibleWhen);
+    CodingLayoutConditionResource? VisibleWhen,
+    bool ApplyToFamilyByDefault = false);
 
 /// <summary>
 /// "Show when field <see cref="FieldId"/> has any of <see cref="ChoiceIds"/>" (choice field) or "… equals

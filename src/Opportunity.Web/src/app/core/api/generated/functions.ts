@@ -131,6 +131,12 @@ export type { SubmitBulkCoding$Params as SubmitBulkCoding$Params } from './fn/co
 export { submitBulkCoding as submitBulkCoding } from './fn/coding/submit-bulk-coding';
 export type { GetBulkCodingReport$Params as GetBulkCodingReport$Params } from './fn/coding/get-bulk-coding-report';
 export { getBulkCodingReport as getBulkCodingReport } from './fn/coding/get-bulk-coding-report';
+export type { GetDocumentRelationships$Params as GetDocumentRelationships$Params } from './fn/coding/get-document-relationships';
+export { getDocumentRelationships as getDocumentRelationships } from './fn/coding/get-document-relationships';
+export type { PreviewCodingPropagation$Params as PreviewCodingPropagation$Params } from './fn/coding/preview-coding-propagation';
+export { previewCodingPropagation as previewCodingPropagation } from './fn/coding/preview-coding-propagation';
+export type { ApplyCodingPropagation$Params as ApplyCodingPropagation$Params } from './fn/coding/apply-coding-propagation';
+export { applyCodingPropagation as applyCodingPropagation } from './fn/coding/apply-coding-propagation';
 export type { ListSnapshots$Params as ListSnapshots$Params } from './fn/snapshots/list-snapshots';
 export { listSnapshots as listSnapshots } from './fn/snapshots/list-snapshots';
 export type { CreateSnapshot$Params as CreateSnapshot$Params } from './fn/snapshots/create-snapshot';

@@ -3,6 +3,7 @@
 
 import { CodingLayoutConditionResource } from '../models/coding-layout-condition-resource';
 export interface CodingLayoutFieldResource {
+  applyToFamilyByDefault?: boolean;
   fieldId: number | string;
   isReadOnly: boolean;
   isRequired: boolean;

@@ -40,5 +40,11 @@ public static class ProblemCodes
 
     public const string RangeNotSatisfiable = "range-not-satisfiable";
 
+    /// <summary>
+    /// A coding propagation preview is older than 10 minutes, or the source's coding changed since: preview again
+    /// (wave-12 contract spelling).
+    /// </summary>
+    public const string PreviewStale = "PREVIEW_STALE";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }

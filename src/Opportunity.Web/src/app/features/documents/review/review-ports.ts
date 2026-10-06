@@ -344,6 +344,8 @@ export interface CodingLayoutField {
   readonly required: boolean;
   readonly readOnly: boolean;
   readonly visibleWhen: CodingCondition | null;
+  /** Q-48: the layout offers this field ticked in Apply to Family / Duplicates. */
+  readonly applyToFamilyByDefault: boolean;
 }
 
 export interface CodingLayoutSection {
@@ -619,6 +621,7 @@ export function layoutsOf(
         ...describe(entry.resource),
         required: f.isRequired,
         readOnly: f.isReadOnly,
+        applyToFamilyByDefault: f.applyToFamilyByDefault ?? false,
         visibleWhen:
           condition && controlling
             ? {
@@ -649,7 +652,13 @@ function allFieldsLayout(catalog: CodingCatalog): CodingLayout {
     .map((f) => f.resource)
     .filter((f) => f.storage === 'coding' && !f.isHidden)
     .sort((a, b) => Number(a.fieldId) - Number(b.fieldId))
-    .map((f) => ({ ...describe(f), required: false, readOnly: false, visibleWhen: null }));
+    .map((f) => ({
+      ...describe(f),
+      required: false,
+      readOnly: false,
+      visibleWhen: null,
+      applyToFamilyByDefault: false,
+    }));
   return {
     id: ALL_FIELDS_LAYOUT,
     name: 'All coding fields',
@@ -661,7 +670,7 @@ function allFieldsLayout(catalog: CodingCatalog): CodingLayout {
 
 function describe(
   f: FieldResource,
-): Omit<CodingLayoutField, 'required' | 'readOnly' | 'visibleWhen'> {
+): Omit<CodingLayoutField, 'required' | 'readOnly' | 'visibleWhen' | 'applyToFamilyByDefault'> {
   return {
     queryName: f.queryName,
     label: f.displayName,

@@ -329,8 +329,11 @@ export class ReviewCoding implements CodingEditor {
         display: r.display,
         empty: isEmpty(r.value),
         securityAffecting: r.field.securityAffecting,
-        // Q-48: security-affecting fields are never ticked in advance.
-        preselected: saved.has(r.field.queryName) && !r.field.securityAffecting,
+        // Q-48: the layout's "apply to family by default" fields, and those saved in this visit, are offered ticked;
+        // security-affecting fields never are.
+        preselected:
+          (r.field.applyToFamilyByDefault || saved.has(r.field.queryName)) &&
+          !r.field.securityAffecting,
       }));
     const { ApplyToRelatedDialog } = await import('../related/apply-to-related-dialog');
     const ref = this.dialogs.open<ApplyToRelatedResult, ApplyToRelatedData>(ApplyToRelatedDialog, {

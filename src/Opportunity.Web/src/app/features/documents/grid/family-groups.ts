@@ -1,14 +1,7 @@
 import type { SearchHit } from '../../../core/api/generated/models';
 
-/**
- * Relationship attributes a search hit may carry (wave-12 contract: additive and nullable on `SearchHit`, #88). Read
- * tolerantly until the generated client has them.
- */
-export interface RelationshipHit extends SearchHit {
-  readonly duplicateGroupId?: string | null;
-  readonly isDuplicatePrimary?: boolean | null;
-  readonly emailThreadId?: string | null;
-}
+/** A search hit with its relationship attributes (`familyId`, `duplicateGroupId`, `isDuplicatePrimary`, `emailThreadId`, #88). */
+export type RelationshipHit = SearchHit;
 
 export function duplicateGroupOf(hit: SearchHit): string | null {
   return (hit as RelationshipHit).duplicateGroupId ?? null;

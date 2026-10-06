@@ -541,12 +541,12 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
                         """
                         INSERT INTO opportunity.coding_layout_field
                             (workspace_id, layout_id, field_id, section_id, sort_order, is_required, is_read_only,
-                             condition_field_id, condition_choice_ids, condition_boolean)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                             condition_field_id, condition_choice_ids, condition_boolean, apply_to_family_default)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                         """,
                         layout.WorkspaceId, layout.LayoutId, field.FieldId, section.SectionId, f, field.IsRequired, field.IsReadOnly,
                         (object?)field.VisibleWhen?.FieldId, field.VisibleWhen?.ChoiceIds is { } ids ? ids.ToArray() : null,
-                        (object?)field.VisibleWhen?.BooleanValue));
+                        (object?)field.VisibleWhen?.BooleanValue, field.ApplyToFamilyByDefault));
                 }
             }
 
@@ -661,7 +661,8 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
 
         await using (var command = tx.Command(
             """
-            SELECT layout_id, section_id, field_id, is_required, is_read_only, condition_field_id, condition_choice_ids, condition_boolean
+            SELECT layout_id, section_id, field_id, is_required, is_read_only, condition_field_id, condition_choice_ids, condition_boolean,
+                   apply_to_family_default
             FROM opportunity.coding_layout_field
             WHERE workspace_id = @ws AND layout_id = ANY(@ids) ORDER BY layout_id, section_id, sort_order
             """))
@@ -682,6 +683,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
                             reader.GetInt32(5),
                             reader.IsDBNull(6) ? null : reader.GetFieldValue<int[]>(6),
                             reader.IsDBNull(7) ? null : reader.GetBoolean(7)),
+                    ApplyToFamilyByDefault = reader.GetBoolean(8),
                 });
             }
         }

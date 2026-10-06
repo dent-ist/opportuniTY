@@ -318,7 +318,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         await using var command = tx.Command(
             """
             SELECT event_id, occurred_at, document_id, field_id, event_kind, prior_value::text, new_value::text,
-                   document_version, actor_id, actor_type, job_id, idempotency_key
+                   document_version, actor_id, actor_type, job_id, idempotency_key, origin_event_id
             FROM opportunity.coding_event
             WHERE workspace_id = @ws
               AND (@doc::uuid IS NULL OR document_id = @doc)
@@ -361,7 +361,8 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                     reader.GetGuid(8),
                     (CodingActorType)reader.GetInt16(9),
                     reader.IsDBNull(10) ? null : reader.GetGuid(10),
-                    reader.GetString(11)));
+                    reader.GetString(11),
+                    reader.IsDBNull(12) ? null : reader.GetGuid(12)));
             }
         }
 
@@ -405,6 +406,70 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
 
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return ids;
+    }
+
+    public async Task<IReadOnlyDictionary<int, Guid>> GetLatestChangeEventIdsAsync(
+        Guid workspaceId, Guid documentId, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(fieldIds);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            """
+            SELECT DISTINCT ON (e.field_id) e.field_id, e.event_id
+            FROM opportunity.coding_event e
+            WHERE e.workspace_id = @ws AND e.document_id = @doc AND e.field_id = ANY(@fields) AND e.event_kind = 1
+            ORDER BY e.field_id, e.document_version DESC, e.occurred_at DESC
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("doc", documentId);
+        command.Parameters.AddWithValue("fields", fieldIds.ToArray());
+        var events = new Dictionary<int, Guid>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                events[reader.GetInt32(0)] = reader.GetGuid(1);
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return events;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<int, FieldCodingState>>> GetFieldStatesAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+        ArgumentNullException.ThrowIfNull(fieldIds);
+        var ids = documentIds.Distinct().ToArray();
+        var fields = fieldIds.Distinct().ToArray();
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var catalog = await FieldCatalogRepository.LoadCatalogAsync(tx, workspaceId, false, fields, false, cancellationToken).ConfigureAwait(false);
+        var live = new List<Guid>(ids.Length);
+        await using (var command = tx.Command(
+            "SELECT document_id FROM opportunity.document_projection_state WHERE workspace_id = @ws AND document_id = ANY(@ids) AND NOT is_deleted"))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("ids", ids);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                live.Add(reader.GetGuid(0));
+            }
+        }
+
+        var known = fields.Where(f => catalog.Find(f) is not null).ToArray();
+        var state = known.Length == 0 || live.Count == 0
+            ? []
+            : await LoadStateAsync(tx, workspaceId, [.. live], known, catalog, cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        var result = live.ToDictionary(id => id, _ => new Dictionary<int, FieldCodingState>());
+        foreach (var ((documentId, fieldId), fieldState) in state)
+        {
+            result[documentId][fieldId] = fieldState;
+        }
+
+        return result.ToDictionary(r => r.Key, r => (IReadOnlyDictionary<int, FieldCodingState>)r.Value);
     }
 
     private static async Task<(CodingWriteResult Result, WritePlan Plan)> ApplyInTransactionAsync(
@@ -470,11 +535,16 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                 var currentValue = fieldState?.Value;
                 var desired = op.Apply(currentValue);
                 if (target.BaselineVersion is { } baseline && fieldState is not null
-                    && fieldState.ChangedAtVersion > baseline && fieldState.ChangedByJobId != request.JobId)
+                    && fieldState.ChangedAtVersion > baseline && (request.JobId is null || fieldState.ChangedByJobId != request.JobId))
                 {
                     skipped.Add(op.Field.FieldId);
-                    plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.BulkSkippedConcurrentEdit,
-                        currentValue, desired, version));
+                    if (request.JobId is not null)
+                    {
+                        // Skip events belong to jobs (V0004 coding_event_skip_ck); an interactive propagation reports them only.
+                        plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.BulkSkippedConcurrentEdit,
+                            currentValue, desired, version));
+                    }
+
                     continue;
                 }
 
@@ -650,14 +720,16 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         }
 
         var single = request.JobId is null && request.Documents.Count == 1;
+        // An interactive propagation keeps its Coding.FamilyApplied action and its source document as the resource.
+        var propagation = request.JobId is null && template.Action == AuditTaxonomy.Coding.FamilyApplied;
         return template with
         {
             EventId = Guid.CreateVersion7(),
             WorkspaceId = request.WorkspaceId,
             Category = AuditTaxonomy.Coding.Category,
-            Action = request.JobId is null ? AuditTaxonomy.Coding.Changed : AuditTaxonomy.Coding.BulkChunkApplied,
-            ResourceType = single ? "Document" : request.JobId is null ? null : "Job",
-            ResourceId = single ? request.Documents[0].DocumentId.ToString() : request.JobId?.ToString(),
+            Action = propagation ? template.Action : request.JobId is null ? AuditTaxonomy.Coding.Changed : AuditTaxonomy.Coding.BulkChunkApplied,
+            ResourceType = propagation ? template.ResourceType : single ? "Document" : request.JobId is null ? null : "Job",
+            ResourceId = propagation ? template.ResourceId : single ? request.Documents[0].DocumentId.ToString() : request.JobId?.ToString(),
             JobId = request.JobId ?? template.JobId,
             Details = details,
         };
@@ -709,7 +781,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             Add("documents", "baseline-required", "Bulk coding needs each document's snapshot BaselineVersion (Q-07).");
         }
 
-        if (request.JobId is null && documents.Any(d => d.BaselineVersion is not null))
+        if (request.JobId is null && request.Actor?.Type != CodingActorType.SystemRule && documents.Any(d => d.BaselineVersion is not null))
         {
             Add("documents", "baseline-without-job", "Baseline versions belong to a job.");
         }
@@ -996,11 +1068,11 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             """
             INSERT INTO opportunity.coding_event
                 (workspace_id, occurred_at, event_id, write_id, document_id, field_id, event_kind, prior_value, new_value,
-                 document_version, actor_id, actor_type, job_id, idempotency_key)
+                 document_version, actor_id, actor_type, job_id, idempotency_key, origin_event_id)
             SELECT $1, now(), u.event_id, $2, u.document_id, u.field_id, u.kind, u.prior::jsonb, u.new::jsonb,
-                   u.version, $10, $11, $12, $13
-            FROM unnest($3::uuid[], $4::uuid[], $5::integer[], $6::smallint[], $7::text[], $8::text[], $9::bigint[])
-                AS u(event_id, document_id, field_id, kind, prior, new, version)
+                   u.version, $10, $11, $12, $13, u.origin
+            FROM unnest($3::uuid[], $4::uuid[], $5::integer[], $6::smallint[], $7::text[], $8::text[], $9::bigint[], $14::uuid[])
+                AS u(event_id, document_id, field_id, kind, prior, new, version, origin)
             """,
             Uuid(ws),
             Uuid(writeId),
@@ -1014,7 +1086,12 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             Uuid(request.Actor.ActorId),
             new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Smallint, Value = (short)request.Actor.Type },
             Nullable(NpgsqlDbType.Uuid, request.JobId),
-            new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = request.IdempotencyKey }));
+            new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = request.IdempotencyKey },
+            new NpgsqlParameter
+            {
+                NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Uuid,
+                Value = events.Select(e => request.OriginEventIds?.TryGetValue(e.FieldId, out var origin) == true ? (Guid?)origin : null).ToArray(),
+            }));
 
         await batch.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -1086,6 +1163,16 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         foreach (var op in request.Operations.OrderBy(o => o.FieldId))
         {
             builder.Append(op.FieldId).Append(':').Append((int)op.Kind).Append(':').Append(op.Value?.ToJsonString()).Append(',');
+        }
+
+        // Origins only when set, so the hashes of writes without them are unchanged.
+        if (request.OriginEventIds is { Count: > 0 } origins)
+        {
+            builder.Append("|o:");
+            foreach (var (fieldId, eventId) in origins.OrderBy(o => o.Key))
+            {
+                builder.Append(fieldId).Append(':').Append(eventId.ToString("D")).Append(',');
+            }
         }
 
         return SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));

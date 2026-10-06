@@ -67,7 +67,8 @@ internal sealed record WorkspaceResources(
     Guid FinalizedProductionId,
     Guid DraftProductionId,
     Guid SpareProductionId,
-    string BatesLabel)
+    string BatesLabel,
+    Guid PropagationPreviewId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -77,7 +78,7 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        "ZZ0000001");
+        "ZZ0000001", Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -87,7 +88,7 @@ internal sealed record WorkspaceResources(
             WorkspaceId, DocumentId, SearchId, BulkSnapshotId, ExportSnapshotId, ExportId, ExportFileId, ImportId, ImportJobId, ImportProfileId,
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
-            ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId,
+            ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -298,6 +299,16 @@ internal sealed class AttackWorld : IAsyncDisposable
         var draftProduction = await ProductionAsync(ws, owner, productionSnapshotId, name + "D");
         var spareProduction = await ProductionAsync(ws, owner, productionSnapshotId, name + "S");
 
+        // Coding propagation (E09-T05): a preview of the reviewable document's family (a family of one: nothing to change),
+        // over a field no other probe codes, so the preview stays current while the suite runs.
+        var propagation = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/coding-propagations/preview", owner, HttpStatusCode.OK,
+            new JsonObject
+            {
+                ["sourceDocumentId"] = document.DocumentId.ToString(),
+                ["scope"] = "familyAndDuplicates",
+                ["fields"] = new JsonArray(fields.Notes),
+            });
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -336,7 +347,8 @@ internal sealed class AttackWorld : IAsyncDisposable
             finalized,
             draftProduction,
             spareProduction,
-            $"{name}0000001");
+            $"{name}0000001",
+            propagation.GetProperty("previewId").GetGuid());
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>

@@ -81,11 +81,12 @@ public static class BulkCodingParameters
 {
     private const string OperationsKey = "operations";
     private const string SecurityKey = "securityAffecting";
+    private const string PropagationKey = "propagation";
 
-    public static JsonObject ToJson(IReadOnlyList<CodingFieldOperation> operations, bool securityAffecting)
+    public static JsonObject ToJson(IReadOnlyList<CodingFieldOperation> operations, bool securityAffecting, PropagationJobParameters? propagation = null)
     {
         ArgumentNullException.ThrowIfNull(operations);
-        return new JsonObject
+        var json = new JsonObject
         {
             [OperationsKey] = new JsonArray([.. operations.Select(o => (JsonNode)new JsonObject
             {
@@ -95,6 +96,53 @@ public static class BulkCodingParameters
             })]),
             [SecurityKey] = securityAffecting,
         };
+        if (propagation is not null)
+        {
+            json[PropagationKey] = new JsonObject
+            {
+                ["previewId"] = propagation.PreviewId.ToString("D"),
+                ["sourceDocumentId"] = propagation.SourceDocumentId.ToString("D"),
+                ["originEventIds"] = new JsonObject([.. propagation.OriginEventIds.OrderBy(o => o.Key).Select(o =>
+                    new KeyValuePair<string, JsonNode?>(o.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), o.Value.ToString("D")))]),
+            };
+        }
+
+        return json;
+    }
+
+    /// <summary>
+    /// The propagation a job runs for (E09-T05), or null for a Mass Edit job; throws <see cref="FormatException"/> when
+    /// malformed.
+    /// </summary>
+    public static PropagationJobParameters? Propagation(JsonObject parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (parameters[PropagationKey] is not { } node)
+        {
+            return null;
+        }
+
+        if (node is not JsonObject item
+            || !Guid.TryParse(item["previewId"]?.GetValue<string>(), out var previewId)
+            || !Guid.TryParse(item["sourceDocumentId"]?.GetValue<string>(), out var sourceId)
+            || item["originEventIds"] is not JsonObject origins)
+        {
+            throw new FormatException("The job's propagation parameters are malformed.");
+        }
+
+        var ids = new Dictionary<int, Guid>();
+        foreach (var (key, value) in origins)
+        {
+            if (!int.TryParse(key, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var fieldId)
+                || !Guid.TryParse(value?.GetValue<string>(), out var eventId))
+            {
+                throw new FormatException("The job's propagation origins are malformed.");
+            }
+
+            ids[fieldId] = eventId;
+        }
+
+        return new PropagationJobParameters(previewId, sourceId, ids);
     }
 
     /// <summary>The operations of <paramref name="parameters"/>; throws <see cref="FormatException"/> when malformed.</summary>
@@ -131,3 +179,10 @@ public static class BulkCodingParameters
     public static bool SecurityAffecting(JsonObject parameters) =>
         parameters?[SecurityKey] is JsonValue value && value.TryGetValue<bool>(out var security) && security;
 }
+
+/// <summary>
+/// A bulk coding job that propagates a document's coding to its family or duplicates (E09-T05): it is authorized with
+/// <c>Coding.Write</c> (the reviewer's own permission, Q-14) instead of <c>Coding.Bulk</c>, and every CodingEvent it
+/// writes references the originating edit of its field.
+/// </summary>
+public sealed record PropagationJobParameters(Guid PreviewId, Guid SourceDocumentId, IReadOnlyDictionary<int, Guid> OriginEventIds);
