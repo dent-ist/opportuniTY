@@ -3,8 +3,8 @@ namespace Opportunity.Contracts.Api;
 /// <summary>
 /// <c>GET /api/v1/workspaces/{workspaceId}/documents/{documentId}/relationships?fields=a,b</c> (E09-T05, wave-12
 /// contract): the document's family, duplicate group and email thread as the caller may see them. Members the caller
-/// may not see are never listed; restriction-class denials only raise <c>restrictedCount</c> (Q-52, Q-11). Documents
-/// behind an ethical wall are not counted either (Q-13).
+/// may not see are omitted entirely: never listed, never counted, and a group with no other visible member reads as
+/// no group (Q-52, Q-13).
 /// </summary>
 public sealed record DocumentRelationshipsResource(
     Guid DocumentId,
@@ -12,20 +12,22 @@ public sealed record DocumentRelationshipsResource(
     RelatedDuplicatesResource Duplicates,
     RelatedThreadResource Thread);
 
-/// <param name="FamilyId">Null when the document is a family of one.</param>
+/// <param name="FamilyId">Null when the caller sees no other member (a family of one).</param>
 /// <param name="Parent">The family's top-level parent when the caller may see it.</param>
 /// <param name="Members">Every visible member in family order (by familySequence), the document itself flagged <c>isSelf</c>.</param>
 public sealed record RelatedFamilyResource(
-    Guid? FamilyId, RelatedDocumentResource? Parent, IReadOnlyList<RelatedDocumentResource> Members, int RestrictedCount);
+    Guid? FamilyId, RelatedDocumentResource? Parent, IReadOnlyList<RelatedDocumentResource> Members);
 
+/// <param name="DuplicateGroupId">Null unless the caller sees another member of the group.</param>
 /// <param name="Members">Visible members, the primary first, then by control number.</param>
 public sealed record RelatedDuplicatesResource(
-    Guid? DuplicateGroupId, Guid? PrimaryDocumentId, IReadOnlyList<RelatedDocumentResource> Members, int RestrictedCount);
+    Guid? DuplicateGroupId, Guid? PrimaryDocumentId, IReadOnlyList<RelatedDocumentResource> Members);
 
+/// <param name="EmailThreadId">Null unless the caller sees another member of the thread.</param>
 /// <param name="Members">The first 200 visible members by document date, then control number.</param>
-/// <param name="Total">Visible members of the thread.</param>
+/// <param name="Total">Visible members of the thread (only documents the caller can see).</param>
 public sealed record RelatedThreadResource(
-    Guid? EmailThreadId, IReadOnlyList<RelatedDocumentResource> Members, int Total, int RestrictedCount);
+    Guid? EmailThreadId, IReadOnlyList<RelatedDocumentResource> Members, int Total);
 
 /// <param name="IsParent">Top-level parent of a family with other visible members.</param>
 /// <param name="IsPrimary">The primary of its duplicate group.</param>
@@ -65,18 +67,18 @@ public enum CodingPropagationModeResource
 public sealed record CodingPropagationPreviewRequest(Guid SourceDocumentId, CodingPropagationScopeResource Scope, IReadOnlyList<int> Fields);
 
 /// <summary>What a propagation would do; apply it with <c>POST …/coding-propagations {previewId}</c> within 10 minutes.</summary>
-/// <param name="TargetCount">Related documents the caller may code (the source excluded).</param>
+/// <param name="TargetCount">Related documents the caller can see and code (the source excluded); hidden ones are never targets.</param>
 /// <param name="ConflictCount">Targets with a different, non-empty value in at least one field.</param>
 /// <param name="Conflicts">The first 100 conflicting (document, field) pairs.</param>
-/// <param name="RestrictedCount">Related documents hidden from the caller by a restriction class (never listed).</param>
-/// <param name="SkippedCount">Targets that already hold the source's values (nothing to change).</param>
+/// <param name="SkippedCount">
+/// Q-07 skips of visible targets. Skips happen only when the propagation is applied, so a preview always reports 0.
+/// </param>
 /// <param name="Mode">job when <paramref name="TargetCount"/> exceeds <paramref name="Threshold"/>.</param>
 public sealed record CodingPropagationPreviewResource(
     Guid PreviewId,
     int TargetCount,
     int ConflictCount,
     IReadOnlyList<CodingPropagationConflictResource> Conflicts,
-    int RestrictedCount,
     int SkippedCount,
     CodingPropagationModeResource Mode,
     int Threshold);
@@ -96,7 +98,8 @@ public sealed record CodingPropagationApplyRequest(Guid PreviewId);
 /// </summary>
 /// <param name="Applied">Documents whose coding changed.</param>
 /// <param name="Skipped">
-/// Targets left unchanged because they were edited after the preview, deleted, or are no longer accessible.
+/// Visible targets left unchanged because someone edited the field after the preview (Q-07). Targets the caller can no
+/// longer see are left alone and not counted.
 /// </param>
 public sealed record CodingPropagationResultResource(
     CodingPropagationModeResource Mode, int? Applied = null, int? Skipped = null, JobResource? Job = null);

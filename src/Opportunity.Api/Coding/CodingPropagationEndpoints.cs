@@ -42,7 +42,7 @@ public sealed class CodingPropagationEndpoints : IApiEndpointModule
             .WithTags(Tag)
             .WithSummary("A document's family, duplicates and email thread, as far as you may see them.")
             .WithDescription(
-                "Members you may not see are never listed; those hidden by a restriction class only add to restrictedCount. " +
+                "Members you may not see are omitted entirely (never listed or counted). " +
                 "fields=a,b (query names, at most 20 coding fields) adds each member's current values (choices by name). " +
                 "The thread lists its first 200 visible members; total counts them all.")
             .RequirePermission(Permission.DocumentView)
@@ -109,10 +109,10 @@ public sealed class CodingPropagationEndpoints : IApiEndpointModule
                 return TypedResults.Ok(new DocumentRelationshipsResource(
                     view.DocumentId,
                     new RelatedFamilyResource(view.FamilyId, view.FamilyParent is { } p ? ToResource(p) : null,
-                        [.. view.FamilyMembers.Select(ToResource)], view.FamilyRestricted),
+                        [.. view.FamilyMembers.Select(ToResource)]),
                     new RelatedDuplicatesResource(view.DuplicateGroupId, view.PrimaryDocumentId,
-                        [.. view.DuplicateMembers.Select(ToResource)], view.DuplicatesRestricted),
-                    new RelatedThreadResource(view.EmailThreadId, [.. view.ThreadMembers.Select(ToResource)], view.ThreadTotal, view.ThreadRestricted)));
+                        [.. view.DuplicateMembers.Select(ToResource)]),
+                    new RelatedThreadResource(view.EmailThreadId, [.. view.ThreadMembers.Select(ToResource)], view.ThreadTotal)));
             case RelationshipsStatus.Invalid:
                 return Problems.Validation(Errors(outcome.Errors ?? []));
             case RelationshipsStatus.Forbidden:
@@ -168,7 +168,6 @@ public sealed class CodingPropagationEndpoints : IApiEndpointModule
                         c.Field.FieldId,
                         CodingValueText.Format(c.Field, c.Current, catalog.ChoicesOf(c.Field.FieldId)),
                         CodingValueText.Format(c.Field, c.New, catalog.ChoicesOf(c.Field.FieldId))))],
-                    outcome.RestrictedCount,
                     outcome.SkippedCount,
                     Mode(preview.Mode),
                     preview.Threshold));

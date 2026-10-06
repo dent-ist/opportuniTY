@@ -8,7 +8,6 @@ export interface CodingPropagationPreviewResource {
   conflicts: Array<CodingPropagationConflictResource>;
   mode: CodingPropagationModeResource;
   previewId: string;
-  restrictedCount: number | string;
   skippedCount: number | string;
   targetCount: number | string;
   threshold: number | string;

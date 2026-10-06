@@ -5,6 +5,5 @@ import { RelatedDocumentResource } from '../models/related-document-resource';
 export interface RelatedThreadResource {
   emailThreadId: string | null;
   members: Array<RelatedDocumentResource>;
-  restrictedCount: number | string;
   total: number | string;
 }

@@ -27,11 +27,9 @@ public sealed record RelationshipRow(
 /// The anchor document's family, duplicate group and email thread (each including the anchor, live documents only,
 /// unauthorized), plus the attachments of other families listed, so a parent flag never relies on a hidden child.
 /// </summary>
-/// <param name="FamilySize">Live members of the anchor's family in PostgreSQL (visible or not).</param>
 /// <param name="ThreadTruncated">The thread has more members than were read.</param>
 public sealed record RelationshipNeighbourhood(
     RelationshipRow Anchor,
-    int FamilySize,
     IReadOnlyList<RelationshipRow> Family,
     IReadOnlyList<RelationshipRow> Duplicates,
     IReadOnlyList<RelationshipRow> Thread,
@@ -54,15 +52,12 @@ public sealed record RelationshipsView(
     Guid? FamilyId,
     RelatedDocument? FamilyParent,
     IReadOnlyList<RelatedDocument> FamilyMembers,
-    int FamilyRestricted,
     Guid? DuplicateGroupId,
     Guid? PrimaryDocumentId,
     IReadOnlyList<RelatedDocument> DuplicateMembers,
-    int DuplicatesRestricted,
     Guid? EmailThreadId,
     IReadOnlyList<RelatedDocument> ThreadMembers,
-    int ThreadTotal,
-    int ThreadRestricted);
+    int ThreadTotal);
 
 public enum RelationshipsStatus
 {
@@ -77,9 +72,9 @@ public sealed record RelationshipsOutcome(RelationshipsStatus Status, Relationsh
 /// <summary>
 /// "Related items" of a document (E09-T05, wave-12 contract): its family, duplicates and email thread for the caller.
 /// The anchor needs <c>Document.View</c> (hidden or unknown → the document 404). Every other member is authorized for
-/// <c>Document.View</c> in one batched PDP call: members the caller may not see are never listed (Q-52); those hidden
-/// by a restriction class only raise the group's restricted count (Q-11), and walled ones are not counted at all
-/// (Q-13: hidden entirely, including counts).
+/// <c>Document.View</c> in one batched PDP call: members the caller may not see are omitted entirely (Q-52, Q-13): never
+/// listed or counted, never making a document a parent, and a group in which the caller sees no other member is
+/// answered exactly like no group at all.
 /// </summary>
 public sealed class DocumentRelationshipService(
     IDocumentRelationshipViewReader reader,
@@ -157,14 +152,21 @@ public sealed class DocumentRelationshipService(
         }
 
         bool Visible(Guid id) => id == anchor.DocumentId || (decisions.TryGetValue(id, out var d) && d.IsAllowed);
-        int Restricted(IEnumerable<RelationshipRow> rows) => rows.Count(r =>
-            r.DocumentId != anchor.DocumentId && decisions.TryGetValue(r.DocumentId, out var d) && !d.IsAllowed
-            && d.Reason == AuthorizationReasons.RestrictionClass);
 
         // Family order as read (family sequence, then the natural control-number order).
         var familyVisible = group.Family.Where(r => Visible(r.DocumentId)).ToList();
-        var duplicatesVisible = anchor.DuplicateGroupId is null ? [] : group.Duplicates.Where(r => Visible(r.DocumentId)).ToList();
-        var threadVisible = anchor.EmailThreadId is null ? [] : group.Thread.Where(r => Visible(r.DocumentId)).ToList();
+        var duplicatesVisible = group.Duplicates.Where(r => Visible(r.DocumentId)).ToList();
+        var threadVisible = group.Thread.Where(r => Visible(r.DocumentId)).ToList();
+        if (duplicatesVisible.Count < 2)
+        {
+            duplicatesVisible = [];
+        }
+
+        if (threadVisible.Count < 2)
+        {
+            threadVisible = [];
+        }
+
         var threadListed = threadVisible.Take(MaxThreadMembers).ToList();
 
         // A parent is a top-level document with another member of its family the caller can see.
@@ -200,22 +202,19 @@ public sealed class DocumentRelationshipService(
         }
 
         var familyMembers = familyVisible.Select(Related).ToList();
-        var parent = group.FamilySize > 1 ? familyMembers.FirstOrDefault(m => m.Row.IsTopLevel) : null;
+        var parent = familyMembers.Count > 1 ? familyMembers.FirstOrDefault(m => m.Row.IsTopLevel) : null;
         var primary = duplicatesVisible.FirstOrDefault(r => r.IsDuplicatePrimary);
         return new RelationshipsOutcome(RelationshipsStatus.Ok, new RelationshipsView(
             anchor.DocumentId,
-            group.FamilySize > 1 ? anchor.FamilyId : null,
+            familyMembers.Count > 1 ? anchor.FamilyId : null,
             parent,
             familyMembers,
-            Restricted(group.Family),
-            anchor.DuplicateGroupId,
+            duplicatesVisible.Count > 0 ? anchor.DuplicateGroupId : null,
             primary?.DocumentId,
             [.. duplicatesVisible.Select(Related)],
-            anchor.DuplicateGroupId is null ? 0 : Restricted(group.Duplicates),
-            anchor.EmailThreadId,
+            threadVisible.Count > 0 ? anchor.EmailThreadId : null,
             [.. threadListed.Select(Related)],
-            threadVisible.Count,
-            anchor.EmailThreadId is null ? 0 : Restricted(group.Thread)));
+            threadVisible.Count));
     }
 
     private static RelationshipsOutcome Invalid(string message) =>

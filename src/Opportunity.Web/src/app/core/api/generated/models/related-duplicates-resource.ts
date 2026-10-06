@@ -6,5 +6,4 @@ export interface RelatedDuplicatesResource {
   duplicateGroupId: string | null;
   members: Array<RelatedDocumentResource>;
   primaryDocumentId: string | null;
-  restrictedCount: number | string;
 }

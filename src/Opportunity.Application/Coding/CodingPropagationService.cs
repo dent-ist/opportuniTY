@@ -24,8 +24,8 @@ namespace Opportunity.Application.Coding;
 /// chunk). Either way every CodingEvent references the source's originating CodingEvent of its field and the action is
 /// audited as <c>Coding.FamilyApplied</c>.
 /// Authorization: <c>Coding.Write</c> (PEP-1), <c>Document.View</c> on the source, <c>Coding.WritePrivilege</c> for
-/// security-affecting fields, and every target is authorized for <c>Coding.Write</c>: targets the caller may not code are
-/// never listed (Q-52); restriction-class denials are counted, walled documents are not (Q-13).
+/// security-affecting fields, and every target is authorized for <c>Coding.Write</c>: documents the caller cannot see
+/// are omitted entirely, never targeted, listed or counted (Q-52, Q-13).
 /// </summary>
 public sealed class CodingPropagationService(
     ICodingPropagationRepository store,
@@ -127,42 +127,29 @@ public sealed class CodingPropagationService(
                 $"More than {options.MaxTargets.ToString("N0", CultureInfo.InvariantCulture)} related documents; code them with Mass Edit instead."));
         }
 
-        // Targets: the related documents the caller may code. Hidden ones are never listed (Q-52); only restriction-class
-        // denials are counted (walled documents stay out of every count, Q-13).
+        // Targets: the related documents the caller may code. Hidden ones are omitted entirely (Q-52, Q-13).
         var targets = new List<PropagationCandidate>(candidates.Candidates.Count);
-        var restrictedCount = 0;
         foreach (var batch in candidates.Candidates.Chunk(Batch))
         {
             var decisions = await authorization.AuthorizeManyAsync(
                 principal, ws, Permission.CodingWrite, [.. batch.Select(c => c.DocumentId)], DenialAudit.Summary, cancellationToken).ConfigureAwait(false);
             foreach (var candidate in batch)
             {
-                if (!decisions.TryGetValue(candidate.DocumentId, out var decision))
-                {
-                    continue;
-                }
-
-                if (decision.IsAllowed)
+                if (decisions.TryGetValue(candidate.DocumentId, out var decision) && decision.IsAllowed)
                 {
                     targets.Add(candidate);
-                }
-                else if (decision.Reason == AuthorizationReasons.RestrictionClass)
-                {
-                    restrictedCount++;
                 }
             }
         }
 
         var conflicts = new List<PropagationConflict>();
         var conflictCount = 0;
-        var unchanged = 0;
         foreach (var batch in targets.Chunk(Batch))
         {
             var states = await coding.GetFieldStatesAsync(ws, [.. batch.Select(t => t.DocumentId)], ids, cancellationToken).ConfigureAwait(false);
             foreach (var target in batch)
             {
                 var state = states.GetValueOrDefault(target.DocumentId);
-                var changes = false;
                 var conflict = false;
                 foreach (var value in values)
                 {
@@ -172,7 +159,6 @@ public sealed class CodingPropagationService(
                         continue;
                     }
 
-                    changes = true;
                     if (current is null || current is System.Text.Json.Nodes.JsonArray { Count: 0 })
                     {
                         continue;
@@ -186,7 +172,6 @@ public sealed class CodingPropagationService(
                 }
 
                 conflictCount += conflict ? 1 : 0;
-                unchanged += changes ? 0 : 1;
             }
         }
 
@@ -215,8 +200,8 @@ public sealed class CodingPropagationService(
             TargetCount = targets.Count,
             ConflictCount = conflictCount,
             Conflicts = conflicts,
-            RestrictedCount = restrictedCount,
-            SkippedCount = unchanged,
+            // Q-07 skips happen only at apply.
+            SkippedCount = 0,
             Catalog = catalog,
         };
     }
@@ -288,6 +273,7 @@ public sealed class CodingPropagationService(
             }
         }
 
+        // Targets the caller can no longer see are left alone and not reported (Q-52); only the audit event counts them.
         var hidden = preview.TargetIds.Count - targets.Count;
         var auditEvent = Audit(principal, preview, CodingPropagationMode.Interactive);
         if (targets.Count == 0)
@@ -295,9 +281,9 @@ public sealed class CodingPropagationService(
             await audit.WriteAsync(auditEvent with
             {
                 WorkspaceId = ws,
-                Details = new Dictionary<string, string?>(auditEvent.Details) { ["Changed"] = "0", ["Skipped"] = Invariant(hidden) },
+                Details = new Dictionary<string, string?>(auditEvent.Details) { ["Changed"] = "0", ["NoLongerAccessible"] = Invariant(hidden) },
             }, cancellationToken).ConfigureAwait(false);
-            return new CodingPropagationApplyOutcome { Status = CodingPropagationStatus.Ok, Mode = CodingPropagationMode.Interactive, Skipped = hidden };
+            return new CodingPropagationApplyOutcome { Status = CodingPropagationStatus.Ok, Mode = CodingPropagationMode.Interactive };
         }
 
         var write = await coding.ApplyAsync(new CodingWriteRequest
@@ -308,19 +294,22 @@ public sealed class CodingPropagationService(
             Documents = targets,
             Operations = operations,
             OriginEventIds = origins,
-            Audit = auditEvent,
+            Audit = auditEvent with
+            {
+                Details = new Dictionary<string, string?>(auditEvent.Details) { ["NoLongerAccessible"] = Invariant(hidden) },
+            },
         }, cancellationToken).ConfigureAwait(false);
         switch (write.Outcome)
         {
             case CodingWriteOutcome.Applied or CodingWriteOutcome.Replayed:
                 var applied = write.Documents.Count(d => d.Outcome == DocumentCodingOutcome.Changed);
-                var skipped = write.Documents.Count(d => d.Outcome is DocumentCodingOutcome.Skipped or DocumentCodingOutcome.NotFound);
+                var skipped = write.Documents.Count(d => d.Outcome == DocumentCodingOutcome.Skipped);
                 return new CodingPropagationApplyOutcome
                 {
                     Status = CodingPropagationStatus.Ok,
                     Mode = CodingPropagationMode.Interactive,
                     Applied = applied,
-                    Skipped = skipped + hidden,
+                    Skipped = skipped,
                 };
             case CodingWriteOutcome.IdempotencyKeyReuse:
                 // Applied before with other targets (access changed in between): preview again.
@@ -346,13 +335,8 @@ public sealed class CodingPropagationService(
 
         if (snapshot.DocumentCount is 0)
         {
-            // Every target was excluded at the freeze (access changed): nothing to run.
-            return new CodingPropagationApplyOutcome
-            {
-                Status = CodingPropagationStatus.Ok,
-                Mode = CodingPropagationMode.Interactive,
-                Skipped = preview.TargetIds.Count,
-            };
+            // Every target was excluded at the freeze (access changed): nothing to run, nothing visible to report.
+            return new CodingPropagationApplyOutcome { Status = CodingPropagationStatus.Ok, Mode = CodingPropagationMode.Interactive };
         }
 
         var submitted = await bulk.SubmitPropagationAsync(

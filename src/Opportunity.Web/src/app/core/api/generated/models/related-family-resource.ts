@@ -6,5 +6,4 @@ export interface RelatedFamilyResource {
   familyId: string | null;
   members: Array<RelatedDocumentResource>;
   parent: null | RelatedDocumentResource;
-  restrictedCount: number | string;
 }

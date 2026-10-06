@@ -38,15 +38,6 @@ public sealed class DocumentRelationshipViewReader(NpgsqlDataSource dataSource) 
             ORDER BY d.family_sequence, d.control_number_sort_key, d.document_id
             LIMIT @limit
             """, cancellationToken, ("key", anchor.FamilyId), ("limit", memberLimit)).ConfigureAwait(false);
-        int familySize;
-        await using (var count = tx.Command(
-            $"SELECT count(*) FROM opportunity.document d {Live} WHERE d.workspace_id = @ws AND d.family_id = @key"))
-        {
-            count.Parameters.AddWithValue("ws", workspaceId);
-            count.Parameters.AddWithValue("key", anchor.FamilyId);
-            familySize = (int)(long)(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
-        }
-
         List<RelationshipRow> duplicates = anchor.DuplicateGroupId is { } group
             ? await ReadAsync(tx,
                 $"""
@@ -98,7 +89,7 @@ public sealed class DocumentRelationshipViewReader(NpgsqlDataSource dataSource) 
         }
 
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return new RelationshipNeighbourhood(anchor, familySize, family, duplicates, thread, truncated, children);
+        return new RelationshipNeighbourhood(anchor, family, duplicates, thread, truncated, children);
     }
 
     private static async Task<List<RelationshipRow>> ReadAsync(

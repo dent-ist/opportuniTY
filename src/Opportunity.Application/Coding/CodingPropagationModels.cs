@@ -151,8 +151,6 @@ public sealed record CodingPropagationPreviewOutcome
     /// <summary>The first <see cref="CodingPropagationService.MaxListedConflicts"/> conflicts.</summary>
     public IReadOnlyList<PropagationConflict> Conflicts { get; init; } = [];
 
-    public int RestrictedCount { get; init; }
-
     public int SkippedCount { get; init; }
 
     public IReadOnlyList<FieldError> Errors { get; init; } = [];

@@ -3245,7 +3245,7 @@
           "Coding"
         ],
         "summary": "A document's family, duplicates and email thread, as far as you may see them.",
-        "description": "Members you may not see are never listed; those hidden by a restriction class only add to restrictedCount. fields=a,b (query names, at most 20 coding fields) adds each member's current values (choices by name). The thread lists its first 200 visible members; total counts them all.",
+        "description": "Members you may not see are omitted entirely (never listed or counted). fields=a,b (query names, at most 20 coding fields) adds each member's current values (choices by name). The thread lists its first 200 visible members; total counts them all.",
         "operationId": "GetDocumentRelationships",
         "parameters": [
           {
@@ -7817,7 +7817,6 @@
           "targetCount",
           "conflictCount",
           "conflicts",
-          "restrictedCount",
           "skippedCount",
           "mode",
           "threshold"
@@ -7849,14 +7848,6 @@
             "items": {
               "$ref": "#/components/schemas/CodingPropagationConflictResource"
             }
-          },
-          "restrictedCount": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
           },
           "skippedCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -12896,8 +12887,7 @@
         "required": [
           "duplicateGroupId",
           "primaryDocumentId",
-          "members",
-          "restrictedCount"
+          "members"
         ],
         "type": "object",
         "properties": {
@@ -12920,14 +12910,6 @@
             "items": {
               "$ref": "#/components/schemas/RelatedDocumentResource"
             }
-          },
-          "restrictedCount": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
           }
         }
       },
@@ -12935,8 +12917,7 @@
         "required": [
           "familyId",
           "parent",
-          "members",
-          "restrictedCount"
+          "members"
         ],
         "type": "object",
         "properties": {
@@ -12962,14 +12943,6 @@
             "items": {
               "$ref": "#/components/schemas/RelatedDocumentResource"
             }
-          },
-          "restrictedCount": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
           }
         }
       },
@@ -12977,8 +12950,7 @@
         "required": [
           "emailThreadId",
           "members",
-          "total",
-          "restrictedCount"
+          "total"
         ],
         "type": "object",
         "properties": {
@@ -12996,14 +12968,6 @@
             }
           },
           "total": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "restrictedCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
