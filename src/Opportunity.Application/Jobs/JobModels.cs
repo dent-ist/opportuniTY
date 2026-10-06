@@ -35,6 +35,12 @@ public sealed record NewJob
 
     public string? CorrelationId { get; init; }
 
+    /// <summary>
+    /// The operator named on the operations CLI when the job is not submitted by a user: <c>Job.Created</c> is then
+    /// attributed to the CLI service with this name, and <see cref="InitiatedBy"/> is <see cref="OperationsActor.CliPrincipalId"/>.
+    /// </summary>
+    public string? OperatorName { get; init; }
+
     public int MaxAttemptsPerChunk { get; init; } = ChunkRetryPolicy.DefaultMaxAttempts;
 
     /// <summary>

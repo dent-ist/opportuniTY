@@ -116,14 +116,15 @@ internal sealed partial class IndexManager(
             throw new InvalidOperationException($"Projection generation {generation} is not known to this build.");
         }
 
-        if (kind == current.Kind && generation == current.Generation)
+        if (kind == current.Kind && generation == current.Generation && kind == IndexPlacementKind.Shared)
         {
             throw new InvalidOperationException(
-                "A rebuild needs a new projection generation or a move to a dedicated index (same-generation targets share the physical name).");
+                "A shared workspace is rebuilt into a new projection generation or moved to a dedicated index (its pool index is shared).");
         }
 
         SharedIndexPool? pool = null;
         int shards;
+        var revision = 0;
         if (kind == IndexPlacementKind.Shared)
         {
             pool = await ReservePoolAsync(generation, current.EstimatedBytes, cancellationToken).ConfigureAwait(false);
@@ -131,8 +132,10 @@ internal sealed partial class IndexManager(
         }
         else
         {
+            // Every dedicated rebuild gets a fresh revision, so a physical name is never reused (E07-T11).
+            revision = Math.Max(current.LastRevision, current.Revision) + 1;
             shards = request.PrimaryShards ?? PlacementPolicy.DedicatedPrimaryShards(options.Placement, current.EstimatedBytes);
-            await EnsureIndexAsync(IndexNames.Physical(Names.DedicatedAlias(workspaceId), generation), generation, shards, alias: null,
+            await EnsureIndexAsync(IndexNames.Physical(Names.DedicatedAlias(workspaceId), generation, revision), generation, shards, alias: null,
                 routingRequired: false, bulkLoad: true, cancellationToken).ConfigureAwait(false);
         }
 
@@ -144,12 +147,15 @@ internal sealed partial class IndexManager(
                 PendingSharedPool = pool?.PoolNumber,
                 PendingGeneration = generation,
                 PendingPrimaryShards = shards,
+                PendingRevision = revision,
+                LastRevision = Math.Max(current.LastRevision, revision),
             },
             cancellationToken).ConfigureAwait(false);
         Forget(workspaceId);
         if (stored is null)
         {
-            await DropTargetAsync(workspaceId, kind, pool?.PoolNumber, generation, current.EstimatedBytes, cancellationToken).ConfigureAwait(false);
+            await DropTargetAsync(workspaceId, new IndexLocation(kind, pool?.PoolNumber, generation, revision), current.EstimatedBytes, cancellationToken)
+                .ConfigureAwait(false);
             throw new IndexPlacementConflictException($"The placement of workspace {workspaceId} changed concurrently.");
         }
 
@@ -166,9 +172,9 @@ internal sealed partial class IndexManager(
             return ToPlacement(Remember(current));
         }
 
-        var (kind, pool, generation, shards) = Pending(current);
+        var (kind, pool, generation, shards, revision) = Pending(current);
         var targetAlias = Names.Alias(workspaceId, kind, pool);
-        var targetIndex = IndexNames.Physical(targetAlias, generation);
+        var targetIndex = IndexNames.Physical(targetAlias, generation, revision);
 
         if (kind == IndexPlacementKind.Dedicated)
         {
@@ -179,13 +185,6 @@ internal sealed partial class IndexManager(
                 $"_cluster/health/{Escape(targetIndex)}?wait_for_status=yellow&timeout=60s", null, cancellationToken).ConfigureAwait(false);
             await connection.SendAsync(HttpMethod.Post, $"{Escape(targetIndex)}/_refresh", null, cancellationToken).ConfigureAwait(false);
             await SwitchAliasAsync(targetAlias, targetIndex, cancellationToken).ConfigureAwait(false);
-            if (current.Kind == IndexPlacementKind.Dedicated)
-            {
-                // The replaced generation stays readable for rollback; the reindex job deletes it after 24 h (R13 step 7).
-                var oldIndex = IndexNames.Physical(Names.DedicatedAlias(workspaceId), current.Generation);
-                await connection.SendAsync(HttpMethod.Put, $"{Escape(oldIndex)}/_settings",
-                    Obj(("index", Obj(("blocks", Obj(("write", true)))))), cancellationToken, HttpStatusCode.NotFound).ConfigureAwait(false);
-            }
         }
         else
         {
@@ -193,7 +192,7 @@ internal sealed partial class IndexManager(
         }
 
         var stored = await store.UpdateAsync(
-            ClearPending(current) with { Kind = kind, SharedPool = pool, Generation = generation, PrimaryShards = shards },
+            ClearPending(current) with { Kind = kind, SharedPool = pool, Generation = generation, PrimaryShards = shards, Revision = revision },
             cancellationToken).ConfigureAwait(false);
         Forget(workspaceId);
         if (stored is null)
@@ -203,10 +202,8 @@ internal sealed partial class IndexManager(
 
         if (current.Kind == IndexPlacementKind.Shared)
         {
-            var leftPool = current.SharedPool!.Value;
-            await ReleasePoolAsync(leftPool, current.EstimatedBytes, cancellationToken).ConfigureAwait(false);
-            await DeleteWorkspaceDocumentsAsync(
-                IndexNames.Physical(Names.SharedAlias(leftPool), current.Generation), workspaceId, cancellationToken).ConfigureAwait(false);
+            // Pool accounting moves now; the workspace's documents leave the old shared index when the job drops it.
+            await ReleasePoolAsync(current.SharedPool!.Value, current.EstimatedBytes, cancellationToken).ConfigureAwait(false);
         }
 
         LogRebuildCompleted(logger, workspaceId, kind, generation);
@@ -222,7 +219,7 @@ internal sealed partial class IndexManager(
             return ToPlacement(Remember(current));
         }
 
-        var (kind, pool, generation, _) = Pending(current);
+        var (kind, pool, generation, _, revision) = Pending(current);
         var stored = await store.UpdateAsync(ClearPending(current), cancellationToken).ConfigureAwait(false);
         Forget(workspaceId);
         if (stored is null)
@@ -230,9 +227,31 @@ internal sealed partial class IndexManager(
             throw new IndexPlacementConflictException($"The placement of workspace {workspaceId} changed concurrently.");
         }
 
-        await DropTargetAsync(workspaceId, kind, pool, generation, current.EstimatedBytes, cancellationToken).ConfigureAwait(false);
+        await DropTargetAsync(workspaceId, new IndexLocation(kind, pool, generation, revision), current.EstimatedBytes, cancellationToken)
+            .ConfigureAwait(false);
         LogRebuildAborted(logger, workspaceId);
         return ToPlacement(Remember(stored));
+    }
+
+    public async Task BlockWritesAsync(Guid workspaceId, IndexLocation location, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        if (location.Kind != IndexPlacementKind.Dedicated)
+        {
+            return;
+        }
+
+        await RequireRetiredAsync(workspaceId, location, cancellationToken).ConfigureAwait(false);
+        await connection.SendAsync(HttpMethod.Put, $"{Escape(PhysicalIndex(workspaceId, location))}/_settings",
+            Obj(("index", Obj(("blocks", Obj(("write", true)))))), cancellationToken, HttpStatusCode.NotFound).ConfigureAwait(false);
+    }
+
+    public async Task DropAsync(Guid workspaceId, IndexLocation location, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        await RequireRetiredAsync(workspaceId, location, cancellationToken).ConfigureAwait(false);
+        await DeleteLocationAsync(workspaceId, location, cancellationToken).ConfigureAwait(false);
+        LogLocationDropped(logger, workspaceId, location.Kind, location.Generation, location.Revision);
     }
 
     async Task<WorkspaceSearchPlacementInfo> IWorkspaceSearchPlacement.PlaceAsync(
@@ -244,22 +263,47 @@ internal sealed partial class IndexManager(
 
     private Placement ToPlacement(WorkspaceIndexPlacement p)
     {
-        var current = Target(p.WorkspaceId, p.Kind, p.SharedPool, p.Generation);
+        var location = LocationOf(p);
+        var pending = PendingLocationOf(p);
+        var current = Target(p.WorkspaceId, location);
         var read = current with { Index = Names.Alias(p.WorkspaceId, p.Kind, p.SharedPool) };
-        IndexTarget[] writes = p.State is IndexPlacementState.Building or IndexPlacementState.Moving
-            ? [current, Target(p.WorkspaceId, p.PendingKind!.Value, p.PendingSharedPool, p.PendingGeneration!.Value)]
-            : [current];
-        return new Placement(p.WorkspaceId, p.Kind, p.Generation, p.State, read, writes);
+        IndexTarget[] writes = pending is not null ? [current, Target(p.WorkspaceId, pending)] : [current];
+        return new Placement(p.WorkspaceId, p.Kind, p.Generation, p.State, read, writes) { Location = location, PendingLocation = pending };
     }
 
-    private IndexTarget Target(Guid workspaceId, IndexPlacementKind kind, int? pool, int generation) => new(
-        IndexNames.Physical(Names.Alias(workspaceId, kind, pool), generation),
-        kind == IndexPlacementKind.Shared ? workspaceId.ToString("D") : null);
+    private static IndexLocation LocationOf(WorkspaceIndexPlacement p) => new(p.Kind, p.SharedPool, p.Generation, p.Revision);
+
+    private static IndexLocation? PendingLocationOf(WorkspaceIndexPlacement p) =>
+        p.State is IndexPlacementState.Building or IndexPlacementState.Moving
+            ? new(p.PendingKind!.Value, p.PendingSharedPool, p.PendingGeneration!.Value, p.PendingRevision ?? 0)
+            : null;
+
+    private IndexTarget Target(Guid workspaceId, IndexLocation location) => new(
+        PhysicalIndex(workspaceId, location),
+        location.Kind == IndexPlacementKind.Shared ? workspaceId.ToString("D") : null)
+    {
+        Generation = location.Generation,
+    };
+
+    private string PhysicalIndex(Guid workspaceId, IndexLocation location) =>
+        IndexNames.Physical(Names.Alias(workspaceId, location.Kind, location.SharedPool), location.Generation,
+            location.Kind == IndexPlacementKind.Dedicated ? location.Revision : 0);
+
+    /// <summary>Only a location the workspace neither reads from nor writes to may be blocked or dropped.</summary>
+    private async Task RequireRetiredAsync(Guid workspaceId, IndexLocation location, CancellationToken cancellationToken)
+    {
+        if (await store.GetAsync(workspaceId, cancellationToken).ConfigureAwait(false) is { } current
+            && (LocationOf(current) == location || PendingLocationOf(current) == location))
+        {
+            throw new IndexPlacementConflictException(
+                $"The {location.Kind} generation {location.Generation} location of workspace {workspaceId} is still in use.");
+        }
+    }
 
     private static WorkspaceSearchPlacementInfo ToInfo(Placement p) => new(p.WorkspaceId, p.Kind, p.Generation, p.State);
 
-    private static (IndexPlacementKind Kind, int? Pool, int Generation, int Shards) Pending(WorkspaceIndexPlacement p) =>
-        (p.PendingKind!.Value, p.PendingSharedPool, p.PendingGeneration!.Value, p.PendingPrimaryShards!.Value);
+    private static (IndexPlacementKind Kind, int? Pool, int Generation, int Shards, int Revision) Pending(WorkspaceIndexPlacement p) =>
+        (p.PendingKind!.Value, p.PendingSharedPool, p.PendingGeneration!.Value, p.PendingPrimaryShards!.Value, p.PendingRevision ?? 0);
 
     private static WorkspaceIndexPlacement ClearPending(WorkspaceIndexPlacement p) => p with
     {
@@ -268,6 +312,7 @@ internal sealed partial class IndexManager(
         PendingSharedPool = null,
         PendingGeneration = null,
         PendingPrimaryShards = null,
+        PendingRevision = null,
     };
 
     private async Task<WorkspaceIndexPlacement?> GetRecordAsync(Guid workspaceId, CancellationToken cancellationToken)
@@ -325,19 +370,26 @@ internal sealed partial class IndexManager(
     private Task ReleasePoolAsync(int pool, long bytes, CancellationToken cancellationToken) =>
         store.AdjustSharedPoolAsync(pool, -1, -bytes, PlacementPolicy.SharedIndexCloseAtBytes(options), cancellationToken);
 
-    private async Task DropTargetAsync(
-        Guid workspaceId, IndexPlacementKind kind, int? pool, int generation, long bytes, CancellationToken cancellationToken)
+    private async Task DropTargetAsync(Guid workspaceId, IndexLocation target, long bytes, CancellationToken cancellationToken)
     {
-        if (kind == IndexPlacementKind.Dedicated)
+        if (target.Kind == IndexPlacementKind.Shared)
         {
-            var index = IndexNames.Physical(Names.DedicatedAlias(workspaceId), generation);
+            await ReleasePoolAsync(target.SharedPool!.Value, bytes, cancellationToken).ConfigureAwait(false);
+        }
+
+        await DeleteLocationAsync(workspaceId, target, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task DeleteLocationAsync(Guid workspaceId, IndexLocation location, CancellationToken cancellationToken)
+    {
+        var index = PhysicalIndex(workspaceId, location);
+        if (location.Kind == IndexPlacementKind.Dedicated)
+        {
             await connection.SendAsync(HttpMethod.Delete, Escape(index), null, cancellationToken, HttpStatusCode.NotFound).ConfigureAwait(false);
             return;
         }
 
-        await ReleasePoolAsync(pool!.Value, bytes, cancellationToken).ConfigureAwait(false);
-        await DeleteWorkspaceDocumentsAsync(IndexNames.Physical(Names.SharedAlias(pool.Value), generation), workspaceId, cancellationToken)
-            .ConfigureAwait(false);
+        await DeleteWorkspaceDocumentsAsync(index, workspaceId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Creates the index from its generation's template; an existing index only gets its alias ensured.</summary>
@@ -460,6 +512,9 @@ internal sealed partial class IndexManager(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Workspace {WorkspaceId} switched to {Kind} generation {Generation}")]
     private static partial void LogRebuildCompleted(ILogger logger, Guid workspaceId, IndexPlacementKind kind, int generation);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dropped the retired {Kind} generation {Generation} revision {Revision} location of workspace {WorkspaceId}")]
+    private static partial void LogLocationDropped(ILogger logger, Guid workspaceId, IndexPlacementKind kind, int generation, int revision);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rebuild of workspace {WorkspaceId} aborted; the current placement keeps serving")]
     private static partial void LogRebuildAborted(ILogger logger, Guid workspaceId);

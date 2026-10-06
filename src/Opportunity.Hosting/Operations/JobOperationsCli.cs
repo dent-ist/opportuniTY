@@ -5,9 +5,12 @@ using Npgsql;
 
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
+using Opportunity.Application.Search.Indexing;
+using Opportunity.Application.Search.Reindex;
 using Opportunity.Core.Jobs;
 using Opportunity.Data.Jobs;
 using Opportunity.Data.Messaging;
+using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
 using Opportunity.Hosting.Health;
 
@@ -15,7 +18,7 @@ namespace Opportunity.Hosting.Operations;
 
 /// <summary>
 /// The operations CLI of the worker image (E06-T06; runbooks in docs/operations): <c>jobs list|show|failures|replay|
-/// replay-outbox|backlog|redispatch|dlq list|dlq show</c>, run instead of the worker host when the first argument is <c>jobs</c>, e.g.
+/// replay-outbox|backlog|redispatch|dlq list|dlq show|reindex|reindex-status</c>, run instead of the worker host when the first argument is <c>jobs</c>, e.g.
 /// <c>docker compose run --rm --no-deps worker jobs failures --workspace &lt;id&gt; --job &lt;id&gt;</c>. It connects
 /// with the runtime login (<c>ConnectionStrings__App</c>, RLS applies) and uses the same PostgreSQL operations as the
 /// API: replay resets rows to Pending for the dispatcher (never re-publishes dead-lettered messages) and is audited as
@@ -28,6 +31,7 @@ public static class JobOperationsCli
     public const int ExitSuccess = 0;
     public const int ExitNotFound = 1;
     public const int ExitUsage = 2;
+    public const int ExitConflict = 3;
 
     private const string Usage =
         """
@@ -43,6 +47,10 @@ public static class JobOperationsCli
           dlq list      [--job <id>] [--limit 50]        dead-lettered and parked messages recorded in PostgreSQL, newest
                                                          first; without --workspace those naming no existing workspace
           dlq show      --message <id>                   one recorded message: headers, error and body
+          reindex       --operator <name> [--placement shared|dedicated] [--generation <n>] [--shards <n>]
+                                                         start an alias-based reindex of the workspace's search index
+                                                         (a Reindex job; the indexing worker drives it; cancel to abort)
+          reindex-status                                 the workspace's recent reindexes: phase, locations, validation
         """;
 
     /// <summary>Runs the CLI when <paramref name="args"/> starts with <see cref="Verb"/>; null otherwise (start the host).</summary>
@@ -111,6 +119,8 @@ public static class JobOperationsCli
             "replay-outbox" => await cli.ReplayOutboxAsync().ConfigureAwait(false),
             "backlog" => await cli.BacklogAsync().ConfigureAwait(false),
             "redispatch" => await cli.RedispatchAsync().ConfigureAwait(false),
+            "reindex" => await cli.ReindexAsync().ConfigureAwait(false),
+            "reindex-status" => await cli.ReindexStatusAsync().ConfigureAwait(false),
             _ => await cli.UsageAsync().ConfigureAwait(false),
         };
     }
@@ -378,6 +388,84 @@ public static class JobOperationsCli
                 $"{chunks.ReturnedToPending} job chunk(s); {chunks.Failed} chunk(s) failed (attempts exhausted), {chunks.Cancelled} cancelled.")
                 .ConfigureAwait(false);
             return ExitSuccess;
+        }
+
+        public async Task<int> ReindexAsync()
+        {
+            if (Operator() is not { } actor)
+            {
+                return await UsageAsync().ConfigureAwait(false);
+            }
+
+            IndexPlacementKind? kind = null;
+            if (options.TryGetValue("placement", out var placement))
+            {
+                if (!Enum.TryParse<IndexPlacementKind>(placement, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
+                {
+                    return await UsageAsync().ConfigureAwait(false);
+                }
+
+                kind = parsed;
+            }
+
+            if (!TryInt("generation", out var generation) || !TryInt("shards", out var shards))
+            {
+                return await UsageAsync().ConfigureAwait(false);
+            }
+
+            var service = new ReindexService(new ReindexStore(dataSource), new JobRepository(dataSource));
+            var outcome = await service.StartAsync(workspaceId, new ReindexRequest(kind, generation, shards),
+                ReindexInitiator.Cli(actor.OperatorName!), idempotencyKey: null, cancellationToken).ConfigureAwait(false);
+            switch (outcome.Status)
+            {
+                case ReindexStartStatus.Ok:
+                    await output.WriteLineAsync(
+                        $"Started reindex job {outcome.Job!.JobId} ({outcome.Job.Status}); follow it with: jobs show --workspace {workspaceId} --job {outcome.Job.JobId}")
+                        .ConfigureAwait(false);
+                    return ExitSuccess;
+                case ReindexStartStatus.Conflict:
+                    await error.WriteLineAsync($"Reindex job {outcome.Run?.JobId} of workspace {workspaceId} is still in progress.").ConfigureAwait(false);
+                    return ExitConflict;
+                default:
+                    await error.WriteLineAsync(string.Join(Environment.NewLine, outcome.Errors.SelectMany(e => e.Value))).ConfigureAwait(false);
+                    return ExitUsage;
+            }
+        }
+
+        public async Task<int> ReindexStatusAsync()
+        {
+            var runs = await new ReindexStore(dataSource).ListAsync(workspaceId, ReindexService.MaxListedRuns, cancellationToken).ConfigureAwait(false);
+            await output.WriteLineAsync("JOB_ID\tPHASE\tSOURCE\tTARGET\tDOCUMENTS\tVALIDATION\tCREATED\tSWITCHED\tRETAIN_UNTIL\tERROR").ConfigureAwait(false);
+            foreach (var r in runs)
+            {
+                await output.WriteLineAsync(string.Join('\t',
+                    r.JobId, r.Phase, Location(r.Source), Location(r.Target), r.DocumentsPlanned?.ToString(CultureInfo.InvariantCulture) ?? "-",
+                    r.Validation?.ToString() ?? "-", Time(r.CreatedAt), Time(r.SwitchedAt), Time(r.RetainUntil), r.Error ?? "-")).ConfigureAwait(false);
+            }
+
+            return ExitSuccess;
+        }
+
+        private static string Location(IndexLocation? location) => location is null
+            ? "-"
+            : string.Create(CultureInfo.InvariantCulture,
+                $"{location.Kind}{(location.SharedPool is { } pool ? $"#{pool}" : string.Empty)} g{location.Generation}{(location.Revision > 0 ? $" r{location.Revision}" : string.Empty)}");
+
+        private bool TryInt(string name, out int? value)
+        {
+            value = null;
+            if (!options.TryGetValue(name, out var text))
+            {
+                return true;
+            }
+
+            if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) || parsed < 1)
+            {
+                return false;
+            }
+
+            value = parsed;
+            return true;
         }
 
         private OperationsActor? Operator() =>

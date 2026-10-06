@@ -309,6 +309,72 @@ public sealed class JobOperationsApiTests(MigrationPostgresFixture postgres)
         (await CliAsync(w, "redispatch", "--workspace", w.Ws.ToString())).Output.Should().StartWith("Returned to Pending:");
     }
 
+    [Fact]
+    public async Task A_search_reindex_starts_from_the_cli_or_with_job_manage_and_one_runs_at_a_time()
+    {
+        await using var w = await World.CreateAsync(postgres);
+        using var client = w.Factory.CreateClient();
+
+        var (code, output, error) = await CliAsync(w, "reindex", "--workspace", w.Ws.ToString(), "--placement", "dedicated");
+        code.Should().Be(JobOperationsCli.ExitUsage, "an operator must be named");
+        (code, output, error) = await CliAsync(w, "reindex", "--workspace", w.Ws.ToString(), "--operator", "ops-oncall", "--placement", "dedicated");
+        code.Should().Be(JobOperationsCli.ExitSuccess, error);
+        output.Should().StartWith("Started reindex job");
+        (await w.Db.Core.ScalarAsync<string>(
+            "SELECT actor_display FROM audit.audit_event WHERE workspace_id = @ws AND action = 'Created' AND actor_id = 'service:ops-cli'",
+            ("ws", w.Ws))).Should().Be("Operations CLI (ops-oncall)");
+
+        (await StartReindexAsync(client, w, w.Reviewer)).StatusCode.Should().Be(HttpStatusCode.Forbidden, "starting needs Job.Manage");
+        using (var unplaced = await StartReindexAsync(client, w, w.Admin))
+        {
+            unplaced.StatusCode.Should().Be(HttpStatusCode.BadRequest, "nothing is indexed yet");
+        }
+
+        // A placement record as index management keeps it (the API reads facts only; no index is touched here).
+        await w.Db.Core.ExecuteAsync(
+            "INSERT INTO opportunity.workspace_index_placement (workspace_id, kind, generation) VALUES (@ws, 2, 2)", ("ws", w.Ws));
+        using (var conflict = await StartReindexAsync(client, w, w.Admin))
+        {
+            conflict.StatusCode.Should().Be(HttpStatusCode.Conflict, await conflict.Content.ReadAsStringAsync(Ct));
+        }
+
+        (code, _, _) = await CliAsync(w, "reindex", "--workspace", w.Ws.ToString(), "--operator", "ops-oncall");
+        code.Should().Be(JobOperationsCli.ExitConflict);
+
+        var status = await JsonAsync(client, HttpMethod.Get, w.Url("/search-index"), w.Auditor, HttpStatusCode.OK);
+        var run = status.GetProperty("reindexes").EnumerateArray().Single();
+        run.GetProperty("phase").GetString().Should().Be("pending");
+        var jobId = run.GetProperty("jobId").GetGuid();
+        (await SendAsync(client, HttpMethod.Get, w.Url("/search-index"), w.Reviewer)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var job = await JsonAsync(client, HttpMethod.Get, w.Url($"/jobs/{jobId}"), w.Admin, HttpStatusCode.OK);
+        job.GetProperty("jobType").GetString().Should().Be("reindex");
+        job.GetProperty("status").GetString().Should().Be("preparing");
+
+        (code, output, _) = await CliAsync(w, "reindex-status", "--workspace", w.Ws.ToString());
+        code.Should().Be(JobOperationsCli.ExitSuccess);
+        output.Should().Contain(jobId.ToString()).And.Contain("Pending");
+
+        // Once the run is no longer in flight (here: aborted before it began), a new reindex may start; a retry with the
+        // same Idempotency-Key returns the same job.
+        await w.Db.Core.ExecuteAsync("UPDATE opportunity.search_reindex SET phase = 10 WHERE workspace_id = @ws", ("ws", w.Ws));
+        using var started = await StartReindexAsync(client, w, w.Admin, "same-key");
+        started.StatusCode.Should().Be(HttpStatusCode.Accepted, await started.Content.ReadAsStringAsync(Ct));
+        using var retried = await StartReindexAsync(client, w, w.Admin, "same-key");
+        retried.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        (await retried.Content.ReadAsStringAsync(Ct)).Should().Be(await started.Content.ReadAsStringAsync(Ct));
+    }
+
+    private static async Task<HttpResponseMessage> StartReindexAsync(HttpClient client, World w, Guid user, string? key = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(w.Url("/search-index/reindexes"), UriKind.Relative))
+        {
+            Content = new StringContent("""{"placement":"dedicated"}""", System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add(TestAuthentication.UserHeader, user.ToString());
+        request.Headers.Add("Idempotency-Key", key ?? Guid.NewGuid().ToString("N"));
+        return await client.SendAsync(request, Ct);
+    }
+
     private static async Task<(int Code, string Output, string Error)> CliAsync(World w, params string[] args)
     {
         using var output = new StringWriter();

@@ -105,6 +105,9 @@ public sealed record OperationsActor
 {
     public const string CliServiceId = "service:ops-cli";
 
+    /// <summary>The <c>InitiatedBy</c> of jobs started from the operations CLI (no user): a fixed, never-issued id.</summary>
+    public static readonly Guid CliPrincipalId = new("00000000-0000-0000-0000-00000000c11a");
+
     private OperationsActor(Guid? userId, string? operatorName)
     {
         UserId = userId;

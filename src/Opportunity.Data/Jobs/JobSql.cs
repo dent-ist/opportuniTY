@@ -240,7 +240,7 @@ internal static class JobSql
 
         var status = locked.Job.Status;
         string? reason = null;
-        if (JobSettlement.Next(status, counters, consecutive) is { } trigger)
+        if (JobSettlement.Next(status, counters, consecutive, JobSettlement.CompletesExplicitly(locked.Job.JobType)) is { } trigger)
         {
             status = JobStateMachine.Transition(status, trigger);
             if (trigger == JobTrigger.Pause)

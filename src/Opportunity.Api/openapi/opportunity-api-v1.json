@@ -4795,6 +4795,166 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/search-index": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "Where the workspace's search projection lives and its recent reindexes.",
+        "description": "Placement facts only (tier, projection generation, revision); physical index names never leave the server.",
+        "operationId": "GetSearchIndexStatus",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchIndexStatusResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/search-index/reindexes": {
+      "post": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "Rebuild the workspace's search projection into a new index; 202 with the job.",
+        "description": "Searches keep working throughout: changes go to both indexes while the new one is filled from the database, it is validated against the database and searches move to it in one alias switch. The previous index stays read-only for the retention period, then is deleted. Cancel the job to abort before the switch. At most one reindex per workspace runs at a time (409).",
+        "operationId": "StartSearchReindex",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SearchReindexRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/snapshots": {
       "post": {
         "tags": [
@@ -17666,6 +17826,60 @@
           }
         }
       },
+      "SearchIndexLocationResource": {
+        "required": [
+          "kind",
+          "projectionGeneration",
+          "revision"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/WorkspaceSearchPlacementKind"
+          },
+          "projectionGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SearchIndexStatusResource": {
+        "required": [
+          "placement",
+          "reindexes"
+        ],
+        "type": "object",
+        "properties": {
+          "placement": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceSearchPlacementResource"
+              }
+            ]
+          },
+          "reindexes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchReindexResource"
+            }
+          }
+        }
+      },
       "SearchOutboxReplayResource": {
         "required": [
           "rowsReplayed"
@@ -17723,6 +17937,242 @@
           },
           "isLast": {
             "type": "boolean"
+          }
+        }
+      },
+      "SearchReindexPhase": {
+        "enum": [
+          "pending",
+          "building",
+          "backfilling",
+          "validating",
+          "switching",
+          "switched",
+          "retaining",
+          "completed",
+          "aborting",
+          "aborted"
+        ]
+      },
+      "SearchReindexRequest": {
+        "type": "object",
+        "properties": {
+          "placement": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceSearchPlacementKind"
+              }
+            ]
+          },
+          "generation": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "primaryShards": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SearchReindexResource": {
+        "required": [
+          "jobId",
+          "phase",
+          "source",
+          "target",
+          "documentsPlanned",
+          "validation",
+          "error",
+          "createdAt",
+          "updatedAt",
+          "switchedAt",
+          "retainUntil",
+          "finishedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SearchReindexPhase"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchIndexLocationResource"
+              }
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchIndexLocationResource"
+              }
+            ]
+          },
+          "documentsPlanned": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "validation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchReindexValidationResource"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "format": "date-time"
+          },
+          "switchedAt": {
+            "format": "date-time"
+          },
+          "retainUntil": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "SearchReindexValidationResource": {
+        "required": [
+          "passed",
+          "fullCheck",
+          "postgresDocuments",
+          "indexDocuments",
+          "documentsCompared",
+          "rechecked",
+          "staleDocuments",
+          "missingDocuments",
+          "unexpectedDocuments",
+          "hashesCompared",
+          "hashMismatches",
+          "failure"
+        ],
+        "type": "object",
+        "properties": {
+          "passed": {
+            "type": "boolean"
+          },
+          "fullCheck": {
+            "type": "boolean"
+          },
+          "postgresDocuments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexDocuments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentsCompared": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "rechecked": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "staleDocuments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "missingDocuments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "unexpectedDocuments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "hashesCompared": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "hashMismatches": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "failure": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
