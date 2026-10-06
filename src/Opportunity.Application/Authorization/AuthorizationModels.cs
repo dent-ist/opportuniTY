@@ -125,6 +125,13 @@ public interface IAuthorizationService
         SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Break-glass activation (Q-45, ADR-015 D6.4): allowed only for the holder of a BreakGlass role assignment in the
+    /// workspace, whether or not an activation is open; other members get Deny, everyone else NotFound (audited).
+    /// </summary>
+    Task<AuthorizationDecision> AuthorizeBreakGlassHolderAsync(
+        SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The workspace-level permissions the principal holds now (for UI affordances only; every operation is still
     /// authorized on its own). <see cref="EffectivePermissions.Permissions"/> is empty unless the decision allows.
     /// </summary>

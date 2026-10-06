@@ -263,6 +263,22 @@ and may relax it only through an amendment to this ADR.
 5. **Self-protection:** no principal may change a role assignment, class grant or wall that applies to themselves,
    or remove a wall that covers them. Another Workspace Admin or an Installation Admin must do it. All changes emit
    `Role/Permission/EthicalWall.Changed` audit events.
+6. *Amendment 2026-10-06 (E05-T06, #51), as implemented:* administration lives under
+   `…/workspaces/{id}/security` (`Workspace.ManageSecurity`, If-Match, audited `Security.*`). A restriction class is
+   bound to choices of security-affecting privilege/confidentiality coding fields (`restriction_class_rule`, V0041);
+   coding, overlays and rule changes re-derive `DocumentRestriction` in their own transaction. Wall scope is explicit
+   documents, custodians (custodian field and All Custodians, case-insensitive) and choices of security-affecting
+   wall fields; coverage is recomputed in the transaction of the scope change, the coding and the import chunk
+   (`opportunity.sync_document_walls`). Every visibility change bumps the projection version and is queued on the
+   security lane; the projection now carries `class:`/`wall:` security tags. Self-protection answers 403
+   `self-protection`; walls list no explicit document the caller cannot see (Q-52) and a replace keeps them.
+   Break-glass is activated at `…/security/break-glass/activations` by the holder of a BreakGlass assignment
+   (`RequireBreakGlassHolder`, MFA step-up); audited with access path `BreakGlass` (category `Security`, not a
+   separate category); the report is the same route with `Audit.Read`; admin notification is not implemented yet.
+   Field-level restrictions (deferred to P2 by Q-11, built at the ticket's request): a custom field restricted to
+   roles is hidden (as if it did not exist) from principals holding none of its visible roles and read-only for
+   those holding none of its editable roles; break-glass never grants a restricted field. The lag of security-lane
+   work is exported as `opportunity.search.security_projection_lag` (Q-10).
 
 ### D7. PostgreSQL row-level security
 

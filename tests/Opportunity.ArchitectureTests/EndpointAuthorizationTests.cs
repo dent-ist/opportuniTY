@@ -57,9 +57,10 @@ public sealed class EndpointAuthorizationTests
 
             if (WorkspaceAuthorizationConventions.IsWorkspaceScoped(endpoint))
             {
-                if (metadata.GetMetadata<RequiredPermissionMetadata>() is null && metadata.GetMetadata<WorkspaceMembershipMetadata>() is null)
+                if (metadata.GetMetadata<RequiredPermissionMetadata>() is null && metadata.GetMetadata<WorkspaceMembershipMetadata>() is null
+                    && metadata.GetMetadata<BreakGlassHolderMetadata>() is null)
                 {
-                    offenders.Add($"{route}: workspace endpoint without RequirePermission or RequireWorkspaceMember");
+                    offenders.Add($"{route}: workspace endpoint without RequirePermission, RequireWorkspaceMember or RequireBreakGlassHolder");
                 }
 
                 continue;

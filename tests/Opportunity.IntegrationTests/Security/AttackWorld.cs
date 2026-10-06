@@ -68,7 +68,10 @@ internal sealed record WorkspaceResources(
     Guid DraftProductionId,
     Guid SpareProductionId,
     string BatesLabel,
-    Guid PropagationPreviewId)
+    Guid PropagationPreviewId,
+    Guid WallId,
+    Guid SpareWallId,
+    Guid BreakGlassActivationId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -78,7 +81,7 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        "ZZ0000001", Guid.CreateVersion7());
+        "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -89,6 +92,7 @@ internal sealed record WorkspaceResources(
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
+            WallId, SpareWallId, BreakGlassActivationId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -309,6 +313,30 @@ internal sealed class AttackWorld : IAsyncDisposable
                 ["fields"] = new JsonArray(fields.Notes),
             });
 
+        // Document security (E05-T06): an ethical wall and a spare (members and scope never touch the owner or the probes'
+        // documents), the owner's BreakGlass assignment (activation is MFA-gated) and another user's open activation.
+        var wallMember = await Db.CreateUserAsync();
+        JsonObject Wall(string wallName) => new()
+        {
+            ["name"] = wallName,
+            ["members"] = new JsonObject { ["userIds"] = new JsonArray(wallMember.ToString()), ["groups"] = new JsonArray() },
+            ["scope"] = new JsonObject { ["documentIds"] = new JsonArray(), ["custodians"] = new JsonArray("nobody " + name), ["choices"] = new JsonArray() },
+        };
+        var wall = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/security/walls", owner, HttpStatusCode.Created, Wall($"Wall {name}"));
+        var spareWall = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/security/walls", owner, HttpStatusCode.Created, Wall($"Spare wall {name}"));
+        await Db.Core.ExecuteAsync(
+            "INSERT INTO opportunity.workspace_role_assignment (workspace_id, assignment_id, role, user_id) VALUES (@ws, @id, 'BreakGlass', @user)",
+            ("ws", ws), ("id", Guid.CreateVersion7()), ("user", owner));
+        var glassUser = await Db.CreateUserAsync();
+        await Db.AssignAsync(ws, WorkspaceRole.BreakGlass, glassUser);
+        var activationId = Guid.CreateVersion7();
+        await Db.Core.ExecuteAsync(
+            """
+            INSERT INTO opportunity.break_glass_activation (workspace_id, activation_id, user_id, reason, activated_at, expires_at)
+            VALUES (@ws, @id, @user, 'Attack suite probe', now(), now() + interval '4 hours')
+            """,
+            ("ws", ws), ("id", activationId), ("user", glassUser));
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -348,7 +376,10 @@ internal sealed class AttackWorld : IAsyncDisposable
             draftProduction,
             spareProduction,
             $"{name}0000001",
-            propagation.GetProperty("previewId").GetGuid());
+            propagation.GetProperty("previewId").GetGuid(),
+            wall.GetProperty("wallId").GetGuid(),
+            spareWall.GetProperty("wallId").GetGuid(),
+            activationId);
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>

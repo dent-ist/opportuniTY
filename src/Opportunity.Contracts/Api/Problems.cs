@@ -46,5 +46,11 @@ public static class ProblemCodes
     /// </summary>
     public const string PreviewStale = "PREVIEW_STALE";
 
+    /// <summary>
+    /// ADR-015 D6.5: nobody changes a role, class grant or ethical wall that applies to themselves; another administrator
+    /// must make the change.
+    /// </summary>
+    public const string SelfProtection = "self-protection";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }

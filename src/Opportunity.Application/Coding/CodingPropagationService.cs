@@ -72,6 +72,7 @@ public sealed class CodingPropagationService(
 
         var catalog = await fields.GetCatalogAsync(ws, cancellationToken: cancellationToken).ConfigureAwait(false);
         var restricted = await fieldAccess.RestrictedFieldIdsAsync(ws, principal, catalog, cancellationToken).ConfigureAwait(false);
+        var readOnly = await fieldAccess.ReadOnlyFieldIdsAsync(ws, principal, catalog, cancellationToken).ConfigureAwait(false);
         var errors = new List<FieldError>();
         var definitions = new List<FieldDefinition>(fieldIds.Count);
         foreach (var fieldId in fieldIds)
@@ -84,6 +85,10 @@ public sealed class CodingPropagationService(
             else if (field.Storage != FieldStorage.Coding)
             {
                 errors.Add(new FieldError(field.Key, "not-coding-field", $"{field.Name} is imported data and cannot be propagated."));
+            }
+            else if (readOnly.Contains(fieldId))
+            {
+                errors.Add(new FieldError(field.Key, "read-only-field", $"{field.Name} is read-only for your roles."));
             }
             else
             {

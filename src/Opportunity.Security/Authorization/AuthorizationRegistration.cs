@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
+using Opportunity.Application.Fields;
+using Opportunity.Application.Security;
 using IAuthorizationService = Opportunity.Application.Authorization.IAuthorizationService;
 
 namespace Opportunity.Security.Authorization;
@@ -20,6 +22,21 @@ public static class AuthorizationRegistration
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<IAuthorizationService, AuthorizationService>();
+
+        // Field-level restrictions (E05-T06): the stored policy wherever the security store exists. It replaces the
+        // unrestricted default that endpoint and worker modules register, whichever ran first; a filter registered
+        // explicitly (tests) is kept.
+        for (var i = services.Count - 1; i >= 0; i--)
+        {
+            if (services[i].ServiceType == typeof(IFieldAccessFilter) && services[i].ImplementationType == typeof(UnrestrictedFieldAccess))
+            {
+                services.RemoveAt(i);
+            }
+        }
+
+        services.TryAddSingleton<IFieldAccessFilter>(sp => sp.GetService<IDocumentSecurityStore>() is { } store
+            ? new StoredFieldAccess(store)
+            : new UnrestrictedFieldAccess());
 
         services.AddOptions<InstallationAuthorizationOptions>().BindConfiguration(InstallationAuthorizationOptions.SectionName);
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IAuthorizationHandler, InstallationPermissionHandler>());

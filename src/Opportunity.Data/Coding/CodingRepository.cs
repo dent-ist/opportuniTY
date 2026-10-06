@@ -592,10 +592,14 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             await WriteAsync(tx, request, writeId, plan, cancellationToken).ConfigureAwait(false);
         }
 
-        if (restrictions is not null && plan.SecurityDocuments.Count > 0)
+        if (plan.SecurityDocuments.Count > 0)
         {
-            plan.RestrictionChanges = await RecomputeRestrictionsAsync(tx, ws, [.. plan.SecurityDocuments.Order()], restrictions, cancellationToken)
-                .ConfigureAwait(false);
+            // The stored class rules (V0041) together with any configured binding; then the walls whose scope is a
+            // security-affecting choice (ADR-015 D6.2). Both commit with the coding (§24 rule 1).
+            Guid[] securityDocuments = [.. plan.SecurityDocuments.Order()];
+            var binding = await DocumentSecuritySql.BindingAsync(tx, restrictions, cancellationToken).ConfigureAwait(false);
+            plan.RestrictionChanges = await RecomputeRestrictionsAsync(tx, ws, securityDocuments, binding, cancellationToken).ConfigureAwait(false);
+            plan.WallChanges = await DocumentSecuritySql.SyncWallsAsync(tx, securityDocuments, cancellationToken).ConfigureAwait(false);
         }
 
         if (request.Audit is { } audit)
@@ -635,6 +639,44 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         }
 
         return await DocumentRestrictionSql.SyncAsync(tx, ws, desired, bound, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Re-derives the stored-rule class <paramref name="classKey"/> for every document of the workspace (after its rules
+    /// changed or it was created): documents coded with any of its choices carry it, no other document does.
+    /// </summary>
+    internal static async Task<IReadOnlyList<Guid>> ResyncRestrictionClassAsync(WorkspaceTransaction tx, string classKey, CancellationToken cancellationToken)
+    {
+        var changed = new List<Guid>();
+        await using var command = tx.Command(
+            """
+            WITH desired AS (
+                SELECT DISTINCT c.document_id
+                FROM opportunity.restriction_class_rule r
+                JOIN opportunity.document_coding_choice c
+                  ON c.workspace_id = r.workspace_id AND c.field_id = r.field_id AND c.choice_id = r.choice_id
+                WHERE r.workspace_id = @ws AND r.class_key = @class),
+            removed AS (
+                DELETE FROM opportunity.document_restriction d
+                WHERE d.workspace_id = @ws AND d.class_key = @class
+                  AND NOT EXISTS (SELECT FROM desired x WHERE x.document_id = d.document_id)
+                RETURNING d.document_id),
+            added AS (
+                INSERT INTO opportunity.document_restriction (workspace_id, document_id, class_key)
+                SELECT @ws, x.document_id, @class FROM desired x
+                ON CONFLICT DO NOTHING
+                RETURNING document_id)
+            SELECT document_id FROM removed UNION SELECT document_id FROM added ORDER BY 1
+            """);
+        command.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        command.Parameters.AddWithValue("class", classKey);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            changed.Add(reader.GetGuid(0));
+        }
+
+        return changed;
     }
 
     /// <summary>The documents whose version this write bumped, with the version it wrote.</summary>
@@ -708,6 +750,11 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         {
             details["RestrictionClasses.Added"] = string.Join(',', plan.RestrictionChanges.Where(c => c.Added).Select(c => c.ClassKey).Distinct().Order(StringComparer.Ordinal));
             details["RestrictionClasses.Removed"] = string.Join(',', plan.RestrictionChanges.Where(c => !c.Added).Select(c => c.ClassKey).Distinct().Order(StringComparer.Ordinal));
+        }
+
+        if (plan.WallChanges.Count > 0)
+        {
+            details["Walls.CoverageChanged"] = Invariant(plan.WallChanges.Count);
         }
 
         if (results.Count == 1)
@@ -1234,5 +1281,8 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         public HashSet<Guid> SecurityDocuments { get; } = [];
 
         public IReadOnlyList<RestrictionClassChange> RestrictionChanges { get; set; } = [];
+
+        /// <summary>Documents whose wall coverage changed with this write (wall scopes on security-affecting choices).</summary>
+        public IReadOnlyList<Guid> WallChanges { get; set; } = [];
     }
 }

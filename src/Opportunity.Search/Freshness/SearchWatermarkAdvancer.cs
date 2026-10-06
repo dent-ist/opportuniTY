@@ -3,6 +3,7 @@ using System.Diagnostics.Metrics;
 
 using Microsoft.Extensions.Logging;
 
+using Opportunity.Application.Messaging;
 using Opportunity.Application.Search;
 using Opportunity.Application.Telemetry;
 
@@ -82,7 +83,9 @@ public sealed partial class SearchWatermarkAdvancer
 
                 try
                 {
-                    readings[workspaceId] = await _store.AdvanceAsync(workspaceId, applied, cancellationToken).ConfigureAwait(false);
+                    var advanced = await _store.AdvanceAsync(workspaceId, applied, cancellationToken).ConfigureAwait(false);
+                    RecordLag(advanced.Reflected);
+                    readings[workspaceId] = advanced;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -93,6 +96,30 @@ public sealed partial class SearchWatermarkAdvancer
 
         _current = readings.ToFrozenDictionary();
         return _current;
+    }
+
+    /// <summary>
+    /// Commit-to-searchable per lane, and the Q-10 security-projection lag (SLO ≤ 5 s p95) for the security lanes: the
+    /// time from the commit of a security-affecting change to the refresh that made it visible to search.
+    /// </summary>
+    private void RecordLag(IReadOnlyList<ReflectedWork> reflected)
+    {
+        if (_metrics is null || reflected.Count == 0)
+        {
+            return;
+        }
+
+        var all = _metrics.Histogram(OpportunityMetricCatalog.SearchCommitToSearchable);
+        var security = _metrics.Histogram(OpportunityMetricCatalog.SecurityProjectionLag);
+        foreach (var work in reflected)
+        {
+            var lane = new KeyValuePair<string, object?>(TelemetryAttributes.Lane, DispatchMetrics.LaneName(work.Lane));
+            all.Record(work.Lag.TotalSeconds, lane);
+            if (work.Lane is MessageLane.Security or MessageLane.SecurityBulk)
+            {
+                security.Record(work.Lag.TotalSeconds, lane);
+            }
+        }
     }
 
     private IEnumerable<Measurement<T>> Observe<T>(Func<SearchFreshnessReading, T> value)
