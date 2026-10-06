@@ -61,8 +61,8 @@
                 Applies to <strong>{{ count(p.targetCount) }}</strong>
                 {{ p.targetCount === 1 ? 'document' : 'documents' }}.
                 @if (p.conflictCount > 0) {
-                  <strong>{{ count(p.conflictCount) }}</strong> already
-                  {{ p.conflictCount === 1 ? 'is' : 'are' }} coded differently and will be
+                  <strong>{{ count(p.conflictCount) }}</strong>
+                  {{ p.conflictCount === 1 ? 'is' : 'are' }} already coded differently and will be
                   replaced.
                 } @else {
                   None is coded differently.
