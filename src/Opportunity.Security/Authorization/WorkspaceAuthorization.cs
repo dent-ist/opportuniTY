@@ -25,6 +25,15 @@ public sealed class WorkspaceMembershipMetadata
     public static WorkspaceMembershipMetadata Instance { get; } = new();
 }
 
+/// <summary>
+/// The endpoint is for holders of a BreakGlass role assignment (Q-45 activation), who are not members until they
+/// activate: PEP-1 asks the PDP for the assignment instead of membership; other members get 403, anyone else the non-member 404.
+/// </summary>
+public sealed class BreakGlassHolderMetadata
+{
+    public static BreakGlassHolderMetadata Instance { get; } = new();
+}
+
 /// <summary>The outcome of PEP-1 for the current request, for handlers that authorize resources further.</summary>
 public sealed record WorkspaceAccess(Guid WorkspaceId, SecurityPrincipal Principal);
 
@@ -48,6 +57,15 @@ public static class WorkspaceAuthorizationConventions
     {
         ArgumentNullException.ThrowIfNull(builder);
         builder.Add(endpoint => endpoint.Metadata.Add(WorkspaceMembershipMetadata.Instance));
+        return builder;
+    }
+
+    /// <summary>Requires a BreakGlass role assignment in the route's workspace (not membership); other members 403, others 404.</summary>
+    public static TBuilder RequireBreakGlassHolder<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.WithMetadata(BreakGlassHolderMetadata.Instance);
         return builder;
     }
 
@@ -117,6 +135,10 @@ internal sealed partial class WorkspaceAuthorizationMiddleware(RequestDelegate n
         if (endpoint.Metadata.GetMetadata<RequiredPermissionMetadata>() is { } required)
         {
             decision = await authorization.AuthorizeAsync(principal, workspaceId, required.Permission, context.RequestAborted).ConfigureAwait(false);
+        }
+        else if (endpoint.Metadata.GetMetadata<BreakGlassHolderMetadata>() is not null)
+        {
+            decision = await authorization.AuthorizeBreakGlassHolderAsync(principal, workspaceId, context.RequestAborted).ConfigureAwait(false);
         }
         else if (endpoint.Metadata.GetMetadata<WorkspaceMembershipMetadata>() is not null)
         {

@@ -31,6 +31,12 @@ public interface IJobRepository
     /// </summary>
     Task<JobTransitionResult> FailAsync(Guid workspaceId, Guid jobId, string reason, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Running → Completed for a job that completes explicitly (<see cref="JobSettlement.CompletesExplicitly"/>): every
+    /// chunk Committed and no item errors, else NotAllowed. <paramref name="reason"/> becomes the status reason.
+    /// </summary>
+    Task<JobTransitionResult> CompleteAsync(Guid workspaceId, Guid jobId, string? reason = null, CancellationToken cancellationToken = default);
+
     /// <summary>Running → Paused. Running chunks return to Pending at their next fence.</summary>
     Task<JobTransitionResult> PauseAsync(Guid workspaceId, Guid jobId, string reason, CancellationToken cancellationToken = default);
 

@@ -17,7 +17,7 @@ public sealed class IndexPlacementStore(NpgsqlDataSource dataSource) : IIndexPla
         """
         workspace_id, kind, shared_pool, generation, primary_shards, state, pending_kind, pending_shared_pool,
         pending_generation, pending_primary_shards, dedicated_requested, estimated_documents, estimated_bytes,
-        row_version, updated_at
+        row_version, updated_at, revision, pending_revision, last_revision
         """;
 
     private const string PoolColumns = "pool_number, generation, primary_shards, closed, workspace_count, assigned_bytes";
@@ -43,8 +43,10 @@ public sealed class IndexPlacementStore(NpgsqlDataSource dataSource) : IIndexPla
             $"""
             INSERT INTO opportunity.workspace_index_placement
                 (workspace_id, kind, shared_pool, generation, primary_shards, state, pending_kind, pending_shared_pool,
-                 pending_generation, pending_primary_shards, dedicated_requested, estimated_documents, estimated_bytes)
-            VALUES (@ws, @kind, @pool, @gen, @shards, @state, @pkind, @ppool, @pgen, @pshards, @dedicated, @docs, @bytes)
+                 pending_generation, pending_primary_shards, dedicated_requested, estimated_documents, estimated_bytes,
+                 revision, pending_revision, last_revision)
+            VALUES (@ws, @kind, @pool, @gen, @shards, @state, @pkind, @ppool, @pgen, @pshards, @dedicated, @docs, @bytes,
+                    @revision, @prevision, @last_revision)
             ON CONFLICT (workspace_id) DO NOTHING
             RETURNING {PlacementColumns}
             """))
@@ -77,7 +79,8 @@ public sealed class IndexPlacementStore(NpgsqlDataSource dataSource) : IIndexPla
                SET kind = @kind, shared_pool = @pool, generation = @gen, primary_shards = @shards, state = @state,
                    pending_kind = @pkind, pending_shared_pool = @ppool, pending_generation = @pgen,
                    pending_primary_shards = @pshards, dedicated_requested = @dedicated, estimated_documents = @docs,
-                   estimated_bytes = @bytes, row_version = row_version + 1, updated_at = now()
+                   estimated_bytes = @bytes, revision = @revision, pending_revision = @prevision, last_revision = @last_revision,
+                   row_version = row_version + 1, updated_at = now()
              WHERE workspace_id = @ws AND row_version = @version
             RETURNING {PlacementColumns}
             """);
@@ -176,6 +179,9 @@ public sealed class IndexPlacementStore(NpgsqlDataSource dataSource) : IIndexPla
         command.Parameters.AddWithValue("dedicated", p.DedicatedRequested);
         command.Parameters.AddWithValue("docs", p.EstimatedDocuments);
         command.Parameters.AddWithValue("bytes", p.EstimatedBytes);
+        command.Parameters.AddWithValue("revision", p.Revision);
+        command.Parameters.AddWithValue("prevision", (object?)p.PendingRevision ?? DBNull.Value);
+        command.Parameters.AddWithValue("last_revision", Math.Max(p.LastRevision, Math.Max(p.Revision, p.PendingRevision ?? 0)));
     }
 
     private static async Task<WorkspaceIndexPlacement?> ReadPlacementAsync(NpgsqlCommand command, CancellationToken cancellationToken)
@@ -203,6 +209,9 @@ public sealed class IndexPlacementStore(NpgsqlDataSource dataSource) : IIndexPla
             EstimatedBytes = reader.GetInt64(12),
             RowVersion = reader.GetInt64(13),
             UpdatedAt = reader.GetFieldValue<DateTimeOffset>(14),
+            Revision = reader.GetInt32(15),
+            PendingRevision = reader.IsDBNull(16) ? null : reader.GetInt32(16),
+            LastRevision = reader.GetInt32(17),
         };
     }
 

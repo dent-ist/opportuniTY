@@ -133,7 +133,7 @@ public sealed class FieldEndpoints : IApiEndpointModule
                 : null))];
     }
 
-    private static FieldCapabilitiesResource ToResource(FieldCapabilities c) => new(
+    internal static FieldCapabilitiesResource ToResource(FieldCapabilities c) => new(
         c.HasFlag(FieldCapabilities.Sortable),
         c.HasFlag(FieldCapabilities.Filterable),
         c.HasFlag(FieldCapabilities.Rangeable),
@@ -152,7 +152,9 @@ public static class FieldEndpointRegistration
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<IFieldCatalogRepository, FieldCatalogRepository>();
         services.TryAddSingleton<IFieldAccessFilter, UnrestrictedFieldAccess>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IApiEndpointModule, FieldEndpoints>();
+        services.AddSingleton<IApiEndpointModule, FieldAdminEndpoints>();
         return services;
     }
 }

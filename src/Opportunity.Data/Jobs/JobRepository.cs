@@ -77,7 +77,8 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
         var info = await JobSql.ReadJobAsync(tx, job.WorkspaceId, jobId, cancellationToken).ConfigureAwait(false);
         if (created)
         {
-            await JobSql.AuditAsync(tx, info!, AuditTaxonomy.Job.Created, info!.InitiatedBy, cancellationToken).ConfigureAwait(false);
+            await JobSql.AuditAsync(tx, info!, AuditTaxonomy.Job.Created, job.OperatorName is null ? info!.InitiatedBy : (Guid?)null, cancellationToken,
+                operatorName: job.OperatorName).ConfigureAwait(false);
             if (job.SubmissionAudit is { } submission)
             {
                 await AuditSql.InsertAsync(tx, submission with
@@ -159,6 +160,26 @@ public sealed class JobRepository(NpgsqlDataSource dataSource) : IJobRepository
 
         await JobSql.AuditAsync(tx, locked!.Job, AuditTaxonomy.Job.Failed, null, cancellationToken, AuditOutcome.Failure, "JobFailed")
             .ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new JobTransitionResult(JobTransitionOutcome.Applied, status);
+    }
+
+    public async Task<JobTransitionResult> CompleteAsync(Guid workspaceId, Guid jobId, string? reason = null, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var locked = await JobSql.LockJobAsync(tx, workspaceId, jobId, cancellationToken).ConfigureAwait(false);
+        if (Refuse(locked, JobTrigger.Complete) is { } refused)
+        {
+            return refused;
+        }
+
+        var counters = locked!.Job.Counters;
+        if (!counters.AllChunksSettled || counters.ChunksCommitted != counters.ChunksTotal || counters.ItemsFailed > 0)
+        {
+            return new JobTransitionResult(JobTransitionOutcome.NotAllowed, locked.Job.Status);
+        }
+
+        var status = await JobSql.TransitionJobAsync(tx, locked, JobTrigger.Complete, reason, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new JobTransitionResult(JobTransitionOutcome.Applied, status);
     }

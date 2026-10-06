@@ -51,6 +51,28 @@ public static class PolicyEvaluator
             : AuthorizationDecision.Deny(AuthorizationReasons.PermissionNotGranted);
     }
 
+    /// <summary>
+    /// May the principal open a break-glass activation here (Q-45)? Only the holder of a BreakGlass role assignment
+    /// (directly or through a group). Members without it get Deny; everyone else the same NotFound as a non-member.
+    /// </summary>
+    public static AuthorizationDecision EvaluateBreakGlassHolder(PrincipalSecurityState? state)
+    {
+        if (state is null || state.WorkspaceStatus is WorkspaceStatus.Deleting or WorkspaceStatus.Purged)
+        {
+            return AuthorizationDecision.NotFound(AuthorizationReasons.WorkspaceNotFound);
+        }
+
+        if (state.Roles.Contains(WorkspaceRole.BreakGlass))
+        {
+            return AuthorizationDecision.Allow();
+        }
+
+        // A member knows the workspace exists: 403. Anyone else gets the non-member 404.
+        return state.Roles.Count > 0
+            ? AuthorizationDecision.Deny(AuthorizationReasons.PermissionNotGranted)
+            : AuthorizationDecision.NotFound(AuthorizationReasons.NotAMember);
+    }
+
     /// <summary>All steps for one document; <paramref name="document"/> null means it does not exist.</summary>
     public static AuthorizationDecision EvaluateDocument(
         PrincipalSecurityState? state, Permission permission, DocumentSecurityAttributes? document, DateTimeOffset now)

@@ -25,6 +25,11 @@ internal sealed class SearchQueryPlanner(ISearchFieldCatalogSource catalogs, ISe
         ArgumentNullException.ThrowIfNull(ast);
         ArgumentNullException.ThrowIfNull(context);
         var catalog = await catalogs.GetAsync(context.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        if (context.HiddenFieldIds is { Count: > 0 } hidden)
+        {
+            catalog = catalog.Without(hidden);
+        }
+
         var plan = new Plan(SearchFieldResolver.Create(catalog, context.ProjectionGeneration, context.FieldOptions), context);
 
         plan.Collect(ast, null);

@@ -32,6 +32,11 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
     import('./features/workspace-admin/workspace-setup-page').then((m) => m.WorkspaceSetupPage),
   'highlight-sets': () =>
     import('./features/highlight-sets/highlight-sets-page').then((m) => m.HighlightSetsPage),
+  // Field and coding layout administration (E04-T06).
+  fields: () => import('./features/field-admin/fields-page').then((m) => m.FieldsPage),
+  choices: () => import('./features/field-admin/choices-page').then((m) => m.ChoicesPage),
+  'coding-layouts': () =>
+    import('./features/field-admin/coding-layouts-page').then((m) => m.CodingLayoutsPage),
 };
 
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */

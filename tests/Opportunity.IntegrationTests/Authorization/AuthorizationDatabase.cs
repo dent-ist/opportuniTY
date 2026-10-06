@@ -84,9 +84,13 @@ internal sealed class AuthorizationDatabase : IAsyncDisposable
 
         foreach (var document in documents)
         {
+            // The explicit scope (V0044) with its materialized coverage, as the wall administration writes them.
             await Core.ExecuteAsync(
-                "INSERT INTO opportunity.document_wall (workspace_id, document_id, wall_id) VALUES (@ws, @doc, @wall)",
-                ("ws", workspaceId), ("doc", document), ("wall", wall));
+                """
+                INSERT INTO opportunity.ethical_wall_scope (workspace_id, wall_id, scope_id, kind, document_id) VALUES (@ws, @wall, @id, 1, @doc);
+                INSERT INTO opportunity.document_wall (workspace_id, document_id, wall_id) VALUES (@ws, @doc, @wall);
+                """,
+                ("ws", workspaceId), ("doc", document), ("wall", wall), ("id", Guid.CreateVersion7()));
         }
 
         return wall;

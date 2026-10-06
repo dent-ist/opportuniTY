@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
+using Opportunity.Application.Fields;
 using Opportunity.Application.Search;
 using Opportunity.Application.Telemetry;
 using Opportunity.Contracts.Api;
@@ -49,12 +50,15 @@ internal sealed partial class SearchService(
     OpportunityMetrics? metrics = null,
     ISavedSearchQueries? savedSearches = null,
     ISearchTermHitSource? termHits = null,
-    ISearchFieldCatalogSource? catalogs = null) : ISearchService
+    ISearchFieldCatalogSource? catalogs = null,
+    IFieldAccessFilter? fieldAccess = null) : ISearchService
 {
     private const string ResourceType = "Search";
     private const string CorrelationTag = "opportunity.correlation_id";
     private const string SearchClassAttribute = "opportunity.search.class";
     private const string DropReasonAttribute = "opportunity.search.drop_reason";
+
+    private (Guid WorkspaceId, Guid UserId, IReadOnlySet<int>? Hidden)? _hiddenFields;
 
     /// <summary>ReasonCode of a search handle replayed by another user or session (audited, answered 404).</summary>
     internal const string HandleMismatchReason = "SearchHandleMismatch";
@@ -192,7 +196,7 @@ internal sealed partial class SearchService(
         }
 
         var placement = await PlacementAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
-        var columns = await ColumnsAsync(caller.WorkspaceId, placement?.Generation, requestedSort, fieldNames, cancellationToken).ConfigureAwait(false);
+        var columns = await ColumnsAsync(caller, placement?.Generation, requestedSort, fieldNames, cancellationToken).ConfigureAwait(false);
         if (columns.Problem is { } columnProblem)
         {
             return columnProblem;
@@ -515,8 +519,11 @@ internal sealed partial class SearchService(
             }
         }
 
+        var hidden = await HiddenFieldsAsync(caller, cancellationToken).ConfigureAwait(false);
         var translation = await translator.TranslateAsync(
-            expansion.Ast, new SearchTranslationContext(workspaceId, generation ?? ProjectionMappings.Embedded.CurrentGeneration, limits), cancellationToken)
+            expansion.Ast,
+            new SearchTranslationContext(workspaceId, generation ?? ProjectionMappings.Embedded.CurrentGeneration, limits, HiddenFieldIds: hidden),
+            cancellationToken)
             .ConfigureAwait(false);
         if (!translation.Success)
         {
@@ -540,16 +547,13 @@ internal sealed partial class SearchService(
     /// sort field is a request error.
     /// </summary>
     private async Task<(List<SortKey> Sort, IReadOnlyList<ResultField> Fields, SearchOutcome? Problem)> ColumnsAsync(
-        Guid workspaceId, int? generation, List<SearchSortKey> requestedSort, List<string> fieldNames,
+        SearchCaller caller, int? generation, List<SearchSortKey> requestedSort, List<string> fieldNames,
         CancellationToken cancellationToken)
     {
         SearchFieldResolver? resolver = null;
         if (fieldNames.Count > 0 || requestedSort.Any(k => SortKey.Resolve(k.Field, k.Direction) is null))
         {
-            var catalog = catalogs is null
-                ? new Core.Fields.FieldCatalog([], [])
-                : await catalogs.GetAsync(workspaceId, cancellationToken).ConfigureAwait(false);
-            resolver = SearchFieldResolver.Create(catalog, generation ?? ProjectionMappings.Embedded.CurrentGeneration);
+            resolver = await ResolverAsync(caller, generation, cancellationToken).ConfigureAwait(false);
         }
 
         var sort = new List<SortKey>();
@@ -572,6 +576,49 @@ internal sealed partial class SearchService(
 
         var fields = resolver is null ? [] : fieldNames.Select(n => SearchColumns.FieldFor(resolver, n)).OfType<ResultField>().ToList();
         return (sort, fields, null);
+    }
+
+    /// <summary>The caller's view of the workspace fields: hidden fields (E05-T06) are left out, as if they did not exist.</summary>
+    private async Task<SearchFieldResolver> ResolverAsync(SearchCaller caller, int? generation, CancellationToken cancellationToken)
+    {
+        var catalog = catalogs is null
+            ? new Core.Fields.FieldCatalog([], [])
+            : await catalogs.GetAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var hidden = await HiddenFieldsAsync(caller, cancellationToken).ConfigureAwait(false);
+        return SearchFieldResolver.Create(hidden is { Count: > 0 } ? catalog.Without(hidden) : catalog,
+            generation ?? ProjectionMappings.Embedded.CurrentGeneration);
+    }
+
+    /// <summary>The fields the caller may not see (field-level restrictions); null when none or not configured.</summary>
+    private async Task<IReadOnlySet<int>?> HiddenFieldsAsync(SearchCaller caller, CancellationToken cancellationToken)
+    {
+        if (fieldAccess is null || catalogs is null)
+        {
+            return null;
+        }
+
+        if (_hiddenFields is { } cached && cached.WorkspaceId == caller.WorkspaceId && cached.UserId == caller.Principal.UserId)
+        {
+            return cached.Hidden;
+        }
+
+        var catalog = await catalogs.GetAsync(caller.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var hidden = await fieldAccess.RestrictedFieldIdsAsync(caller.WorkspaceId, caller.Principal, catalog, cancellationToken).ConfigureAwait(false);
+        _hiddenFields = (caller.WorkspaceId, caller.Principal.UserId, hidden.Count == 0 ? null : hidden);
+        return _hiddenFields.Value.Hidden;
+    }
+
+    /// <summary>Stored result columns the caller may still see (a field hidden since the search started is dropped).</summary>
+    private async Task<IReadOnlyList<ResultField>> VisibleColumnsAsync(
+        SearchCaller caller, int? generation, IReadOnlyList<ResultField> fields, CancellationToken cancellationToken)
+    {
+        if (fields.Count == 0 || await HiddenFieldsAsync(caller, cancellationToken).ConfigureAwait(false) is null)
+        {
+            return fields;
+        }
+
+        var resolver = await ResolverAsync(caller, generation, cancellationToken).ConfigureAwait(false);
+        return [.. fields.Where(f => SearchColumns.FieldFor(resolver, f.Name) is { } visible && visible.Path == f.Path)];
     }
 
     /// <summary>
@@ -802,8 +849,9 @@ internal sealed partial class SearchService(
             previous = cursor.CursorId.ToString("N");
         }
 
-        var (items, dropped) = await PostFilterAsync(caller, placement, window, !search.Expansion.IsNone, SearchColumns.FromJson(search.ResultFieldsJson),
-                cancellationToken)
+        var columns = await VisibleColumnsAsync(caller, placement.Generation, SearchColumns.FromJson(search.ResultFieldsJson), cancellationToken)
+            .ConfigureAwait(false);
+        var (items, dropped) = await PostFilterAsync(caller, placement, window, !search.Expansion.IsNone, columns, cancellationToken)
             .ConfigureAwait(false);
         items = await MarkFamilyParentsAsync(placement, visibility, result.PointInTimeId, items, cancellationToken).ConfigureAwait(false);
         var page = new SearchResultPage

@@ -271,6 +271,10 @@ public sealed class ImportApiTests(MigrationPostgresFixture postgres)
             SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default) =>
             inner.AuthorizeMembershipAsync(principal, workspaceId, cancellationToken);
 
+        public Task<AuthorizationDecision> AuthorizeBreakGlassHolderAsync(
+            SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default) =>
+            inner.AuthorizeBreakGlassHolderAsync(principal, workspaceId, cancellationToken);
+
         public Task<EffectivePermissions> GetEffectivePermissionsAsync(
             SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default) =>
             inner.GetEffectivePermissionsAsync(principal, workspaceId, cancellationToken);

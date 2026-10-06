@@ -128,10 +128,53 @@ public sealed class ProjectionIndexWriterTests
     }
 
 #endif
-    private static ProjectionIndexWriter Writer(FakeBulk handler, ProjectionWriterOptions options, IReadOnlyList<IndexTarget>? targets = null)
+    [Fact]
+    public async Task A_reindex_backfill_writes_only_the_rebuild_target_and_nothing_once_the_rebuild_ended()
+    {
+        IndexTarget[] targets = [new IndexTarget("idx-old", null) { Generation = 2 }, new IndexTarget("idx-new", null) { Generation = 2 }];
+        var handler = new FakeBulk();
+        var writer = Writer(handler, new ProjectionWriterOptions(), targets, IndexPlacementState.Building);
+
+        var report = await writer.WriteAsync(Workspace, [Index("a")], ProjectionWriteScope.RebuildTarget, Ct);
+
+        report.Documents.Single().Status.Should().Be(ProjectionWriteStatus.Applied);
+        handler.Bodies.Single().Should().Contain("idx-new").And.NotContain("idx-old");
+
+        var ended = new FakeBulk();
+        var active = Writer(ended, new ProjectionWriterOptions(), [targets[0]]);
+        (await active.WriteAsync(Workspace, [Index("b")], ProjectionWriteScope.RebuildTarget, Ct)).Documents.Single().Status
+            .Should().Be(ProjectionWriteStatus.Applied, "the rebuild it was for has ended");
+        ended.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task During_a_generation_switch_a_projection_goes_only_to_the_index_of_its_own_generation()
+    {
+        var handler = new FakeBulk();
+        var writer = Writer(handler, new ProjectionWriterOptions(),
+            [new IndexTarget("idx-g1", null) { Generation = 1 }, new IndexTarget("idx-g2", null) { Generation = 2 }], IndexPlacementState.Building);
+
+        await writer.WriteAsync(Workspace, [Index("a")], Ct);
+
+        handler.Bodies.Single().Should().Contain("idx-g2").And.NotContain("idx-g1");
+    }
+
+    [Fact]
+    public async Task A_write_blocked_retired_index_is_a_transient_failure_so_the_writer_re_resolves_the_placement()
+    {
+        var handler = new FakeBulk { Items = [Item(403, "cluster_block_exception")] };
+        var writer = Writer(handler, new ProjectionWriterOptions());
+
+        var report = await writer.WriteAsync(Workspace, [Index("a")], Ct);
+
+        report.Documents.Single().Status.Should().Be(ProjectionWriteStatus.Transient);
+    }
+
+    private static ProjectionIndexWriter Writer(
+        FakeBulk handler, ProjectionWriterOptions options, IReadOnlyList<IndexTarget>? targets = null, IndexPlacementState state = IndexPlacementState.Active)
     {
         var connection = new OpenSearchConnection(new OpenSearchOptions { Endpoint = new Uri("http://opensearch.invalid:9200") }, handler);
-        return new ProjectionIndexWriter(new FixedPlacement(targets ?? [new IndexTarget("idx", Workspace.ToString("D"))]), connection, options);
+        return new ProjectionIndexWriter(new FixedPlacement(targets ?? [new IndexTarget("idx", Workspace.ToString("D"))], state), connection, options);
     }
 
     private static ProjectionDocument Index(string text, long version = 1)
@@ -158,10 +201,16 @@ public sealed class ProjectionIndexWriterTests
         return new JsonObject { [op] = item };
     }
 
-    private sealed class FixedPlacement(IReadOnlyList<IndexTarget> targets) : IIndexManager
+    private sealed class FixedPlacement(IReadOnlyList<IndexTarget> targets, IndexPlacementState state = IndexPlacementState.Active) : IIndexManager
     {
         public Task<Placement> ResolveAsync(Guid workspaceId, IndexPurpose purpose, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new Placement(workspaceId, IndexPlacementKind.Shared, 2, IndexPlacementState.Active, targets[0], targets));
+            Task.FromResult(new Placement(workspaceId, IndexPlacementKind.Shared, 2, state, targets[0], targets));
+
+        public Task BlockWritesAsync(Guid workspaceId, IndexLocation location, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task DropAsync(Guid workspaceId, IndexLocation location, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
 
         public Task<Placement> PlaceAsync(Guid workspaceId, WorkspacePlacementRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

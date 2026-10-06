@@ -37,14 +37,22 @@ public sealed record JobCounters
 /// <summary>Which automatic job transition follows a change of chunk state (ADR-010 §2, §7.5).</summary>
 public static class JobSettlement
 {
+    /// <summary>
+    /// Job types whose work continues after the last chunk: they stay Running until their coordinator completes or fails
+    /// them (a reindex validates and switches the alias after its backfill, E07-T11).
+    /// </summary>
+    public static bool CompletesExplicitly(JobType jobType) => jobType == JobType.Reindex;
+
     /// <param name="status">Current job status (the job row is locked by the caller).</param>
     /// <param name="counters">Counters after the change.</param>
     /// <param name="consecutiveFailures">Consecutive chunk failures of the same error class.</param>
-    public static JobTrigger? Next(JobStatus status, JobCounters counters, int consecutiveFailures)
+    /// <param name="completesExplicitly">See <see cref="CompletesExplicitly"/>: no automatic completion.</param>
+    public static JobTrigger? Next(JobStatus status, JobCounters counters, int consecutiveFailures, bool completesExplicitly = false)
     {
         ArgumentNullException.ThrowIfNull(counters);
         return status switch
         {
+            JobStatus.Running when counters.AllChunksSettled && completesExplicitly => null,
             JobStatus.Running when counters.AllChunksSettled =>
                 counters.ChunksFailed > 0 || counters.ItemsFailed > 0 ? JobTrigger.CompleteWithErrors : JobTrigger.Complete,
             JobStatus.Running when JobCircuitBreaker.ShouldPause(consecutiveFailures, counters.ChunksCommitted, counters.ChunksFailed) =>

@@ -1,9 +1,12 @@
+using System.Globalization;
+
 using Npgsql;
 
 using NpgsqlTypes;
 
 using Opportunity.Application.Fields;
 using Opportunity.Core.Fields;
+using Opportunity.Data.Audit;
 
 namespace Opportunity.Data.Fields;
 
@@ -18,7 +21,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         """
         workspace_id, field_id, name, description, field_type, storage, is_system, is_multi_value, date_precision,
         decimal_precision, decimal_scale, text_analysis, is_security_affecting, security_class, is_searchable,
-        search_slot, capabilities, column_name, is_hidden, is_deleted, deleted_at, created_at, updated_at
+        search_slot, capabilities, column_name, is_hidden, is_deleted, deleted_at, created_at, updated_at, version
         """;
 
     private const string ChoiceColumns =
@@ -112,9 +115,13 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         return new FieldCatalog(fields, choices);
     }
 
-    public async Task<CatalogResult<FieldDefinition>> CreateFieldAsync(NewField field, CancellationToken cancellationToken = default)
+    public Task<CatalogResult<FieldDefinition>> CreateFieldAsync(NewField field, CancellationToken cancellationToken = default) =>
+        CreateFieldAsync(field, CatalogWrite.None, cancellationToken);
+
+    public async Task<CatalogResult<FieldDefinition>> CreateFieldAsync(NewField field, CatalogWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(field);
+        ArgumentNullException.ThrowIfNull(write);
         var definition = new FieldDefinition
         {
             WorkspaceId = field.WorkspaceId,
@@ -175,13 +182,18 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             : null;
         definition.Capabilities = FieldRules.CapabilitiesForSlot(definition.SearchSlot);
         var created = await InsertFieldAsync(tx, definition, onConflictDoNothing: false, cancellationToken).ConfigureAwait(false);
+        await AuditAsync(tx, write, FieldResource(created!.FieldId), created.Version, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return CatalogResult.Ok<FieldDefinition>(created!);
     }
 
-    public async Task<CatalogResult<FieldDefinition>> UpdateFieldAsync(FieldChange change, CancellationToken cancellationToken = default)
+    public Task<CatalogResult<FieldDefinition>> UpdateFieldAsync(FieldChange change, CancellationToken cancellationToken = default) =>
+        UpdateFieldAsync(change, CatalogWrite.None, cancellationToken);
+
+    public async Task<CatalogResult<FieldDefinition>> UpdateFieldAsync(FieldChange change, CatalogWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(change);
+        ArgumentNullException.ThrowIfNull(write);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, change.WorkspaceId, cancellationToken).ConfigureAwait(false);
         var current = await LockFieldAsync(tx, change.WorkspaceId, change.FieldId, cancellationToken).ConfigureAwait(false);
         if (current is null || current.IsDeleted)
@@ -189,9 +201,16 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             return CatalogResult.NotFound<FieldDefinition>();
         }
 
+        if (Stale(current.Version, write))
+        {
+            return CatalogResult.VersionConflict<FieldDefinition>();
+        }
+
         var updated = Copy(current);
         updated.Name = change.Name?.Trim() ?? current.Name;
-        updated.Description = change.Description ?? current.Description;
+        // An empty description clears it; null leaves it unchanged.
+        updated.Description = change.Description is null ? current.Description
+            : string.IsNullOrWhiteSpace(change.Description) ? null : change.Description.Trim();
         updated.IsHidden = change.IsHidden ?? current.IsHidden;
         if (change.Type is { } type && type != current.Type)
         {
@@ -264,7 +283,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
                     name = @name, description = @description, is_hidden = @hidden, field_type = @type,
                     is_multi_value = @multi, date_precision = @date_precision, decimal_precision = @decimal_precision,
                     decimal_scale = @decimal_scale, text_analysis = @text_analysis, search_slot = @slot,
-                    capabilities = @capabilities, updated_at = now()
+                    capabilities = @capabilities, updated_at = now(), version = version + 1
                 WHERE workspace_id = @ws AND field_id = @id
                 RETURNING {FieldColumns}
                 """);
@@ -282,8 +301,9 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             command.Parameters.Add(Nullable("slot", NpgsqlDbType.Text, updated.SearchSlot));
             command.Parameters.AddWithValue("capabilities", (int)updated.Capabilities);
             var result = await ReadSingleFieldAsync(command, cancellationToken).ConfigureAwait(false);
+            await AuditAsync(tx, write, FieldResource(result!.FieldId), result.Version, cancellationToken).ConfigureAwait(false);
             await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return CatalogResult.Ok<FieldDefinition>(result!);
+            return CatalogResult.Ok<FieldDefinition>(result);
         }
         catch (PostgresException ex) when (ex.ConstraintName == RetypeConstraint)
         {
@@ -291,13 +311,23 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         }
     }
 
-    public async Task<CatalogResult<FieldDefinition>> DeleteFieldAsync(Guid workspaceId, int fieldId, CancellationToken cancellationToken = default)
+    public Task<CatalogResult<FieldDefinition>> DeleteFieldAsync(Guid workspaceId, int fieldId, CancellationToken cancellationToken = default) =>
+        DeleteFieldAsync(workspaceId, fieldId, CatalogWrite.None, cancellationToken);
+
+    public async Task<CatalogResult<FieldDefinition>> DeleteFieldAsync(
+        Guid workspaceId, int fieldId, CatalogWrite write, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(write);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         var current = await LockFieldAsync(tx, workspaceId, fieldId, cancellationToken).ConfigureAwait(false);
         if (current is null || current.IsDeleted)
         {
             return CatalogResult.NotFound<FieldDefinition>();
+        }
+
+        if (Stale(current.Version, write))
+        {
+            return CatalogResult.VersionConflict<FieldDefinition>();
         }
 
         if (current.IsSystem)
@@ -309,6 +339,11 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         // (Draining) until the purge job has removed the values (ADR-003 R6, ADR-007 R4).
         await using (var layouts = tx.Command(
             """
+            UPDATE opportunity.coding_layout l SET version = l.version + 1, updated_at = now()
+            WHERE l.workspace_id = @ws
+              AND EXISTS (SELECT FROM opportunity.coding_layout_field f
+                          WHERE f.workspace_id = l.workspace_id AND f.layout_id = l.layout_id
+                            AND (f.field_id = @id OR f.condition_field_id = @id));
             UPDATE opportunity.coding_layout_field SET condition_field_id = NULL, condition_choice_ids = NULL, condition_boolean = NULL
             WHERE workspace_id = @ws AND condition_field_id = @id;
             DELETE FROM opportunity.coding_layout_field WHERE workspace_id = @ws AND field_id = @id;
@@ -321,18 +356,24 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
 
         await using var command = tx.Command(
             $"""
-            UPDATE opportunity.field_definition SET is_deleted = true, deleted_at = now(), updated_at = now()
+            UPDATE opportunity.field_definition SET is_deleted = true, deleted_at = now(), updated_at = now(), version = version + 1
             WHERE workspace_id = @ws AND field_id = @id RETURNING {FieldColumns}
             """);
         command.Parameters.AddWithValue("ws", workspaceId);
         command.Parameters.AddWithValue("id", fieldId);
         var deleted = await ReadSingleFieldAsync(command, cancellationToken).ConfigureAwait(false);
+        await AuditAsync(tx, write, FieldResource(fieldId), deleted!.Version, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return CatalogResult.Ok<FieldDefinition>(deleted!);
     }
 
-    public async Task<CatalogResult<Choice>> AddChoiceAsync(Guid workspaceId, int fieldId, string name, CancellationToken cancellationToken = default)
+    public Task<CatalogResult<Choice>> AddChoiceAsync(Guid workspaceId, int fieldId, string name, CancellationToken cancellationToken = default) =>
+        AddChoiceAsync(workspaceId, fieldId, name, CatalogWrite.None, cancellationToken);
+
+    public async Task<CatalogResult<Choice>> AddChoiceAsync(
+        Guid workspaceId, int fieldId, string name, CatalogWrite write, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(write);
         var trimmed = name?.Trim() ?? string.Empty;
         if (InvalidChoiceName(trimmed) is { } nameError)
         {
@@ -344,6 +385,11 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         if (field is null || field.IsDeleted)
         {
             return CatalogResult.NotFound<Choice>();
+        }
+
+        if (Stale(field.Version, write))
+        {
+            return CatalogResult.VersionConflict<Choice>();
         }
 
         if (!field.IsChoice)
@@ -377,45 +423,95 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         command.Parameters.AddWithValue("field", fieldId);
         command.Parameters.AddWithValue("name", trimmed);
         var choice = await ReadSingleChoiceAsync(command, cancellationToken).ConfigureAwait(false);
+        await FinishFieldChangeAsync(tx, workspaceId, fieldId, write, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return CatalogResult.Ok<Choice>(choice!);
     }
 
-    public async Task<CatalogResult<Choice>> RenameChoiceAsync(
-        Guid workspaceId, int fieldId, int choiceId, string name, CancellationToken cancellationToken = default)
+    public Task<CatalogResult<Choice>> RenameChoiceAsync(
+        Guid workspaceId, int fieldId, int choiceId, string name, CancellationToken cancellationToken = default) =>
+        UpdateChoiceAsync(workspaceId, fieldId, choiceId, name ?? string.Empty, null, CatalogWrite.None, cancellationToken);
+
+    public Task<CatalogResult<Choice>> SetChoiceActiveAsync(
+        Guid workspaceId, int fieldId, int choiceId, bool isActive, CancellationToken cancellationToken = default) =>
+        UpdateChoiceAsync(workspaceId, fieldId, choiceId, null, isActive, CatalogWrite.None, cancellationToken);
+
+    public async Task<CatalogResult<Choice>> UpdateChoiceAsync(
+        Guid workspaceId, int fieldId, int choiceId, string? name, bool? isActive, CatalogWrite write, CancellationToken cancellationToken = default)
     {
-        var trimmed = name?.Trim() ?? string.Empty;
-        if (InvalidChoiceName(trimmed) is { } nameError)
+        ArgumentNullException.ThrowIfNull(write);
+        var trimmed = name?.Trim();
+        if (trimmed is not null && InvalidChoiceName(trimmed) is { } nameError)
         {
             return CatalogResult.Invalid<Choice>([nameError]);
         }
 
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
-        var (_, taken) = await ChoiceStatsAsync(tx, workspaceId, fieldId, trimmed, choiceId, cancellationToken).ConfigureAwait(false);
-        if (taken)
+        var field = await LockFieldAsync(tx, workspaceId, fieldId, cancellationToken).ConfigureAwait(false);
+        if (field is null || field.IsDeleted)
         {
-            return CatalogResult.Invalid<Choice>([new("name", "duplicate-name", $"A choice named '{trimmed}' already exists.")]);
+            return CatalogResult.NotFound<Choice>();
         }
 
-        return await UpdateChoiceAsync(tx, "name = @value", ("value", trimmed), workspaceId, fieldId, choiceId, cancellationToken).ConfigureAwait(false);
+        if (Stale(field.Version, write))
+        {
+            return CatalogResult.VersionConflict<Choice>();
+        }
+
+        if (trimmed is not null)
+        {
+            var (_, taken) = await ChoiceStatsAsync(tx, workspaceId, fieldId, trimmed, choiceId, cancellationToken).ConfigureAwait(false);
+            if (taken)
+            {
+                return CatalogResult.Invalid<Choice>([new("name", "duplicate-name", $"A choice named '{trimmed}' already exists.")]);
+            }
+        }
+
+        Choice? choice;
+        await using (var command = tx.Command(
+            $"""
+            UPDATE opportunity.choice SET name = coalesce(@name, name), is_active = coalesce(@active, is_active), updated_at = now()
+            WHERE workspace_id = @ws AND field_id = @field AND choice_id = @choice
+            RETURNING {ChoiceColumns}
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("field", fieldId);
+            command.Parameters.AddWithValue("choice", choiceId);
+            command.Parameters.Add(Nullable("name", NpgsqlDbType.Text, trimmed));
+            command.Parameters.Add(Nullable("active", NpgsqlDbType.Boolean, isActive));
+            choice = await ReadSingleChoiceAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (choice is null)
+        {
+            return CatalogResult.NotFound<Choice>();
+        }
+
+        await FinishFieldChangeAsync(tx, workspaceId, fieldId, write, cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return CatalogResult.Ok<Choice>(choice);
     }
 
-    public async Task<CatalogResult<Choice>> SetChoiceActiveAsync(
-        Guid workspaceId, int fieldId, int choiceId, bool isActive, CancellationToken cancellationToken = default)
-    {
-        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
-        return await UpdateChoiceAsync(tx, "is_active = @value", ("value", isActive), workspaceId, fieldId, choiceId, cancellationToken).ConfigureAwait(false);
-    }
+    public Task<CatalogResult<IReadOnlyList<Choice>>> ReorderChoicesAsync(
+        Guid workspaceId, int fieldId, IReadOnlyList<int> orderedChoiceIds, CancellationToken cancellationToken = default) =>
+        ReorderChoicesAsync(workspaceId, fieldId, orderedChoiceIds, CatalogWrite.None, cancellationToken);
 
     public async Task<CatalogResult<IReadOnlyList<Choice>>> ReorderChoicesAsync(
-        Guid workspaceId, int fieldId, IReadOnlyList<int> orderedChoiceIds, CancellationToken cancellationToken = default)
+        Guid workspaceId, int fieldId, IReadOnlyList<int> orderedChoiceIds, CatalogWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(orderedChoiceIds);
+        ArgumentNullException.ThrowIfNull(write);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         var field = await LockFieldAsync(tx, workspaceId, fieldId, cancellationToken).ConfigureAwait(false);
         if (field is null || field.IsDeleted)
         {
             return CatalogResult.NotFound<IReadOnlyList<Choice>>();
+        }
+
+        if (Stale(field.Version, write))
+        {
+            return CatalogResult.VersionConflict<IReadOnlyList<Choice>>();
         }
 
         var catalog = await LoadCatalogAsync(tx, workspaceId, false, [fieldId], false, cancellationToken).ConfigureAwait(false);
@@ -440,14 +536,31 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         }
 
         var reordered = await LoadCatalogAsync(tx, workspaceId, false, [fieldId], false, cancellationToken).ConfigureAwait(false);
+        await FinishFieldChangeAsync(tx, workspaceId, fieldId, write, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return CatalogResult.Ok<IReadOnlyList<Choice>>(reordered.ChoicesOf(fieldId));
     }
 
-    public async Task<CatalogResult<Choice>> DeleteChoiceAsync(Guid workspaceId, int fieldId, int choiceId, CancellationToken cancellationToken = default)
+    public Task<CatalogResult<Choice>> DeleteChoiceAsync(Guid workspaceId, int fieldId, int choiceId, CancellationToken cancellationToken = default) =>
+        DeleteChoiceAsync(workspaceId, fieldId, choiceId, CatalogWrite.None, cancellationToken);
+
+    public async Task<CatalogResult<Choice>> DeleteChoiceAsync(
+        Guid workspaceId, int fieldId, int choiceId, CatalogWrite write, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(write);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         var key = FieldKey.For(fieldId);
+        var field = await LockFieldAsync(tx, workspaceId, fieldId, cancellationToken).ConfigureAwait(false);
+        if (field is null || field.IsDeleted)
+        {
+            return CatalogResult.NotFound<Choice>();
+        }
+
+        if (Stale(field.Version, write))
+        {
+            return CatalogResult.VersionConflict<Choice>();
+        }
+
         if (await ScalarAsync<bool>(tx,
                 "SELECT EXISTS (SELECT FROM opportunity.coding_layout_field WHERE workspace_id = @ws AND condition_field_id = @field AND @choice = ANY(condition_choice_ids))",
             [("ws", workspaceId), ("field", fieldId), ("choice", choiceId)], cancellationToken).ConfigureAwait(false))
@@ -457,17 +570,22 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
 
         try
         {
-            await using var command = tx.Command(
-                $"DELETE FROM opportunity.choice WHERE workspace_id = @ws AND field_id = @field AND choice_id = @choice RETURNING {ChoiceColumns}");
-            command.Parameters.AddWithValue("ws", workspaceId);
-            command.Parameters.AddWithValue("field", fieldId);
-            command.Parameters.AddWithValue("choice", choiceId);
-            var deleted = await ReadSingleChoiceAsync(command, cancellationToken).ConfigureAwait(false);
+            Choice? deleted;
+            await using (var command = tx.Command(
+                $"DELETE FROM opportunity.choice WHERE workspace_id = @ws AND field_id = @field AND choice_id = @choice RETURNING {ChoiceColumns}"))
+            {
+                command.Parameters.AddWithValue("ws", workspaceId);
+                command.Parameters.AddWithValue("field", fieldId);
+                command.Parameters.AddWithValue("choice", choiceId);
+                deleted = await ReadSingleChoiceAsync(command, cancellationToken).ConfigureAwait(false);
+            }
+
             if (deleted is null)
             {
                 return CatalogResult.NotFound<Choice>();
             }
 
+            await FinishFieldChangeAsync(tx, workspaceId, fieldId, write, cancellationToken).ConfigureAwait(false);
             await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
             return CatalogResult.Ok<Choice>(deleted);
         }
@@ -477,9 +595,26 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         }
     }
 
-    public async Task<CatalogResult<CodingLayout>> SaveLayoutAsync(CodingLayout layout, CancellationToken cancellationToken = default)
+    public async Task<bool> FieldHasValuesAsync(Guid workspaceId, int fieldId, CancellationToken cancellationToken = default)
+    {
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var result = await ScalarAsync<bool>(tx,
+            """
+            SELECT coalesce((SELECT opportunity.field_has_values(workspace_id, field_id, storage)
+                             FROM opportunity.field_definition WHERE workspace_id = @ws AND field_id = @id), false)
+            """,
+            [("ws", workspaceId), ("id", fieldId)], cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    public Task<CatalogResult<CodingLayout>> SaveLayoutAsync(CodingLayout layout, CancellationToken cancellationToken = default) =>
+        SaveLayoutAsync(layout, CatalogWrite.None, cancellationToken);
+
+    public async Task<CatalogResult<CodingLayout>> SaveLayoutAsync(CodingLayout layout, CatalogWrite write, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(write);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, layout.WorkspaceId, cancellationToken).ConfigureAwait(false);
         var catalog = await LoadCatalogAsync(tx, layout.WorkspaceId, false, cancellationToken).ConfigureAwait(false);
         var errors = CodingLayoutValidator.ValidateStructure(layout, catalog);
@@ -493,9 +628,29 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             layout.LayoutId = Guid.CreateVersion7();
         }
 
-        var currentlyDefault = await ScalarAsync<bool>(tx,
-            "SELECT coalesce((SELECT is_default FROM opportunity.coding_layout WHERE workspace_id = @ws AND layout_id = @id FOR UPDATE), false)",
-            [("ws", layout.WorkspaceId), ("id", layout.LayoutId)], cancellationToken).ConfigureAwait(false);
+        bool currentlyDefault;
+        long? currentVersion;
+        await using (var current = tx.Command(
+            "SELECT is_default, version FROM opportunity.coding_layout WHERE workspace_id = @ws AND layout_id = @id FOR UPDATE"))
+        {
+            current.Parameters.AddWithValue("ws", layout.WorkspaceId);
+            current.Parameters.AddWithValue("id", layout.LayoutId);
+            await using var reader = await current.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            var found = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            currentlyDefault = found && reader.GetBoolean(0);
+            currentVersion = found ? reader.GetInt64(1) : null;
+        }
+
+        if (write.ExpectedVersion is not null && currentVersion is null)
+        {
+            return CatalogResult.NotFound<CodingLayout>();
+        }
+
+        if (currentVersion is { } version && Stale(version, write))
+        {
+            return CatalogResult.VersionConflict<CodingLayout>();
+        }
+
         if (currentlyDefault && !layout.IsDefault)
         {
             return CatalogResult.Invalid<CodingLayout>(
@@ -514,14 +669,15 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             if (layout.IsDefault)
             {
                 batch.BatchCommands.Add(BatchCommand(
-                    "UPDATE opportunity.coding_layout SET is_default = false, updated_at = now() WHERE workspace_id = $1 AND is_default AND layout_id <> $2",
+                    "UPDATE opportunity.coding_layout SET is_default = false, updated_at = now(), version = version + 1 WHERE workspace_id = $1 AND is_default AND layout_id <> $2",
                     layout.WorkspaceId, layout.LayoutId));
             }
 
             batch.BatchCommands.Add(BatchCommand(
                 """
                 INSERT INTO opportunity.coding_layout (workspace_id, layout_id, name, is_default) VALUES ($1, $2, $3, $4)
-                ON CONFLICT (workspace_id, layout_id) DO UPDATE SET name = EXCLUDED.name, is_default = EXCLUDED.is_default, updated_at = now()
+                ON CONFLICT (workspace_id, layout_id) DO UPDATE
+                SET name = EXCLUDED.name, is_default = EXCLUDED.is_default, updated_at = now(), version = coding_layout.version + 1
                 """,
                 layout.WorkspaceId, layout.LayoutId, layout.Name.Trim(), layout.IsDefault));
             batch.BatchCommands.Add(BatchCommand(
@@ -561,6 +717,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         }
 
         var saved = (await LoadLayoutsAsync(tx, layout.WorkspaceId, layout.LayoutId, null, cancellationToken).ConfigureAwait(false)).Single();
+        await AuditAsync(tx, write, saved.LayoutId.ToString(), saved.Version, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return CatalogResult.Ok<CodingLayout>(saved);
     }
@@ -581,13 +738,30 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         return layouts;
     }
 
-    public async Task<CatalogResult<CodingLayout>> DeleteLayoutAsync(Guid workspaceId, Guid layoutId, CancellationToken cancellationToken = default)
+    public Task<CatalogResult<CodingLayout>> DeleteLayoutAsync(Guid workspaceId, Guid layoutId, CancellationToken cancellationToken = default) =>
+        DeleteLayoutAsync(workspaceId, layoutId, CatalogWrite.None, cancellationToken);
+
+    public async Task<CatalogResult<CodingLayout>> DeleteLayoutAsync(
+        Guid workspaceId, Guid layoutId, CatalogWrite write, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(write);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using (var lockRow = tx.Command("SELECT FROM opportunity.coding_layout WHERE workspace_id = @ws AND layout_id = @id FOR UPDATE"))
+        {
+            lockRow.Parameters.AddWithValue("ws", workspaceId);
+            lockRow.Parameters.AddWithValue("id", layoutId);
+            await lockRow.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var existing = (await LoadLayoutsAsync(tx, workspaceId, layoutId, null, cancellationToken).ConfigureAwait(false)).SingleOrDefault();
         if (existing is null)
         {
             return CatalogResult.NotFound<CodingLayout>();
+        }
+
+        if (Stale(existing.Version, write))
+        {
+            return CatalogResult.VersionConflict<CodingLayout>();
         }
 
         if (existing.IsDefault)
@@ -602,6 +776,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        await AuditAsync(tx, write, layoutId.ToString(), existing.Version, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return CatalogResult.Ok<CodingLayout>(existing);
     }
@@ -612,7 +787,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         var layouts = new Dictionary<Guid, CodingLayout>();
         await using (var command = tx.Command(
             """
-            SELECT l.layout_id, l.name, l.is_default, l.updated_at
+            SELECT l.layout_id, l.name, l.is_default, l.updated_at, l.version
             FROM opportunity.coding_layout l
             WHERE l.workspace_id = @ws
               AND (@id::uuid IS NULL OR l.layout_id = @id)
@@ -635,6 +810,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
                     Name = reader.GetString(1),
                     IsDefault = reader.GetBoolean(2),
                     UpdatedAt = reader.GetFieldValue<DateTimeOffset>(3),
+                    Version = reader.GetInt64(4),
                 };
                 layouts.Add(layout.LayoutId, layout);
             }
@@ -808,28 +984,33 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         return (reader.GetInt64(0), reader.GetBoolean(1));
     }
 
-    private static async Task<CatalogResult<Choice>> UpdateChoiceAsync(
-        WorkspaceTransaction tx, string set, (string Name, object Value) value, Guid workspaceId, int fieldId, int choiceId,
-        CancellationToken cancellationToken)
+    private static bool Stale(long currentVersion, CatalogWrite write) =>
+        write.ExpectedVersion is { } expected && expected != currentVersion;
+
+    private static string FieldResource(int fieldId) => fieldId.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>A choice changed: the field's version moves on and the change is audited against the field.</summary>
+    private static async Task FinishFieldChangeAsync(
+        WorkspaceTransaction tx, Guid workspaceId, int fieldId, CatalogWrite write, CancellationToken cancellationToken)
     {
-        await using var command = tx.Command(
-            $"""
-            UPDATE opportunity.choice SET {set}, updated_at = now()
-            WHERE workspace_id = @ws AND field_id = @field AND choice_id = @choice
-            RETURNING {ChoiceColumns}
-            """);
-        command.Parameters.AddWithValue("ws", workspaceId);
-        command.Parameters.AddWithValue("field", fieldId);
-        command.Parameters.AddWithValue("choice", choiceId);
-        command.Parameters.AddWithValue(value.Name, value.Value);
-        var choice = await ReadSingleChoiceAsync(command, cancellationToken).ConfigureAwait(false);
-        if (choice is null)
+        var version = await ScalarAsync<long>(tx,
+            """
+            UPDATE opportunity.field_definition SET version = version + 1, updated_at = now()
+            WHERE workspace_id = @ws AND field_id = @id RETURNING version
+            """,
+            [("ws", workspaceId), ("id", fieldId)], cancellationToken).ConfigureAwait(false);
+        await AuditAsync(tx, write, FieldResource(fieldId), version, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task AuditAsync(WorkspaceTransaction tx, CatalogWrite write, string resourceId, long version, CancellationToken cancellationToken)
+    {
+        if (write.Audit is not { } audit)
         {
-            return CatalogResult.NotFound<Choice>();
+            return;
         }
 
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return CatalogResult.Ok<Choice>(choice);
+        var details = new Dictionary<string, string?>(audit.Details) { ["version"] = version.ToString(CultureInfo.InvariantCulture) };
+        await AuditSql.InsertAsync(tx, audit with { ResourceId = resourceId, Details = details }, cancellationToken).ConfigureAwait(false);
     }
 
     private static FieldError? InvalidChoiceName(string name) =>
@@ -877,6 +1058,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         DeletedAt = reader.IsDBNull(20) ? null : reader.GetFieldValue<DateTimeOffset>(20),
         CreatedAt = reader.GetFieldValue<DateTimeOffset>(21),
         UpdatedAt = reader.GetFieldValue<DateTimeOffset>(22),
+        Version = reader.GetInt64(23),
     };
 
     private static Choice ReadChoice(NpgsqlDataReader reader) => new()
@@ -915,6 +1097,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         DeletedAt = f.DeletedAt,
         CreatedAt = f.CreatedAt,
         UpdatedAt = f.UpdatedAt,
+        Version = f.Version,
     };
 
     internal static NpgsqlParameter Nullable<T>(string name, NpgsqlDbType type, T? value) =>

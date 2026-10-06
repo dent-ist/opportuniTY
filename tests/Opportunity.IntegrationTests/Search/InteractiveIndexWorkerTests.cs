@@ -511,6 +511,10 @@ public sealed class InteractiveIndexWorkerTests(OpenSearchFixture openSearch, Mi
     {
         public ProjectionWriterOptions Options => inner.Options;
 
+        public Task<ProjectionWriteReport> WriteAsync(
+            Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, ProjectionWriteScope scope, CancellationToken cancellationToken = default) =>
+            WriteAsync(workspaceId, documents, cancellationToken);
+
         public Task<ProjectionWriteReport> WriteAsync(Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, CancellationToken cancellationToken = default) =>
             forced.Outcome is { } outcome
                 ? Task.FromResult(new ProjectionWriteReport(

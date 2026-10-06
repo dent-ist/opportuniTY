@@ -16,6 +16,7 @@ using Opportunity.Application.SearchWork;
 using Opportunity.Application.Telemetry;
 using Opportunity.Contracts.Messaging.Indexing;
 using Opportunity.Core.Jobs;
+using Opportunity.Core.SearchWork;
 using Opportunity.Search.Indexing;
 using Opportunity.Search.Projection;
 using Opportunity.Search.Writing;
@@ -365,7 +366,9 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
         var request = ++run.Requests;
         await HitAsync(Failpoints.IndexTaskBeforeBulk, run.Message, run.Task, request, cancellationToken).ConfigureAwait(false);
 #endif
-        var report = await _writer.WriteAsync(run.Task.WorkspaceId, buffer, cancellationToken).ConfigureAwait(false);
+        // A reindex backfill writes the rebuild target only (ADR-001 §7.5); every other task writes every target.
+        var scope = run.Task.Kind == IndexTaskKind.Reindex ? ProjectionWriteScope.RebuildTarget : ProjectionWriteScope.AllTargets;
+        var report = await _writer.WriteAsync(run.Task.WorkspaceId, buffer, scope, cancellationToken).ConfigureAwait(false);
 #if OPPORTUNITY_FAILPOINTS
         await HitAsync(Failpoints.IndexTaskAfterBulk, run.Message, run.Task, request, cancellationToken).ConfigureAwait(false);
 #endif

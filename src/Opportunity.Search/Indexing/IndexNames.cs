@@ -25,8 +25,14 @@ internal sealed class IndexNames(string prefix)
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
-    /// <summary>Physical index behind <paramref name="alias"/> for generation <paramref name="generation"/>.</summary>
-    public static string Physical(string alias, int generation) => string.Create(CultureInfo.InvariantCulture, $"{alias}-g{generation}");
+    /// <summary>
+    /// Physical index behind <paramref name="alias"/> for generation <paramref name="generation"/>: <c>{alias}-g{G}</c>,
+    /// or <c>{alias}-r{R}-g{G}</c> for a later revision of a dedicated index (E07-T11), which the generation's template
+    /// pattern (<c>…-*-g{G}</c>) still matches.
+    /// </summary>
+    public static string Physical(string alias, int generation, int revision = 0) => revision == 0
+        ? string.Create(CultureInfo.InvariantCulture, $"{alias}-g{generation}")
+        : string.Create(CultureInfo.InvariantCulture, $"{alias}-r{revision}-g{generation}");
 
     public string Template(int generation) => string.Create(CultureInfo.InvariantCulture, $"{Prefix}-projection-g{generation}");
 
