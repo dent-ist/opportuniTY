@@ -42,6 +42,15 @@ public sealed record WorkspaceIndexPlacement
 
     public int PrimaryShards { get; init; } = 1;
 
+    /// <summary>
+    /// Dedicated index revision: every rebuild of a dedicated workspace gets a new one, so the same generation can be
+    /// rebuilt into a new physical index (E07-T11). Always 0 for shared placements.
+    /// </summary>
+    public int Revision { get; init; }
+
+    /// <summary>The highest revision ever issued to this workspace; only grows (an aborted rebuild keeps it).</summary>
+    public int LastRevision { get; init; }
+
     public IndexPlacementState State { get; init; } = IndexPlacementState.Active;
 
     /// <summary>Target of a running rebuild or move; all null while <see cref="IndexPlacementState.Active"/>.</summary>
@@ -52,6 +61,8 @@ public sealed record WorkspaceIndexPlacement
     public int? PendingGeneration { get; init; }
 
     public int? PendingPrimaryShards { get; init; }
+
+    public int? PendingRevision { get; init; }
 
     /// <summary>Admin flag <c>DedicatedIndex</c> (large or sensitive matter, ADR-006 §2).</summary>
     public bool DedicatedRequested { get; init; }
@@ -84,3 +95,10 @@ public sealed record SharedIndexPool
     /// <summary>Sum of the estimated bytes of the workspaces assigned to it.</summary>
     public long AssignedBytes { get; init; }
 }
+
+/// <summary>
+/// One physical index location of a workspace as placement facts (ADR-006 R1: never a name): tier, shared pool,
+/// projection generation and, for dedicated indexes, the revision. The reindex job records its source and target
+/// locations with these and hands them back to index management to write-block or drop them.
+/// </summary>
+public sealed record IndexLocation(IndexPlacementKind Kind, int? SharedPool, int Generation, int Revision = 0);

@@ -65,18 +65,37 @@ public sealed record ProjectionWriteResult(Guid DocumentId, long? Version, Proje
 /// <param name="RequestBytes">Body size of every <c>_bulk</c> request sent, in order.</param>
 public sealed record ProjectionWriteReport(IReadOnlyList<ProjectionWriteResult> Documents, bool Throttled, IReadOnlyList<long> RequestBytes);
 
+/// <summary>Which write targets of the placement a write goes to.</summary>
+public enum ProjectionWriteScope
+{
+    /// <summary>Every write target: the current index and, while a rebuild runs, its target (dual-target, ADR-006 R12).</summary>
+    AllTargets,
+
+    /// <summary>
+    /// Only the target of a running rebuild: the reindex backfill (ADR-001 §7.5). Without a running rebuild nothing is
+    /// written and every document reports <see cref="ProjectionWriteStatus.Applied"/> (the rebuild it was for has ended).
+    /// </summary>
+    RebuildTarget,
+}
+
 /// <summary>
 /// The one OpenSearch write path of the index workers (ADR-001 R1): sends <see cref="ProjectionDocument"/> writes to
 /// every write target of the workspace's placement (two while a rebuild dual-writes) in byte-bounded <c>_bulk</c>
 /// sub-requests with <c>version_type=external</c>. It never retries: it classifies every item, so the caller re-reads
 /// PostgreSQL for exactly the documents that failed transiently. Shared by the chunk (E07-T04) and interactive
-/// (E07-T03) index workers; each keeps its own consumer, leases and retry policy.
+/// (E07-T03) index workers; each keeps its own consumer, leases and retry policy. A projection goes to the targets of its
+/// own generation (the mapping it conforms to) when the placement has one; while a generation switch dual-writes, the
+/// older-generation index is not written (its strict mapping may reject the new body) and serves its last state until
+/// the alias switch.
 /// </summary>
 public interface IProjectionIndexWriter
 {
     ProjectionWriterOptions Options { get; }
 
     Task<ProjectionWriteReport> WriteAsync(Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, CancellationToken cancellationToken = default);
+
+    Task<ProjectionWriteReport> WriteAsync(
+        Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, ProjectionWriteScope scope, CancellationToken cancellationToken = default);
 }
 
 internal sealed class ProjectionIndexWriter(
@@ -96,8 +115,12 @@ internal sealed class ProjectionIndexWriter(
 
     public ProjectionWriterOptions Options => options;
 
+    public Task<ProjectionWriteReport> WriteAsync(
+        Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, CancellationToken cancellationToken = default) =>
+        WriteAsync(workspaceId, documents, ProjectionWriteScope.AllTargets, cancellationToken);
+
     public async Task<ProjectionWriteReport> WriteAsync(
-        Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, CancellationToken cancellationToken = default)
+        Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, ProjectionWriteScope scope, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(documents);
         var outcomes = new Outcome[documents.Count];
@@ -115,7 +138,16 @@ internal sealed class ProjectionIndexWriter(
         }
 
         var placement = await indexes.ResolveAsync(workspaceId, IndexPurpose.Write, cancellationToken).ConfigureAwait(false);
-        var actions = Serialize(documents, placement.WriteTargets, outcomes);
+        IReadOnlyList<IndexTarget> targets = scope == ProjectionWriteScope.RebuildTarget
+            ? placement.RebuildTarget is { } rebuild ? [rebuild] : []
+            : placement.WriteTargets;
+        if (targets.Count == 0)
+        {
+            return new ProjectionWriteReport(
+                [.. documents.Select(d => new ProjectionWriteResult(d.DocumentId, d.Version, ProjectionWriteStatus.Applied, null))], false, []);
+        }
+
+        var actions = Serialize(documents, targets, outcomes);
 
         var throttled = false;
         var sizes = new List<long>();
@@ -162,12 +194,15 @@ internal sealed class ProjectionIndexWriter(
         for (var i = 0; i < documents.Count; i++)
         {
             var pending = new List<BulkAction>();
+            var generation = documents[i].Generation;
+            var ownGeneration = targets.Where(t => t.Generation == generation).ToList();
+            var documentTargets = ownGeneration.Count > 0 ? ownGeneration : targets;
             foreach (var write in documents[i].Writes)
             {
                 var body = write.Kind == ProjectionWriteKind.Index
                     ? Line(write.Body ?? throw new ArgumentException($"Index write {write.Id} has no body.", nameof(documents)))
                     : null;
-                foreach (var target in targets)
+                foreach (var target in documentTargets)
                 {
                     var metadata = Metadata(write, target, versioned);
                     pending.Add(new BulkAction(i, write.Kind, metadata, body, metadata.Length + (body?.Length ?? 0)));
@@ -259,6 +294,9 @@ internal sealed class ProjectionIndexWriter(
 
             // The target index disappeared under a placement change: re-resolve and retry.
             404 => (ProjectionWriteStatus.Transient, error ?? "not_found"),
+
+            // A retired generation is write-blocked (E07-T11); a writer whose cached placement still names it re-resolves.
+            403 when errorType == "cluster_block_exception" => (ProjectionWriteStatus.Transient, error),
             429 or >= 500 => (ProjectionWriteStatus.Transient, error ?? status.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             _ => (ProjectionWriteStatus.Permanent, error ?? status.ToString(System.Globalization.CultureInfo.InvariantCulture)),
         };

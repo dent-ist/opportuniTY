@@ -223,8 +223,16 @@ public sealed class IndexManagerTests(OpenSearchFixture fixture)
         (await harness.SearchAsync(ws, "privileged")).Should().Equal("d-1", "d-2");
         (await harness.SearchAsync(neighbour, "privileged")).Should().Equal("n-1");
         (await harness.Manager.CompleteRebuildAsync(ws, Ct)).Should().BeEquivalentTo(done, "completion is retry-safe");
+        (await harness.Store.ListSharedPoolsAsync(Ct)).Single().WorkspaceCount.Should().Be(1, "the pool accounting moves at the switch");
+        (await harness.CountAsync(shared.WriteTargets[0].Index, ws)).Should().Be(2, "the old copy stays until the reindex job drops it");
 
-        // R13 step 7: the workspace's copy leaves the shared index; the neighbour stays.
+        // The current location is never dropped; the retired one is.
+        var drop = () => harness.Manager.DropAsync(ws, done.Location!, Ct);
+        await drop.Should().ThrowAsync<IndexPlacementConflictException>();
+        await harness.Manager.BlockWritesAsync(ws, shared.Location!, Ct);
+        await harness.Manager.DropAsync(ws, shared.Location!, Ct);
+
+        // R13 step 7: the workspace's copy leaves the shared index (never write-blocked: it is shared); the neighbour stays.
         await WaitUntilAsync(async () => await harness.CountAsync(shared.WriteTargets[0].Index, ws) == 0);
         (await harness.CountAsync(shared.WriteTargets[0].Index, neighbour)).Should().Be(1);
         (await harness.Store.ListSharedPoolsAsync(Ct)).Single().WorkspaceCount.Should().Be(1);
@@ -277,19 +285,32 @@ public sealed class IndexManagerTests(OpenSearchFixture fixture)
         var building = await v2.Manager.BeginRebuildAsync(ws, new IndexRebuildRequest(), Ct);
 
         building.State.Should().Be(IndexPlacementState.Building);
-        building.WriteTargets.Select(t => t.Index).Should().Equal(g1.WriteTargets[0].Index, g1.Read.Index + "-g2");
+        building.WriteTargets.Select(t => t.Index).Should().Equal(g1.WriteTargets[0].Index, g1.Read.Index + "-r1-g2");
+        building.WriteTargets.Select(t => t.Generation).Should().Equal(1, 2);
+        building.PendingLocation.Should().Be(new IndexLocation(IndexPlacementKind.Dedicated, null, 2, 1));
         await v2.IndexAsync(building, "d-1", "privileged");
 
         var rolled = await v2.Manager.CompleteRebuildAsync(ws, Ct);
 
         rolled.Generation.Should().Be(2);
-        (await v2.AliasTargetsAsync(rolled.Read.Index)).Should().Equal(g1.Read.Index + "-g2");
+        rolled.Location.Should().Be(building.PendingLocation);
+        (await v2.AliasTargetsAsync(rolled.Read.Index)).Should().Equal(g1.Read.Index + "-r1-g2");
         (await v2.SearchAsync(ws, "privileged")).Should().Equal("d-1");
 
-        // The previous generation is kept read-only for rollback.
+        // The previous generation is kept read-only for rollback (the reindex job blocks it once caches expired).
+        await v2.Manager.BlockWritesAsync(ws, g1.Location!, Ct);
         using var blocked = await v2.RawIndexAsync(g1.WriteTargets[0].Index, "late", new { workspaceId = ws.ToString("D") }, routing: null);
         blocked.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await v2.CountAsync(g1.WriteTargets[0].Index, ws)).Should().Be(1);
+
+        // A later rebuild of the same generation gets the next revision, so no physical name is ever reused.
+        var again = await v2.Manager.BeginRebuildAsync(ws, new IndexRebuildRequest(), Ct);
+        again.RebuildTarget!.Index.Should().Be(g1.Read.Index + "-r2-g2");
+        await v2.Manager.AbortRebuildAsync(ws, Ct);
+        (await v2.Manager.BeginRebuildAsync(ws, new IndexRebuildRequest(), Ct)).RebuildTarget!.Index.Should().Be(g1.Read.Index + "-r3-g2");
+        await v2.Manager.AbortRebuildAsync(ws, Ct);
+        await v2.Manager.DropAsync(ws, g1.Location!, Ct);
+        (await v2.IndexExistsAsync(g1.WriteTargets[0].Index)).Should().BeFalse();
     }
 
     [Fact]

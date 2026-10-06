@@ -25,6 +25,10 @@ export type { ListQueryHistory$Params as ListQueryHistory$Params } from './fn/se
 export { listQueryHistory as listQueryHistory } from './fn/search/list-query-history';
 export type { RecordQueryHistory$Params as RecordQueryHistory$Params } from './fn/search/record-query-history';
 export { recordQueryHistory as recordQueryHistory } from './fn/search/record-query-history';
+export type { GetSearchIndexStatus$Params as GetSearchIndexStatus$Params } from './fn/search/get-search-index-status';
+export { getSearchIndexStatus as getSearchIndexStatus } from './fn/search/get-search-index-status';
+export type { StartSearchReindex$Params as StartSearchReindex$Params } from './fn/search/start-search-reindex';
+export { startSearchReindex as startSearchReindex } from './fn/search/start-search-reindex';
 export type { ListSavedSearchFolders$Params as ListSavedSearchFolders$Params } from './fn/saved-searches/list-saved-search-folders';
 export { listSavedSearchFolders as listSavedSearchFolders } from './fn/saved-searches/list-saved-search-folders';
 export type { CreateSavedSearchFolder$Params as CreateSavedSearchFolder$Params } from './fn/saved-searches/create-saved-search-folder';

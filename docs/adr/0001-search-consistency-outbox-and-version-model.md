@@ -220,6 +220,16 @@ backfill move the watermark; dual writes are refreshed by the ticker because eve
 on the old index is already searchable on the new one when reads move. The generation sequence and the watermark row are
 per workspace, not per index, and are not reset by a switch or a move between shared and dedicated placement.
 
+**Implementation (E07-T11, #73).** The reindex coordinator (indexing worker host, `search_reindex` V0041) waits
+`WriterSettleDelay` (cache TTL + `MaxReadToWriteAge`) after the dual-target start before planning key ranges; `Reindex`
+tasks write the rebuild target only (`ProjectionWriteScope.RebuildTarget`). After the switch the old dedicated index is
+write-blocked only after the same delay (a writer with a cached placement may still dual-target; a write-block refusal
+is retried as transient) and deleted after the retention; an aborted target is dropped once more after the delay.
+Validation waits for the *applied* watermark and refreshes the target itself, so it does not depend on the ticker.
+While a generation switch dual-writes, a projection goes only to the index of its own generation: the older index is
+not written (its strict mapping may reject the new body) and serves its last state until the switch — the watermark
+then over-states the old index's freshness for the window; same-generation rebuilds and moves are unaffected.
+
 ### 8. Interim position and what the ADR-004b spike must measure (*Proposed — pending spike*)
 
 Interim: full-document external `index` everywhere (§3), explicit-refresh ticker (§7.3). `E18-T04` must measure, per

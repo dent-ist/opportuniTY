@@ -31,14 +31,33 @@ public interface IIndexManager
     Task<Placement> BeginRebuildAsync(Guid workspaceId, IndexRebuildRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// R13 steps 4, 6 and 7: restores the target's refresh and replicas, switches reads in one <c>_aliases</c> request
-    /// (or the placement row for a move), write-blocks a replaced dedicated index and removes the workspace from a
-    /// shared index it left. Retry-safe.
+    /// R13 steps 4 and 6: restores the target's refresh and replicas, refreshes it and switches reads in one
+    /// <c>_aliases</c> request (or the placement row for a move), and releases a shared pool the workspace left.
+    /// Retry-safe. The previous location keeps its documents: the reindex job write-blocks it once every process saw
+    /// the switch (<see cref="BlockWritesAsync"/>) and drops it after the retention period (<see cref="DropAsync"/>,
+    /// R13 step 7), so a writer or reader still holding the cached placement for up to the cache TTL never fails.
     /// </summary>
     Task<Placement> CompleteRebuildAsync(Guid workspaceId, CancellationToken cancellationToken = default);
 
-    /// <summary>Drops the pending target and stops dual-target writes; the current placement keeps serving.</summary>
+    /// <summary>
+    /// Drops the pending target and stops dual-target writes; the current placement keeps serving. A writer that still
+    /// held the cached placement may recreate a dropped dedicated target within the cache TTL, so the reindex job drops
+    /// it once more after that (<see cref="DropAsync"/>).
+    /// </summary>
     Task<Placement> AbortRebuildAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Makes a retired dedicated index read-only (R13 step 7: kept for rollback and open readers). A shared index serves
+    /// other workspaces and is left writable. Refuses the workspace's current or pending location; a missing index is
+    /// fine.
+    /// </summary>
+    Task BlockWritesAsync(Guid workspaceId, IndexLocation location, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes a retired location of the workspace: a dedicated index is deleted, a shared index loses the workspace's
+    /// documents (term + routing, R13 step 7). Refuses the workspace's current or pending location; idempotent.
+    /// </summary>
+    Task DropAsync(Guid workspaceId, IndexLocation location, CancellationToken cancellationToken = default);
 }
 
 /// <param name="Kind">Target tier; null keeps the current one. Dedicated to shared is refused (promotion is one-way, R4).</param>
@@ -47,7 +66,11 @@ public interface IIndexManager
 public sealed record IndexRebuildRequest(IndexPlacementKind? Kind = null, int? Generation = null, int? PrimaryShards = null);
 
 /// <summary>A physical index plus the routing every request against it must carry (null: none).</summary>
-public sealed record IndexTarget(string Index, string? Routing);
+public sealed record IndexTarget(string Index, string? Routing)
+{
+    /// <summary>The ProjectionGeneration (mapping) of the index; 0 when unknown.</summary>
+    public int Generation { get; init; }
+}
 
 /// <summary>
 /// Resolved physical placement. Reads go to the stable alias; writes go to every target (two while rebuilding or
@@ -62,6 +85,16 @@ public sealed record Placement(
     IReadOnlyList<IndexTarget> WriteTargets)
 {
     public string WorkspaceFilterValue => WorkspaceId.ToString("D");
+
+    /// <summary>The location reads are served from (facts only).</summary>
+    public IndexLocation? Location { get; init; }
+
+    /// <summary>The target of a running rebuild or move; null while Active.</summary>
+    public IndexLocation? PendingLocation { get; init; }
+
+    /// <summary>The rebuild target's write target (the second write target while Building or Moving), else null.</summary>
+    public IndexTarget? RebuildTarget =>
+        State is IndexPlacementState.Building or IndexPlacementState.Moving && WriteTargets.Count > 1 ? WriteTargets[^1] : null;
 }
 
 public sealed class WorkspaceNotPlacedException : Exception

@@ -240,6 +240,13 @@ internal static class RouteAttackCatalog
         // The suite runs the stream with a 1 s maximum duration (AttackWorld), so the probe reads a complete response.
         Case("GET", Ws + "/job-events", ProtectedOperation.Job, WorkspaceOnly(HttpMethod.Get, "/job-events", HttpStatusCode.OK)),
 
+        // Search index operations (E07-T11): the workspace is the only identifier; a start answers 202, or 409 while an
+        // earlier probe's reindex is still in flight (no coordinator runs in the attack world).
+        Case("GET", Ws + "/search-index", ProtectedOperation.Job, WorkspaceOnly(HttpMethod.Get, "/search-index", HttpStatusCode.OK)),
+        Case("POST", Ws + "/search-index/reindexes", ProtectedOperation.Job,
+            new RouteProbe("workspace", HttpMethod.Post, (o, _) => W(o) + "/search-index/reindexes", null, (_, _) => J(new JsonObject()),
+                HasForeignIdentifier: false)),
+
         // Workspace administration and catalogues (the workspace is the only identifier).
         Case("GET", Ws, ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, string.Empty, HttpStatusCode.OK)),
         Case("PUT", Ws, ProtectedOperation.Workspace,

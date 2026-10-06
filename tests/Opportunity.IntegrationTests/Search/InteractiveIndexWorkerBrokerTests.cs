@@ -260,6 +260,10 @@ public sealed class InteractiveIndexWorkerBrokerTests(OpenSearchFixture openSear
     {
         public ProjectionWriterOptions Options => inner.Options;
 
+        public Task<ProjectionWriteReport> WriteAsync(
+            Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, ProjectionWriteScope scope, CancellationToken cancellationToken = default) =>
+            WriteAsync(workspaceId, documents, cancellationToken);
+
         public async Task<ProjectionWriteReport> WriteAsync(
             Guid workspaceId, IReadOnlyList<ProjectionDocument> documents, CancellationToken cancellationToken = default)
         {

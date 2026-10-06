@@ -61,6 +61,7 @@ builder.Services.AddImportContentEndpoints();
 builder.Services.AddSearchTermReportEndpoints(builder.Configuration);
 builder.Services.AddSearchTermReportContentEndpoints();
 builder.Services.AddDedupeEndpoints();
+builder.Services.AddSearchIndexEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();
