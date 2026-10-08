@@ -90,6 +90,12 @@ public sealed class Choice
 
     /// <summary>First time a value used this choice; from then on it can only be deactivated, never deleted.</summary>
     public DateTimeOffset? FirstUsedAt { get; set; }
+
+    /// <summary>
+    /// Built-in choice whose meaning the application relies on (e.g. <c>privilege-status.withhold</c>, V0047): renameable
+    /// and reorderable, never deleted or deactivated. Null for every other choice.
+    /// </summary>
+    public string? SystemKey { get; set; }
 }
 
 /// <summary>JSONB key format of ADR-003 R5: <c>"f" + FieldId</c>.</summary>

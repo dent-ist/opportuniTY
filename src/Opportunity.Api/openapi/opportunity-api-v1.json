@@ -15413,6 +15413,12 @@
           },
           "isActive": {
             "type": "boolean"
+          },
+          "systemKey": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -15441,6 +15447,12 @@
           },
           "inUse": {
             "type": "boolean"
+          },
+          "systemKey": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

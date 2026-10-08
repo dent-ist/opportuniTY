@@ -129,7 +129,7 @@ public sealed class FieldEndpoints : IApiEndpointModule
             ToResource(f.Capabilities),
             f.SearchSlot == FieldRules.OverflowSlot,
             f.Type is FieldType.SingleChoice or FieldType.MultiChoice
-                ? [.. catalog.ChoicesOf(f.FieldId).Select(c => new FieldChoiceResource(c.ChoiceId, c.Name, c.IsActive))]
+                ? [.. catalog.ChoicesOf(f.FieldId).Select(c => new FieldChoiceResource(c.ChoiceId, c.Name, c.IsActive, c.SystemKey))]
                 : null))];
     }
 

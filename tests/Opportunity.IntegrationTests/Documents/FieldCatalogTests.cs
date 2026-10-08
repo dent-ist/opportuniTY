@@ -24,7 +24,7 @@ public sealed class FieldCatalogTests(MigrationPostgresFixture postgres)
         await db.Fields.InitializeWorkspaceAsync(ws, Ct);
 
         var catalog = await db.Fields.GetCatalogAsync(ws, cancellationToken: Ct);
-        catalog.Fields.Should().HaveCount(SystemFields.Create(ws).Count);
+        catalog.Fields.Should().HaveCount(SystemFields.Create(ws).Count + PrivilegeFields.Definitions.Count);
         catalog.Fields.Should().OnlyContain(f => f.IsSystem && f.FieldId < 1000 && (f.Storage == FieldStorage.Column) == (f.ColumnName != null));
         catalog.Find(SystemFields.ControlNumber)!.Capabilities.Should().HaveFlag(FieldCapabilities.Sortable);
 
@@ -95,14 +95,14 @@ public sealed class FieldCatalogTests(MigrationPostgresFixture postgres)
         await using var db = await CoreSchemaDatabase.CreateAsync(postgres);
         var ws = await InitializedWorkspaceAsync(db);
 
-        var privilege = await CreateAsync(db, new NewField(ws, "Privilege Status", FieldType.SingleChoice, FieldStorage.Coding,
+        var privilege = await CreateAsync(db, new NewField(ws, "Privilege Call", FieldType.SingleChoice, FieldStorage.Coding,
             SecurityClass: SecurityClass.PrivilegeStatus));
         var confidentiality = await CreateAsync(db, new NewField(ws, "Confidentiality", FieldType.SingleChoice, FieldStorage.Coding,
             SecurityClass: SecurityClass.ConfidentialityDesignation));
         var responsive = await CreateAsync(db, new NewField(ws, "Responsive", FieldType.Boolean, FieldStorage.Coding));
 
         var catalog = await db.Fields.GetCatalogAsync(ws, cancellationToken: Ct);
-        catalog.Fields.Where(f => f.IsSecurityAffecting).Select(f => (f.FieldId, f.SecurityClass)).Should().BeEquivalentTo(
+        catalog.Fields.Where(f => f.IsSecurityAffecting && !f.IsSystem).Select(f => (f.FieldId, f.SecurityClass)).Should().BeEquivalentTo(
             [(privilege.FieldId, (SecurityClass?)SecurityClass.PrivilegeStatus), (confidentiality.FieldId, (SecurityClass?)SecurityClass.ConfidentialityDesignation)]);
         catalog.Find(responsive.FieldId)!.IsSecurityAffecting.Should().BeFalse();
 
@@ -223,7 +223,7 @@ public sealed class FieldCatalogTests(MigrationPostgresFixture postgres)
             SecurityClass: SecurityClass.PrivilegeStatus));
         var yes = (await db.Fields.AddChoiceAsync(ws, privileged.FieldId, "Yes", Ct)).Value!;
         await db.Fields.AddChoiceAsync(ws, privileged.FieldId, "No", Ct);
-        var basis = await CreateAsync(db, new NewField(ws, "Privilege Basis", FieldType.MultiChoice, FieldStorage.Coding));
+        var basis = await CreateAsync(db, new NewField(ws, "Privilege Grounds", FieldType.MultiChoice, FieldStorage.Coding));
         var custodian = await CreateAsync(db, new NewField(ws, "Custodian", FieldType.Keyword, FieldStorage.Metadata));
 
         var layout = new CodingLayout

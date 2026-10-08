@@ -36,7 +36,8 @@ public sealed record FieldResource(
 /// <param name="ChoiceId">Stable id; values store it.</param>
 /// <param name="Name">Current name, used in query text.</param>
 /// <param name="IsActive">Inactive choices keep their values but cannot be newly assigned.</param>
-public sealed record FieldChoiceResource(int ChoiceId, string Name, bool IsActive);
+/// <param name="SystemKey">Built-in choice the application relies on (e.g. <c>privilege-status.withhold</c>, E13-T01); null otherwise.</param>
+public sealed record FieldChoiceResource(int ChoiceId, string Name, bool IsActive, string? SystemKey = null);
 
 /// <summary>ADR-007 R8 capability flags. All false for a field that is not searchable.</summary>
 public sealed record FieldCapabilitiesResource(

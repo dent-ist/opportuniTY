@@ -292,6 +292,17 @@ and may relax it only through an amendment to this ADR.
    permission `Installation.AssignBreakGlass` (Installation Admin), never to oneself; removing it needs only
    `Workspace.ManageUsers` and ends the holder's live activation in the same transaction. Role grants stay fixed in
    code (D5.6): `GET …/roles` serves them read-only.
+8. *Amendment 2026-10-06 (E13-T01, #109), as implemented:* every workspace has the privilege system fields
+   Privilege Status, Privilege Basis, Privilege Description, Attorneys Involved and Log Category (ids 37–41, coding
+   storage, all security-affecting with class PrivilegeStatus, so editing them needs `Coding.WritePrivilege`).
+   Provisioning (`opportunity.provision_privilege_fields`, V0047; backfilled for existing workspaces) binds the
+   built-in `Privileged` class to Withhold, Redact and Needs 2L Review through the D6.6 rule table; admins may
+   change that binding. Built-in choices carry a `systemKey` and cannot be deactivated or deleted. The coding store
+   refuses Withhold or Redact without a basis on every write path, and finalizing a production re-checks its members'
+   Privilege Status in PostgreSQL under a per-workspace advisory lock that Privilege Status writes hold shared, so a
+   committed Withhold blocks finalization regardless of index freshness. New workspaces also get the default
+   template of the familiarity guide §3.4, whose Confidentiality Designation is bound to `Confidential` and
+   `AttorneysEyesOnly`.
 
 ### D7. PostgreSQL row-level security
 

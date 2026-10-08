@@ -68,7 +68,7 @@ const FIELDS: FieldResource[] = [
   resource(1000, 'Privilege', 'singleChoice', {
     isSecurityAffecting: true,
     choices: [
-      { choiceId: 1, name: 'Withhold', isActive: true },
+      { choiceId: 1, name: 'Withhold', isActive: true, systemKey: 'privilege-status.withhold' },
       { choiceId: 2, name: 'Produce', isActive: true },
     ],
   }),
@@ -98,6 +98,7 @@ function admin(field: FieldResource, extra: Partial<AdminField> = {}): AdminFiel
         name: c.name,
         isActive: c.isActive,
         inUse: c.choiceId === 1,
+        isBuiltIn: !!c.systemKey,
       })) ?? null,
     ...extra,
   };
@@ -315,6 +316,19 @@ describe('Admin › Fields, Choices and Coding Layouts (E04-T06)', () => {
       // Used choices can only be deactivated: no delete button for Withhold, one for Produce.
       expect(button('Delete Withhold')).toBeUndefined();
       expect(button('Delete Produce')).toBeDefined();
+      await expectNoAxeViolations(root);
+    });
+
+    it('marks built-in choices and offers neither Deactivate nor Delete for them (E13-T01)', async () => {
+      await mount(FieldsPage);
+      button('Edit Privilege')!.click();
+      await settle();
+      const rows = [...root.querySelectorAll<HTMLElement>('.fa__choice')];
+      expect(rows[0].textContent).toContain('Built-in');
+      expect(rows[1].textContent).not.toContain('Built-in');
+      expect(button('Deactivate Withhold')).toBeUndefined();
+      expect(button('Deactivate Produce')).toBeDefined();
+      expect(button('Rename Withhold')).toBeDefined();
       await expectNoAxeViolations(root);
     });
 

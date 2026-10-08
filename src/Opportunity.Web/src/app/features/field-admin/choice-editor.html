@@ -43,6 +43,9 @@
           @if (choice.inUse) {
             <opp-badge tone="info">In use</opp-badge>
           }
+          @if (choice.isBuiltIn) {
+            <opp-badge tone="neutral" icon="lock">Built-in</opp-badge>
+          }
           <span class="fa__row-actions">
             <button
               type="button"
@@ -74,7 +77,9 @@
             >
               <opp-icon name="pencil" />
             </button>
-            @if (choice.isActive) {
+            @if (choice.isBuiltIn) {
+              <!-- Built-in choices drive privilege rules (E13-T01): they stay active and are never deleted. -->
+            } @else if (choice.isActive) {
               <button
                 type="button"
                 oppButton="ghost"
@@ -95,7 +100,7 @@
                 Reactivate<span class="opp-visually-hidden"> {{ choice.name }}</span>
               </button>
             }
-            @if (!choice.inUse) {
+            @if (!choice.inUse && !choice.isBuiltIn) {
               <button
                 type="button"
                 oppIconButton
