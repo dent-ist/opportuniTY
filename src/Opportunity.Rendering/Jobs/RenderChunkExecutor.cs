@@ -70,8 +70,15 @@ public sealed partial class RenderChunkExecutor(
                 var directory = Directory.CreateDirectory(Path.Combine(root, state.DocumentId.ToString("N"))).FullName;
                 try
                 {
-                    var changed = await RenderImportedPagesAsync(context, state, directory, write, cancellationToken).ConfigureAwait(false);
-                    changed |= await RenderNativeAsync(context, state, directory, write, cancellationToken).ConfigureAwait(false);
+                    // One render session (with the sandbox: one process) per document, torn down before its files go.
+                    var session = renderer.BeginDocument(directory);
+                    bool changed;
+                    await using (session.ConfigureAwait(false))
+                    {
+                        changed = await RenderImportedPagesAsync(context, state, session, directory, write, cancellationToken).ConfigureAwait(false);
+                        changed |= await RenderNativeAsync(context, state, session, directory, write, cancellationToken).ConfigureAwait(false);
+                    }
+
                     if (changed)
                     {
                         applied++;
@@ -108,7 +115,7 @@ public sealed partial class RenderChunkExecutor(
 
     /// <summary>Thumbnails (and review PNGs of TIFF originals) for the pages of the document's active Imported set.</summary>
     private async Task<bool> RenderImportedPagesAsync(
-        ChunkExecutionContext context, RenderDocumentState state, string directory, Accumulator write, CancellationToken cancellationToken)
+        ChunkExecutionContext context, RenderDocumentState state, IRenderSession session, string directory, Accumulator write, CancellationToken cancellationToken)
     {
         if (state.ActiveSource != PageSetSource.Imported || state.ActivePageSetId is not { } pageSetId)
         {
@@ -146,7 +153,7 @@ public sealed partial class RenderChunkExecutor(
                 var request = new RenderRequest(input, output, frames, Review: pages.Any(p => NeedsReview(p) && !p.HasReview));
                 try
                 {
-                    await foreach (var page in renderer.RenderAsync(request, cancellationToken).ConfigureAwait(false))
+                    await foreach (var page in session.RenderAsync(request, cancellationToken).ConfigureAwait(false))
                     {
                         foreach (var target in pages.Where(p => p.SourceFrame == page.Index))
                         {
@@ -179,6 +186,10 @@ public sealed partial class RenderChunkExecutor(
                         }
                     }
                 }
+                catch (RenderLimitException ex) when (HasAttemptsLeft(context))
+                {
+                    throw RetryChunk(state.DocumentId, ex);
+                }
                 catch (RenderException ex)
                 {
                     failedPages += pages.Count;
@@ -202,7 +213,7 @@ public sealed partial class RenderChunkExecutor(
 
     /// <summary>A Rendered page set from the native when the document has no Ready active page set.</summary>
     private async Task<bool> RenderNativeAsync(
-        ChunkExecutionContext context, RenderDocumentState state, string directory, Accumulator write, CancellationToken cancellationToken)
+        ChunkExecutionContext context, RenderDocumentState state, IRenderSession session, string directory, Accumulator write, CancellationToken cancellationToken)
     {
         if (state.Native is not { } native
             || !Array.Exists(RenderableTypes, t => string.Equals(t, native.ContentType, StringComparison.Ordinal))
@@ -233,7 +244,7 @@ public sealed partial class RenderChunkExecutor(
             string? failure = null;
             try
             {
-                await foreach (var page in renderer.RenderAsync(new RenderRequest(input, output), cancellationToken).ConfigureAwait(false))
+                await foreach (var page in session.RenderAsync(new RenderRequest(input, output), cancellationToken).ConfigureAwait(false))
                 {
                     var ordinal = page.Index + 1;
                     var missing = page.Error is not null || page.Review is null;
@@ -262,8 +273,13 @@ public sealed partial class RenderChunkExecutor(
                     }
                 }
             }
+            catch (RenderLimitException ex) when (HasAttemptsLeft(context))
+            {
+                throw RetryChunk(state.DocumentId, ex);
+            }
             catch (RenderException ex)
             {
+                // On the chunk's last attempt this includes a sandbox limit (time, memory, CPU, crash).
                 // The whole source is unusable: a Failed set records it, so a re-run does not try again (a new renderer version will).
                 write.PageSets.Add(new NewRenderedPageSet(pageSetId, state.DocumentId, key, PageSetStatus.Failed, []));
                 write.RemoveRasters(pageSetId);
@@ -380,6 +396,19 @@ public sealed partial class RenderChunkExecutor(
         return new RenditionObject(documentId, key.Value, sha.Value.ToBytes(), info.Length, contentType, info.KeyId ?? "installation-default", CoreScheme.ProviderSse);
     }
 
+    /// <summary>
+    /// A document that hit a sandbox limit retries the chunk while attempts remain (a busy host can cause it); on the
+    /// last attempt it fails as a document like any unrenderable source (E11-T03).
+    /// </summary>
+    private static bool HasAttemptsLeft(ChunkExecutionContext context) => context.Chunk.AttemptCount < context.Chunk.MaxAttempts;
+
+    private TransientChunkException RetryChunk(Guid documentId, RenderLimitException ex)
+    {
+        LogRenderLimit(logger, documentId, ex.Code);
+        return new TransientChunkException(ex.Code, string.Create(CultureInfo.InvariantCulture,
+            $"Document {documentId} exceeded a render sandbox limit ({ex.Code}); the chunk is retried."), ex);
+    }
+
     private static readonly string[] RenderableTypes = ["application/pdf", "image/tiff", "image/jpeg", "image/png"];
 
     /// <summary>Browsers cannot display TIFF (G4 or otherwise), so its pages need a review PNG; JPEG and PNG originals are shown as they are.</summary>
@@ -404,6 +433,9 @@ public sealed partial class RenderChunkExecutor(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Native of document {DocumentId} could not be rendered: {Code}")]
     private static partial void LogRenderFailed(ILogger logger, Guid documentId, string code);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Document {DocumentId} exceeded a render sandbox limit ({Code}); the chunk will be retried")]
+    private static partial void LogRenderLimit(ILogger logger, Guid documentId, string code);
 
     private sealed class Accumulator
     {

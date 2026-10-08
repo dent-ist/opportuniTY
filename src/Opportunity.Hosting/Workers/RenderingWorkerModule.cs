@@ -14,6 +14,7 @@ using Opportunity.Data.SearchWork;
 using Opportunity.Jobs;
 using Opportunity.Messaging;
 using Opportunity.Rendering.Jobs;
+using Opportunity.Rendering.Sandboxing;
 
 namespace Opportunity.Hosting.Workers;
 
@@ -44,7 +45,7 @@ public static class RenderingWorkerModule
         services.TryAddSingleton<IJobRepository>(sp => new JobRepository(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddPostgresJobChunkStore();
         services.AddJobChunkConsumer();
-        services.AddRenderJobs(BindOptions(configuration));
+        services.AddRenderJobs(BindOptions(configuration), sandbox: BindSandboxOptions(configuration));
 
         if (!string.IsNullOrWhiteSpace(configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)))
         {
@@ -60,5 +61,18 @@ public static class RenderingWorkerModule
     {
         ArgumentNullException.ThrowIfNull(configuration);
         return new RenderJobOptions { TempDirectory = configuration["Render:TempDirectory"] };
+    }
+
+    /// <summary>
+    /// <c>Render:Sandbox</c> (E11-T03): every document renders in a sandboxed child process unless
+    /// <c>Render:Sandbox:Enabled</c> is false (development only); limits and requirements in docs/architecture/rendering.md.
+    /// </summary>
+    public static RenderSandboxOptions BindSandboxOptions(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var options = new RenderSandboxOptions();
+        configuration.GetSection(RenderSandboxOptions.SectionName).Bind(options);
+        options.Validate();
+        return options;
     }
 }

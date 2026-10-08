@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Render sandbox entry point (E11-T03): the render worker starts one per document; it applies its own sandbox (unprivileged user, resource limits, no_new_privs, Landlock, seccomp) before it reads the document. Not a host: no configuration, no network, no logging.</Description>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Native libraries of the renderer (PDFium, Skia; Linux), kept out of projects that do not render (E11-T02). -->
+    <PackageReference Include="bblanchon.PDFium.Linux" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Rendering\Opportunity.Rendering.csproj" />
+  </ItemGroup>
+
+</Project>

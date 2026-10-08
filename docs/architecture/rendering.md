@@ -1,8 +1,8 @@
-# Render pipeline (E11-T02)
+# Render pipeline (E11-T02, E11-T03)
 
 The render worker turns imported page images and PDF natives into browser-displayable page rasters for the viewer,
 thumbnails, and the page geometry redaction coordinates are normalized against (ADR-012). This page covers what it
-renders, when, where the output goes and which libraries it uses. Sandboxing the renderer is E11-T03.
+renders, when, where the output goes, how the renderer is sandboxed and which libraries it uses.
 
 ## When a document is rendered
 
@@ -56,12 +56,118 @@ lease is extended every 25 pages.
 Not in this ticket: word layers from the PDF text layer (ADR-012 §1.5; no consumer yet), WebP, EXIF orientation of
 photos, and rendering of other native types (E11-T05).
 
-## Renderer and sandbox
+## Renderer and sandbox (E11-T03)
 
 `IRenderer` is file-in, files-out: `RenderAsync(RenderRequest(inputPath, outputDirectory, pages, review))` yields one
-`RenderedPage` at a time with the files it wrote. `RasterRenderer` runs in process today. E11-T03 can run the same
-renderer in a separate, network-less, resource-limited process with only the two paths mounted, behind the same
-interface. PDFium is used without a form-fill environment, so document JavaScript and XFA never run.
+`RenderedPage` at a time with the files it wrote. `RasterRenderer` does the work; PDFium is used without a form-fill
+environment, so document JavaScript, XFA, actions, links and external streams never run or fetch anything.
+
+The render worker never runs it in its own process. `SandboxedRenderer` (the default; `Render:Sandbox:Enabled=false`
+is for development on platforms without the sandbox only) starts **one child process per document**
+(`IRenderer.BeginDocument(workDirectory)` returns an `IRenderSession`; the executor renders all of a document's sources
+through it and disposes it before the document's files are deleted). The child is `Opportunity.Rendering.Sandbox.dll`,
+shipped next to the worker and started by the same dotnet host with a **clean environment** (only `DOTNET_*` runtime
+switches and `TZ`: no connection strings, keys or tokens) and the document's work directory, limits and render
+settings as its argument. It confines itself before it reads the document:
+
+1. **Stage 1** (main thread): if started as root, switch to `Render:Sandbox:RunAsUser`/`RunAsGroup` (default 65534;
+   the worker hands it the work directory, source and output directory); set `RLIMIT_CPU`, `RLIMIT_DATA`,
+   `RLIMIT_FSIZE`, `RLIMIT_NOFILE` and `RLIMIT_CORE=0`; set `no_new_privs`; apply **Landlock** (read and execute only
+   the dotnet host, the shared runtime and system libraries; read only the application directory and a few
+   `/proc`/`/sys` files; read and write only the work directory; no TCP bind or connect with ABI 4+; signals and
+   abstract Unix sockets scoped to the process with ABI 6+). Landlock binds the calling thread only, so the child then
+   re-executes itself: every thread of the new image is born inside the Landlock domain.
+2. **Stage 2** (`--confined`): verify the confinement (the root directory must be unreadable), load PDFium and Skia,
+   install the **seccomp filter** on every thread (TSYNC): no `socket`, `socketpair` or `connect` of any family, no
+   `execve`, no `fork`/`vfork`/non-thread `clone` (`clone3` answers `ENOSYS`, so glibc falls back to `clone`, whose
+   flags are checked), no namespaces or mounts, no `ptrace`/`process_vm_*`, no signals to other processes, no BPF,
+   perf, io_uring, keyrings or module loading; a foreign architecture (x32) is killed. It then answers `ready` with the
+   controls in force, which the worker logs once and enforces (`RequireSeccomp`, default true; `RequireLandlock`,
+   default false). Everything runs synchronously on the main thread.
+
+The worker treats the child as untrusted:
+
+| Control | Default (`Render:Sandbox:*`) | On breach |
+|---|---|---|
+| Wall clock per document process | `DocumentTimeout` 5 min | killed: `render-timeout` |
+| No progress (a page or the end of a source) | `PageTimeout` 60 s | killed: `render-timeout` |
+| Resident memory, sampled every `SampleInterval` (100 ms) | `MemoryBytes` 1 GiB; `RLIMIT_DATA` twice that; GC heap hard limit half | killed: `render-memory-limit` (also a SIGKILL from the kernel OOM killer) |
+| CPU time | `CpuSeconds` 300 (`RLIMIT_CPU`) | SIGXCPU: `render-cpu-limit` |
+| Largest file written | `MaxFileBytes` 256 MiB (`RLIMIT_FSIZE`) | the write fails: page error |
+| Start-up | `StartupTimeout` 30 s | sandbox unavailable (the chunk is retried) |
+
+Pages stream back over a line protocol (bounded lines, known error codes only). While the worker uploads a page's
+files the child is **stopped** (SIGSTOP, every thread verified stopped), so the files cannot change under it, and each
+file is checked first: a plain name directly in the output directory, a regular file (no link), within the size limit,
+and a PNG whose header matches the reported dimensions; anything else kills the child (`render-sandbox-crashed`). The
+child cannot reach object storage or PostgreSQL; the worker uploads.
+
+**Limits and the retry ceiling.** A kill or crash (`RenderLimitException`) stops only that document's process; the
+worker continues with the next document. While the chunk has attempts left, the executor fails the chunk as transient
+(`TransientChunkException` with the code), so it is retried with backoff (a busy host can cause a timeout). On the
+last attempt (`AttemptCount = MaxAttempts`, default 5) the document fails like any unrenderable source: a Failed
+Rendered page set and a per-item failure with the code, while the rest of the chunk commits. A sandbox that cannot
+start or apply its controls (`RenderSandboxUnavailableException`) is a deployment error, never a document failure: the
+chunk is retried and finally parked as Failed. Cost: about 0.3–0.6 s of process start per document (two runtime
+starts), and a limit hit re-renders the chunk's other documents on each retry (identical objects; nothing is
+duplicated).
+
+**Without Landlock** (kernels before 5.13, or Landlock missing from the kernel's LSM list) the child still has the user
+switch (when the worker is root), the clean environment, the limits and the seccomp filter, but file access is confined
+only by Unix permissions. The worker then makes itself non-dumpable (`ProtectWorkerWithoutLandlock`), so a renderer
+running as the same user cannot read the worker's `/proc/<pid>/environ` or memory. Set `RequireLandlock=true` to
+refuse to render instead.
+
+### What the deployment must provide
+
+The worker itself needs the network (PostgreSQL, RabbitMQ, object storage), so the render child's lack of network comes
+from its seccomp filter and Landlock, not from the container. The deployment must keep:
+
+- **Docker's default seccomp profile** (or a stricter one that still allows `seccomp`, `prctl` and the `landlock_*`
+  calls); never `seccomp=unconfined`. Compose already runs the worker non-root (UID 1654) with `read_only: true`,
+  `cap_drop: [ALL]`, `no-new-privileges:true`, a tmpfs at `/tmp` (the render temp directory) and a `pids_limit`.
+- A kernel with **Landlock enabled** (5.13+, `lsm=` including `landlock`; Ubuntu 22.04+ and most current
+  distributions) for path confinement.
+- A container **memory limit** above `MemoryBytes` times the concurrently rendered documents plus the worker itself, so
+  the kernel's OOM killer is only the last resort (reported as `render-memory-limit`).
+- **Network policy** as defence in depth for the worker (Kubernetes once it is packaged, Q-41; firewall rules
+  otherwise): egress only to PostgreSQL, RabbitMQ AMQP (not the management port), object storage and the OTLP
+  collector; no internet; no OpenSearch unless the same container runs the indexing workers. In a Full profile, run the
+  rendering worker type (`Workers__Enabled=rendering`) in its own container with that narrow egress.
+
+### What the tests prove, and what they do not
+
+`tests/Opportunity.UnitTests/Rendering/Sandbox` (Linux) runs the real child: output identical to the in-process
+renderer; one process per document, torn down with the session; a probe that tries TCP to a loopback canary, UDP and
+Unix sockets, reading `/etc`, writing outside the work directory, reading the worker's environment, signalling the
+worker and starting `/bin/true` (all blocked; environment clean; seccomp and `no_new_privs` on; not root); a hostile
+corpus generated in memory (`tools/Opportunity.DataGenerator.Corpus/Volumes/HostileFiles.cs`: PDF with JavaScript,
+URI, Launch, SubmitForm and GoToR actions and XFA, PDF external stream, PDF and XML with XXE and billion laughs, SVG
+with script, HTML, macro-enabled Office document, PDF/HTML, PNG/HTML and JPEG/ZIP polyglots, PNG, TIFF and Flate
+decompression bombs, truncated PDF) that renders or fails safely with **no connection to the canary**; timeout, CPU and
+memory kills followed by a normal document; a lying child (crafted protocol and path); a missing sandbox.
+`tests/Opportunity.IntegrationTests/Rendering/RenderPipelineTests` adds the executor against PostgreSQL (a memory bomb
+retries the chunk, then fails alone at the attempt ceiling while the other document commits) and a probe against the
+PostgreSQL test container and public addresses. The seccomp program is checked for x64 and arm64 by a BPF interpreter.
+
+Not verified by automated tests: the arm64 filter on real hardware; behaviour on kernels without Landlock (the tests
+assert path confinement only when Landlock is reported); Kubernetes NetworkPolicy (no manifests yet); OpenSearch and
+RabbitMQ management as probe targets (the filter denies every socket, whatever the address); AppArmor or SELinux
+profiles (none are shipped; the container runtime's default applies). The chiseled worker image with compose's
+hardening and Docker's default seccomp profile was checked by hand (the probe reported Landlock ABI 7 and seccomp, and
+every attempt blocked), not in CI. Rasters are validated but not re-encoded by the worker (threat model T-42 asks for
+re-encoding).
+
+## Viewer delivery (E11-T03)
+
+The protected-content gateway serves only derived renditions inline, and only as `image/png`, `image/jpeg` or
+`image/webp` (page images, thumbnails) or `text/plain` (text). A native is always `application/octet-stream` with
+`Content-Disposition: attachment`, streamed or presigned, so an HTML, SVG or script native is never served as an
+active type from the app origin; anything else stored under a rendition is forced to an octet-stream attachment too.
+Every content response carries `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox;
+default-src 'none'`. The web app's CSP (`deploy/docker/web/security-headers.conf`: `script-src 'self'`, no
+`'unsafe-inline'`) blocks inline script, event-handler attributes and `javascript:` URLs; `e2e/csp.spec.ts` shows it in
+Chromium against the production build.
 
 ## Libraries and licenses
 
@@ -73,7 +179,7 @@ interface. PDFium is used without a form-fill environment, so document JavaScrip
 
 All are OSI-approved permissive licenses on the policy's allow-list; none is copyleft. Only Linux natives are
 referenced (`bblanchon.PDFium.Linux`, `SkiaSharp.NativeAssets.Linux.NoDependencies`), and only by the projects that
-render (`Worker.All`, `Worker.Rendering`, unit and integration tests); `Opportunity.Rendering` keeps them private, so
+render (`Worker.All`, `Worker.Rendering`, the sandbox entry point `Rendering.Sandbox`, unit and integration tests); `Opportunity.Rendering` keeps them private, so
 the API and the other workers carry none. SkiaSharp's transitive Windows/macOS natives and other RIDs are trimmed from
 RID-less builds by `Directory.Build.targets`. The worker image (published for one RID) contains `libpdfium.so` and
 `libSkiaSharp.so` for that RID only; they need only glibc, libstdc++ and libgcc, which the chiseled .NET runtime image

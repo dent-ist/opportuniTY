@@ -10,6 +10,11 @@ namespace Opportunity.Rendering.Renderers;
 /// Pages are yielded one at a time and their files must be consumed (uploaded, then deleted by the caller) before the
 /// next page is requested, which bounds memory and disk to about one page.
 /// </summary>
+/// <remarks>
+/// The render worker uses <c>SandboxedRenderer</c> (E11-T03, docs/architecture/rendering.md): every document is
+/// rendered in its own short-lived, resource-limited child process without network access, opened with
+/// <see cref="BeginDocument"/> and torn down when the session is disposed.
+/// </remarks>
 public interface IRenderer
 {
     /// <summary>Name, version and settings fingerprint recorded on Rendered page sets (ADR-012 §1.1).</summary>
@@ -20,6 +25,29 @@ public interface IRenderer
     /// <see cref="RenderedPage.Error"/> set; a source that cannot be opened at all throws <see cref="RenderException"/>.
     /// </summary>
     IAsyncEnumerable<RenderedPage> RenderAsync(RenderRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Starts the work on one document: every source of the document is rendered through the returned session, and
+    /// the requests' input and output paths must lie under <paramref name="workDirectory"/>. An isolating renderer runs
+    /// one process per session and tears it down at dispose; the default renders in this process.
+    /// </summary>
+    IRenderSession BeginDocument(string workDirectory) => new InProcessRenderSession(this);
+}
+
+/// <summary>One document's rendering (see <see cref="IRenderer.BeginDocument"/>).</summary>
+public interface IRenderSession : IAsyncDisposable
+{
+    /// <summary>As <see cref="IRenderer.RenderAsync"/>.</summary>
+    /// <exception cref="RenderLimitException">The document exceeded a sandbox limit or crashed its render process.</exception>
+    IAsyncEnumerable<RenderedPage> RenderAsync(RenderRequest request, CancellationToken cancellationToken = default);
+}
+
+internal sealed class InProcessRenderSession(IRenderer renderer) : IRenderSession
+{
+    public IAsyncEnumerable<RenderedPage> RenderAsync(RenderRequest request, CancellationToken cancellationToken = default) =>
+        renderer.RenderAsync(request, cancellationToken);
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
 /// <param name="Name">Stable renderer name (<c>page_set.renderer_name</c>).</param>
@@ -59,7 +87,7 @@ public sealed record RasterFile(string Path, int WidthPx, int HeightPx, int Dpi,
 }
 
 /// <summary>The whole source cannot be rendered; <see cref="Code"/> is a stable, content-free reason.</summary>
-public sealed class RenderException : Exception
+public class RenderException : Exception
 {
     public RenderException()
         : this(RenderErrorCodes.Unreadable, "The source cannot be rendered.")
@@ -99,4 +127,44 @@ public static class RenderErrorCodes
     public const string AspectMismatch = "render-aspect-mismatch";
     public const string SourceMissing = "render-source-missing";
     public const string SourceIntegrity = "render-source-integrity";
+
+    /// <summary>The document's render process ran past its wall-clock limit (or stalled on a page) and was killed.</summary>
+    public const string Timeout = "render-timeout";
+
+    /// <summary>The document's render process exceeded its memory limit.</summary>
+    public const string MemoryLimit = "render-memory-limit";
+
+    /// <summary>The document's render process exceeded its CPU-time limit.</summary>
+    public const string CpuLimit = "render-cpu-limit";
+
+    /// <summary>The document's render process ended without a result (crash, protocol violation, invalid output).</summary>
+    public const string SandboxCrashed = "render-sandbox-crashed";
+}
+
+/// <summary>
+/// The document hit a sandbox limit (wall-clock time, memory, CPU time) or crashed its render process (E11-T03); only
+/// that document's process was stopped. Unlike other <see cref="RenderException"/>s this can be transient (a busy host),
+/// so the render executor retries the chunk within its attempt ceiling before it fails the document.
+/// </summary>
+public sealed class RenderLimitException : RenderException
+{
+    public RenderLimitException()
+        : base(RenderErrorCodes.SandboxCrashed, "The render process failed.")
+    {
+    }
+
+    public RenderLimitException(string message)
+        : base(RenderErrorCodes.SandboxCrashed, message)
+    {
+    }
+
+    public RenderLimitException(string message, Exception innerException)
+        : base(RenderErrorCodes.SandboxCrashed, message, innerException)
+    {
+    }
+
+    public RenderLimitException(string code, string message, Exception? innerException = null)
+        : base(code, message, innerException)
+    {
+    }
 }

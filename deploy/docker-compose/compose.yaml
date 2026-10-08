@@ -286,6 +286,10 @@ services:
       # Import share (E08-T04): load-file volumes (natives, text) are read from here, read-only; an import profile's
       # volume folder is a path inside it. Default host folder: deploy/docker-compose/import-share.
       Import__VolumeShareRoot: /var/lib/opportunity/import
+    # Render sandbox (E11-T03, docs/architecture/rendering.md): each document renders in a child process that applies
+    # Landlock and its own seccomp filter on top of Docker's default seccomp profile (never run this service with
+    # seccomp=unconfined) and the hardening above. Page files pass through the /tmp tmpfs, one page at a time.
+    pids_limit: 1024
     volumes:
       - objects:/var/lib/opportunity/objects
       - ${OPPORTUNITY_IMPORT_SHARE:-./import-share}:/var/lib/opportunity/import:ro
