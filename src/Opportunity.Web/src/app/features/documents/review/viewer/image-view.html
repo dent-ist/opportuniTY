@@ -106,6 +106,19 @@
             <opp-icon name="rotate" />
           </button>
         </div>
+        <div class="viewer-tools__group" role="group" aria-label="Redaction">
+          <button
+            type="button"
+            oppButton="secondary"
+            class="image__redact"
+            aria-keyshortcuts="Alt+Shift+X"
+            [attr.aria-pressed]="redactionMode()"
+            (click)="toggleRedaction()"
+          >
+            <opp-icon name="redact" />
+            Redact
+          </button>
+        </div>
         <!-- Term hits need text offsets; page coordinates come with OCR (deferred, E16-T12). -->
         <span class="viewer-tools__note">
           <opp-icon name="info" />
@@ -118,7 +131,7 @@
           <span>Some pages of this document have no image.</span>
         </p>
       }
-      <div class="image__body">
+      <div class="image__body" [attr.data-command-scope]="redactionMode() ? 'redaction' : null">
         @if (thumbsOpen()) {
           <ol
             #thumbs
@@ -174,6 +187,9 @@
                     ? 'The image file of page ' + pageNumber() + ' is missing.'
                     : 'Page ' + pageNumber() + ' has no image.'
                 }}
+                @if (redactionMode()) {
+                  <span>Redaction requires rendered images</span>
+                }
               </p>
             }
             @default {
@@ -192,10 +208,29 @@
                   [style.height.px]="box().imgHeight"
                   [style.transform]="imageTransform()"
                 />
+                @if (redactionMode() && redaction.status() === 'ready') {
+                  <opp-redaction-layer
+                    [pageNumber]="pageNumber()"
+                    [rotation]="rotation()"
+                    [minSize]="minRedaction()"
+                    [preview]="redactionPreview()"
+                  />
+                }
               </div>
             }
           }
         </div>
+        @if (redactionMode()) {
+          <opp-redaction-panel
+            role="region"
+            aria-labelledby="redaction-panel-title"
+            [preview]="redactionPreview()"
+            (previewChange)="redactionPreview.set($event)"
+            (newBox)="newRedaction()"
+            (fullPage)="redactFullPage()"
+            (jump)="showRedaction($event)"
+          />
+        }
       </div>
     }
   }

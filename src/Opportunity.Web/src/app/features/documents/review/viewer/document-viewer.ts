@@ -9,6 +9,7 @@ import {
   inject,
   input,
   linkedSignal,
+  signal,
 } from '@angular/core';
 import type { SearchHit } from '../../../../core/api/generated/models';
 import { CommandRegistry } from '../../../../core/commands';
@@ -114,6 +115,14 @@ export class DocumentViewer {
     };
   });
 
+  /** Redaction mode of the Image mode (E11-T04); stays on from document to document until switched off. */
+  protected readonly redactionMode = signal(false);
+  /** Why Redaction mode cannot start for this document (no rendered images); cleared with the document. */
+  protected readonly redactionBlocked = linkedSignal<string | null>(() => {
+    this.content();
+    return null;
+  });
+
   /** Modes the document has, other than the one shown (offered when a mode turns out empty). */
   protected readonly otherModes = computed(() => {
     const content = this.content();
@@ -128,6 +137,29 @@ export class DocumentViewer {
     for (const { mode, command } of VIEWER_MODES) {
       registry.handle(command, () => this.choose(mode), { enabled: () => this.ready() });
     }
+    registry.handle('redaction.toggle', () => this.toggleRedaction(), {
+      enabled: () => this.ready(),
+    });
+  }
+
+  /**
+   * Redaction mode on or off. Redactions are drawn on page images, so a document without rendered images says
+   * so ("Redaction requires rendered images") instead of switching.
+   */
+  protected toggleRedaction(): void {
+    const content = this.content();
+    if (!content) return;
+    const image = content.availability.image;
+    if (!image.available) {
+      const message = `Redaction requires rendered images (${image.reason}).`;
+      this.redactionBlocked.set(message);
+      this.announcer.announce(message);
+      return;
+    }
+    const on = this.mode() !== 'image' || !this.redactionMode();
+    if (this.mode() !== 'image') this.choose('image');
+    this.redactionMode.set(on);
+    this.announcer.announce(on ? 'Redaction mode on' : 'Redaction mode off');
   }
 
   protected available(mode: ViewerMode): boolean {

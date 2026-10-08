@@ -63,6 +63,9 @@ const PATHS = {
   save: 'M5 4.5h11.5L19.5 7.5v12H5zM8 4.5v5h7v-5M8 19.5v-5.5h8v5.5',
   columns: 'M4 4.5h16v15H4zM9.5 4.5v15M14.5 4.5v15',
   pin: 'M9 4h6M10 4v6l-3 4h10l-3-4V4M12 14v6.5',
+  // Redaction mode: a page with a struck-out band; undo.
+  redact: 'M6 3.5h12v17H6zM8.5 7.5h7M8.5 16.5h7M8.5 10.5h7v3h-7zM9.5 13.5l2-3M12.5 13.5l2-3',
+  undo: 'M9 6.5L4.5 11 9 15.5M4.5 11h10a5 5 0 010 10H11',
 } as const;
 
 export type IconName = keyof typeof PATHS;

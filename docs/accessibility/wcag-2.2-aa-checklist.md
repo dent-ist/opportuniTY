@@ -90,6 +90,9 @@ This matrix is an analysis of the documented browser, OS and screen-reader keys.
 | Next / previous page | `Page Down` / `Page Up` | same | Viewer | Scroll (all) | Passed through | Scoped override |
 | Zoom in / out / fit | `Ctrl+=` / `Ctrl+-` / `Ctrl+0`; `+` / `-` / `0` | `⌘=` / `⌘-` / `⌘0`; `+` / `-` / `0` | Viewer | Browser zoom (all) | Single keys: browse mode | Scoped override; single keys optional |
 | Rotate page | `Alt+Shift+R` | `⌥⇧R` | Viewer | Free | Passed through | Free |
+| Redaction mode on / off | `Alt+Shift+X` | `⌥⇧X` | Review | Free | Passed through | Free |
+| New redaction box / Redact full page | `Alt+Shift+D` / `Alt+Shift+P` | `⌥⇧D` / `⌥⇧P` | Redaction tools | Free | Passed through | Free |
+| Move, resize, remove the focused redaction; undo | Arrows, `Shift`+arrows, `Alt`+arrows; `Delete`; `Ctrl+Z` | same; `⌘Z` | Focused redaction box (widget keys, not rebindable) | Scroll (all); undo has no browser action outside text fields | Focus mode on the box (role button) | Scoped override |
 | Next / previous region | `Alt+Shift+G` / `Alt+Shift+B` | `⌥⇧G` / `⌥⇧B` | Everywhere | `Alt+Shift+B`: Chrome and Edge focus the bookmarks bar | Passed through | Page first (`B`) |
 | Focus coding pane (then 1–9 = field n) | `Alt+Shift+C` | `⌥⇧C` | Review | Free | Passed through | Free |
 | Focus keyword search | `Alt+Shift+K`; `/` | `⌥⇧K`; `/` | Everywhere (handled on Documents) | `/`: Firefox Quick Find (not in text fields) | `/`: browse mode | Free; `/` is page first in Firefox, optional |

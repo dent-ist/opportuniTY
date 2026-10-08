@@ -52,5 +52,11 @@ public static class ProblemCodes
     /// </summary>
     public const string SelfProtection = "self-protection";
 
+    /// <summary>
+    /// E11-T04, ADR-012 §3.6: redactions are drawn only on rendered page images (the active page set Ready, an image on
+    /// the page); the viewer says "Redaction requires rendered images".
+    /// </summary>
+    public const string RedactionRequiresImages = "redaction-requires-images";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }

@@ -129,7 +129,8 @@ M1 events ship with `E14-T01`/`E05-T04`; the rest with the owning feature, and `
 | | `BulkSubmitted`, `BulkChunkApplied`, `BulkCompleted` | Job | `SnapshotId`, field operations, counts applied/skipped (Q-07); one event per job state and per chunk, **never per document** |
 | | `OverlayEnabled` | Import | coding/privilege overlay enabled by admin (Q-31) |
 | **Privilege** | `LogGenerated`, `ConflictOverride`, `ClawbackRecorded` | Production, Document | log version and hash; override reason |
-| **Redaction** | `Added`, `Modified`, `Removed` | Document | `RedactionId`, `RedactionVersion`, page, reason code; never the note text (ADR-012) |
+| **Redaction** | `Added`, `Modified`, `Removed` | Redaction | `documentId`, `redactionSetId`, `redactionVersion`, page set and page, normalized rectangle, type, reason code and category; never the note text (ADR-012, E11-T04) |
+| | `RedactionSet.Created/Modified`, `Reason.Created/Modified` | RedactionSet / RedactionReason | Redaction Sets (renamed, retired) and the reason picklist (category, active) (E11-T04) |
 | **Export** | `Created`, `Completed`, `DocumentsExcluded`, `Downloaded` | Export | `SnapshotId`; excluded DocumentIds with reasons per chunk (Q-15); manifest hash |
 | **Production** | `Created`, `SpecFrozen`, `Run`, `VerificationFailed`, `QcOverride`, `Finalized`, `Voided`, `Downloaded`, `Rerun`, `Modified`, `Discarded`, `BatesAllocated`, `Verified` | Production | spec version, Bates range, manifest hash, V1–V5 results (ADR-012) |
 | **Import** | `Started`, `Completed`, `MalwareDetected`, `HashMismatch` | Import | counts (Completed: the frozen import report figures, E08-T06); quarantined `ObjectId`s |

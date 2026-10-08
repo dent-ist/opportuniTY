@@ -83,6 +83,28 @@ public static class AuditTaxonomy
         public const string ResourceType = "HighlightSet";
     }
 
+    /// <summary>
+    /// Redactions (E11-T04, ADR-012 §3.4): one event per added, modified or removed rectangle, in the transaction of the
+    /// save (IDs, enums and geometry; never the note), plus changes to Redaction Sets and the reason picklist.
+    /// </summary>
+    public static class Redaction
+    {
+        public const string Category = "Redaction";
+        public const string Added = "Added";
+        public const string Modified = "Modified";
+        public const string Removed = "Removed";
+        public const string SetCreated = "RedactionSet.Created";
+        public const string SetModified = "RedactionSet.Modified";
+        public const string ReasonCreated = "Reason.Created";
+        public const string ReasonModified = "Reason.Modified";
+
+        /// <summary>The audit resource type of redaction events (resource ID: the redaction ID).</summary>
+        public const string ResourceType = "Redaction";
+
+        public const string SetResourceType = "RedactionSet";
+        public const string ReasonResourceType = "RedactionReason";
+    }
+
     public static class Coding
     {
         public const string Category = "Coding";
@@ -255,7 +277,7 @@ public static class AuditTaxonomy
             "HighlightSet.Created", "HighlightSet.Modified", "HighlightSet.Deleted"),
         .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled"),
         .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded"),
-        .. Expand("Redaction", "Added", "Modified", "Removed"),
+        .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified"),

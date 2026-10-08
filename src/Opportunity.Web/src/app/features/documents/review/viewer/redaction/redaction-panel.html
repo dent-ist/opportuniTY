@@ -1,0 +1,153 @@
+@let s = session;
+<h3 class="redaction-panel__title" id="redaction-panel-title">Redactions</h3>
+@if (s.status() === 'loading') {
+  <p class="redaction-panel__muted" role="status">Loading redactions…</p>
+}
+@if (s.status() === 'error') {
+  <p class="redaction-panel__notice redaction-panel__notice--error" role="alert">
+    <opp-icon name="error" />
+    <span>{{ s.loadError() }}</span>
+  </p>
+  <button type="button" oppButton="secondary" (click)="s.refresh()">Try again</button>
+}
+@if (s.sets().length) {
+  <opp-select
+    label="Redaction Set"
+    [options]="setOptions()"
+    [value]="s.setId() ?? ''"
+    (valueChange)="s.chooseSet($event)"
+  />
+}
+@if (s.status() === 'ready') {
+  @if (s.unavailable(); as reason) {
+    <p class="redaction-panel__notice redaction-panel__notice--info" role="status">
+      <opp-icon name="info" />
+      <span>{{ reason }}</span>
+    </p>
+  }
+  @if (s.notice(); as notice) {
+    <div
+      class="redaction-panel__notice"
+      [class.redaction-panel__notice--warning]="notice.kind === 'conflict'"
+      [class.redaction-panel__notice--error]="notice.kind === 'error'"
+      role="alert"
+    >
+      <opp-icon [name]="notice.kind === 'conflict' ? 'warning' : 'error'" />
+      <span>{{ notice.message }}</span>
+      @if (notice.kind === 'conflict') {
+        <button type="button" oppButton="primary" (click)="s.refresh()">
+          <opp-icon name="refresh" />
+          Refresh redactions
+        </button>
+      }
+    </div>
+  }
+  @if (s.canApply) {
+    <div class="redaction-panel__choices">
+      <opp-select
+        label="Box style"
+        [options]="typeOptions"
+        [value]="shownType()"
+        [disabled]="!s.canDraw()"
+        (valueChange)="setType($event)"
+      />
+      <opp-select
+        label="Reason"
+        [options]="reasonOptions()"
+        [value]="shownReason()"
+        [disabled]="!s.canDraw()"
+        (valueChange)="setReason($event)"
+      />
+    </div>
+    <div class="redaction-panel__actions" role="group" aria-label="Redaction actions">
+      <button
+        type="button"
+        oppButton="secondary"
+        aria-keyshortcuts="Alt+Shift+D"
+        [disabled]="!s.canDraw()"
+        (click)="newBox.emit()"
+      >
+        <opp-icon name="plus" />
+        New box
+      </button>
+      <button
+        type="button"
+        oppButton="secondary"
+        aria-keyshortcuts="Alt+Shift+P"
+        [disabled]="!s.canDraw()"
+        (click)="fullPage.emit()"
+      >
+        <opp-icon name="fit-page" />
+        Redact full page
+      </button>
+      @if (s.canRemove) {
+        <button
+          type="button"
+          oppButton="secondary"
+          [disabled]="!selectedEditable()"
+          (click)="removeSelected()"
+        >
+          <opp-icon name="trash" />
+          Remove
+        </button>
+      }
+      <button
+        type="button"
+        oppButton="ghost"
+        [disabled]="!s.canUndo() || !s.canDraw()"
+        (click)="s.undo()"
+      >
+        <opp-icon name="undo" />
+        Undo
+      </button>
+    </div>
+  }
+  <opp-checkbox [checked]="preview()" (checkedChange)="preview.set($event)">
+    Production preview
+  </opp-checkbox>
+  <p class="redaction-panel__muted" aria-live="polite">
+    @if (s.saving()) {
+      Saving…
+    } @else if (s.saved(); as saved) {
+      @if (saved.lastChange; as last) {
+        Version {{ saved.version }} · saved by {{ last.displayName }}, {{ when(last.at) }}
+      } @else {
+        No redactions saved yet.
+      }
+    }
+  </p>
+  <h4 class="redaction-panel__subtitle">
+    In this document <span class="redaction-panel__count">{{ s.redactions().length }}</span>
+  </h4>
+  @if (s.redactions().length) {
+    <ol class="redaction-list" aria-label="Redactions in this document">
+      @for (r of s.redactions(); track r.id) {
+        <li>
+          <button
+            type="button"
+            class="redaction-list__item"
+            [attr.aria-current]="r.id === s.selectedId() ? 'true' : null"
+            (click)="jump.emit(r)"
+          >
+            <span class="redaction-list__main">
+              <span class="redaction-list__page">p. {{ r.pageNumber }}</span>
+              <span>{{ r.reasonName }}</span>
+              <span class="redaction-list__type">{{ typeLabel(r) }}</span>
+            </span>
+            <span class="redaction-list__meta">
+              {{ r.createdBy.displayName }} · {{ when(r.createdAt) }}
+              @if (r.unsaved) {
+                · <strong>not saved</strong>
+              }
+              @if (!r.onActivePageSet) {
+                · <strong>page images replaced: review</strong>
+              }
+            </span>
+          </button>
+        </li>
+      }
+    </ol>
+  } @else {
+    <p class="redaction-panel__muted">No redactions in this Redaction Set.</p>
+  }
+}

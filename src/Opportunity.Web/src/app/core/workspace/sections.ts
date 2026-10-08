@@ -23,6 +23,10 @@ export const PERMISSIONS = {
   /** Create, change and delete shared document-list views (E16-T09, "manage views"). */
   manageSharedViews: 'View.ManageShared',
   manageHighlightSets: 'HighlightSet.Manage',
+  /** Add redactions and change one's own (E11-T04, ADR-012 §3.8). */
+  redactionApply: 'Redaction.Apply',
+  /** Remove redactions and change other users' redactions. */
+  redactionRemove: 'Redaction.Remove',
 } as const;
 
 /** Installation-level permissions (`GET /api/v1/me` → `installationPermissions`), not tied to a workspace. */

@@ -327,6 +327,9 @@ Our own map. It follows the spirit of reviewer conventions (keyboard-only code �
 | | Next / previous page (Image/Production) | `PageDown` / `PageUp` | same | — |
 | | Zoom in / out / fit | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (inside viewer) | `⌘=` … | `+` / `-` / `0` |
 | | Rotate page | `Alt+Shift+R` | `⌥⇧R` | — |
+| | Redaction mode on / off (Image mode, `E11-T04`) | `Alt+Shift+X` | `⌥⇧X` | — |
+| | New redaction box / Redact full page (in Redaction mode) | `Alt+Shift+D` / `Alt+Shift+P` | `⌥⇧D` / `⌥⇧P` | — |
+| | Move / resize / remove the focused redaction; undo | arrows / `Shift`+arrows (`Alt` for fine steps) / `Delete`; `Ctrl+Z` | same; `⌘Z` | — |
 | Focus regions | Cycle regions forward / back (list → viewer → coding → related) | `Alt+Shift+G` / `Alt+Shift+B` | `⌥⇧G` / `⌥⇧B` | — |
 | | Focus coding pane (first field) | `Alt+Shift+C` | `⌥⇧C` | — |
 | | Jump to coding field n (layout order) | `Alt+Shift+C`, then `1`–`9` | same | — |

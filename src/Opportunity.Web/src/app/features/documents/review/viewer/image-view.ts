@@ -9,6 +9,7 @@ import {
   effect,
   inject,
   input,
+  model,
   signal,
   untracked,
   viewChild,
@@ -22,6 +23,7 @@ import { CommandRegistry } from '../../../../core/commands';
 import {
   Announcer,
   Button,
+  DialogService,
   EmptyState,
   ErrorState,
   Icon,
@@ -29,6 +31,11 @@ import {
   LoadingState,
 } from '../../../../ui';
 import { DocumentContentApi } from '../review-ports';
+import { NORMALIZED_SCALE } from './redaction/redaction-api';
+import { defaultFrameBox, minimumSize } from './redaction/redaction-geometry';
+import { RedactionLayer } from './redaction/redaction-layer';
+import { RedactionPanel } from './redaction/redaction-panel';
+import { type EditableRedaction, RedactionSession } from './redaction/redaction-session';
 
 /** Zoom steps in percent (25–400 %, E16-T04). */
 export const ZOOM_STEPS: readonly number[] = [25, 33, 50, 67, 75, 100, 125, 150, 200, 300, 400];
@@ -55,11 +62,21 @@ interface PageImage {
  */
 @Component({
   selector: 'opp-viewer-image',
-  imports: [Button, EmptyState, ErrorState, Icon, IconButton, LoadingState],
+  imports: [
+    Button,
+    EmptyState,
+    ErrorState,
+    Icon,
+    IconButton,
+    LoadingState,
+    RedactionLayer,
+    RedactionPanel,
+  ],
   templateUrl: './image-view.html',
   styleUrls: ['./viewer-shared.scss', './image-view.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'viewer-mode' },
+  providers: [RedactionSession],
 })
 export class ViewerImage {
   readonly documentId = input.required<string>();
@@ -68,12 +85,24 @@ export class ViewerImage {
   /** The page list and first image when the document loader already has them. */
   readonly initialPages = input<readonly DocumentPageResource[] | null>(null);
   readonly initialImage = input<{ readonly pageNumber: number; readonly blob: Blob } | null>(null);
+  /** Redaction mode (E11-T04): the redaction overlay, tools and list are shown; kept across documents. */
+  readonly redactionMode = model(false);
 
   private readonly api = inject(DocumentContentApi);
   private readonly announcer = inject(Announcer);
   private readonly injector = inject(Injector);
   private readonly stage = viewChild<ElementRef<HTMLElement>>('stage');
   private readonly thumbList = viewChild<ElementRef<HTMLElement>>('thumbs');
+  private readonly layer = viewChild(RedactionLayer);
+  private readonly dialogs = inject(DialogService);
+  protected readonly redaction = inject(RedactionSession);
+  /** Production preview of the redactions (opaque, as burned). */
+  protected readonly redactionPreview = signal(false);
+  /** The smallest redaction on the current page (2 × 2 pixels at 300 DPI). */
+  protected readonly minRedaction = computed(() => {
+    const page = this.page();
+    return minimumSize(Number(page?.widthPt) || 612, Number(page?.heightPt) || 792);
+  });
 
   protected readonly state = signal<'loading' | 'ready' | 'error'>('loading');
   protected readonly error = signal<ApiError | null>(null);
@@ -195,8 +224,18 @@ export class ViewerImage {
       );
     });
 
+    // Redaction mode loads the document's redactions; leaving it (or the mode) discards the editor state.
+    effect(() => {
+      const documentId = this.documentId();
+      const on = this.redactionMode();
+      untracked(() => (on ? void this.redaction.open(documentId) : this.redaction.close()));
+    });
+
     const registry = inject(CommandRegistry);
     const ready = () => this.state() === 'ready' && this.pages().length > 0;
+    const drawing = () => ready() && this.redactionMode() && this.redaction.canDraw();
+    registry.handle('redaction.newBox', () => this.newRedaction(), { enabled: drawing });
+    registry.handle('redaction.fullPage', () => void this.redactFullPage(), { enabled: drawing });
     registry.handle('viewer.nextPage', () => this.stepPage(1), { enabled: ready });
     registry.handle('viewer.previousPage', () => this.stepPage(-1), { enabled: ready });
     registry.handle('viewer.zoomIn', () => this.zoomBy(1), { enabled: ready });
@@ -205,6 +244,7 @@ export class ViewerImage {
     registry.handle('viewer.rotate', () => this.rotate(), { enabled: ready });
 
     inject(DestroyRef).onDestroy(() => {
+      this.redaction.close();
       this.seq++;
       this.thumbObserver?.disconnect();
       this.resizeObserver?.disconnect();
@@ -408,6 +448,58 @@ export class ViewerImage {
           ?.focus(),
       { injector: this.injector },
     );
+  }
+
+  // ── Redaction mode ─────────────────────────────────────────────────────────────────────────────────────────
+
+  toggleRedaction(): void {
+    const on = !this.redactionMode();
+    this.redactionMode.set(on);
+    this.announcer.announce(on ? 'Redaction mode on' : 'Redaction mode off');
+  }
+
+  /** A centred box on the current page, focused for arrow-key adjustment (the keyboard way to draw). */
+  protected newRedaction(): void {
+    const layer = this.layer();
+    if (!layer) {
+      this.announcer.announce(`Page ${this.pageNumber()} has no image to redact.`);
+      return;
+    }
+    layer.addFromKeyboard(defaultFrameBox());
+  }
+
+  /** Redacts the whole current page after confirmation (common for privileged attachments). */
+  protected async redactFullPage(): Promise<void> {
+    const page = this.pageNumber();
+    if (!this.layer()) {
+      this.announcer.announce(`Page ${page} has no image to redact.`);
+      return;
+    }
+    const reason = this.redaction.reasons().find((r) => r.code === this.redaction.reasonCode());
+    const confirmed = await this.dialogs.confirm({
+      title: 'Redact full page',
+      message: `Redact all of page ${page} as ${reason?.name ?? 'the chosen reason'} (${this.redaction.type() === 'labelled' ? 'labelled box' : 'black box'})?`,
+      confirmLabel: 'Redact page',
+    });
+    if (!confirmed) return;
+    const id = this.redaction.add(page, {
+      x: 0,
+      y: 0,
+      w: NORMALIZED_SCALE,
+      h: NORMALIZED_SCALE,
+    });
+    if (id) {
+      this.layer()?.focusBox(id);
+      this.announcer.announce(`Page ${page} redacted.`);
+    }
+  }
+
+  /** Shows a redaction from the list: its page, with the redaction selected and focused. */
+  protected showRedaction(r: EditableRedaction): void {
+    const index = this.pages().findIndex((p) => Number(p.pageNumber) === r.pageNumber);
+    this.redaction.select(r.id);
+    if (index >= 0 && index !== this.index()) this.goToIndex(index);
+    afterNextRender(() => this.layer()?.focusBox(r.id), { injector: this.injector });
   }
 
   protected pageLabel(page: DocumentPageResource): string {

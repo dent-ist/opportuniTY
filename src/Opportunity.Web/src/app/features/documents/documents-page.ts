@@ -55,6 +55,7 @@ import {
   HttpDocumentContentApi,
 } from './review/review-ports';
 import { ReviewWorkspace } from './review/review-workspace';
+import { HttpRedactionApi, RedactionApi } from './review/viewer/redaction/redaction-api';
 import { QueryBar, QuerySubmission } from './search/query-bar';
 import {
   IncludeRelated,
@@ -276,6 +277,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     { provide: DocumentContentApi, useClass: HttpDocumentContentApi },
     { provide: CodingApi, useClass: HttpCodingApi },
     { provide: RelationshipsApi, useClass: HttpRelationshipsApi },
+    { provide: RedactionApi, useClass: HttpRedactionApi },
     PendingCoding,
     { provide: BulkCodingApi, useClass: HttpBulkCodingApi },
     MassEditJobs,

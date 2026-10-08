@@ -125,6 +125,12 @@
   transition: transform var(--opp-motion-duration) var(--opp-motion-easing);
 }
 
+.image__redact[aria-pressed='true'] {
+  border-color: var(--opp-color-accent);
+  background: var(--opp-color-selected);
+  color: var(--opp-color-text);
+}
+
 .image__missing {
   display: flex;
   flex-direction: column;

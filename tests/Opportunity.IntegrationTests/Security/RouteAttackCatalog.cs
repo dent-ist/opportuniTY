@@ -32,6 +32,7 @@ internal static class ProtectedOperation
     public const string TermReport = "Search term reports (counts, export, term hit sets)";
     public const string GridView = "Document-list views and layouts";
     public const string HighlightSet = "Highlight Sets and highlighting toggles";
+    public const string Redaction = "Redactions, Redaction Sets and reasons";
     public const string Snapshot = "Frozen sets (snapshots)";
     public const string Import = "Import jobs, reports and profiles";
     public const string Job = "Job status";
@@ -89,6 +90,19 @@ internal static class RouteAttackCatalog
         source["specification"] = new JsonObject { ["bates"] = new JsonObject { ["prefix"] = "P" + Guid.NewGuid().ToString("N")[..8] } };
         return source;
     }
+
+    /// <summary>One small redaction added on page 1.</summary>
+    private static JsonObject RedactionBody() => new()
+    {
+        ["changes"] = new JsonArray(new JsonObject
+        {
+            ["operation"] = "add",
+            ["pageNumber"] = 1,
+            ["type"] = "black",
+            ["reasonCode"] = "Other",
+            ["rect"] = new JsonObject { ["x"] = 100_000, ["y"] = 100_000, ["w"] = 100_000, ["h"] = 100_000 },
+        }),
+    };
 
     public static IReadOnlyList<RouteCase> Cases { get; } =
     [
@@ -420,6 +434,38 @@ internal static class RouteAttackCatalog
         Case("GET", Ws + "/bulk-coding/{jobId}/report", ProtectedOperation.Coding,
             new RouteProbe("bulk coding job", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report", HttpStatusCode.OK),
             new RouteProbe("bulk coding job, skippedHidden", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report?outcome=skippedHidden", HttpStatusCode.OK)),
+
+        // Redactions (E11-T04): Redaction Sets by id, reasons by workspace-local code, document redactions by document and set.
+        Case("GET", Ws + "/redaction-sets", ProtectedOperation.Redaction, WorkspaceOnly(HttpMethod.Get, "/redaction-sets", HttpStatusCode.OK)),
+        Case("POST", Ws + "/redaction-sets", ProtectedOperation.Redaction,
+            WorkspaceOnly(HttpMethod.Post, "/redaction-sets", HttpStatusCode.Created, _ => J(new JsonObject { ["name"] = "Probe " + Guid.NewGuid().ToString("N") }))),
+        Case("PUT", Ws + "/redaction-sets/{redactionSetId}", ProtectedOperation.Redaction,
+            new RouteProbe("redaction set", HttpMethod.Put, (o, t) => $"{W(o)}/redaction-sets/{t.RedactionSetId}", HttpStatusCode.OK,
+                (_, _) => J(new JsonObject { ["name"] = "Default" }), IfMatch: "*")),
+        Case("GET", Ws + "/redaction-reasons", ProtectedOperation.Redaction, WorkspaceOnly(HttpMethod.Get, "/redaction-reasons", HttpStatusCode.OK)),
+        Case("POST", Ws + "/redaction-reasons", ProtectedOperation.Redaction,
+            WorkspaceOnly(HttpMethod.Post, "/redaction-reasons", HttpStatusCode.Created, _ => J(new JsonObject
+            {
+                ["code"] = "P" + Guid.NewGuid().ToString("N"), ["name"] = "Probe " + Guid.NewGuid().ToString("N"), ["category"] = "other", ["boxLabel"] = "Redacted",
+            }))),
+        Case("PUT", Ws + "/redaction-reasons/{reasonCode}", ProtectedOperation.Redaction,
+            new RouteProbe("workspace-local reason code", HttpMethod.Put, (o, _) => W(o) + "/redaction-reasons/Other", HttpStatusCode.OK,
+                (_, _) => J(new JsonObject { ["name"] = "Other", ["category"] = "other", ["boxLabel"] = "Redacted" }), IfMatch: "*",
+                HasForeignIdentifier: false)),
+        Case("GET", Ws + "/documents/{documentId}/redaction-sets/{redactionSetId}", ProtectedOperation.Redaction,
+            new RouteProbe("document and redaction set", HttpMethod.Get, (o, t) => $"{Doc(o, t)}/redaction-sets/{t.RedactionSetId}", HttpStatusCode.OK),
+            new RouteProbe("own document, another workspace's redaction set", HttpMethod.Get, (o, t) => $"{Doc(o, o)}/redaction-sets/{t.RedactionSetId}",
+                HttpStatusCode.OK),
+            new RouteProbe("document, as of version 1", HttpMethod.Get, (o, t) => $"{Doc(o, t)}/redaction-sets/{t.RedactionSetId}?version=1", HttpStatusCode.OK)),
+        Case("GET", Ws + "/documents/{documentId}/redaction-sets/{redactionSetId}/history", ProtectedOperation.Redaction,
+            new RouteProbe("document and redaction set", HttpMethod.Get, (o, t) => $"{Doc(o, t)}/redaction-sets/{t.RedactionSetId}/history", HttpStatusCode.OK),
+            new RouteProbe("own document, another workspace's redaction set", HttpMethod.Get,
+                (o, t) => $"{Doc(o, o)}/redaction-sets/{t.RedactionSetId}/history", HttpStatusCode.OK)),
+        Case("POST", Ws + "/documents/{documentId}/redaction-sets/{redactionSetId}/revisions", ProtectedOperation.Redaction,
+            new RouteProbe("document and redaction set", HttpMethod.Post, (o, t) => $"{Doc(o, t)}/redaction-sets/{t.RedactionSetId}/revisions",
+                HttpStatusCode.OK, (_, _) => J(RedactionBody()), IfMatch: "*"),
+            new RouteProbe("own document, another workspace's redaction set", HttpMethod.Post,
+                (o, t) => $"{Doc(o, o)}/redaction-sets/{t.RedactionSetId}/revisions", HttpStatusCode.OK, (_, _) => J(RedactionBody()), IfMatch: "*")),
 
         // Frozen sets.
         Case("POST", Ws + "/snapshots", ProtectedOperation.Snapshot,
