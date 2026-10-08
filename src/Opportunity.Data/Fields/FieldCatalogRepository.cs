@@ -25,12 +25,20 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         """;
 
     private const string ChoiceColumns =
-        "workspace_id, field_id, choice_id, name, sort_order, is_active, first_used_at";
+        "workspace_id, field_id, choice_id, name, sort_order, is_active, first_used_at, system_key";
 
     private const string RetypeConstraint = "field_definition_retype";
+    private const string SystemChoiceCode = "system-choice";
+    private const string SystemChoiceMessage = "Built-in choices can be renamed and reordered, but not deactivated or deleted.";
     private const string ChoiceInUseConstraint = "choice_in_use";
 
-    public async Task InitializeWorkspaceAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    public Task InitializeWorkspaceAsync(Guid workspaceId, CancellationToken cancellationToken = default) =>
+        InitializeAsync(workspaceId, seedTemplate: false, cancellationToken);
+
+    public Task InitializeNewWorkspaceAsync(Guid workspaceId, CancellationToken cancellationToken = default) =>
+        InitializeAsync(workspaceId, seedTemplate: true, cancellationToken);
+
+    private async Task InitializeAsync(Guid workspaceId, bool seedTemplate, CancellationToken cancellationToken)
     {
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         await using (var counter = tx.Command(
@@ -48,6 +56,18 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             {
                 await InsertFieldAsync(tx, field, onConflictDoNothing: true, cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        // E13-T01: the privilege fields, their built-in choices and the Privileged class binding (V0045, idempotent).
+        await using (var privilege = tx.Command("SELECT opportunity.provision_privilege_fields(@ws)"))
+        {
+            privilege.Parameters.AddWithValue("ws", workspaceId);
+            await privilege.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (seedTemplate)
+        {
+            await WorkspaceTemplate.SeedAsync(tx, workspaceId, cancellationToken).ConfigureAwait(false);
         }
 
         await using (var layout = tx.Command(
@@ -467,6 +487,11 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             }
         }
 
+        if (isActive == false && await IsSystemChoiceAsync(tx, workspaceId, fieldId, choiceId, cancellationToken).ConfigureAwait(false))
+        {
+            return CatalogResult.Conflict<Choice>(new(field.Key, SystemChoiceCode, SystemChoiceMessage));
+        }
+
         Choice? choice;
         await using (var command = tx.Command(
             $"""
@@ -568,6 +593,11 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             return CatalogResult.Conflict<Choice>(new(key, "choice-in-layout", "A coding layout condition uses this choice."));
         }
 
+        if (await IsSystemChoiceAsync(tx, workspaceId, fieldId, choiceId, cancellationToken).ConfigureAwait(false))
+        {
+            return CatalogResult.Conflict<Choice>(new(key, SystemChoiceCode, SystemChoiceMessage));
+        }
+
         try
         {
             Choice? deleted;
@@ -664,6 +694,17 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
             return CatalogResult.Invalid<CodingLayout>([new("name", "duplicate-name", $"A layout named '{layout.Name.Trim()}' already exists.")]);
         }
 
+        await WriteLayoutAsync(tx, layout, cancellationToken).ConfigureAwait(false);
+
+        var saved = (await LoadLayoutsAsync(tx, layout.WorkspaceId, layout.LayoutId, null, cancellationToken).ConfigureAwait(false)).Single();
+        await AuditAsync(tx, write, saved.LayoutId.ToString(), saved.Version, cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return CatalogResult.Ok<CodingLayout>(saved);
+    }
+
+    /// <summary>Writes a validated layout (insert or replace) in the caller's transaction; a default layout demotes the old one.</summary>
+    internal static async Task WriteLayoutAsync(WorkspaceTransaction tx, CodingLayout layout, CancellationToken cancellationToken)
+    {
         await using (var batch = new NpgsqlBatch(tx.Connection, tx.Transaction))
         {
             if (layout.IsDefault)
@@ -715,11 +756,6 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
 
             await batch.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
-
-        var saved = (await LoadLayoutsAsync(tx, layout.WorkspaceId, layout.LayoutId, null, cancellationToken).ConfigureAwait(false)).Single();
-        await AuditAsync(tx, write, saved.LayoutId.ToString(), saved.Version, cancellationToken).ConfigureAwait(false);
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return CatalogResult.Ok<CodingLayout>(saved);
     }
 
     public async Task<CodingLayout?> GetLayoutAsync(Guid workspaceId, Guid layoutId, CancellationToken cancellationToken = default)
@@ -879,7 +915,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         return [.. layouts.Values];
     }
 
-    private static async Task<FieldDefinition?> InsertFieldAsync(
+    internal static async Task<FieldDefinition?> InsertFieldAsync(
         WorkspaceTransaction tx, FieldDefinition field, bool onConflictDoNothing, CancellationToken cancellationToken)
     {
         await using var command = tx.Command(
@@ -916,7 +952,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
     }
 
     /// <summary>Lowest free slot of the field's kind within its storage namespace, else overflow (ADR-007 R4/R6).</summary>
-    private static async Task<string> AllocateSlotAsync(
+    internal static async Task<string> AllocateSlotAsync(
         WorkspaceTransaction tx, FieldDefinition field, int? exceptFieldId, CancellationToken cancellationToken)
     {
         var kind = FieldRules.SlotKind(field.Type, field.TextAnalysis);
@@ -966,6 +1002,15 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
                            WHERE workspace_id = @ws AND name_norm = lower(btrim(@name)) AND NOT is_deleted AND field_id <> @except)
             """,
             [("ws", workspaceId), ("name", name), ("except", exceptFieldId ?? 0)], cancellationToken).ConfigureAwait(false);
+
+    private static async Task<bool> IsSystemChoiceAsync(
+        WorkspaceTransaction tx, Guid workspaceId, int fieldId, int choiceId, CancellationToken cancellationToken) =>
+        await ScalarAsync<bool>(tx,
+            """
+            SELECT EXISTS (SELECT FROM opportunity.choice
+                           WHERE workspace_id = @ws AND field_id = @field AND choice_id = @choice AND system_key IS NOT NULL)
+            """,
+            [("ws", workspaceId), ("field", fieldId), ("choice", choiceId)], cancellationToken).ConfigureAwait(false);
 
     private static async Task<(long Count, bool NameTaken)> ChoiceStatsAsync(
         WorkspaceTransaction tx, Guid workspaceId, int fieldId, string name, int? exceptChoiceId, CancellationToken cancellationToken)
@@ -1070,6 +1115,7 @@ public sealed class FieldCatalogRepository(NpgsqlDataSource dataSource) : IField
         SortOrder = reader.GetInt32(4),
         IsActive = reader.GetBoolean(5),
         FirstUsedAt = reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6),
+        SystemKey = reader.IsDBNull(7) ? null : reader.GetString(7),
     };
 
     private static FieldDefinition Copy(FieldDefinition f) => new()

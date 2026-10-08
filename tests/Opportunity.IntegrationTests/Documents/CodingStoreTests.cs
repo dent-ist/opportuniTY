@@ -541,7 +541,7 @@ public sealed class CodingStoreTests(MigrationPostgresFixture postgres)
 
         var responsive = await Field(new NewField(ws, "Responsive", FieldType.Boolean, FieldStorage.Coding));
         var issues = await Field(new NewField(ws, "Issues", FieldType.MultiChoice, FieldStorage.Coding));
-        var privilege = await Field(new NewField(ws, "Privilege Status", FieldType.SingleChoice, FieldStorage.Coding,
+        var privilege = await Field(new NewField(ws, "Privilege Call", FieldType.SingleChoice, FieldStorage.Coding,
             SecurityClass: SecurityClass.PrivilegeStatus));
         var notes = await Field(new NewField(ws, "Notes", FieldType.Text, FieldStorage.Coding));
         var custodian = await Field(new NewField(ws, "Custodian", FieldType.Keyword, FieldStorage.Metadata));

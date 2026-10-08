@@ -76,6 +76,6 @@ internal static class DocumentResources
             entry.Value,
             entry.DisplayValue,
             entry.RawValue,
-            f.IsChoice ? [.. entry.Choices.Select(c => new FieldChoiceResource(c.ChoiceId, c.Name, c.IsActive))] : null);
+            f.IsChoice ? [.. entry.Choices.Select(c => new FieldChoiceResource(c.ChoiceId, c.Name, c.IsActive, c.SystemKey))] : null);
     }
 }

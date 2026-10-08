@@ -121,6 +121,34 @@ public sealed class WorkspaceManagementApiTests(MigrationPostgresFixture postgre
             .Should().Contain(["controlnumber", "filename", "date"]);
         (await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{ws}", plain)).StatusCode.Should().Be(HttpStatusCode.NotFound);
 
+        // E13-T01: the privilege system fields and the default workspace template (guide §3.4).
+        var byName = fields.RootElement.GetProperty("items").EnumerateArray().ToDictionary(f => f.GetProperty("displayName").GetString()!);
+        byName.Keys.Should().Contain(["Privilege Status", "Privilege Basis", "Privilege Description", "Attorneys Involved", "Log Category",
+            "Responsiveness", "Confidentiality Designation", "Issues", "Key Document", "Reviewer Comments"]);
+        var status = byName["Privilege Status"];
+        status.GetProperty("fieldId").GetInt32().Should().Be(Core.Fields.PrivilegeFields.Status);
+        status.GetProperty("isSystem").GetBoolean().Should().BeTrue();
+        status.GetProperty("isSecurityAffecting").GetBoolean().Should().BeTrue();
+        var statusChoices = status.GetProperty("choices").EnumerateArray()
+            .ToDictionary(c => c.GetProperty("systemKey").GetString()!, c => c.GetProperty("choiceId").GetInt32());
+        statusChoices.Keys.Should().Equal(Core.Fields.PrivilegeFields.Keys.NotPrivileged, Core.Fields.PrivilegeFields.Keys.Withhold,
+            Core.Fields.PrivilegeFields.Keys.Redact, Core.Fields.PrivilegeFields.Keys.NeedsSecondLevelReview);
+        byName["Responsiveness"].GetProperty("isSystem").GetBoolean().Should().BeFalse("template fields are ordinary custom fields");
+        byName["Confidentiality Designation"].GetProperty("isSecurityAffecting").GetBoolean().Should().BeTrue();
+
+        using var layouts = await JsonAsync(await SendAsync(client, HttpMethod.Get, $"/api/v1/workspaces/{ws}/coding-layouts", admin));
+        var layoutItems = layouts.RootElement.GetProperty("items").EnumerateArray().ToList();
+        layoutItems.Select(l => (l.GetProperty("name").GetString(), l.GetProperty("isDefault").GetBoolean()))
+            .Should().Equal(("First Pass Review", true), ("Privilege Review", false));
+        var basis = layoutItems[0].GetProperty("sections").EnumerateArray().SelectMany(s => s.GetProperty("fields").EnumerateArray())
+            .Single(f => f.GetProperty("fieldId").GetInt32() == Core.Fields.PrivilegeFields.Basis);
+        basis.GetProperty("isRequired").GetBoolean().Should().BeTrue();
+        basis.GetProperty("visibleWhen").GetProperty("fieldId").GetInt32().Should().Be(Core.Fields.PrivilegeFields.Status);
+        basis.GetProperty("visibleWhen").GetProperty("choiceIds").EnumerateArray().Select(c => c.GetInt32())
+            .Should().BeEquivalentTo([statusChoices[Core.Fields.PrivilegeFields.Keys.Withhold], statusChoices[Core.Fields.PrivilegeFields.Keys.Redact]]);
+        layoutItems[1].GetProperty("sections").EnumerateArray().SelectMany(s => s.GetProperty("fields").EnumerateArray())
+            .Select(f => f.GetProperty("fieldId").GetInt32()).Should().HaveCount(6, "all five privilege fields plus Confidentiality Designation");
+
         var audit = await db.Core.ColumnAsync(
             """
             SELECT concat_ws('|', coalesce(workspace_id::text, 'system'), category, action, actor_id, outcome, coalesce(reason_code, ''), coalesce(details->>'permission', ''))

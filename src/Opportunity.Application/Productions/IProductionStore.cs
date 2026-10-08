@@ -150,6 +150,9 @@ public enum ProductionWriteStatus
 
     /// <summary>The Bates start number lies in (or the range overlaps) another production's live range of the same prefix.</summary>
     BatesConflict,
+
+    /// <summary>E13-T01: members are coded Privilege Status = Withhold, so the production cannot be finalized.</summary>
+    PrivilegeWithheld,
 }
 
 public sealed record ProductionWriteResult(

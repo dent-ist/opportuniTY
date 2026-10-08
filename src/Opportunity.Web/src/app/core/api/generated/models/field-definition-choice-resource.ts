@@ -6,4 +6,5 @@ export interface FieldDefinitionChoiceResource {
   inUse: boolean;
   isActive: boolean;
   name: string;
+  systemKey?: string | null;
 }

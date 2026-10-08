@@ -195,12 +195,22 @@ public enum DocumentCodingOutcome
 
     /// <summary>Missing or deleted; skipped.</summary>
     NotFound,
+
+    /// <summary>
+    /// The write would leave the document invalid (e.g. Withhold without a Privilege Basis, E13-T01); nothing of it was
+    /// written. Only in writes over several documents: a single interactive save is <see cref="CodingWriteOutcome.Invalid"/>.
+    /// </summary>
+    Rejected,
 }
 
 /// <param name="DocumentVersion">Version after the write (current version when unchanged), null when not found.</param>
 /// <param name="SkippedFieldIds">Fields left unchanged because of a concurrent edit (Q-07).</param>
 public sealed record DocumentCodingResult(
-    Guid DocumentId, DocumentCodingOutcome Outcome, long? DocumentVersion, IReadOnlyList<int> SkippedFieldIds);
+    Guid DocumentId, DocumentCodingOutcome Outcome, long? DocumentVersion, IReadOnlyList<int> SkippedFieldIds)
+{
+    /// <summary>Why the document was <see cref="DocumentCodingOutcome.Rejected"/>.</summary>
+    public FieldError? Error { get; init; }
+}
 
 /// <param name="TouchesSecurityAffectingField">
 /// A security-affecting field (Q-11) changed: search work for this write belongs in the security lanes (ADR-001 §5).

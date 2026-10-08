@@ -180,6 +180,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         var events = 0;
         var security = false;
         var restrictionChanges = new List<RestrictionClassChange>();
+        var rejected = new List<DocumentCodingResult>();
         var groups = documents
             .Where(d => d.Values.Count > 0)
             .GroupBy(d => string.Join('|', d.Values.OrderBy(v => v.FieldId).Select(v => $"{v.FieldId}{(v.Merge ? "+" : "=")}{v.Value?.ToJsonString()}")), StringComparer.Ordinal)
@@ -221,10 +222,11 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                 events += result.EventsWritten;
                 security |= plan.TouchesSecurity;
                 restrictionChanges.AddRange(plan.RestrictionChanges);
+                rejected.AddRange(result.Documents.Where(d => d.Outcome == DocumentCodingOutcome.Rejected));
             }
         }
 
-        return new ImportCodingOutcome(changed, fields, events, security) { RestrictionChanges = restrictionChanges };
+        return new ImportCodingOutcome(changed, fields, events, security) { RestrictionChanges = restrictionChanges, Rejected = rejected };
     }
 
     public async Task<IReadOnlyList<DocumentCoding>> GetCurrentAsync(
@@ -489,13 +491,22 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             return (await ReplayAsync(tx, request, hash, cancellationToken).ConfigureAwait(false), plan);
         }
 
-        // 2. Field definitions, share-locked so they cannot be retyped or deleted while this write runs.
+        // 2. Field definitions, share-locked so they cannot be retyped or deleted while this write runs. A write that
+        //    touches Privilege Status or Basis reads both: Withhold and Redact need a basis afterwards (E13-T01).
+        var touchesPrivilege = fieldIds.Any(f => f is PrivilegeFields.Status or PrivilegeFields.Basis);
+        if (touchesPrivilege)
+        {
+            fieldIds = [.. fieldIds.Union([PrivilegeFields.Status, PrivilegeFields.Basis]).Order()];
+        }
+
         var catalog = await FieldCatalogRepository.LoadCatalogAsync(tx, ws, false, fieldIds, true, cancellationToken).ConfigureAwait(false);
         var (operations, fieldErrors) = Resolve(request.Operations, catalog);
         if (fieldErrors.Count > 0)
         {
             return (CodingWriteResult.Failed(CodingWriteOutcome.Invalid, [.. fieldErrors]), plan);
         }
+
+        var checkBasis = touchesPrivilege && PrivilegeFields.BasisRequiredStatuses(catalog).Count > 0;
 
         // 3. Lock the documents (projection state) in DocumentId order.
         var versions = await LockDocumentsAsync(tx, ws, documentIds, cancellationToken).ConfigureAwait(false);
@@ -529,6 +540,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             var newVersion = version + 1;
             var changed = false;
             var skipped = new List<int>();
+            var document = new WritePlan();
             foreach (var op in operations)
             {
                 state.TryGetValue((target.DocumentId, op.Field.FieldId), out var fieldState);
@@ -541,7 +553,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                     if (request.JobId is not null)
                     {
                         // Skip events belong to jobs (V0004 coding_event_skip_ck); an interactive propagation reports them only.
-                        plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.BulkSkippedConcurrentEdit,
+                        document.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.BulkSkippedConcurrentEdit,
                             currentValue, desired, version));
                     }
 
@@ -554,24 +566,42 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                 }
 
                 changed = true;
-                plan.Fields.Add((target.DocumentId, op.Field.FieldId, op.Field.IsChoice ? null : desired?.ToJsonString(), newVersion));
+                document.Fields.Add((target.DocumentId, op.Field.FieldId, op.Field.IsChoice ? null : desired?.ToJsonString(), newVersion));
                 if (op.Field.IsChoice)
                 {
                     var before = FieldValues.ChoiceIds(currentValue);
                     var after = FieldValues.ChoiceIds(desired);
-                    plan.RemovedChoices.AddRange(before.Except(after).Select(c => (target.DocumentId, op.Field.FieldId, c)));
-                    plan.AddedChoices.AddRange(after.Except(before).Select(c => (target.DocumentId, op.Field.FieldId, c)));
+                    document.RemovedChoices.AddRange(before.Except(after).Select(c => (target.DocumentId, op.Field.FieldId, c)));
+                    document.AddedChoices.AddRange(after.Except(before).Select(c => (target.DocumentId, op.Field.FieldId, c)));
                 }
 
-                plan.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.ValueChanged, currentValue, desired, newVersion));
+                document.Events.Add(new PlannedEvent(target.DocumentId, op.Field.FieldId, CodingEventKind.ValueChanged, currentValue, desired, newVersion));
                 if (op.Field.IsSecurityAffecting)
                 {
-                    plan.TouchesSecurity = true;
-                    plan.SecurityFieldIds.Add(op.Field.FieldId);
-                    plan.SecurityDocuments.Add(target.DocumentId);
+                    document.TouchesSecurity = true;
+                    document.SecurityFieldIds.Add(op.Field.FieldId);
+                    document.SecurityDocuments.Add(target.DocumentId);
                 }
             }
 
+
+            // E13-T01 AC 1: Withhold and Redact need a Privilege Basis. A single interactive save is refused; in a write
+            // over several documents (bulk chunk, propagation, import) the document is left unchanged and reported.
+            if (changed && checkBasis
+                && PrivilegeFields.ValidateBasis(catalog,
+                    ValueAfter(document, state, target.DocumentId, PrivilegeFields.Status),
+                    ValueAfter(document, state, target.DocumentId, PrivilegeFields.Basis)) is { } basisError)
+            {
+                if (request.Actor.Type == CodingActorType.Human && targets.Count == 1)
+                {
+                    return (CodingWriteResult.Failed(CodingWriteOutcome.Invalid, basisError), plan);
+                }
+
+                results.Add(new DocumentCodingResult(target.DocumentId, DocumentCodingOutcome.Rejected, version, []) { Error = basisError });
+                continue;
+            }
+
+            plan.Add(document);
             if (changed)
             {
                 plan.BumpedDocuments.Add(target.DocumentId);
@@ -587,6 +617,13 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         //    transaction, so neither the change nor its audit can commit alone (ADR-013 §2.1), and a security-affecting
         //    change is enforced by the PDP from its commit on (§24 rule 1). A job chunk's audit also shares the
         //    transaction with its IndexChunkTask and fence F3 (ApplyChunkAsync), so a refused chunk leaves no audit.
+        if (plan.Events.Any(e => e.FieldId == PrivilegeFields.Status && e.Kind == CodingEventKind.ValueChanged)
+            && catalog.Find(PrivilegeFields.Status) is { IsSystem: true })
+        {
+            // E13-T01 AC 3: a production finalizes only after every Privilege Status change before it has committed.
+            await PrivilegeGateSql.EnterSharedAsync(tx, cancellationToken).ConfigureAwait(false);
+        }
+
         if (plan.Events.Count > 0)
         {
             await WriteAsync(tx, request, writeId, plan, cancellationToken).ConfigureAwait(false);
@@ -613,6 +650,12 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         }, plan);
     }
 
+    /// <summary>A field's value after <paramref name="document"/>'s planned change, else its current value.</summary>
+    private static JsonNode? ValueAfter(WritePlan document, Dictionary<(Guid, int), FieldCodingState> state, Guid documentId, int fieldId) =>
+        document.Events.LastOrDefault(e => e.FieldId == fieldId && e.Kind == CodingEventKind.ValueChanged) is { } change
+            ? change.New
+            : state.GetValueOrDefault((documentId, fieldId))?.Value;
+
     /// <summary>
     /// ADR-015 D6.1: re-derives the bound restriction classes of <paramref name="documentIds"/> from their coding as
     /// written by this transaction and brings <c>DocumentRestriction</c> in line. Classes outside the binding are kept.
@@ -627,7 +670,9 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             return [];
         }
 
-        var securityFields = catalog.Fields.Where(f => f.IsSecurityAffecting).Select(f => f.FieldId).ToHashSet();
+        // Classes are bound to choices (V0044), so only choice fields feed the binding; security-affecting text such as the
+        // Privilege Description (E13-T01) carries none.
+        var securityFields = catalog.Fields.Where(f => f.IsSecurityAffecting && f.IsChoice).Select(f => f.FieldId).ToHashSet();
         var values = await ReadCurrentValuesAsync(tx, ws, documentIds, cancellationToken).ConfigureAwait(false);
         var desired = new Dictionary<Guid, IReadOnlySet<string>>(documentIds.Length);
         foreach (var documentId in documentIds)
@@ -679,6 +724,30 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         return changed;
     }
 
+    /// <summary>
+    /// E13-T01 AC 3, for the production store's finalization: whether a member of the production is currently coded
+    /// with the built-in Withhold choice of Privilege Status (V0045). The caller holds the privilege gate
+    /// (<see cref="PrivilegeGateSql"/>).
+    /// </summary>
+    internal static async Task<bool> AnyProductionMemberWithheldAsync(WorkspaceTransaction tx, Guid productionId, CancellationToken cancellationToken)
+    {
+        await using var command = tx.Command(
+            """
+            SELECT EXISTS (
+            SELECT FROM opportunity.production_document pd
+            JOIN opportunity.document_coding_choice c
+              ON c.workspace_id = pd.workspace_id AND c.document_id = pd.document_id AND c.field_id = @field
+            JOIN opportunity.choice ch
+              ON ch.workspace_id = c.workspace_id AND ch.field_id = c.field_id AND ch.choice_id = c.choice_id AND ch.system_key = @key
+            WHERE pd.workspace_id = @ws AND pd.production_id = @id)
+            """);
+        command.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        command.Parameters.AddWithValue("id", productionId);
+        command.Parameters.AddWithValue("field", PrivilegeFields.Status);
+        command.Parameters.AddWithValue("key", PrivilegeFields.Keys.Withhold);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+    }
+
     /// <summary>The documents whose version this write bumped, with the version it wrote.</summary>
     private static List<(Guid DocumentId, long DocumentVersion)> ChangedVersions(CodingWriteResult result, WritePlan plan)
     {
@@ -708,6 +777,13 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             if (document.Outcome == DocumentCodingOutcome.NotFound)
             {
                 items.Add(new JobItemResult(JobItemResultKind.SkippedConcurrentEdit, document.DocumentId, null, null, "DocumentDeleted"));
+            }
+
+            if (document.Outcome == DocumentCodingOutcome.Rejected)
+            {
+                items.Add(new JobItemResult(JobItemResultKind.Failed, document.DocumentId, null,
+                    document.Error is { } error && FieldKey.TryParse(error.Field, out var fieldId) ? fieldId : null,
+                    RejectedReason(document.Error), document.Error?.Message));
             }
         }
 
@@ -743,6 +819,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             ["Changed"] = Invariant(results.Count(r => r.Outcome == DocumentCodingOutcome.Changed)),
             ["Skipped"] = Invariant(results.Count(r => r.Outcome == DocumentCodingOutcome.Skipped)),
             ["NotFound"] = Invariant(results.Count(r => r.Outcome == DocumentCodingOutcome.NotFound)),
+            ["Rejected"] = Invariant(results.Count(r => r.Outcome == DocumentCodingOutcome.Rejected)),
             ["CodingEvents"] = Invariant(plan.Events.Count),
             ["SecurityAffecting"] = plan.TouchesSecurity ? "true" : "false",
         };
@@ -781,6 +858,10 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             Details = details,
         };
     }
+
+    /// <summary>Job item reason code of a rejected document: <c>PrivilegeBasisRequired</c> for <c>privilege-basis-required</c>.</summary>
+    internal static string RejectedReason(FieldError? error) =>
+        error?.Code == PrivilegeFields.BasisRequiredCode ? "PrivilegeBasisRequired" : "InvalidCoding";
 
     private static string Invariant(int value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
@@ -1257,6 +1338,9 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
     {
         /// <summary>Restriction classes the overlay's security-affecting values added or removed (§24 rule 1).</summary>
         public IReadOnlyList<RestrictionClassChange> RestrictionChanges { get; init; } = [];
+
+        /// <summary>Documents whose coding values were not applied because the result would be invalid (E13-T01).</summary>
+        public IReadOnlyList<DocumentCodingResult> Rejected { get; init; } = [];
     }
 
     private sealed record PlannedEvent(Guid DocumentId, int FieldId, CodingEventKind Kind, JsonNode? Prior, JsonNode? New, long Version);
@@ -1284,5 +1368,17 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
 
         /// <summary>Documents whose wall coverage changed with this write (wall scopes on security-affecting choices).</summary>
         public IReadOnlyList<Guid> WallChanges { get; set; } = [];
+
+        /// <summary>Takes over one document's planned changes.</summary>
+        public void Add(WritePlan document)
+        {
+            Fields.AddRange(document.Fields);
+            RemovedChoices.AddRange(document.RemovedChoices);
+            AddedChoices.AddRange(document.AddedChoices);
+            Events.AddRange(document.Events);
+            TouchesSecurity |= document.TouchesSecurity;
+            SecurityFieldIds.UnionWith(document.SecurityFieldIds);
+            SecurityDocuments.UnionWith(document.SecurityDocuments);
+        }
     }
 }

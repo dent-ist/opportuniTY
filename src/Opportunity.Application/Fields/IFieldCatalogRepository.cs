@@ -10,10 +10,20 @@ namespace Opportunity.Application.Fields;
 public interface IFieldCatalogRepository
 {
     /// <summary>
-    /// Seeds a new workspace: the field-id counter, the system fields (ids 1–999) and an empty default layout.
-    /// Idempotent.
+    /// Ensures a workspace's catalogue: the field-id counter, the system fields (ids 1–999, including the privilege
+    /// fields of E13-T01) and a default layout (an empty "Default" when none exists). Idempotent; adds system fields
+    /// introduced since the workspace was created.
     /// </summary>
     Task InitializeWorkspaceAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see cref="InitializeWorkspaceAsync"/> for a workspace just created, plus the default workspace template
+    /// (familiarity guide §3.4): Responsiveness, Confidentiality Designation, Issues, Key Document and Reviewer
+    /// Comments, and the First Pass Review (default) and Privilege Review layouts. The template is only seeded into a
+    /// workspace without custom fields or layouts.
+    /// </summary>
+    Task InitializeNewWorkspaceAsync(Guid workspaceId, CancellationToken cancellationToken = default) =>
+        InitializeWorkspaceAsync(workspaceId, cancellationToken);
 
     /// <summary>Fields (deleted ones excluded unless asked) and their choices in one consistent read.</summary>
     Task<FieldCatalog> GetCatalogAsync(Guid workspaceId, bool includeDeleted = false, CancellationToken cancellationToken = default);

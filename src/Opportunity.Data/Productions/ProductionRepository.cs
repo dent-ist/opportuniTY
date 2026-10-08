@@ -13,6 +13,7 @@ using Opportunity.Application.Productions;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.Productions;
 using Opportunity.Data.Audit;
+using Opportunity.Data.Coding;
 using Opportunity.Data.Jobs;
 
 namespace Opportunity.Data.Productions;
@@ -834,6 +835,17 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
         if (conflicts.Count > 0)
         {
             return new ProductionWriteResult(ProductionWriteStatus.BatesConflict, current, conflicts);
+        }
+
+        // E13-T01 AC 3: a member coded Privilege Status = Withhold blocks the finalization, read from the coding store
+        // after every Privilege Status change before this point has committed (never from the search index).
+        await PrivilegeGateSql.EnterExclusiveAsync(tx, cancellationToken).ConfigureAwait(false);
+        // The answer gives no count: members the caller may not see must not be counted anywhere (Q-52).
+        if (await CodingRepository.AnyProductionMemberWithheldAsync(tx, productionId, cancellationToken).ConfigureAwait(false))
+        {
+            return new ProductionWriteResult(ProductionWriteStatus.PrivilegeWithheld, current,
+                Reason: "Documents in this production are coded Privilege Status = Withhold. Take them out of the frozen set or change their "
+                    + "privilege call, then allocate Bates numbers again.");
         }
 
         await using (var update = tx.Command(

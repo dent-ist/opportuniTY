@@ -24,7 +24,7 @@ public interface IRestrictionClassBinding
     IReadOnlySet<string> BoundClasses(FieldCatalog catalog);
 
     /// <summary>
-    /// The bound classes a document should carry, given its current canonical values of the security-affecting fields
+    /// The bound classes a document should carry, given its current canonical values of the security-affecting choice fields
     /// (fields without a value are absent from <paramref name="securityValues"/>).
     /// </summary>
     IReadOnlySet<string> Derive(FieldCatalog catalog, IReadOnlyDictionary<int, JsonNode> securityValues);

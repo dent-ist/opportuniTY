@@ -58,7 +58,7 @@ internal sealed class SearchWorkDatabase : IAsyncDisposable
         await Core.Fields.InitializeWorkspaceAsync(ws, Ct);
         var responsive = (await Core.Fields.CreateFieldAsync(new NewField(ws, "Responsive", FieldType.Boolean, FieldStorage.Coding), Ct))
             .Value!.FieldId;
-        var privilege = (await Core.Fields.CreateFieldAsync(new NewField(ws, "Privilege Status", FieldType.SingleChoice,
+        var privilege = (await Core.Fields.CreateFieldAsync(new NewField(ws, "Privilege Call", FieldType.SingleChoice,
             FieldStorage.Coding, SecurityClass: SecurityClass.PrivilegeStatus), Ct)).Value!.FieldId;
         var privileged = (await Core.Fields.AddChoiceAsync(ws, privilege, "Privileged", Ct)).Value!.ChoiceId;
         var docs = Enumerable.Range(1, documents)

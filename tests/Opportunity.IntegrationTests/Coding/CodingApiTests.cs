@@ -470,11 +470,16 @@ public sealed class CodingApiTests(MigrationPostgresFixture postgres)
         (await GetAsync(client, text, reviewer)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         // A class applied outside the binding is not touched by coding; clearing the designation removes the bound one.
+        // (Privileged is bound to the system Privilege Status field since E13-T01, so an unbound class is used.)
         await core.ExecuteAsync(
-            "INSERT INTO opportunity.document_restriction (workspace_id, document_id, class_key) VALUES (@ws, @doc, 'Privileged')",
+            """
+            INSERT INTO opportunity.restriction_class (workspace_id, class_key, display_name) VALUES (@ws, 'MatterB', 'Matter B');
+            INSERT INTO opportunity.restriction_class_grant (workspace_id, class_key, role) VALUES (@ws, 'MatterB', 'PrivilegeReviewer');
+            INSERT INTO opportunity.document_restriction (workspace_id, document_id, class_key) VALUES (@ws, @doc, 'MatterB');
+            """,
             ("ws", ws), ("doc", doc));
         (await PutAsync(client, url, privilege, Set(w.Confidentiality, null), "\"3\"")).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await ClassesAsync(core, ws, doc)).Should().Equal("Privileged");
+        (await ClassesAsync(core, ws, doc)).Should().Equal("MatterB");
     }
 
     private static Task<long> VersionAsync(CoreSchemaDatabase core, Guid ws, Guid doc) =>

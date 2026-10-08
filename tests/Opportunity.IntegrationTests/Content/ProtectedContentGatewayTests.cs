@@ -300,7 +300,7 @@ public sealed class ProtectedContentGatewayTests(MigrationPostgresFixture postgr
         var doc = await db.DocumentAsync(ws);
         var fields = db.Security.Core.Fields;
         await fields.InitializeWorkspaceAsync(ws, Ct);
-        var privilege = (await fields.CreateFieldAsync(new NewField(ws, "Privilege Status", FieldType.SingleChoice, FieldStorage.Coding,
+        var privilege = (await fields.CreateFieldAsync(new NewField(ws, "Privilege Call", FieldType.SingleChoice, FieldStorage.Coding,
             SecurityClass: SecurityClass.PrivilegeStatus), Ct)).Value!.FieldId;
         var privileged = (await fields.AddChoiceAsync(ws, privilege, "Attorneys' Eyes Only", Ct)).Value!.ChoiceId;
         await using var factory = Factory(db);
