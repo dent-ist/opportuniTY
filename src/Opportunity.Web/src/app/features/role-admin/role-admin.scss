@@ -1,0 +1,182 @@
+// Admin › Users & Groups and Roles & Security (E05-T08). opportuniTY tokens only; laid out like Admin › Fields.
+
+:host(.ra-page) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 80rem;
+  padding: var(--opp-space-5);
+}
+
+.ra__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.ra__title {
+  margin: 0;
+  font-size: var(--opp-font-size-2xl);
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.ra__lead,
+.ra__hint,
+.ra__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+}
+
+.ra__lead {
+  max-width: 52rem;
+}
+
+.ra__hint,
+.ra__muted {
+  font-size: var(--opp-font-size-sm);
+}
+
+.ra__notice {
+  display: flex;
+  gap: var(--opp-space-2);
+  align-items: flex-start;
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border-inline-start: 3px solid var(--opp-color-info-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+}
+
+.ra__error {
+  display: flex;
+  gap: var(--opp-space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--opp-color-danger-text);
+  font-size: var(--opp-font-size-sm);
+}
+
+.ra__toolbar {
+  display: grid;
+  grid-template-columns: minmax(14rem, 24rem);
+}
+
+.ra__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+}
+
+.ra__section-title {
+  margin: 0;
+  font-size: var(--opp-font-size-lg);
+}
+
+.ra__table-wrap {
+  overflow-x: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.ra__table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-sm);
+
+  th,
+  td {
+    padding: var(--opp-space-1) var(--opp-space-3);
+    border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+    text-align: start;
+    vertical-align: middle;
+  }
+
+  thead th {
+    position: sticky;
+    inset-block-start: 0;
+    background: var(--opp-color-surface-sunken);
+    color: var(--opp-color-text-muted);
+    font-weight: var(--opp-font-weight-semibold);
+  }
+
+  tbody tr:last-child > * {
+    border-block-end: none;
+  }
+
+  tbody tr:hover > * {
+    background: var(--opp-color-hover);
+  }
+}
+
+// Role columns: narrow, centred controls; the header wraps instead of widening the table.
+.ra__table .ra__role-head {
+  min-inline-size: 6rem;
+  max-inline-size: 8rem;
+  text-align: center;
+  white-space: normal;
+}
+
+.ra__table .ra__cell {
+  text-align: center;
+}
+
+.ra__matrix tbody th,
+.ra__permissions tbody th {
+  font-weight: var(--opp-font-weight-regular);
+}
+
+.ra__principal,
+.ra__permission {
+  min-inline-size: 14rem;
+
+  > * + * {
+    margin-inline-start: var(--opp-space-2);
+  }
+}
+
+.ra__principal-name {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.ra__principal > .ra__email,
+.ra__permission > .ra__code {
+  display: block;
+  margin-inline-start: 0;
+}
+
+.ra__code {
+  font-family: var(--opp-font-family-mono);
+}
+
+.is-empty .ra__principal-name {
+  color: var(--opp-color-text-muted);
+}
+
+.ra__na {
+  color: var(--opp-color-text-muted);
+}
+
+.ra__granted {
+  color: var(--opp-color-success-text);
+}
+
+.ra__actions-cell {
+  inline-size: 1%;
+  white-space: nowrap;
+}
+
+.ra__rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  margin: 0;
+  padding-inline-start: var(--opp-space-5);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}

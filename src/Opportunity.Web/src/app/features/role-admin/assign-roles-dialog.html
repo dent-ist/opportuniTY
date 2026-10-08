@@ -1,0 +1,84 @@
+<form novalidate (submit)="submit($event)">
+  <opp-dialog-layout title="Add user or group">
+    <div class="ra__dialog-body">
+      <opp-text-field
+        label="Find a user or group"
+        type="search"
+        hint="Search by name, email or group name. Users appear after their first sign-in."
+        [value]="text()"
+        [disabled]="saving()"
+        (valueChange)="onText($event)"
+      />
+
+      <fieldset class="ra__fieldset">
+        <legend class="ra__label">User or group</legend>
+        <p class="opp-visually-hidden" role="status">
+          @if (searching()) {
+            Searching…
+          } @else {
+            {{ choices().length }} {{ choices().length === 1 ? 'match' : 'matches' }}
+          }
+        </p>
+        @if (!choices().length && !searching()) {
+          <p class="ra__muted">Nobody matches. Check the spelling, or type a group's exact name.</p>
+        }
+        <ul class="ra__choices">
+          @for (choice of choices(); track choice.key) {
+            <li>
+              <label class="ra__choice" [class.is-selected]="selected()?.key === choice.key">
+                <input
+                  type="radio"
+                  name="ra-principal"
+                  [checked]="selected()?.key === choice.key"
+                  [disabled]="saving()"
+                  (change)="select(choice)"
+                />
+                <span class="ra__choice-text">
+                  <span class="ra__principal-name">{{ choice.label }}</span>
+                  <span class="ra__muted">
+                    {{ choice.detail }}
+                    @if (current(choice).length) {
+                      · has {{ currentNames(choice) }}
+                    }
+                  </span>
+                </span>
+              </label>
+            </li>
+          }
+        </ul>
+      </fieldset>
+
+      @if (selected(); as choice) {
+        <fieldset class="ra__fieldset">
+          <legend class="ra__label">Roles for {{ choice.label }}</legend>
+          <div class="ra__role-options">
+            @for (role of data.catalog.roles; track role.key) {
+              <opp-checkbox
+                [checked]="roles().has(role.key)"
+                [disabled]="saving() || roleDisabled(role.key)"
+                (checkedChange)="setRole(role.key, $event)"
+              >
+                {{ role.displayName }}
+                @if (role.key === 'BreakGlass' && roleDisabled(role.key)) {
+                  <span class="ra__muted">
+                    ({{ selectedIsGroup() ? 'users only' : 'Installation Admins assign it' }})
+                  </span>
+                }
+              </opp-checkbox>
+            }
+          </div>
+        </fieldset>
+      }
+
+      @if (error(); as message) {
+        <p class="ra__error" role="alert"><opp-icon name="error" />{{ message }}</p>
+      }
+    </div>
+    <ng-container dialogActions>
+      <button type="button" oppButton="ghost" [disabled]="saving()" (click)="ref.close()">
+        Cancel
+      </button>
+      <button type="submit" oppButton="primary" [busy]="saving()">Save roles</button>
+    </ng-container>
+  </opp-dialog-layout>
+</form>

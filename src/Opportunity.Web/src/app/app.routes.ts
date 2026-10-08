@@ -37,6 +37,11 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
   choices: () => import('./features/field-admin/choices-page').then((m) => m.ChoicesPage),
   'coding-layouts': () =>
     import('./features/field-admin/coding-layouts-page').then((m) => m.CodingLayoutsPage),
+  // Roles, permissions and user/group assignment (E05-T08).
+  'users-groups': () =>
+    import('./features/role-admin/users-groups-page').then((m) => m.UsersGroupsPage),
+  'roles-security': () =>
+    import('./features/role-admin/roles-security-page').then((m) => m.RolesSecurityPage),
 };
 
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */

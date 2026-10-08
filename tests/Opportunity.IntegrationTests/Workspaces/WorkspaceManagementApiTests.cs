@@ -145,7 +145,7 @@ public sealed class WorkspaceManagementApiTests(MigrationPostgresFixture postgre
 
         using var adminMe = await JsonAsync(await SendAsync(client, HttpMethod.Get, "/api/v1/me", admin, AdminGroup));
         adminMe.RootElement.GetProperty("installationPermissions").EnumerateArray().Select(p => p.GetString())
-            .Should().Equal("Installation.ManageWorkspaces");
+            .Should().Equal("Installation.ManageWorkspaces", "Installation.AssignBreakGlass");
         using var plainMe = await JsonAsync(await SendAsync(client, HttpMethod.Get, "/api/v1/me", plain, "cn=review"));
         plainMe.RootElement.GetProperty("installationPermissions").GetArrayLength().Should().Be(0);
     }

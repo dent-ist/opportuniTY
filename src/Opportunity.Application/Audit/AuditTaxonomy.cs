@@ -177,6 +177,12 @@ public static class AuditTaxonomy
         public const string Category = "Security";
         public const string RoleAssigned = "RoleAssigned";
 
+        /// <summary>A role assignment was removed (E05-T08).</summary>
+        public const string RoleRevoked = "RoleRevoked";
+
+        /// <summary>The audit resource type of role assignment events; the resource id is the assignment id.</summary>
+        public const string RoleAssignmentResourceType = "RoleAssignment";
+
         /// <summary>A restriction class, its grants or its coding rules changed (E05-T06).</summary>
         public const string RestrictionChanged = "RestrictionChanged";
 

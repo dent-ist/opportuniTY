@@ -19,8 +19,11 @@ public static class InstallationPermissions
     /// <summary>Create workspaces (E04-T05); deletion approval is <c>Installation.ApproveDeletion</c> (E20).</summary>
     public const string ManageWorkspaces = "Installation.ManageWorkspaces";
 
+    /// <summary>Assign the Break-glass workspace role (ADR-015 D6.4; E05-T08), together with <c>Workspace.ManageUsers</c>.</summary>
+    public const string AssignBreakGlass = "Installation.AssignBreakGlass";
+
     /// <summary>All installation permissions of the Installation Admin role.</summary>
-    public static IReadOnlyList<string> All { get; } = [ManageWorkspaces];
+    public static IReadOnlyList<string> All { get; } = [ManageWorkspaces, AssignBreakGlass];
 
     /// <summary>True when <paramref name="user"/> holds the Installation Admin role (a member of one of the configured groups).</summary>
     public static bool IsInstallationAdmin(ClaimsPrincipal user, InstallationAuthorizationOptions options)

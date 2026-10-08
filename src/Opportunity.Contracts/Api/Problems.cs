@@ -52,5 +52,11 @@ public static class ProblemCodes
     /// </summary>
     public const string SelfProtection = "self-protection";
 
+    /// <summary>The change gives up one of the caller's own roles: repeat it with the explicit confirmation (E05-T08).</summary>
+    public const string ConfirmationRequired = "confirmation-required";
+
+    /// <summary>The change would remove the workspace's last Workspace Admin assignment (E05-T08).</summary>
+    public const string LastAdministrator = "last-administrator";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }
