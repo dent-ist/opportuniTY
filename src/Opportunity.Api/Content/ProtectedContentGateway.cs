@@ -108,7 +108,7 @@ public sealed partial class ProtectedContentGateway(
             return new PresignedRedirectResult(url, grant.AuditEventId);
         }
 
-        return new StreamedContentResult(store, grant, request.Rendition == ContentRendition.Native, logger);
+        return new StreamedContentResult(store, grant, request.Rendition, logger);
     }
 
     /// <summary>
@@ -294,7 +294,7 @@ public sealed partial class ProtectedContentGateway(
     /// own PDP decision and durable audit event (export packages).
     /// </summary>
     internal static IResult StreamAttachment(IObjectStore store, ContentGrant grant, ILogger logger) =>
-        new StreamedContentResult(store, grant, attachment: true, logger);
+        new StreamedContentResult(store, grant, rendition: null, logger);
 
     private static void SetCommonHeaders(HttpResponse response, Guid auditEventId)
     {
@@ -303,7 +303,27 @@ public sealed partial class ProtectedContentGateway(
     }
 
     /// <summary>Streams one object with the D12.2 headers; a full read is re-verified against the registry hash.</summary>
-    private sealed class StreamedContentResult(IObjectStore store, ContentGrant grant, bool attachment, ILogger logger) : IResult
+    /// <summary>
+    /// The response type of delivered content (E11-T03): only derived renditions are ever shown inline, and only as the
+    /// image types a browser displays (or plain text); a native is always an <c>application/octet-stream</c>
+    /// attachment, so an HTML, SVG or script native is never served as an active type from the app origin. Anything
+    /// else stored under a rendition is also forced to an octet-stream attachment.
+    /// </summary>
+    /// <param name="rendition">Null for a grant streamed as a download (export packages): its stored type, as an attachment.</param>
+    public static (string ContentType, bool Attachment) DeliveredType(ContentRendition? rendition, string storedType)
+    {
+        var mediaType = storedType.Split(';', 2)[0].Trim().ToLowerInvariant();
+        return rendition switch
+        {
+            null => (storedType, true),
+            ContentRendition.Native => (ContentDispositionHeader.OctetStream, true),
+            ContentRendition.Text when mediaType == "text/plain" => (storedType, false),
+            ContentRendition.PageImage or ContentRendition.Thumbnail when mediaType is "image/png" or "image/jpeg" or "image/webp" => (mediaType, false),
+            _ => (ContentDispositionHeader.OctetStream, true),
+        };
+    }
+
+    private sealed class StreamedContentResult(IObjectStore store, ContentGrant grant, ContentRendition? rendition, ILogger logger) : IResult
     {
         public async Task ExecuteAsync(HttpContext httpContext)
         {
@@ -313,7 +333,8 @@ public sealed partial class ProtectedContentGateway(
             {
                 var response = httpContext.Response;
                 SetCommonHeaders(response, grant.AuditEventId);
-                response.ContentType = grant.ContentType;
+                var (contentType, attachment) = DeliveredType(rendition, grant.ContentType);
+                response.ContentType = contentType;
                 response.Headers.ContentSecurityPolicy = ApiContentSecurityPolicies.ProtectedContent;
                 response.Headers.XContentTypeOptions = "nosniff";
                 response.Headers.AcceptRanges = "bytes";

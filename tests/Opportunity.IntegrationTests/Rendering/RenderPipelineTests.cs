@@ -24,6 +24,7 @@ using Opportunity.IntegrationTests.Migrations;
 using Opportunity.Jobs;
 using Opportunity.Rendering.Jobs;
 using Opportunity.Rendering.Renderers;
+using Opportunity.Rendering.Sandboxing;
 
 using PageImageFormat = Opportunity.Core.Pages.PageImageFormat;
 
@@ -140,10 +141,81 @@ public sealed class RenderPipelineTests(MigrationPostgresFixture postgres)
         (await r.StoredUnderRenditionsAsync(ws, documentId)).Should().Be(1_000, "the retry wrote no extra objects");
     }
 
-    /// <summary>The render side over an import harness's database and object store.</summary>
-    private sealed class RenderHarness(ImportHarness import, IObjectStore? store = null)
+    [Fact]
+    public async Task A_document_over_a_sandbox_limit_is_killed_alone_and_fails_at_the_chunk_attempt_ceiling()
     {
-        public RasterRenderer Renderer { get; } = new();
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "The render sandbox is Linux-only.");
+        using var share = new Share();
+        share.Write(@"NATIVES\OK.pdf", SyntheticPdf.Create(2, label: "OK"));
+        share.Write(@"NATIVES\BOMB.png", PageImages.Png("bomb", 7_000, 7_000, 300));
+        await using var h = await ImportHarness.CreateAsync(postgres, volumeRoot: share.Root);
+        var ws = await h.WorkspaceAsync();
+        var dat = ImportHarness.Utf8Bom(ImportHarness.Dat(["BEGDOC", "NATIVELINK"], ["OK-001", @"NATIVES\OK.pdf"], ["BOMB-001", @"NATIVES\BOMB.png"]));
+        (await h.RunAsync(await h.StartAsync(ws, dat, Share.Profile()))).Status.Should().Be(JobStatus.Completed);
+        var documents = await h.DocumentsAsync(ws);
+
+        // The decoded 49-megapixel frame needs far more than the 160 MiB this sandbox may use.
+        var sandbox = new SandboxedRenderer(null, new RenderSandboxOptions { MemoryBytes = 160L << 20, ProtectWorkerWithoutLandlock = false },
+            NullLogger<SandboxedRenderer>.Instance);
+        var r = new RenderHarness(h, renderer: sandbox);
+        await r.Coordinator().RunOnceAsync(ws, Ct);
+        var job = await r.RenderJobAsync(ws);
+        await h.Db.ExecuteAsync("UPDATE opportunity.job_chunk SET max_attempts = 2 WHERE workspace_id = @ws", ("ws", ws));
+
+        // Attempt 1: the bomb's process is killed, the worker carries on, and the chunk is retried (it may be a busy host).
+        await r.DeliverOpenChunksAsync(ws, job.JobId);
+        var chunk = (await h.Jobs.GetChunksAsync(ws, job.JobId, cancellationToken: Ct)).Single();
+        chunk.Status.Should().Be(JobChunkStatus.RetryWait, chunk.LastError);
+        chunk.LastError.Should().Contain(RenderErrorCodes.MemoryLimit);
+        (await h.CountAsync("SELECT count(*) FROM opportunity.page_set WHERE workspace_id = @ws AND source = 2", ws)).Should().Be(0);
+
+        // Attempt 2 is the ceiling: the bomb fails as a document; the other document of the chunk renders and commits.
+        await h.Db.ExecuteAsync("UPDATE opportunity.job_chunk SET available_at = now() - interval '1 minute' WHERE workspace_id = @ws", ("ws", ws));
+        await r.DeliverOpenChunksAsync(ws, job.JobId);
+        job = (await h.Jobs.GetAsync(ws, job.JobId, Ct))!;
+        job.Status.Should().Be(JobStatus.CompletedWithErrors);
+        var items = await h.Jobs.GetItemResultsAsync(new JobItemResultQuery(ws, job.JobId), Ct);
+        items.Should().ContainSingle().Which.Result.Should().BeEquivalentTo(new { DocumentId = documents["BOMB-001"].DocumentId, ReasonCode = RenderErrorCodes.MemoryLimit });
+        var ok = await r.RastersAsync(ws, documents["OK-001"].DocumentId);
+        ok.Status.Should().Be(PageSetStatus.Ready);
+        ok.Pages.Should().HaveCount(4);
+        (await h.CountAsync("SELECT count(*) FROM opportunity.page_set WHERE workspace_id = @ws AND source = 2 AND status = 3", ws)).Should().Be(1, "the bomb has a Failed set");
+    }
+
+    [Fact]
+    public async Task The_render_sandbox_cannot_reach_PostgreSQL_or_the_internet()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "The render sandbox is Linux-only.");
+        var pg = new Npgsql.NpgsqlConnectionStringBuilder(postgres.AdminConnectionString);
+        var host = System.Net.IPAddress.TryParse(pg.Host, out _) ? pg.Host! : (await System.Net.Dns.GetHostAddressesAsync(pg.Host!, Ct))[0].ToString();
+        var pgEndpoint = $"{host}:{pg.Port}";
+        using (var reachable = new System.Net.Sockets.TcpClient())
+        {
+            await reachable.ConnectAsync(host, pg.Port, Ct);
+        }
+
+        var work = Path.Combine(Path.GetTempPath(), "opp-sandbox-probe-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var sandbox = new SandboxedRenderer(null, new RenderSandboxOptions { ProtectWorkerWithoutLandlock = false }, NullLogger<SandboxedRenderer>.Instance);
+
+            var report = await sandbox.ProbeAsync(work, [pgEndpoint, "1.1.1.1:443", "example.com:80"], Ct);
+
+            report.ConnectedEndpoints.Should().BeEmpty("the worker reaches PostgreSQL at {0}, its render process does not", pgEndpoint);
+            report.EndpointErrors.Should().HaveCount(3);
+            report.OpenedUdpSocket.Should().BeFalse();
+            report.Controls.Seccomp.Should().BeTrue();
+        }
+        finally
+        {
+            Directory.Delete(work, recursive: true);
+        }
+    }
+
+    /// <summary>The render side over an import harness's database and object store.</summary>
+    private sealed class RenderHarness(ImportHarness import, IObjectStore? store = null, IRenderer? renderer = null)
+    {
+        public IRenderer Renderer { get; } = renderer ?? new RasterRenderer();
 
         public RenderRepository Store { get; } = new(import.Db.AppDataSource);
 

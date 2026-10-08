@@ -26,6 +26,8 @@
     <ProjectReference Include="..\..\src\Opportunity.Jobs\Opportunity.Jobs.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Import\Opportunity.Import.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Rendering\Opportunity.Rendering.csproj" />
+    <!-- The render sandbox entry point (E11-T03) is started as a child process from the output directory. -->
+    <ProjectReference Include="..\..\src\Opportunity.Rendering.Sandbox\Opportunity.Rendering.Sandbox.csproj" />
     <ProjectReference Include="..\..\src\Opportunity.Production\Opportunity.Production.csproj" />
   </ItemGroup>
 

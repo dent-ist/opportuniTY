@@ -24,6 +24,7 @@
     <Project Path="src/Opportunity.Hosting/Opportunity.Hosting.csproj" />
     <Project Path="src/Opportunity.Worker.All/Opportunity.Worker.All.csproj" />
     <Project Path="src/Opportunity.HealthProbe/Opportunity.HealthProbe.csproj" />
+    <Project Path="src/Opportunity.Rendering.Sandbox/Opportunity.Rendering.Sandbox.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Opportunity.ArchitectureTests/Opportunity.ArchitectureTests.csproj" />
