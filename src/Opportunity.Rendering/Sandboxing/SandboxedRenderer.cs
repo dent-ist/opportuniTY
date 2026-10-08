@@ -225,6 +225,7 @@ public sealed partial class SandboxedRenderer : IRenderer
                     case SandboxMessageTypes.Page when message.Page is { } reported:
                         // Freeze the child while its files are validated and consumed.
                         child.Suspend();
+                        await child.FailIfPeakOverLimitAsync().ConfigureAwait(false);
                         var page = SandboxOutputValidator.Validate(reported, output, request.Pages, owner._options.MaxFileBytes);
                         if (page is null)
                         {
@@ -236,6 +237,7 @@ public sealed partial class SandboxedRenderer : IRenderer
                         await child.SendAsync(SandboxProtocol.Next, cancellationToken).ConfigureAwait(false);
                         break;
                     case SandboxMessageTypes.End:
+                        await child.FailIfPeakOverLimitAsync().ConfigureAwait(false);
                         child.Progress();
                         yield break;
                     case SandboxMessageTypes.Failed when message.Code is { } code && RenderErrorCodesSet.IsKnown(code):
@@ -603,6 +605,38 @@ public sealed partial class SandboxedRenderer : IRenderer
             catch (OperationCanceledException)
             {
             }
+        }
+
+        /// <summary>
+        /// The watchdog samples the resident size, so a fast host can decode an over-limit page between two samples;
+        /// the kernel's peak (VmHWM) is checked before each page is accepted and at the end, so the limit always holds.
+        /// </summary>
+        public async Task FailIfPeakOverLimitAsync()
+        {
+            if (PeakResidentBytes() > _owner._options.MemoryBytes)
+            {
+                throw await FailAsync(RenderErrorCodes.MemoryLimit, "The render process exceeded its memory limit.").ConfigureAwait(false);
+            }
+        }
+
+        private long PeakResidentBytes()
+        {
+            try
+            {
+                foreach (var line in File.ReadLines($"/proc/{_process.Id}/status"))
+                {
+                    if (line.StartsWith("VmHWM:", StringComparison.Ordinal))
+                    {
+                        var kib = line["VmHWM:".Length..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+                        return long.Parse(kib, CultureInfo.InvariantCulture) * 1024;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or InvalidOperationException)
+            {
+            }
+
+            return ResidentBytes();
         }
 
         private long ResidentBytes()
