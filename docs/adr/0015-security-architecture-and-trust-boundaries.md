@@ -279,6 +279,19 @@ and may relax it only through an amendment to this ADR.
    roles is hidden (as if it did not exist) from principals holding none of its visible roles and read-only for
    those holding none of its editable roles; break-glass never grants a restricted field. The lag of security-lane
    work is exported as `opportunity.search.security_projection_lag` (Q-10).
+7. *Amendment 2026-10-06 (E05-T08, #53), as implemented — pending architect confirmation:* role assignments are
+   administered at `…/workspaces/{id}/role-assignments` (`Workspace.ManageUsers`): the roles of one user
+   (`/users/{userId}`) or IdP group (`/groups?name=`) are replaced as a whole, with the version of the workspace's
+   whole assignment set as If-Match (V0046, kept on the workspace row, which the write locks), and one
+   `Security.RoleAssigned` / `Security.RoleRevoked` audit event per role in the same transaction. D6.5 is applied to
+   role assignments as follows: adding a role that applies to oneself (directly or through a group) is 403
+   `self-protection`; **giving up** one's own role is allowed, because E05-T08 requires it with an explicit warning,
+   but only with `confirmSelfRemoval` (409 `confirmation-required` otherwise) and never when it would remove the
+   workspace's last Workspace Admin assignment, which no one may remove (409 `last-administrator`, re-checked under
+   the lock). D6.4: Break-glass is assignable to users only, by a caller who also holds the new installation
+   permission `Installation.AssignBreakGlass` (Installation Admin), never to oneself; removing it needs only
+   `Workspace.ManageUsers` and ends the holder's live activation in the same transaction. Role grants stay fixed in
+   code (D5.6): `GET …/roles` serves them read-only.
 
 ### D7. PostgreSQL row-level security
 

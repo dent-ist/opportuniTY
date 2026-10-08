@@ -33,6 +33,8 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/admin/highlight-sets',
   '/w/ws-1/admin/choices',
   '/w/ws-1/admin/coding-layouts',
+  '/w/ws-1/admin/users-groups',
+  '/w/ws-1/admin/roles-security',
 ];
 
 /** Popups are rendered only while open, so each is opened and checked separately. */
@@ -43,6 +45,11 @@ const POPUPS = [
     name: 'New workspace dialog',
     path: '/workspaces',
     trigger: { role: 'button', name: /New workspace/ },
+  },
+  {
+    name: 'Add user or group dialog',
+    path: '/w/ws-1/admin/users-groups',
+    trigger: { role: 'button', name: /Add user or group/ },
   },
   {
     name: 'workspace switcher',

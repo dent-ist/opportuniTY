@@ -143,6 +143,16 @@ export type { ListSearchOutboxFailures$Params as ListSearchOutboxFailures$Params
 export { listSearchOutboxFailures as listSearchOutboxFailures } from './fn/jobs/list-search-outbox-failures';
 export type { RetrySearchOutboxFailures$Params as RetrySearchOutboxFailures$Params } from './fn/jobs/retry-search-outbox-failures';
 export { retrySearchOutboxFailures as retrySearchOutboxFailures } from './fn/jobs/retry-search-outbox-failures';
+export type { ListWorkspaceRoles$Params as ListWorkspaceRoles$Params } from './fn/roles/list-workspace-roles';
+export { listWorkspaceRoles as listWorkspaceRoles } from './fn/roles/list-workspace-roles';
+export type { ListRoleAssignments$Params as ListRoleAssignments$Params } from './fn/roles/list-role-assignments';
+export { listRoleAssignments as listRoleAssignments } from './fn/roles/list-role-assignments';
+export type { PutUserRoleAssignments$Params as PutUserRoleAssignments$Params } from './fn/roles/put-user-role-assignments';
+export { putUserRoleAssignments as putUserRoleAssignments } from './fn/roles/put-user-role-assignments';
+export type { PutGroupRoleAssignments$Params as PutGroupRoleAssignments$Params } from './fn/roles/put-group-role-assignments';
+export { putGroupRoleAssignments as putGroupRoleAssignments } from './fn/roles/put-group-role-assignments';
+export type { ListRoleAssignmentCandidates$Params as ListRoleAssignmentCandidates$Params } from './fn/roles/list-role-assignment-candidates';
+export { listRoleAssignmentCandidates as listRoleAssignmentCandidates } from './fn/roles/list-role-assignment-candidates';
 export type { GetDocument$Params as GetDocument$Params } from './fn/document-content/get-document';
 export { getDocument as getDocument } from './fn/document-content/get-document';
 export type { ListDocumentPages$Params as ListDocumentPages$Params } from './fn/document-content/list-document-pages';

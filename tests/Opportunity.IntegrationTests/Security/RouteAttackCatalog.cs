@@ -317,6 +317,20 @@ internal static class RouteAttackCatalog
             new RouteProbe("workspace", HttpMethod.Put, (o, _) => W(o), null, (o, _) => J(new JsonObject { ["name"] = "Workspace " + o.Name }),
                 IfMatch: "*", HasForeignIdentifier: false)),
         Case("GET", Ws + "/members", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/members", HttpStatusCode.OK)),
+
+        // Role administration (E05-T08). A user id is installation-level (one user may hold roles in many workspaces) and a
+        // group is an IdP name, so neither is an identifier another workspace could leak; an unknown user is a validation error.
+        Case("GET", Ws + "/roles", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/roles", HttpStatusCode.OK)),
+        Case("GET", Ws + "/role-assignments", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/role-assignments", HttpStatusCode.OK)),
+        Case("GET", Ws + "/role-assignments/candidates", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/role-assignments/candidates?q=zz-attack-probe", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/role-assignments/users/{userId}", ProtectedOperation.Workspace,
+            new RouteProbe("installation-level user id", HttpMethod.Put, (o, _) => $"{W(o)}/role-assignments/users/{Guid.CreateVersion7()}",
+                HttpStatusCode.BadRequest, (_, _) => J(new JsonObject { ["roles"] = new JsonArray("Reviewer") }), IfMatch: "*",
+                HasForeignIdentifier: false)),
+        Case("PUT", Ws + "/role-assignments/groups", ProtectedOperation.Workspace,
+            new RouteProbe("IdP group name", HttpMethod.Put, (o, _) => W(o) + "/role-assignments/groups?name=cn%3Dattack-probe", HttpStatusCode.OK,
+                (_, _) => J(new JsonObject { ["roles"] = new JsonArray() }), IfMatch: "*", HasForeignIdentifier: false)),
         Case("GET", Ws + "/fields", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/fields", HttpStatusCode.OK)),
         Case("GET", Ws + "/coding-layouts", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/coding-layouts", HttpStatusCode.OK)),
 

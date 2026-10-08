@@ -1,0 +1,126 @@
+<header class="ra__header">
+  <div>
+    <h1 class="ra__title">Roles &amp; Security</h1>
+    <p class="ra__lead">
+      What each role may do in this workspace, and which roles may see restricted documents. Assign
+      roles to people in <a routerLink="../users-groups">Users &amp; Groups</a>.
+    </p>
+  </div>
+</header>
+
+<p class="ra__notice" role="note">
+  <opp-icon name="info" />
+  <span>{{ appliesImmediately }}</span>
+</p>
+
+@if (message(); as text) {
+  <p class="ra__error" role="alert"><opp-icon name="error" />{{ text }}</p>
+}
+
+@if (loading()) {
+  <opp-loading-state label="Loading roles…" />
+} @else if (loadError(); as error) {
+  <opp-error-state [error]="error" (retry)="load()" />
+} @else {
+  <section class="ra__section" aria-labelledby="ra-classes-title">
+    <h2 id="ra-classes-title" class="ra__section-title">Who may see restricted documents</h2>
+    <p id="ra-classes-help" class="ra__hint">
+      A document coded as privileged, confidential or another restriction is visible only to the
+      roles ticked for it, and only when every restriction on it allows one of their roles. Ethical
+      walls hide documents from their members whatever the role. Tick a box to change it; it saves
+      at once. Arrow keys move between boxes and Space ticks or clears one.
+    </p>
+    <div class="ra__table-wrap">
+      <table
+        class="ra__table ra__matrix"
+        aria-describedby="ra-classes-help"
+        (keydown)="onMatrixKeydown($event)"
+      >
+        <caption class="opp-visually-hidden">
+          Roles that may see each restriction class
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Restriction</th>
+            @for (role of classRoles(); track role.key) {
+              <th scope="col" class="ra__role-head">{{ role.displayName }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (c of classes(); track c.classKey; let r = $index) {
+            <tr>
+              <th scope="row" class="ra__principal">
+                <span class="ra__principal-name">{{ c.displayName }}</span>
+                @if (!c.isBuiltIn) {
+                  <span class="ra__muted ra__email">Added for this workspace</span>
+                }
+              </th>
+              @for (role of classRoles(); track role.key; let col = $index) {
+                <td class="ra__cell" [attr.data-row]="r" [attr.data-col]="col">
+                  <opp-checkbox
+                    #control
+                    [checked]="classChecked(c, role.key)"
+                    [disabled]="classLocked(role.key)"
+                    [ariaLabel]="classLabel(c, role.key)"
+                    (checkedChange)="toggleClass(c, role.key, $event, control)"
+                  />
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (held()?.size) {
+      <p class="ra__hint">
+        Columns of roles you hold are locked: another administrator must change what they may see.
+      </p>
+    }
+  </section>
+
+  <section class="ra__section" aria-labelledby="ra-permissions-title">
+    <h2 id="ra-permissions-title" class="ra__section-title">Roles and permissions</h2>
+    <p class="ra__hint">
+      The built-in roles and what each allows. These permissions are fixed; a person holds every
+      permission of every role assigned to them or to their groups. Break-glass allows nothing until
+      its holder activates it for a limited time, and then only viewing, searching and reading the
+      audit trail.
+    </p>
+    <div class="ra__table-wrap">
+      <table class="ra__table ra__permissions">
+        <caption class="opp-visually-hidden">
+          Permissions granted by each role
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Permission</th>
+            @for (role of roles(); track role.key) {
+              <th scope="col" class="ra__role-head">{{ role.displayName }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (permission of catalog()?.permissions ?? []; track permission.name) {
+            <tr>
+              <th scope="row" class="ra__permission">
+                <span class="ra__principal-name">{{ permission.description }}</span>
+                <code class="ra__muted ra__code">{{ permission.name }}</code>
+              </th>
+              @for (role of roles(); track role.key) {
+                <td class="ra__cell">
+                  @if (granted(role.key, permission.name)) {
+                    <opp-icon name="check" class="ra__granted" />
+                    <span class="opp-visually-hidden">Granted</span>
+                  } @else {
+                    <span class="opp-visually-hidden">Not granted</span>
+                  }
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}

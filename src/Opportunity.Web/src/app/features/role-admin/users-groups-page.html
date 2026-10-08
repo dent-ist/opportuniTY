@@ -1,0 +1,146 @@
+<header class="ra__header">
+  <div>
+    <h1 #heading class="ra__title" tabindex="-1">Users &amp; Groups</h1>
+    <p class="ra__lead">
+      Give people access to this workspace by assigning roles to them or to their identity-provider
+      groups. Everyone holds every permission of every role assigned to them or to a group they
+      belong to; ethical walls and document restrictions still apply.
+    </p>
+  </div>
+  <button type="button" oppButton="primary" [disabled]="loading() || !!loadError()" (click)="add()">
+    <opp-icon name="plus" /> Add user or group
+  </button>
+</header>
+
+<p class="ra__notice" role="note">
+  <opp-icon name="info" />
+  <span>{{ appliesImmediately }}</span>
+</p>
+
+@if (message(); as text) {
+  <p class="ra__error" role="alert"><opp-icon name="error" />{{ text }}</p>
+}
+
+@if (loading()) {
+  <opp-loading-state label="Loading users and groups…" />
+} @else if (loadError(); as error) {
+  <opp-error-state [error]="error" (retry)="load()" />
+} @else {
+  <div class="ra__toolbar" role="search" aria-label="Filter users and groups">
+    <opp-text-field
+      label="Filter by name, email or group"
+      type="search"
+      [value]="filterText()"
+      (valueChange)="filterText.set($event)"
+    />
+  </div>
+
+  @if (!rows().length) {
+    <opp-empty-state
+      [title]="filterText() ? 'No users or groups match' : 'Nobody has a role yet'"
+      [message]="
+        filterText()
+          ? 'Change the filter to see more people.'
+          : 'Add a user or group to give them access to this workspace.'
+      "
+    />
+  } @else {
+    <p id="ra-matrix-help" class="ra__hint">
+      Tick a box to assign a role; it saves at once. In the table, arrow keys move between boxes and
+      Space ticks or clears one.
+    </p>
+    <div class="ra__table-wrap">
+      <table
+        class="ra__table ra__matrix"
+        aria-describedby="ra-matrix-help"
+        (keydown)="onMatrixKeydown($event)"
+      >
+        <caption class="opp-visually-hidden">
+          Roles of users and groups in this workspace,
+          {{
+            rows().length
+          }}
+          shown
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">User or group</th>
+            @for (role of roles(); track role.key) {
+              <th scope="col" class="ra__role-head">{{ role.displayName }}</th>
+            }
+            <th scope="col"><span class="opp-visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of rows(); track key(p); let r = $index) {
+            <tr [class.is-empty]="!p.roles.length">
+              <th scope="row" class="ra__principal">
+                <span class="ra__principal-name">{{ p.displayName }}</span>
+                @if (p.kind === 'group') {
+                  <opp-badge tone="neutral">Group</opp-badge>
+                }
+                @if (p.appliesToYou) {
+                  <opp-badge tone="info">{{
+                    p.kind === 'group' ? 'Includes you' : 'You'
+                  }}</opp-badge>
+                }
+                @if (p.email) {
+                  <span class="ra__muted ra__email">{{ p.email }}</span>
+                }
+                @if (!p.roles.length) {
+                  <span class="ra__muted ra__email">No roles: no access</span>
+                }
+              </th>
+              @for (role of roles(); track role.key; let c = $index) {
+                @let state = cell(p, role.key);
+                <td class="ra__cell" [attr.data-row]="r" [attr.data-col]="c">
+                  @if (state.notApplicable) {
+                    <span class="ra__na" aria-hidden="true">–</span>
+                    <span class="opp-visually-hidden"
+                      >{{ role.displayName }} for {{ p.displayName }}: {{ state.reason }}</span
+                    >
+                  } @else {
+                    <opp-checkbox
+                      #control
+                      [checked]="state.checked"
+                      [disabled]="state.disabled"
+                      [ariaLabel]="cellLabel(p, role.key, state)"
+                      (checkedChange)="toggle(p, role.key, $event, control)"
+                    />
+                  }
+                </td>
+              }
+              <td class="ra__actions-cell">
+                @if (p.roles.length) {
+                  <button
+                    type="button"
+                    oppIconButton
+                    [label]="'Remove ' + p.displayName + ' from this workspace'"
+                    [disabled]="
+                      p.roles.includes(workspaceAdmin) &&
+                      (assignments()?.administratorPaths ?? 0) <= 1
+                    "
+                    (click)="removeAll(p)"
+                  >
+                    <opp-icon name="trash" />
+                  </button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <ul class="ra__rules">
+      <li>Nobody can add roles to themselves or to a group they belong to.</li>
+      <li>Removing one of your own roles asks you to confirm first.</li>
+      <li>The workspace always keeps at least one Workspace Admin.</li>
+      <li>
+        Break-glass gives a named user emergency, read-only access for a limited time after they
+        activate it. Only an Installation Admin can assign it, never to a group.
+      </li>
+      <li>Users appear here after their first sign-in.</li>
+    </ul>
+  }
+}

@@ -10,6 +10,7 @@ import { GridViewsMock } from './mock-grid-views';
 import { HighlightsMock } from './mock-highlights';
 import { RedactionsMock } from './mock-redactions';
 import { FieldAdminMock } from './mock-field-admin';
+import { RoleAdminMock } from './mock-role-admin';
 import { RelationshipsMock, hitRelations } from './mock-relationships';
 
 /**
@@ -74,6 +75,8 @@ export interface MockControl {
   readonly unhandled: string[];
   /** Field and coding layout administration (E04-T06): the workspace's fields and layouts. */
   readonly fieldAdmin: FieldAdminMock;
+  /** Roles, permissions and user/group assignment (E05-T08): assignments, class grants and writes received. */
+  readonly roleAdmin: RoleAdminMock;
   /** Gateway audit log: `Retrieved` per content delivery (with its purpose), `Viewed` per view beacon. */
   readonly audit: MockAuditEvent[];
   /** Running searches expire: page requests answer 404 until the next search runs (Q-33). */
@@ -445,6 +448,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const highlights = new HighlightsMock(() => lastQuery);
   const redactions = new RedactionsMock();
   const fieldAdmin = new FieldAdminMock(FIELDS);
+  const roleAdmin = new RoleAdminMock();
   const freshness = new FreshnessMock(options.freshness);
   const relationships = new RelationshipsMock(
     coding,
@@ -464,6 +468,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     highlights,
     redactions,
     fieldAdmin,
+    roleAdmin,
     unhandled,
     audit,
     coding,
@@ -509,6 +514,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Fields, choices and coding layouts (E04-T06): ./mock-field-admin.ts.
     const administered = signedIn ? fieldAdmin.handle(route, method, path) : undefined;
     if (administered) return administered;
+    // Roles, permissions and user/group assignment (E05-T08): ./mock-role-admin.ts.
+    const roles = signedIn ? roleAdmin.handle(route, method, path, url) : undefined;
+    if (roles) return roles;
     if (signedIn && method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/members$/.test(path)) {
       const items = [
         member('a-1', 'Alex Reviewer', 'workspaceAdmin'),

@@ -1,0 +1,96 @@
+// Add user or group dialog (E05-T08). opportuniTY tokens only.
+
+.ra__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.ra__principal-name {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.ra__error {
+  display: flex;
+  gap: var(--opp-space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--opp-color-danger-text);
+  font-size: var(--opp-font-size-sm);
+}
+
+.ra__dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+}
+
+.ra__fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.ra__label {
+  padding-inline: var(--opp-space-1);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.ra__choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  max-block-size: 14rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.ra__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  min-block-size: var(--opp-target-min);
+  padding: var(--opp-space-1) var(--opp-space-2);
+  border: var(--opp-border-width) solid transparent;
+  border-radius: var(--opp-radius-md);
+  cursor: pointer;
+
+  input {
+    inline-size: 1rem;
+    block-size: 1rem;
+    margin: 0;
+    accent-color: var(--opp-color-accent);
+  }
+
+  &:hover {
+    background: var(--opp-color-hover);
+  }
+
+  &.is-selected {
+    border-color: var(--opp-color-accent);
+  }
+
+  &:has(input:focus-visible) {
+    outline: var(--opp-focus-ring-width) solid var(--opp-color-focus);
+    outline-offset: var(--opp-focus-ring-offset);
+  }
+}
+
+.ra__choice-text {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.ra__role-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--opp-space-1) var(--opp-space-3);
+}
