@@ -5,4 +5,5 @@ export interface FieldChoiceResource {
   choiceId: number | string;
   isActive: boolean;
   name: string;
+  systemKey?: string | null;
 }

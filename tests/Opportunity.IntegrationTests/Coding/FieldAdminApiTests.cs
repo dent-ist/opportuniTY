@@ -43,7 +43,7 @@ public sealed class FieldAdminApiTests(MigrationPostgresFixture postgres)
         }
 
         using var created = await SendAsync(client, HttpMethod.Post, fields, admin,
-            new { displayName = "Privilege Basis", type = "singleChoice", storage = "coding", description = "Why withheld" });
+            new { displayName = "Withholding Reason", type = "singleChoice", storage = "coding", description = "Why withheld" });
         created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync(Ct));
         var field = await JsonAsync(created);
         var id = field.GetProperty("fieldId").GetInt32();

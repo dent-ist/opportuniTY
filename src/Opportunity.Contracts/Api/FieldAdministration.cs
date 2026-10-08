@@ -56,7 +56,8 @@ public sealed record FieldDefinitionResource(
 /// <param name="Name">Current name.</param>
 /// <param name="IsActive">Inactive choices keep their values (still shown and searchable) but cannot be newly assigned.</param>
 /// <param name="InUse">The choice has been assigned at least once: it can be deactivated but never deleted (ADR-003 R8).</param>
-public sealed record FieldDefinitionChoiceResource(int ChoiceId, string Name, bool IsActive, bool InUse);
+/// <param name="SystemKey">Built-in choice (E13-T01): it can be renamed and reordered, never deactivated or deleted. Null otherwise.</param>
+public sealed record FieldDefinitionChoiceResource(int ChoiceId, string Name, bool IsActive, bool InUse, string? SystemKey = null);
 
 /// <summary>Q-11 restricted classes of security-affecting fields.</summary>
 public enum FieldSecurityClass

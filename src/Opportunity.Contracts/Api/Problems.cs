@@ -52,5 +52,17 @@ public static class ProblemCodes
     /// </summary>
     public const string SelfProtection = "self-protection";
 
+    /// <summary>
+    /// E11-T04, ADR-012 §3.6: redactions are drawn only on rendered page images (the active page set Ready, an image on
+    /// the page); the viewer says "Redaction requires rendered images".
+    /// </summary>
+    public const string RedactionRequiresImages = "redaction-requires-images";
+
+    /// <summary>The change gives up one of the caller's own roles: repeat it with the explicit confirmation (E05-T08).</summary>
+    public const string ConfirmationRequired = "confirmation-required";
+
+    /// <summary>The change would remove the workspace's last Workspace Admin assignment (E05-T08).</summary>
+    public const string LastAdministrator = "last-administrator";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }

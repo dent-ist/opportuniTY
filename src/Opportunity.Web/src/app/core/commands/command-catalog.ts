@@ -230,6 +230,28 @@ export const COMMANDS: readonly CommandDefinition[] = [
     scope: 'viewer',
     keys: ['Alt+Shift+KeyR'],
   },
+  // Redaction mode (E11-T04): on in the Image mode; the redaction commands run while focus is in the redaction tool.
+  {
+    id: 'redaction.toggle',
+    label: 'Redaction mode on or off',
+    group: 'Viewer',
+    scope: 'review',
+    keys: ['Alt+Shift+KeyX'],
+  },
+  {
+    id: 'redaction.newBox',
+    label: 'New redaction box (then arrow keys)',
+    group: 'Viewer',
+    scope: 'redaction',
+    keys: ['Alt+Shift+KeyD'],
+  },
+  {
+    id: 'redaction.fullPage',
+    label: 'Redact full page',
+    group: 'Viewer',
+    scope: 'redaction',
+    keys: ['Alt+Shift+KeyP'],
+  },
   // Focus regions
   {
     id: 'region.next',
@@ -353,6 +375,15 @@ export const FIXED_KEYS: readonly FixedKey[] = [
   },
   { label: 'Clear the focused filter', keys: 'Esc', scope: 'grid' },
   { label: 'Close a dialog or menu', keys: 'Esc', scope: 'global' },
+  { label: 'Move the selected redaction', keys: '↑ ↓ ← → (Alt: finer steps)', scope: 'redaction' },
+  {
+    label: 'Resize the selected redaction (right and bottom edges)',
+    keys: 'Shift+↑ ↓ ← →',
+    scope: 'redaction',
+  },
+  { label: 'Remove the selected redaction', keys: 'Delete', scope: 'redaction' },
+  { label: 'Undo your last redaction change', keys: 'Ctrl+Z / ⌘Z', scope: 'redaction' },
+  { label: 'End the redaction selection', keys: 'Esc', scope: 'redaction' },
 ];
 
 const BY_ID = new Map(COMMANDS.map((c) => [c.id, c]));

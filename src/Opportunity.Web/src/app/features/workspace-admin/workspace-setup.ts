@@ -151,8 +151,7 @@ export const SETUP_STEPS: readonly SetupStepDefinition[] = [
       label: 'Open Users & Groups',
       permission: PERMISSIONS.manageUsers,
     },
-    comingSoon: true,
-    today: 'Until the Users & Groups page arrives, roles cannot be assigned in the app.',
+    comingSoon: false,
     read: (api) => api.roleAssignments(),
     // The creator's own Workspace Admin assignment does not count.
     isDone: (n) => n > 1,

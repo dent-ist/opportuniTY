@@ -222,7 +222,7 @@ public sealed class AuditAtomicityTests(MigrationPostgresFixture postgres)
         var ws = await db.CreateWorkspaceAsync();
         await db.Fields.InitializeWorkspaceAsync(ws, Ct);
         var responsive = (await db.Fields.CreateFieldAsync(new NewField(ws, "Responsive", FieldType.Boolean, FieldStorage.Coding), Ct)).Value!.FieldId;
-        var privilege = (await db.Fields.CreateFieldAsync(new NewField(ws, "Privilege Status", FieldType.SingleChoice, FieldStorage.Coding,
+        var privilege = (await db.Fields.CreateFieldAsync(new NewField(ws, "Privilege Call", FieldType.SingleChoice, FieldStorage.Coding,
             SecurityClass: SecurityClass.PrivilegeStatus), Ct)).Value!.FieldId;
         var privileged = (await db.Fields.AddChoiceAsync(ws, privilege, "Privileged", Ct)).Value!.ChoiceId;
         return new TestWorkspace(ws, responsive, privilege, privileged);

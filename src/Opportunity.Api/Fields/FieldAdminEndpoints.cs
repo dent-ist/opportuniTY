@@ -881,7 +881,7 @@ public sealed class FieldAdminEndpoints : IApiEndpointModule
             Limitations(f.Type, f.IsSearchable, f.Capabilities, overflow),
             hasValues,
             f.IsChoice
-                ? [.. catalog.ChoicesOf(f.FieldId).Select(ch => new FieldDefinitionChoiceResource(ch.ChoiceId, ch.Name, ch.IsActive, ch.FirstUsedAt is not null))]
+                ? [.. catalog.ChoicesOf(f.FieldId).Select(ch => new FieldDefinitionChoiceResource(ch.ChoiceId, ch.Name, ch.IsActive, ch.FirstUsedAt is not null, ch.SystemKey))]
                 : null,
             f.Version);
     }

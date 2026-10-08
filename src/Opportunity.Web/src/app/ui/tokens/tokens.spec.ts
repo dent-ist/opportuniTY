@@ -41,6 +41,16 @@ const pairs: [string, string, number, string][] = [
       ]),
     ],
   ),
+  // Redaction overlay on the (light) page image, in every theme (E11-T04).
+  ['redaction-line', 'redaction-label-bg', 3, 'redaction box outline on the page'],
+  ['redaction-selected', 'redaction-label-bg', 3, 'selected redaction outline on the page'],
+  [
+    'redaction-label-text',
+    'redaction-label-bg',
+    4.5,
+    'labelled redaction text in production preview',
+  ],
+  ['redaction-label-bg', 'redaction-burn', 3, 'selected redaction ring on a burned box'],
   ['on-accent', 'accent', 4.5, 'primary button label'],
   ['on-accent', 'accent-hover', 4.5, 'primary button label (hover)'],
   ['on-danger', 'danger', 4.5, 'danger button label'],

@@ -48,7 +48,7 @@ within the 15-minute refresh, with no change in opportuniTY.
 
 | Level | Role | What it allows | How it is assigned today |
 |---|---|---|---|
-| Installation | **Installation Admin** | Create workspaces (`Installation.ManageWorkspaces`). Later: manage identity settings, assign break-glass, approve deletion, legal holds. **Grants no document access by itself.** | Members of the IdP groups listed in the setting `Authorization:InstallationAdminGroups`. Empty means nobody (default deny). An installation-role screen is planned (#53). |
+| Installation | **Installation Admin** | Create workspaces (`Installation.ManageWorkspaces`) and assign the Break-glass workspace role (`Installation.AssignBreakGlass`, together with `Workspace.ManageUsers`). Later: manage identity settings, approve deletion, legal holds. **Grants no document access by itself.** | Members of the IdP groups listed in the setting `Authorization:InstallationAdminGroups`. Empty means nobody (default deny). A screen to manage installation roles is still to come. |
 | Workspace | One of the seven built-in roles (§2.3) | Everything inside one workspace | Role assignments per workspace, to users or groups |
 
 An Installation Admin who needs to read documents must also hold a workspace role, and is then subject to walls
@@ -89,8 +89,27 @@ group `reviewers` has the Reviewer role and `privilege-reviewers` has Privilege 
 are the union of both roles. In another workspace where neither group has a role, Pat is not a member: that
 workspace does not appear in Pat's list, and its URL answers "not found".
 
-**Built:** catalogue, roles, assignments to users and groups, effective permissions (#47). **Planned:** screens to
-assign and revoke roles (#53). Until then, assignments come from workspace creation and the demo seed.
+**Built:** catalogue, roles, assignments to users and groups, effective permissions (#47); Admin › Users & Groups
+and Admin › Roles & Security with their API (#53, see §2.5).
+
+### 2.5 Managing roles (Admin › Users & Groups, Admin › Roles & Security)
+
+- **Users & Groups** lists every user and IdP group with a role, one column per role. Ticking a box assigns the role
+  and saves at once (`PUT …/role-assignments/users/{userId}` or `…/groups?name=`, needs `Workspace.ManageUsers`). Users
+  can be added after their first sign-in; a group can be added by its exact IdP name before anyone from it signed in.
+- **Roles & Security** shows what each built-in role allows (read-only) and which roles may see documents of each
+  restriction class (a tickable matrix over the restriction-class API of #51, needs `Workspace.ManageSecurity`).
+- Changes apply to the **very next request** (the decision point reads PostgreSQL every time). Search result lists
+  already on screen may lag briefly; the screens say so.
+- All role assignments of a workspace share **one version** (the ETag): every change sends it as `If-Match`, so two
+  administrators never overwrite each other unseen. Each assigned or removed role is an audit event
+  (`Security.RoleAssigned` / `Security.RoleRevoked`) written in the same transaction.
+- Rules: nobody **adds** a role to themselves, directly or through a group they belong to (403 `self-protection`);
+  **giving up** one of your own roles needs an explicit confirmation (409 `confirmation-required` without it) and the
+  screen warns when it ends your own administration; the **last Workspace Admin** assignment can never be removed
+  (409 `last-administrator`), checked under a lock so two admins cannot remove each other at the same moment;
+  **Break-glass** is assigned only to individual users and only by an Installation Admin, and removing it ends the
+  holder's live activation at once.
 
 ---
 
@@ -174,8 +193,9 @@ or a conflict on one custodian.
   documents are hidden.
 - **Families are not inherited automatically** (Q-14). Extending a wall or class to a whole family is an explicit,
   previewed action. A hidden family member is simply left out, with no "restricted item" placeholder (Q-52).
-- **Self-protection:** nobody can change a role, class grant or wall that applies to themselves, or remove a wall
-  covering themselves. Another admin must do it.
+- **Self-protection:** nobody can change a class grant or wall that applies to themselves, remove a wall covering
+  themselves, or add a role to themselves. Another admin must do it. Giving up one of your own roles is allowed after
+  an explicit confirmation, but never the workspace's last Workspace Admin assignment (§2.5).
 
 ### 4.3 Break-glass (emergency access)
 
@@ -189,9 +209,10 @@ For the rare case where someone must see walled or restricted material (for exam
 - Every activation and every action during it is audited separately (access path `BreakGlass`), the workspace's
   admins and auditors are notified, and it appears in a break-glass report.
 
-**Built:** the database tables, the evaluation rules (classes, walls, break-glass) and the search filter (#47, #64).
-**Planned:** the admin screens and APIs to manage classes, walls and field-level restrictions (#51), break-glass
-activation (#51/#53), and the notification and report (E14).
+**Built:** the database tables, the evaluation rules (classes, walls, break-glass) and the search filter (#47, #64);
+the APIs for classes, walls, field-level restrictions and break-glass activation (#51); the class-grant matrix in
+Admin › Roles & Security and Break-glass assignment in Admin › Users & Groups (#53). **Planned:** screens for ethical
+walls, field-level restrictions and break-glass activation, and the notification (E14).
 
 ### 4.4 Field-level security (planned, #51)
 

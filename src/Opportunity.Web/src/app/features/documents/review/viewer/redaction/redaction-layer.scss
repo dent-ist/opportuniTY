@@ -1,0 +1,133 @@
+// The overlay sits on the page image, which is light in every theme, so the redaction tokens are page colours
+// (the same in each theme) rather than surface colours.
+:host {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+:host:focus-visible {
+  outline: var(--opp-focus-ring-width) solid var(--opp-color-redaction-selected);
+  outline-offset: 2px;
+}
+
+:host(.redaction-layer--draw) {
+  cursor: crosshair;
+}
+
+.redaction {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--opp-color-redaction-line);
+  background: color-mix(in srgb, var(--opp-color-redaction-fill) 35%, transparent);
+  cursor: pointer;
+}
+
+:host(.redaction-layer--draw) .redaction:not(.redaction--locked) {
+  cursor: move;
+}
+
+// Labelled boxes are hatched in review so the two styles differ by more than colour.
+.redaction--labelled {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--opp-color-redaction-fill) 35%, transparent) 0 6px,
+    color-mix(in srgb, var(--opp-color-redaction-fill) 15%, transparent) 6px 12px
+  );
+}
+
+.redaction--selected,
+.redaction:focus-visible {
+  border-color: var(--opp-color-redaction-selected);
+  outline: 2px solid var(--opp-color-redaction-label-bg);
+  outline-offset: 0;
+  box-shadow: 0 0 0 4px var(--opp-color-redaction-selected);
+}
+
+.redaction--unsaved {
+  border-style: dashed;
+}
+
+.redaction--stale {
+  border-style: dotted;
+}
+
+.redaction--draft {
+  border-style: dashed;
+  border-color: var(--opp-color-redaction-selected);
+  pointer-events: none;
+}
+
+// Production preview: boxes as they will be burned (ADR-012 §5): opaque black, or white with a border and label.
+:host(.redaction-layer--preview) .redaction {
+  border-color: var(--opp-color-redaction-burn);
+  background: var(--opp-color-redaction-burn);
+}
+
+:host(.redaction-layer--preview) .redaction--labelled {
+  border: 1px solid var(--opp-color-redaction-burn);
+  background: var(--opp-color-redaction-label-bg);
+}
+
+.redaction__label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+  overflow: hidden;
+  padding-inline: 2px;
+  color: var(--opp-color-redaction-label-text);
+  font-size: var(--opp-font-size-xs);
+  font-weight: var(--opp-font-weight-semibold);
+  line-height: 1.1;
+  text-align: center;
+}
+
+.redaction__handle {
+  position: absolute;
+  inline-size: 12px;
+  block-size: 12px;
+  border: 2px solid var(--opp-color-redaction-label-bg);
+  background: var(--opp-color-redaction-selected);
+}
+
+.redaction__handle--nw {
+  inset-block-start: -7px;
+  inset-inline-start: -7px;
+  cursor: nwse-resize;
+}
+
+.redaction__handle--ne {
+  inset-block-start: -7px;
+  inset-inline-end: -7px;
+  cursor: nesw-resize;
+}
+
+.redaction__handle--sw {
+  inset-block-end: -7px;
+  inset-inline-start: -7px;
+  cursor: nesw-resize;
+}
+
+.redaction__handle--se {
+  inset-block-end: -7px;
+  inset-inline-end: -7px;
+  cursor: nwse-resize;
+}
+
+@media (forced-colors: active) {
+  .redaction {
+    border-color: CanvasText;
+    forced-color-adjust: none;
+  }
+
+  .redaction--selected,
+  .redaction:focus-visible {
+    border-color: Highlight;
+  }
+
+  .redaction__handle {
+    background: Highlight;
+  }
+}

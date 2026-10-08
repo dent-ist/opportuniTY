@@ -31,6 +31,8 @@ import {
   toTextChunk,
 } from '../review-ports';
 import { DocumentViewer, ViewerDocument } from './document-viewer';
+import { RedactionApi } from './redaction/redaction-api';
+import { FakeRedactionApi, savedRedaction } from './redaction/redaction-fixtures.testing';
 import { documentResource, pageResource, textChunkResource } from './viewer-fixtures.testing';
 import { initialMode, modeAvailability } from './viewer-modes';
 
@@ -156,6 +158,7 @@ function loaded(n: number, resource: DocumentResource, extra: Partial<LoadedDocu
 
 describe('Document viewer (E16-T04)', () => {
   let api: FakeContentApi;
+  let redactions: FakeRedactionApi;
   let host: Host;
   let root: HTMLElement;
   let announced: () => string[];
@@ -168,6 +171,7 @@ describe('Document viewer (E16-T04)', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: DocumentContentApi, useClass: FakeContentApi },
+        { provide: RedactionApi, useClass: FakeRedactionApi },
         { provide: WorkspaceContext, useValue: { can: () => canDownload } },
         { provide: HighlightSetsApi, useClass: FakeHighlightSetsApi },
         HighlightState,
@@ -177,6 +181,7 @@ describe('Document viewer (E16-T04)', () => {
     const spy = vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce').mockResolvedValue();
     announced = () => spy.mock.calls.map((c) => String(c[0]));
     api = TestBed.inject(DocumentContentApi) as FakeContentApi;
+    redactions = TestBed.inject(RedactionApi) as FakeRedactionApi;
     const fixture = TestBed.createComponent(Host);
     host = fixture.componentInstance;
     root = fixture.nativeElement as HTMLElement;
@@ -510,6 +515,130 @@ describe('Document viewer (E16-T04)', () => {
     expect(new Set(vi.mocked(URL.revokeObjectURL).mock.calls.map((c) => c[0]))).toEqual(
       new Set(created),
     );
+  }, 30_000);
+
+  /** Document 14 with two rendered pages, shown in the Image mode. */
+  async function showImages(): Promise<void> {
+    URL.createObjectURL = vi.fn(() => `blob:test/${Math.random()}`);
+    URL.revokeObjectURL = vi.fn();
+    api.pageList = [1, 2].map(pageResource);
+    const resource = documentResource(14, {
+      images: { available: true, pageCount: 2, source: 'rendered', status: 'ready' },
+    });
+    await show({
+      hit: hit(14),
+      state: 'ready',
+      content: loaded(14, resource, {
+        mode: 'image',
+        pages: api.pageList,
+        firstImage: { pageNumber: 1, blob: new Blob(['page 1']) },
+      }),
+    });
+  }
+
+  const key = (target: Element, init: KeyboardEventInit) =>
+    target.dispatchEvent(
+      new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
+    );
+
+  it('Redaction mode: a keyboard user adds a box, moves and resizes it with arrow keys, and it is saved and listed (E11-T04)', async () => {
+    await setup();
+    await showImages();
+    button('Redact').click();
+    await settle();
+    expect(button('Redact').getAttribute('aria-pressed')).toBe('true');
+    const panel = root.querySelector<HTMLElement>('opp-redaction-panel')!;
+    expect(panel.querySelector('h3')?.textContent).toBe('Redactions');
+    expect(panel.textContent).toContain('No redactions in this Redaction Set.');
+
+    button('New box').click();
+    await settle();
+    const box = document.activeElement as HTMLElement;
+    expect(box.dataset['redactionId']).toBeTruthy();
+    expect(box.getAttribute('aria-label')).toContain('Attorney-Client Privilege, black box');
+    expect(redactions.saves).toEqual([`0:add(${box.dataset['redactionId']})`]);
+    const added = redactions.received[0].changes[0] as {
+      rect: { x: number; y: number; w: number; h: number };
+    };
+    expect(added.rect).toEqual({ x: 300_000, y: 470_000, w: 400_000, h: 60_000 });
+
+    // Arrow keys move by 1 % of the page, Shift+arrows resize; leaving the box saves the change.
+    key(box, { key: 'ArrowRight' });
+    key(box, { key: 'ArrowRight' });
+    key(box, { key: 'ArrowDown', shiftKey: true });
+    await settle();
+    const moving = root.querySelector<HTMLElement>('.redaction')!;
+    expect(moving.classList).toContain('redaction--unsaved');
+    moving.blur();
+    await settle();
+    expect(redactions.received[1].changes[0]).toEqual({
+      operation: 'modify',
+      redactionId: box.dataset['redactionId'],
+      rect: { x: 320_000, y: 470_000, w: 400_000, h: 70_000 },
+    });
+    expect(root.querySelector('.redaction')!.classList).not.toContain('redaction--unsaved');
+
+    const item = panel.querySelector('.redaction-list__item')!;
+    expect(item.textContent).toContain('p. 1');
+    expect(item.textContent).toContain('Attorney-Client Privilege');
+    expect(item.textContent).toContain('Alex Admin');
+    expect(panel.textContent).toContain('Version 2');
+
+    // Production preview shows the boxes as they will be burned.
+    panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+    await settle();
+    expect(root.querySelector('opp-redaction-layer')!.classList).toContain(
+      'redaction-layer--preview',
+    );
+    await expectNoAxeViolations(root);
+  }, 30_000);
+
+  it('Redaction mode prompts a refresh after a concurrent edit and never drops the refused box silently (E11-T04)', async () => {
+    await setup();
+    await showImages();
+    invoke('redaction.toggle');
+    await settle();
+    redactions.concurrentEdit = savedRedaction('theirs', 1, {
+      x: 0,
+      y: 0,
+      w: 100_000,
+      h: 100_000,
+    });
+    button('New box').click();
+    await settle();
+    const alert = root.querySelector<HTMLElement>('opp-redaction-panel [role="alert"]')!;
+    expect(alert.textContent).toContain('Another user changed the redactions of this document');
+    expect(alert.textContent).toContain('Your last change was not saved');
+    expect(root.querySelectorAll('.redaction--unsaved')).toHaveLength(1);
+    expect(button('New box').disabled).toBe(true);
+
+    button('Refresh redactions').click();
+    await settle();
+    expect(root.querySelector('opp-redaction-panel [role="alert"]')).toBeNull();
+    expect(root.querySelectorAll('.redaction')).toHaveLength(1);
+    expect(root.querySelector('.redaction')!.getAttribute('aria-label')).toContain('by Avery Lee');
+    expect(button('New box').disabled).toBe(false);
+  }, 30_000);
+
+  it("says 'Redaction requires rendered images' when a document has none (E11-T04)", async () => {
+    await setup();
+    const pending = documentResource(9, { images: { available: false, status: 'pending' } });
+    await show({ hit: hit(9), state: 'ready', content: loaded(9, pending) });
+    invoke('redaction.toggle');
+    await settle();
+    expect(root.querySelector('[role="status"]')?.textContent).toContain(
+      'Redaction requires rendered images (Image rendering in progress).',
+    );
+    expect(root.querySelector('opp-redaction-panel')).toBeNull();
+
+    // Images that exist but are not rendered for redaction: the panel says so and nothing can be drawn.
+    redactions.redactable = false;
+    await showImages();
+    button('Redact').click();
+    await settle();
+    const panel = root.querySelector<HTMLElement>('opp-redaction-panel')!;
+    expect(panel.textContent).toContain('Redaction requires rendered images');
+    expect(button('New box').disabled).toBe(true);
   }, 30_000);
 
   it('offers Download native only with Document.DownloadNative and never renders the native', async () => {

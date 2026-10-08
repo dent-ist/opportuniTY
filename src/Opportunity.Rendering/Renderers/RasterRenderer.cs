@@ -33,26 +33,28 @@ public sealed class RasterRenderer : IRenderer
 
     public async IAsyncEnumerable<RenderedPage> RenderAsync(RenderRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        var pdf = await IsPdfAsync(request.InputPath, cancellationToken).ConfigureAwait(false);
-        var pages = pdf
-            ? PdfRenderer.Render(request, _settings, cancellationToken)
-            : ImageRenderer.Render(request, _settings, cancellationToken);
-        foreach (var page in pages)
+        await Task.CompletedTask.ConfigureAwait(false);
+        foreach (var page in Render(request, cancellationToken))
         {
             yield return page;
         }
     }
 
-    private static async Task<bool> IsPdfAsync(string path, CancellationToken cancellationToken)
+    /// <summary>The synchronous form, for the sandbox process (which renders on its main thread only).</summary>
+    public IEnumerable<RenderedPage> Render(RenderRequest request, CancellationToken cancellationToken = default)
     {
-        var head = new byte[5];
-        var file = File.OpenRead(path);
-        await using (file.ConfigureAwait(false))
-        {
-            var read = await file.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
-            return read == head.Length && head.AsSpan().SequenceEqual("%PDF-"u8);
-        }
+        ArgumentNullException.ThrowIfNull(request);
+        return IsPdf(request.InputPath)
+            ? PdfRenderer.Render(request, _settings, cancellationToken)
+            : ImageRenderer.Render(request, _settings, cancellationToken);
+    }
+
+    private static bool IsPdf(string path)
+    {
+        Span<byte> head = stackalloc byte[5];
+        using var file = File.OpenRead(path);
+        var read = file.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+        return read == head.Length && head.SequenceEqual("%PDF-"u8);
     }
 
     private static string VersionString()

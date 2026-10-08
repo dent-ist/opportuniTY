@@ -279,6 +279,30 @@ and may relax it only through an amendment to this ADR.
    roles is hidden (as if it did not exist) from principals holding none of its visible roles and read-only for
    those holding none of its editable roles; break-glass never grants a restricted field. The lag of security-lane
    work is exported as `opportunity.search.security_projection_lag` (Q-10).
+7. *Amendment 2026-10-06 (E05-T08, #53), as implemented — pending architect confirmation:* role assignments are
+   administered at `…/workspaces/{id}/role-assignments` (`Workspace.ManageUsers`): the roles of one user
+   (`/users/{userId}`) or IdP group (`/groups?name=`) are replaced as a whole, with the version of the workspace's
+   whole assignment set as If-Match (V0046, kept on the workspace row, which the write locks), and one
+   `Security.RoleAssigned` / `Security.RoleRevoked` audit event per role in the same transaction. D6.5 is applied to
+   role assignments as follows: adding a role that applies to oneself (directly or through a group) is 403
+   `self-protection`; **giving up** one's own role is allowed, because E05-T08 requires it with an explicit warning,
+   but only with `confirmSelfRemoval` (409 `confirmation-required` otherwise) and never when it would remove the
+   workspace's last Workspace Admin assignment, which no one may remove (409 `last-administrator`, re-checked under
+   the lock). D6.4: Break-glass is assignable to users only, by a caller who also holds the new installation
+   permission `Installation.AssignBreakGlass` (Installation Admin), never to oneself; removing it needs only
+   `Workspace.ManageUsers` and ends the holder's live activation in the same transaction. Role grants stay fixed in
+   code (D5.6): `GET …/roles` serves them read-only.
+8. *Amendment 2026-10-06 (E13-T01, #109), as implemented:* every workspace has the privilege system fields
+   Privilege Status, Privilege Basis, Privilege Description, Attorneys Involved and Log Category (ids 37–41, coding
+   storage, all security-affecting with class PrivilegeStatus, so editing them needs `Coding.WritePrivilege`).
+   Provisioning (`opportunity.provision_privilege_fields`, V0047; backfilled for existing workspaces) binds the
+   built-in `Privileged` class to Withhold, Redact and Needs 2L Review through the D6.6 rule table; admins may
+   change that binding. Built-in choices carry a `systemKey` and cannot be deactivated or deleted. The coding store
+   refuses Withhold or Redact without a basis on every write path, and finalizing a production re-checks its members'
+   Privilege Status in PostgreSQL under a per-workspace advisory lock that Privilege Status writes hold shared, so a
+   committed Withhold blocks finalization regardless of index freshness. New workspaces also get the default
+   template of the familiarity guide §3.4, whose Confidentiality Designation is bound to `Confidential` and
+   `AttorneysEyesOnly`.
 
 ### D7. PostgreSQL row-level security
 

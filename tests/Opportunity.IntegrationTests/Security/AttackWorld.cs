@@ -71,7 +71,8 @@ internal sealed record WorkspaceResources(
     Guid PropagationPreviewId,
     Guid WallId,
     Guid SpareWallId,
-    Guid BreakGlassActivationId)
+    Guid BreakGlassActivationId,
+    Guid RedactionSetId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -81,7 +82,7 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -92,7 +93,7 @@ internal sealed record WorkspaceResources(
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
-            WallId, SpareWallId, BreakGlassActivationId,
+            WallId, SpareWallId, BreakGlassActivationId, RedactionSetId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -337,6 +338,26 @@ internal sealed class AttackWorld : IAsyncDisposable
             """,
             ("ws", ws), ("id", activationId), ("user", glassUser));
 
+        // Redactions (E11-T04): the workspace's default Redaction Set with one redaction on the reviewable document.
+        var redactionSets = await JsonAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/redaction-sets", owner, HttpStatusCode.OK);
+        var redactionSetId = redactionSets.GetProperty("items")[0].GetProperty("redactionSetId").GetGuid();
+        using (var redaction = await SendAsync(HttpMethod.Post,
+            $"/api/v1/workspaces/{ws}/documents/{document.DocumentId}/redaction-sets/{redactionSetId}/revisions", owner,
+            Json(new JsonObject
+            {
+                ["changes"] = new JsonArray(new JsonObject
+                {
+                    ["operation"] = "add",
+                    ["pageNumber"] = 1,
+                    ["type"] = "black",
+                    ["reasonCode"] = "PII",
+                    ["rect"] = new JsonObject { ["x"] = 0, ["y"] = 0, ["w"] = 500_000, ["h"] = 100_000 },
+                }),
+            }), ifMatch: "\"0\""))
+        {
+            redaction.StatusCode.Should().Be(HttpStatusCode.OK, await redaction.Content.ReadAsStringAsync(Ct));
+        }
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -379,7 +400,8 @@ internal sealed class AttackWorld : IAsyncDisposable
             propagation.GetProperty("previewId").GetGuid(),
             wall.GetProperty("wallId").GetGuid(),
             spareWall.GetProperty("wallId").GetGuid(),
-            activationId);
+            activationId,
+            redactionSetId);
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>

@@ -1,5 +1,5 @@
 import { expect, openPage, test } from './support/fixtures';
-import { tabTo } from './support/tab';
+import { tabTo, waitForRouteFocus } from './support/tab';
 
 // Jobs (E06-T07): the Jobs page, a job's page with Retry failed chunks and Cancel, the header's job tray and
 // notifications, kept live through the job event stream (or the polling fallback). Keyboard only, mouse never used.
@@ -19,6 +19,7 @@ test('list → job → retry → another job → cancel → tray, with the keybo
   await tabTo(page, table.getByRole('link', { name: 'Export ACME_EXP003' }));
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/w\/ws-1\/jobs\/job-exp-3$/);
+  await waitForRouteFocus(page);
   await expect(page.getByRole('heading', { level: 1, name: 'Export ACME_EXP003' })).toBeFocused();
   await expect(
     page.getByRole('region', { name: 'Failed chunk list' }).getByRole('row'),
@@ -36,9 +37,11 @@ test('list → job → retry → another job → cancel → tray, with the keybo
   });
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/w\/ws-1\/jobs$/);
+  await waitForRouteFocus(page);
   await tabTo(page, table.getByRole('link', { name: 'Mass Edit – Responsiveness' }));
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/w\/ws-1\/jobs\/job-bulk-7$/);
+  await waitForRouteFocus(page);
   const saved = page.getByRole('progressbar', { name: 'Saved' });
   await expect(saved).toHaveAttribute(
     'aria-valuetext',
@@ -74,6 +77,7 @@ test('list → job → retry → another job → cancel → tray, with the keybo
   await expect(target).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/w\/ws-1\/jobs\/job-imp-1$/);
+  await waitForRouteFocus(page);
   await expect(page.getByRole('link', { name: 'Open the import page' })).toHaveAttribute(
     'href',
     '/w/ws-1/imports/imp-1',
@@ -114,6 +118,7 @@ test('a status change shows within 5 s without reload, in the page, the tray and
   await page.getByRole('link', { name: 'Jobs', exact: true }).last().focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/w\/ws-1\/jobs$/);
+  await waitForRouteFocus(page);
   mock.jobs.add({ jobId: 'job-imp-5', type: 'import', name: 'VOL005.dat', link: 'imports/imp-5' });
   await expect(page.getByRole('link', { name: 'VOL005.dat', exact: true })).toBeVisible({
     timeout: LIVE_BUDGET_MS,
@@ -135,6 +140,7 @@ test('a failure notification stays until dismissed and links to the job', async 
   await notifications.getByRole('button', { name: 'View job' }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/w\/ws-1\/jobs\/job-bulk-7$/);
+  await waitForRouteFocus(page);
   await expect(page.getByText('Worker lost its lease.')).toBeVisible();
 });
 

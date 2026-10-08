@@ -51,3 +51,22 @@ export async function tabTo(
   }
   throw new Error(`Did not reach ${target} within ${maxStops} Tab stops`);
 }
+
+/**
+ * After a navigation the shell moves focus to the new page's heading (or `main`) once the page has rendered. Wait for
+ * that before tabbing, or the programmatic focus can land in the middle of a Tab sequence.
+ */
+export async function waitForRouteFocus(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const main = document.getElementById('main');
+        const el = document.activeElement;
+        return (
+          !!main &&
+          (el === main || (el instanceof HTMLElement && el.matches('#main h1[data-route-focus]')))
+        );
+      }),
+    )
+    .toBe(true);
+}

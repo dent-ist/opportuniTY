@@ -308,7 +308,8 @@ public sealed class CodingPropagationService(
         {
             case CodingWriteOutcome.Applied or CodingWriteOutcome.Replayed:
                 var applied = write.Documents.Count(d => d.Outcome == DocumentCodingOutcome.Changed);
-                var skipped = write.Documents.Count(d => d.Outcome == DocumentCodingOutcome.Skipped);
+                // A member left unchanged because the result would be invalid (Withhold without a basis) counts as skipped.
+                var skipped = write.Documents.Count(d => d.Outcome is DocumentCodingOutcome.Skipped or DocumentCodingOutcome.Rejected);
                 return new CodingPropagationApplyOutcome
                 {
                     Status = CodingPropagationStatus.Ok,

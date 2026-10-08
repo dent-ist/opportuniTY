@@ -346,12 +346,13 @@ public sealed class WorkspaceStore(NpgsqlDataSource dataSource) : IWorkspaceStor
 
 public static class WorkspaceStoreRegistration
 {
-    /// <summary>Registers the PostgreSQL workspace reader and store (needs an <see cref="NpgsqlDataSource"/>).</summary>
+    /// <summary>Registers the PostgreSQL workspace reader, store and role assignment store (needs an <see cref="NpgsqlDataSource"/>).</summary>
     public static IServiceCollection AddPostgresWorkspaceStore(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<IWorkspaceReader, WorkspaceReader>();
         services.TryAddSingleton<IWorkspaceStore, WorkspaceStore>();
+        services.TryAddSingleton<IRoleAssignmentStore, RoleAssignmentStore>();
         return services;
     }
 }

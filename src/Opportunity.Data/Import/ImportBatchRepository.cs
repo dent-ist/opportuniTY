@@ -851,11 +851,11 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
         plan.SecurityChanged |= walled.Any(changed.Contains);
 
         // Q-31 coding values of the rows that made it, through the coding store (CodingEvents, version bumps).
-        var coding = plan.Members.Select(m => (m.Row, m.DocumentId))
+        var codingRows = plan.Members.Select(m => (m.Row, m.DocumentId))
             .Concat(plan.Overlays.Select(o => (o.Row, o.DocumentId)))
             .Where(x => x.Row.Coding.Count > 0)
-            .Select(x => (x.DocumentId, x.Row.Coding))
             .ToList();
+        var coding = codingRows.Select(x => (x.DocumentId, x.Row.Coding)).ToList();
         var codingChanged = new HashSet<Guid>();
         if (coding.Count > 0)
         {
@@ -863,6 +863,14 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
                 tx, chunk.Lease.JobId, chunk.InitiatedBy, "import:" + chunk.IdempotencyKey, coding, cancellationToken, restrictions).ConfigureAwait(false);
             codingChanged.UnionWith(outcome.ChangedDocuments);
             plan.CodingChanged = outcome.ChangedDocuments.Count > 0;
+            // E13-T01: a row whose coding values would leave Withhold or Redact without a basis loads without them.
+            foreach (var rejected in outcome.Rejected)
+            {
+                var row = codingRows.First(x => x.DocumentId == rejected.DocumentId).Row;
+                plan.Warn(row, rejected.Error?.Code ?? "coding-rejected",
+                    "The row's coding values were not applied: " + (rejected.Error?.Message ?? "they are not valid together."));
+            }
+
             plan.SecurityChanged |= outcome.TouchesSecurityAffectingField;
             if (outcome.EventsWritten > 0)
             {
@@ -1512,6 +1520,17 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
             | (FamiliesChanged ? SearchChangeMask.Relationships : SearchChangeMask.None)
             | (CodingChanged ? SearchChangeMask.Coding : SearchChangeMask.None)
             | (SecurityChanged ? SearchChangeMask.Security : SearchChangeMask.None);
+
+        public void Warn(ImportRow row, string code, string message)
+        {
+            if (!Issues.TryGetValue(row.RowNo, out var issues))
+            {
+                issues = [];
+                Issues[row.RowNo] = issues;
+            }
+
+            issues.Add(new ImportRowIssue(ImportIssueSeverity.Warning, code, message));
+        }
 
         public void Error(ImportRow row, string code, string message)
         {

@@ -36,6 +36,9 @@ public enum ProductionOutcomeStatus
 
     /// <summary>The Bates start number or range overlaps another production's live range of the prefix (409).</summary>
     BatesConflict,
+
+    /// <summary>Members are coded Privilege Status = Withhold (E13-T01); the production cannot be finalized (409).</summary>
+    PrivilegeWithheld,
 }
 
 public sealed record ProductionOutcome(
@@ -556,6 +559,7 @@ public sealed partial class ProductionService(
             Reason: "The Bates start number overlaps " + string.Join("; ", (result.Conflicts ?? []).Select(c => string.Create(CultureInfo.InvariantCulture,
                 $"production '{c.ProductionName}' ({Label(format, c.FirstNumber)}–{Label(format, c.LastNumber)}, {c.Status})")))
                 + "; choose a start number after the numbers already used."),
+        ProductionWriteStatus.PrivilegeWithheld => new ProductionOutcome(ProductionOutcomeStatus.PrivilegeWithheld, result.Production, Reason: result.Reason),
         _ => new ProductionOutcome(ProductionOutcomeStatus.Conflict, result.Production, Reason: result.Reason),
     };
 

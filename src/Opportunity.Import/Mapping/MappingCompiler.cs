@@ -412,7 +412,9 @@ public static class MappingCompiler
         var candidates = new List<Candidate>();
         var live = catalog.Fields.Where(f => !f.IsDeleted).ToList();
         var defaultNames = SystemFields.Create(Guid.Empty).ToDictionary(d => d.FieldId, d => d.Name);
-        foreach (var field in live.Where(f => f.IsSystem && !ImportTargets.ComputedSystemFields.Contains(f.FieldId)).OrderBy(f => f.FieldId))
+        // System coding fields (the privilege fields, E13-T01) are never auto-mapped (Q-31); they can be mapped explicitly.
+        foreach (var field in live.Where(f => f.IsSystem && f.Storage != FieldStorage.Coding && !ImportTargets.ComputedSystemFields.Contains(f.FieldId))
+                     .OrderBy(f => f.FieldId))
         {
             var defaultName = defaultNames.GetValueOrDefault(field.FieldId);
             candidates.Add(new Candidate(

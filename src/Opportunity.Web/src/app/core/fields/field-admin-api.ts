@@ -34,6 +34,8 @@ export interface AdminChoice {
   readonly isActive: boolean;
   /** Assigned at least once: can be deactivated, never deleted. */
   readonly inUse: boolean;
+  /** Built-in choice (e.g. Privilege Status Withhold): renameable and reorderable, never deactivated or deleted. */
+  readonly isBuiltIn: boolean;
 }
 
 /** A coding layout as the editor holds it (`GET …/coding-layouts/{id}`). */
@@ -239,6 +241,7 @@ export function toField(r: FieldDefinitionResource): AdminField {
         name: c.name,
         isActive: c.isActive,
         inUse: c.inUse,
+        isBuiltIn: !!c.systemKey,
       })) ?? null,
   };
 }

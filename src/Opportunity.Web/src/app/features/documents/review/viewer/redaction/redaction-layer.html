@@ -1,0 +1,52 @@
+@for (entry of boxes(); track entry.redaction.id; let i = $index) {
+  @let r = entry.redaction;
+  @let selected = r.id === session.selectedId();
+  <div
+    class="redaction"
+    role="button"
+    [attr.data-redaction-id]="r.id"
+    [class.redaction--labelled]="r.type === 'labelled'"
+    [class.redaction--selected]="selected"
+    [class.redaction--unsaved]="r.unsaved"
+    [class.redaction--stale]="!r.onActivePageSet"
+    [class.redaction--locked]="!r.editable"
+    [style.left.%]="entry.frame.left * 100"
+    [style.top.%]="entry.frame.top * 100"
+    [style.width.%]="entry.frame.width * 100"
+    [style.height.%]="entry.frame.height * 100"
+    [attr.tabindex]="r.id === tabStop() ? 0 : -1"
+    [attr.aria-pressed]="selected"
+    [attr.aria-label]="boxLabel(r, i)"
+    aria-describedby="redaction-layer-keys"
+    (keydown)="onBoxKey($event, r.id)"
+    (focus)="session.select(r.id)"
+    (blur)="onBoxBlur(r.id)"
+  >
+    @if (preview() && r.type === 'labelled') {
+      <span class="redaction__label" aria-hidden="true">{{ boxText(r) }}</span>
+    }
+    @if (selected && r.editable && session.canDraw()) {
+      @for (h of handles; track h.name) {
+        <span
+          [class]="'redaction__handle redaction__handle--' + h.name"
+          [attr.data-handle]="h.name"
+          aria-hidden="true"
+        ></span>
+      }
+    }
+  </div>
+}
+@if (draft(); as d) {
+  <div
+    class="redaction redaction--draft"
+    aria-hidden="true"
+    [style.left.%]="d.left * 100"
+    [style.top.%]="d.top * 100"
+    [style.width.%]="d.width * 100"
+    [style.height.%]="d.height * 100"
+  ></div>
+}
+<p id="redaction-layer-keys" class="opp-visually-hidden">
+  Arrow keys move the redaction, Alt with arrow keys moves it in small steps, Shift with arrow keys
+  resizes it, Delete removes it, Control Z undoes your last change, Escape ends the selection.
+</p>

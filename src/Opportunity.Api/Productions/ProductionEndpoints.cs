@@ -557,6 +557,12 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             detail: outcome.Reason,
             type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
             extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "BATES_OVERLAP" }),
+        ProductionOutcomeStatus.PrivilegeWithheld => TypedResults.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Documents are withheld for privilege",
+            detail: outcome.Reason,
+            type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
+            extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_WITHHELD" }),
         _ => Problems.Create(StatusCodes.Status409Conflict, ProblemCodes.Conflict, outcome.Reason ?? "The production's state does not allow this."),
     };
 
