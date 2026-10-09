@@ -126,6 +126,21 @@ public static class AuditTaxonomy
 
         /// <summary>An administrator enabled coding/privilege fields for overlay by one import (Q-31).</summary>
         public const string OverlayEnabled = "OverlayEnabled";
+
+        /// <summary>A review Batch Set was created from a snapshot (E10-T05): one event with its settings and counts.</summary>
+        public const string BatchSetCreated = "ReviewBatchSet.Created";
+
+        /// <summary>A reviewer checked a batch out to themselves.</summary>
+        public const string BatchCheckedOut = "ReviewBatch.CheckedOut";
+
+        /// <summary>A batch was checked in (returned or completed) by its reviewer or a manager.</summary>
+        public const string BatchCheckedIn = "ReviewBatch.CheckedIn";
+
+        /// <summary>A manager assigned a batch to a reviewer, or made it available again.</summary>
+        public const string BatchAssigned = "ReviewBatch.Assigned";
+
+        public const string BatchSetResourceType = "ReviewBatchSet";
+        public const string BatchResourceType = "ReviewBatch";
     }
 
     public static class Import
@@ -281,7 +296,8 @@ public static class AuditTaxonomy
             "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted", "SavedSearch.Shared",
             "GridView.Created", "GridView.Modified", "GridView.Deleted",
             "HighlightSet.Created", "HighlightSet.Modified", "HighlightSet.Deleted"),
-        .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled"),
+        .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled",
+            "ReviewBatchSet.Created", "ReviewBatch.CheckedOut", "ReviewBatch.CheckedIn", "ReviewBatch.Assigned"),
         .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded"),
         .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),

@@ -10,6 +10,7 @@ using Opportunity.Application.Audit;
 using Opportunity.Application.Coding;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
+using Opportunity.Application.ReviewBatches;
 using Opportunity.Application.SearchWork;
 using Opportunity.Core.Coding;
 using Opportunity.Core.Fields;
@@ -318,7 +319,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         ArgumentOutOfRangeException.ThrowIfGreaterThan(query.Limit, 1000);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, query.WorkspaceId, cancellationToken).ConfigureAwait(false);
         await using var command = tx.Command(
-            """
+            $$"""
             SELECT event_id, occurred_at, document_id, field_id, event_kind, prior_value::text, new_value::text,
                    document_version, actor_id, actor_type, job_id, idempotency_key, origin_event_id
             FROM opportunity.coding_event
@@ -330,8 +331,9 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
               AND (@kind::smallint IS NULL OR event_kind = @kind)
               AND (@from::timestamptz IS NULL OR occurred_at >= @from)
               AND (@to::timestamptz IS NULL OR occurred_at < @to)
-              AND (@after_at::timestamptz IS NULL OR (occurred_at, event_id) > (@after_at, @after_id))
-            ORDER BY occurred_at, event_id
+              AND (cardinality(@excluded::integer[]) = 0 OR field_id <> ALL (@excluded))
+              AND (@after_at::timestamptz IS NULL OR (occurred_at, event_id) {{(query.Descending ? "<" : ">")}} (@after_at, @after_id))
+            ORDER BY occurred_at {{(query.Descending ? "DESC" : "ASC")}}, event_id {{(query.Descending ? "DESC" : "ASC")}}
             LIMIT @limit
             """);
         command.Parameters.AddWithValue("ws", query.WorkspaceId);
@@ -344,6 +346,7 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         command.Parameters.Add(FieldCatalogRepository.Nullable("to", NpgsqlDbType.TimestampTz, query.To?.ToUniversalTime()));
         command.Parameters.Add(FieldCatalogRepository.Nullable("after_at", NpgsqlDbType.TimestampTz, query.After?.OccurredAt.ToUniversalTime()));
         command.Parameters.Add(FieldCatalogRepository.Nullable("after_id", NpgsqlDbType.Uuid, query.After?.EventId));
+        command.Parameters.AddWithValue("excluded", query.ExcludedFieldIds.Distinct().ToArray());
         command.Parameters.AddWithValue("limit", query.Limit + 1);
 
         var events = new List<CodingEvent>();
@@ -377,6 +380,72 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         events.RemoveAt(events.Count - 1);
         return new CodingEventPage(events, new CodingEventCursor(events[^1].OccurredAt, events[^1].EventId));
     }
+
+    public async Task<IReadOnlyList<ReviewConflict>> GetReviewConflictsAsync(
+        Guid workspaceId, Guid qcSetId, Guid firstPassSetId, IReadOnlyCollection<int> excludedFieldIds, ReviewConflictCursor? after, int limit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(excludedFieldIds);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var conflicts = new List<ReviewConflict>();
+        await using (var command = tx.Command(
+            """
+            WITH qc_docs AS (
+                SELECT q.document_id FROM opportunity.review_batch_document q
+                 WHERE q.workspace_id = @ws AND q.batch_set_id = @qc AND (@after_doc::uuid IS NULL OR q.document_id >= @after_doc)
+            ), calls AS (
+                -- A reviewer's last own change of each field of a document while holding one of the sets' batches.
+                SELECT DISTINCT ON (bd.batch_set_id, e.document_id, e.field_id)
+                       bd.batch_set_id, e.document_id, e.field_id, e.new_value, e.actor_id, e.occurred_at, e.event_id, b.batch_id, b.name
+                  FROM qc_docs q
+                  JOIN opportunity.review_batch_document bd
+                    ON bd.workspace_id = @ws AND bd.document_id = q.document_id AND bd.batch_set_id IN (@qc, @fp)
+                  JOIN opportunity.review_batch b ON b.workspace_id = @ws AND b.batch_id = bd.batch_id
+                  JOIN opportunity.review_batch_checkout c ON c.workspace_id = @ws AND c.batch_id = bd.batch_id
+                  JOIN opportunity.coding_event e
+                    ON e.workspace_id = @ws AND e.document_id = bd.document_id AND e.actor_id = c.user_id AND e.event_kind = 1
+                   AND e.occurred_at >= c.checked_out_at AND (c.checked_in_at IS NULL OR e.occurred_at <= c.checked_in_at)
+                 WHERE cardinality(@excluded::integer[]) = 0 OR e.field_id <> ALL (@excluded)
+                 ORDER BY bd.batch_set_id, e.document_id, e.field_id, e.occurred_at DESC, e.event_id DESC
+            )
+            SELECT q.document_id, d.control_number, q.field_id,
+                   f.new_value::text, f.actor_id, f.occurred_at, f.batch_id, f.name, f.event_id,
+                   q.new_value::text, q.actor_id, q.occurred_at, q.batch_id, q.name, q.event_id
+              FROM calls q
+              JOIN calls f ON f.batch_set_id = @fp AND f.document_id = q.document_id AND f.field_id = q.field_id
+              JOIN opportunity.document d ON d.workspace_id = @ws AND d.document_id = q.document_id
+             WHERE q.batch_set_id = @qc AND q.new_value IS DISTINCT FROM f.new_value
+               AND (@after_doc::uuid IS NULL OR (q.document_id, q.field_id) > (@after_doc, @after_field))
+             ORDER BY q.document_id, q.field_id
+             LIMIT @limit
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("qc", qcSetId);
+            command.Parameters.AddWithValue("fp", firstPassSetId);
+            command.Parameters.AddWithValue("excluded", excludedFieldIds.ToArray());
+            command.Parameters.Add(new NpgsqlParameter("after_doc", NpgsqlDbType.Uuid) { Value = after is { } a ? a.DocumentId : DBNull.Value });
+            command.Parameters.AddWithValue("after_field", after?.FieldId ?? 0);
+            command.Parameters.AddWithValue("limit", limit);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                conflicts.Add(new ReviewConflict(reader.GetGuid(0), reader.GetString(1), reader.GetInt32(2), ReviewCallAt(reader, 3), ReviewCallAt(reader, 9)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return conflicts;
+    }
+
+    private static ReviewCall ReviewCallAt(NpgsqlDataReader reader, int at) => new(
+        reader.IsDBNull(at) ? null : JsonNode.Parse(reader.GetString(at)),
+        reader.GetGuid(at + 1),
+        reader.GetFieldValue<DateTimeOffset>(at + 2),
+        reader.GetGuid(at + 3),
+        reader.GetString(at + 4),
+        reader.GetGuid(at + 5));
 
     public async Task<IReadOnlyList<Guid>> GetJobChangedDocumentsAsync(
         Guid workspaceId, Guid jobId, Guid? after, int limit, CancellationToken cancellationToken = default)

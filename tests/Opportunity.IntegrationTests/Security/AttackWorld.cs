@@ -72,7 +72,11 @@ internal sealed record WorkspaceResources(
     Guid WallId,
     Guid SpareWallId,
     Guid BreakGlassActivationId,
-    Guid RedactionSetId)
+    Guid RedactionSetId,
+    Guid ReviewBatchSnapshotId,
+    Guid FirstPassBatchSetId,
+    Guid QcBatchSetId,
+    Guid ReviewBatchId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -82,7 +86,8 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -93,7 +98,8 @@ internal sealed record WorkspaceResources(
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
-            WallId, SpareWallId, BreakGlassActivationId, RedactionSetId,
+            WallId, SpareWallId, BreakGlassActivationId, RedactionSetId, ReviewBatchSnapshotId, FirstPassBatchSetId, QcBatchSetId,
+            ReviewBatchId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -358,6 +364,29 @@ internal sealed class AttackWorld : IAsyncDisposable
             redaction.StatusCode.Should().Be(HttpStatusCode.OK, await redaction.Content.ReadAsStringAsync(Ct));
         }
 
+        // Review batches (E10-T05): a first-pass Batch Set over the reviewable document and a QC set checking it.
+        var reviewSnapshot = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/snapshots", owner, HttpStatusCode.Created,
+            new JsonObject { ["purpose"] = "ReviewBatch", ["documentIds"] = new JsonArray(document.DocumentId.ToString()) });
+        var reviewSnapshotId = reviewSnapshot.GetProperty("snapshotId").GetGuid();
+        var firstPass = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/review-batch-sets", owner, HttpStatusCode.Created, new JsonObject
+        {
+            ["name"] = $"First pass {name}",
+            ["snapshotId"] = reviewSnapshotId.ToString(),
+            ["batchPrefix"] = $"FP{name}",
+            ["maxBatchSize"] = 10,
+        });
+        var firstPassId = firstPass.GetProperty("batchSetId").GetGuid();
+        var qcSet = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/review-batch-sets", owner, HttpStatusCode.Created, new JsonObject
+        {
+            ["name"] = $"QC {name}",
+            ["snapshotId"] = reviewSnapshotId.ToString(),
+            ["batchPrefix"] = $"QC{name}",
+            ["maxBatchSize"] = 10,
+            ["reviewPass"] = "qc",
+            ["qcOfBatchSetId"] = firstPassId.ToString(),
+        });
+        var batches = await JsonAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/review-batches?batchSetId={firstPassId}", owner, HttpStatusCode.OK);
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -401,7 +430,11 @@ internal sealed class AttackWorld : IAsyncDisposable
             wall.GetProperty("wallId").GetGuid(),
             spareWall.GetProperty("wallId").GetGuid(),
             activationId,
-            redactionSetId);
+            redactionSetId,
+            reviewSnapshotId,
+            firstPassId,
+            qcSet.GetProperty("batchSetId").GetGuid(),
+            batches.GetProperty("items")[0].GetProperty("batchId").GetGuid());
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>

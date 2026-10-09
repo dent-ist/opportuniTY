@@ -4,7 +4,7 @@ namespace Opportunity.Contracts.Api;
 
 /// <summary>
 /// Body of <c>POST /api/v1/workspaces/{workspaceId}/snapshots</c>: freeze a document set ("Frozen set") for a bulk
-/// operation, export, production or report. Give exactly one source: a query, explicit document IDs (at most 10,000;
+/// operation, export, production, report or review Batch Set. Give exactly one source: a query, explicit document IDs (at most 10,000;
 /// select larger sets with a query) or another snapshot (a saved selection).
 /// </summary>
 /// <param name="Purpose">What the set is frozen for; decides the permission needed and how long it is kept.</param>
@@ -80,6 +80,7 @@ public enum SnapshotResourcePurpose
     Export,
     Production,
     Report,
+    ReviewBatch,
 }
 
 public enum SnapshotResourceStatus

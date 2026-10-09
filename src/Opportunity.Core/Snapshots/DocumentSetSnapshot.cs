@@ -30,6 +30,9 @@ public enum SnapshotPurpose
 
     /// <summary>Scope of a saved search-term report (Q-30); retained for the life of the matter once used.</summary>
     Report,
+
+    /// <summary>Membership of a review Batch Set (E10-T05); retained for the life of the matter once a Batch Set uses it.</summary>
+    ReviewBatch,
 }
 
 /// <summary>Where the candidate set came from. Stored as text.</summary>
@@ -99,15 +102,17 @@ public static class SnapshotRules
         SnapshotPurpose.Export => Permission.ExportCreate,
         SnapshotPurpose.Production => Permission.ProductionCreate,
         SnapshotPurpose.Report => Permission.SearchExecute,
+        SnapshotPurpose.ReviewBatch => Permission.ReviewBatchManage,
         _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "Unknown snapshot purpose."),
     };
 
     /// <summary>
     /// The document-level permission each member is authorized with. Reports only show counts and IDs of documents
-    /// the creator may view; every other purpose acts on the documents with its own permission.
+    /// the creator may view, and review batches hold documents the creator may view (each reviewer is filtered again
+    /// when reading a batch); every other purpose acts on the documents with its own permission.
     /// </summary>
     public static Permission MemberPermission(SnapshotPurpose purpose) =>
-        purpose == SnapshotPurpose.Report ? Permission.DocumentView : RequiredPermission(purpose);
+        purpose is SnapshotPurpose.Report or SnapshotPurpose.ReviewBatch ? Permission.DocumentView : RequiredPermission(purpose);
 
     /// <summary>
     /// ADR-002 §9: once referenced, export, production and report snapshots stay for the life of the matter; bulk
@@ -123,6 +128,7 @@ public static class SnapshotRules
             SnapshotPurpose.Export => "Export",
             SnapshotPurpose.Production => "Production",
             SnapshotPurpose.Report => "Search Terms Report",
+            SnapshotPurpose.ReviewBatch => "Batch Set",
             _ => "Frozen set",
         }) + " " + createdAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + " UTC";
 }

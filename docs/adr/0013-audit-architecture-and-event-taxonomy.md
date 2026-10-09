@@ -128,6 +128,7 @@ M1 events ship with `E14-T01`/`E05-T04`; the rest with the owning feature, and `
 | | `FamilyApplied` | Document | family ID, conflict preview accepted (Q-14) |
 | | `BulkSubmitted`, `BulkChunkApplied`, `BulkCompleted` | Job | `SnapshotId`, field operations, counts applied/skipped (Q-07); one event per job state and per chunk, **never per document** |
 | | `OverlayEnabled` | Import | coding/privilege overlay enabled by admin (Q-31) |
+| | `ReviewBatchSet.Created`, `ReviewBatch.CheckedOut`, `ReviewBatch.CheckedIn`, `ReviewBatch.Assigned` | ReviewBatchSet / ReviewBatch | Batch Set settings, snapshot ID and frozen counts; batch status before/after, assignee and version (E10-T05) |
 | **Privilege** | `LogGenerated`, `ConflictOverride`, `ClawbackRecorded` | Production, Document | log version and hash; override reason |
 | **Redaction** | `Added`, `Modified`, `Removed` | Redaction | `documentId`, `redactionSetId`, `redactionVersion`, page set and page, normalized rectangle, type, reason code and category; never the note text (ADR-012, E11-T04) |
 | | `RedactionSet.Created/Modified`, `Reason.Created/Modified` | RedactionSet / RedactionReason | Redaction Sets (renamed, retired) and the reason picklist (category, active) (E11-T04) |
