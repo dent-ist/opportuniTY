@@ -26,6 +26,19 @@ public sealed record UpdateProductionRequest(ProductionSpecification Specificati
 public sealed record VoidProductionRequest(string Reason);
 
 /// <summary>
+/// Optional body of <c>POST …/productions/{productionId}/finalize</c>. Without it, unresolved family or duplicate
+/// privilege conflicts among the members refuse the finalization (409 <c>PRIVILEGE_CONFLICTS</c>, E13-T02).
+/// </summary>
+/// <param name="PrivilegeConflictOverride">
+/// Finalize even if such conflicts exist: needs <c>PrivilegeLog.Generate</c> besides <c>Production.Finalize</c>; when
+/// conflicts exist, the reason is recorded in the manifest (<c>privilegeConflictOverride</c>) and audited.
+/// </param>
+public sealed record FinalizeProductionRequest(PrivilegeConflictOverrideRequest? PrivilegeConflictOverride = null);
+
+/// <param name="Reason">Why the production may go out with the conflicts (1–2,000 characters).</param>
+public sealed record PrivilegeConflictOverrideRequest(string Reason);
+
+/// <summary>
 /// How a production is produced (E12-T02). Frozen when the production is finalized; recorded in its manifest with the
 /// software versions. Absent members take their defaults; the stored specification has every member filled in.
 /// </summary>

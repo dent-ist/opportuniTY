@@ -114,6 +114,17 @@ public interface ICodingPropagationRepository
     Task SaveAsync(CodingPropagationPreview preview, CancellationToken cancellationToken = default);
 
     Task<CodingPropagationPreview?> GetAsync(Guid workspaceId, Guid previewId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Live members of the duplicate groups <paramref name="duplicateGroupIds"/> (E13-T02), by group then DocumentId, at
+    /// most <paramref name="limit"/> + 1 rows.
+    /// </summary>
+    Task<IReadOnlyList<(Guid DuplicateGroupId, PropagationCandidate Member)>> GetDuplicateGroupMembersAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> duplicateGroupIds, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>The current duplicate group of each live document of <paramref name="documentIds"/> that has one.</summary>
+    Task<IReadOnlyDictionary<Guid, Guid>> GetDuplicateGroupIdsAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default);
 }
 
 /// <summary>One conflicting (document, field) pair of a preview, values canonical.</summary>

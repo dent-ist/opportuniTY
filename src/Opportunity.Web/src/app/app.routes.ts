@@ -103,6 +103,16 @@ export const workspaceChildren: Routes = [
               },
             ],
           };
+        if (a.path === 'privilege-conflicts')
+          return {
+            ...base,
+            title: a.label,
+            // Privilege Conflicts (E13-T02): the on-demand report, CSV and "propagate to duplicates".
+            loadComponent: () =>
+              import('./features/searches/privilege-conflicts/privilege-conflicts-page').then(
+                (m) => m.PrivilegeConflictsPage,
+              ),
+          };
         return { ...base, title: a.label, loadComponent: sectionPage };
       }),
     ],

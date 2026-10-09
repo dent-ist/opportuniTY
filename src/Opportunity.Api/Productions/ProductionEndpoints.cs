@@ -122,7 +122,12 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             .WithName("FinalizeProduction")
             .WithTags(Tag)
             .WithSummary("Finalize an allocated draft (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.")
+            .WithDescription(
+                "409 PRIVILEGE_WITHHELD while members are coded Withhold; 409 PRIVILEGE_CONFLICTS while members' families or duplicate " +
+                "groups have unresolved privilege conflicts (E13-T02), unless the body gives privilegeConflictOverride with a reason " +
+                "(needs PrivilegeLog.Generate; recorded in the manifest and audited). Neither answer counts or names documents.")
             .Produces<ProductionResource>()
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
@@ -334,8 +339,8 @@ public sealed class ProductionEndpoints : IApiEndpointModule
     }
 
     internal static async Task<IResult> FinalizeAsync(
-        string workspaceId, string productionId, HttpContext context, IProductionStore productions, ProductionService service, IJobRepository jobs,
-        CancellationToken cancellationToken)
+        string workspaceId, string productionId, FinalizeProductionRequest? request, HttpContext context, IProductionStore productions,
+        ProductionService service, IJobRepository jobs, CancellationToken cancellationToken)
     {
         _ = workspaceId;
         if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } current)
@@ -349,7 +354,16 @@ public sealed class ProductionEndpoints : IApiEndpointModule
         }
 
         var access = context.GetWorkspaceAccess()!;
-        var outcome = await service.FinalizeAsync(access.Principal, access.WorkspaceId, current.ProductionId, current.RowVersion, cancellationToken).ConfigureAwait(false);
+        if (request?.PrivilegeConflictOverride is { Reason: null })
+        {
+            return Problems.Validation(new Dictionary<string, string[]>
+            {
+                ["privilegeConflictOverride.reason"] = ["Give the reason for overriding the privilege conflicts."],
+            });
+        }
+
+        var outcome = await service.FinalizeAsync(access.Principal, access.WorkspaceId, current.ProductionId, current.RowVersion,
+            request?.PrivilegeConflictOverride?.Reason, cancellationToken).ConfigureAwait(false);
         return await ResultAsync(context, outcome, jobs, cancellationToken).ConfigureAwait(false);
     }
 
@@ -563,6 +577,14 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             detail: outcome.Reason,
             type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
             extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_WITHHELD" }),
+        ProductionOutcomeStatus.PrivilegeConflicts => TypedResults.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Unresolved privilege conflicts",
+            detail: outcome.Reason,
+            type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
+            extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_CONFLICTS" }),
+        ProductionOutcomeStatus.Forbidden => Problems.Create(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden,
+            outcome.Reason ?? "You do not have permission for this operation."),
         _ => Problems.Create(StatusCodes.Status409Conflict, ProblemCodes.Conflict, outcome.Reason ?? "The production's state does not allow this."),
     };
 

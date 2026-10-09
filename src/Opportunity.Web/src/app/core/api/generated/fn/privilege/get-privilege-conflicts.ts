@@ -7,34 +7,33 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { FinalizeProductionRequest } from '../../models/finalize-production-request';
-import { ProductionResource } from '../../models/production-resource';
+import { PrivilegeConflictReportResource } from '../../models/privilege-conflict-report-resource';
 
-export interface FinalizeProduction$Params {
+export interface GetPrivilegeConflicts$Params {
   workspaceId: string;
-  productionId: string;
-  body?: null | FinalizeProductionRequest;
+  responsivenessField?: number | string;
+  productionId?: string;
 }
 
-export function finalizeProduction(
+export function getPrivilegeConflicts(
   http: HttpClient,
   rootUrl: string,
-  params: FinalizeProduction$Params,
+  params: GetPrivilegeConflicts$Params,
   context?: HttpContext,
-): Observable<StrictHttpResponse<ProductionResource>> {
-  const rb = new RequestBuilder(rootUrl, finalizeProduction.PATH, 'post');
+): Observable<StrictHttpResponse<PrivilegeConflictReportResource>> {
+  const rb = new RequestBuilder(rootUrl, getPrivilegeConflicts.PATH, 'get');
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
-    rb.path('productionId', params.productionId, {});
-    rb.body(params.body, 'application/json');
+    rb.query('responsivenessField', params.responsivenessField, {});
+    rb.query('productionId', params.productionId, {});
   }
 
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<ProductionResource>;
+      return r as StrictHttpResponse<PrivilegeConflictReportResource>;
     }),
   );
 }
 
-finalizeProduction.PATH = '/api/v1/workspaces/{workspaceId}/productions/{productionId}/finalize';
+getPrivilegeConflicts.PATH = '/api/v1/workspaces/{workspaceId}/privilege-conflicts';

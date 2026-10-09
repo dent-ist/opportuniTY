@@ -45,6 +45,12 @@ import {
   pivotQuery,
 } from './grid/review-grid';
 import { HttpRelationshipsApi, RelationshipsApi } from './relationships/relationships-api';
+import {
+  RELATED_ID_PARAM,
+  RELATED_OF_PARAM,
+  RELATED_PARAM,
+  relatedFromParams,
+} from './relationships/relationship-link';
 import { PendingCoding } from './review/coding/pending-coding';
 import { DocumentLoader } from './review/document-loader';
 import { CursorSource, ReviewCursor } from './review/review-cursor';
@@ -117,6 +123,9 @@ import {
  * Search Terms Reports (#180): `?termReport=<reportId>&term=<termId>` lists one term's hits within the report's frozen
  * set (filtered for the caller); the search panel names the report and the term, and says when filters turn it into a
  * live search of the term's expression.
+ *
+ * Families and duplicate groups (E13-T02 "Open in Documents"): `?related=family|duplicates&relatedId=&relatedOf=` shows
+ * the relation as the list's search, like the duplicate marker does.
  *
  * Keyboard (guide §4, command registry E15-T03): "Focus keyword search" (Alt+Shift+K, or `/` while single-key
  * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel, the list and the
@@ -297,7 +306,8 @@ export class DocumentsPage {
     query: '',
     deferred:
       inject(ActivatedRoute).snapshot.queryParamMap.has(SAVED_SEARCH_PARAM) ||
-      inject(ActivatedRoute).snapshot.queryParamMap.has(TERM_REPORT_PARAM),
+      inject(ActivatedRoute).snapshot.queryParamMap.has(TERM_REPORT_PARAM) ||
+      !!relatedFromParams(inject(ActivatedRoute).snapshot.queryParamMap),
   });
   protected readonly reviewing = signal(false);
   private readonly queryBar = viewChild.required(QueryBar);
@@ -376,7 +386,23 @@ export class DocumentsPage {
       const then = params.get(THEN_PARAM);
       const reportId = params.get(TERM_REPORT_PARAM);
       const termId = params.get(TERM_PARAM);
+      const related = relatedFromParams(params);
       untracked(() => {
+        // `?related=family|duplicates&relatedId=&relatedOf=` ("Open in Documents" from another section, E13-T02): the
+        // relation becomes the list's search once the view exists, and the parameters leave the URL.
+        if (related) {
+          queueMicrotask(() => this.onPivot(related));
+          void this.router.navigate([], {
+            queryParams: {
+              [RELATED_PARAM]: null,
+              [RELATED_ID_PARAM]: null,
+              [RELATED_OF_PARAM]: null,
+            },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          });
+          return;
+        }
         const termKey = reportId && termId ? `${reportId}/${termId}` : null;
         if (termKey && termKey !== this.appliedTerm) {
           void this.applyTerm(reportId!, termId!);

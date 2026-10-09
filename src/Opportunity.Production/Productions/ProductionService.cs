@@ -39,6 +39,12 @@ public enum ProductionOutcomeStatus
 
     /// <summary>Members are coded Privilege Status = Withhold (E13-T01); the production cannot be finalized (409).</summary>
     PrivilegeWithheld,
+
+    /// <summary>Members' families or duplicates have unresolved privilege conflicts and no override was given (E13-T02, 409).</summary>
+    PrivilegeConflicts,
+
+    /// <summary>The caller lacks a permission the request needs beyond the endpoint's (403).</summary>
+    Forbidden,
 }
 
 public sealed record ProductionOutcome(
@@ -74,6 +80,8 @@ public sealed partial class ProductionService(
     ILogger<ProductionService> logger)
 {
     public const int MaxNameLength = 200;
+
+    public const int MaxOverrideReasonLength = 2_000;
 
     public async Task<ProductionOutcome> CreateAsync(
         SecurityPrincipal principal, Guid workspaceId, CreateProductionRequest request, Guid? snapshotId, CancellationToken cancellationToken = default)
@@ -225,11 +233,38 @@ public sealed partial class ProductionService(
         return outcome with { Job = job };
     }
 
+    /// <summary>Freezes an allocated draft without a privilege conflict override.</summary>
+    public Task<ProductionOutcome> FinalizeAsync(
+        SecurityPrincipal principal, Guid workspaceId, Guid productionId, long expectedRowVersion, CancellationToken cancellationToken = default) =>
+        FinalizeAsync(principal, workspaceId, productionId, expectedRowVersion, null, cancellationToken);
+
     /// <summary>Freezes an allocated draft: the manifest (specification, frozen set, Bates assignment hash, versions) and the Produced range.</summary>
+    /// <param name="privilegeConflictOverrideReason">
+    /// E13-T02 AC 2: finalize even if members' families or duplicates have unresolved privilege conflicts. Needs
+    /// <c>PrivilegeLog.Generate</c> besides <c>Production.Finalize</c>; used (recorded in the manifest and audited as
+    /// <c>Privilege.ConflictOverride</c>) only when conflicts exist at the finalization.
+    /// </param>
     public async Task<ProductionOutcome> FinalizeAsync(
-        SecurityPrincipal principal, Guid workspaceId, Guid productionId, long expectedRowVersion, CancellationToken cancellationToken = default)
+        SecurityPrincipal principal, Guid workspaceId, Guid productionId, long expectedRowVersion, string? privilegeConflictOverrideReason,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(principal);
+        var overrideReason = privilegeConflictOverrideReason?.Trim();
+        if (overrideReason is not null)
+        {
+            if (overrideReason.Length is 0 or > MaxOverrideReasonLength)
+            {
+                return ProductionOutcome.Invalid("privilegeConflictOverride.reason",
+                    $"Give the reason for overriding the privilege conflicts (1 to {MaxOverrideReasonLength} characters).");
+            }
+
+            if (!(await authorization.AuthorizeAsync(principal, workspaceId, Permission.PrivilegeLogGenerate, cancellationToken).ConfigureAwait(false)).IsAllowed)
+            {
+                return new ProductionOutcome(ProductionOutcomeStatus.Forbidden,
+                    Reason: "Overriding privilege conflicts needs PrivilegeLog.Generate as well as Production.Finalize.");
+            }
+        }
+
         if (await productions.GetAsync(workspaceId, productionId, cancellationToken).ConfigureAwait(false) is not { } current)
         {
             return new ProductionOutcome(ProductionOutcomeStatus.NotFound);
@@ -265,11 +300,34 @@ public sealed partial class ProductionService(
             ["AssignmentsSha256"] = Convert.ToHexStringLower(current.AssignmentsSha256!),
             ["Documents"] = current.BatesDocuments?.ToString(CultureInfo.InvariantCulture),
         };
+        PrivilegeConflictOverrideWrite? conflictOverride = null;
+        if (overrideReason is not null)
+        {
+            var (overrideManifest, overrideSha) = ProductionManifest.Build(current, snapshot, coding, ProductionSoftware.Current, principal.UserId, at, overrideReason);
+            var overrideDetails = new Dictionary<string, string?>(details, StringComparer.Ordinal)
+            {
+                ["ManifestSha256"] = Convert.ToHexStringLower(overrideSha),
+                ["PrivilegeConflictOverride"] = "true",
+            };
+            conflictOverride = new PrivilegeConflictOverrideWrite(overrideManifest, overrideSha,
+            [
+                Resource(UserEvent(principal, AuditTaxonomy.Production.SpecFrozen, overrideDetails), current),
+                Resource(UserEvent(principal, AuditTaxonomy.Production.Finalized, overrideDetails), current),
+                Resource(UserEvent(principal, AuditTaxonomy.Privilege.ConflictOverride, new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["ProductionId"] = productionId.ToString(),
+                    ["Version"] = current.Version.ToString(CultureInfo.InvariantCulture),
+                    ["Reason"] = overrideReason.Length <= 500 ? overrideReason : overrideReason[..500],
+                    ["ManifestSha256"] = Convert.ToHexStringLower(overrideSha),
+                }) with { Category = AuditTaxonomy.Privilege.Category }, current),
+            ]);
+        }
+
         var result = await productions.FinalizeAsync(workspaceId, productionId, expectedRowVersion, manifest, sha, principal.UserId, at,
         [
             Resource(UserEvent(principal, AuditTaxonomy.Production.SpecFrozen, details), current),
             Resource(UserEvent(principal, AuditTaxonomy.Production.Finalized, details), current),
-        ], cancellationToken).ConfigureAwait(false);
+        ], conflictOverride, cancellationToken).ConfigureAwait(false);
         return Outcome(result, format);
     }
 
@@ -560,6 +618,7 @@ public sealed partial class ProductionService(
                 $"production '{c.ProductionName}' ({Label(format, c.FirstNumber)}–{Label(format, c.LastNumber)}, {c.Status})")))
                 + "; choose a start number after the numbers already used."),
         ProductionWriteStatus.PrivilegeWithheld => new ProductionOutcome(ProductionOutcomeStatus.PrivilegeWithheld, result.Production, Reason: result.Reason),
+        ProductionWriteStatus.PrivilegeConflicts => new ProductionOutcome(ProductionOutcomeStatus.PrivilegeConflicts, result.Production, Reason: result.Reason),
         _ => new ProductionOutcome(ProductionOutcomeStatus.Conflict, result.Production, Reason: result.Reason),
     };
 

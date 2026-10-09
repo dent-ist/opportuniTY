@@ -128,7 +128,7 @@ M1 events ship with `E14-T01`/`E05-T04`; the rest with the owning feature, and `
 | | `FamilyApplied` | Document | family ID, conflict preview accepted (Q-14) |
 | | `BulkSubmitted`, `BulkChunkApplied`, `BulkCompleted` | Job | `SnapshotId`, field operations, counts applied/skipped (Q-07); one event per job state and per chunk, **never per document** |
 | | `OverlayEnabled` | Import | coding/privilege overlay enabled by admin (Q-31) |
-| **Privilege** | `LogGenerated`, `ConflictOverride`, `ClawbackRecorded` | Production, Document | log version and hash; override reason |
+| **Privilege** | `LogGenerated`, `ConflictOverride`, `ClawbackRecorded`, `ConflictReportExported` | Production, Document | log version and hash; override reason; conflict report export (E13-T02): group count, responsiveness field, production |
 | **Redaction** | `Added`, `Modified`, `Removed` | Redaction | `documentId`, `redactionSetId`, `redactionVersion`, page set and page, normalized rectangle, type, reason code and category; never the note text (ADR-012, E11-T04) |
 | | `RedactionSet.Created/Modified`, `Reason.Created/Modified` | RedactionSet / RedactionReason | Redaction Sets (renamed, retired) and the reason picklist (category, active) (E11-T04) |
 | **Export** | `Created`, `Completed`, `DocumentsExcluded`, `Downloaded` | Export | `SnapshotId`; excluded DocumentIds with reasons per chunk (Q-15); manifest hash |

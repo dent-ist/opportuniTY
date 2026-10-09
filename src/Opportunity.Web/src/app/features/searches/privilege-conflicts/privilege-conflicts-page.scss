@@ -1,0 +1,215 @@
+// Searches › Privilege Conflicts: the check options, the summary and one card per conflicting family or duplicate group.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 88rem;
+  padding: var(--opp-space-5);
+}
+
+.pc__header,
+.pc__section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.pc__heading-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  min-width: 0;
+  max-width: 60rem;
+}
+
+.pc__title {
+  font-size: var(--opp-font-size-2xl);
+}
+
+.pc__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.pc__small {
+  display: block;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+  font-weight: var(--opp-font-weight-regular);
+}
+
+.pc__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+
+.pc__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-4) var(--opp-space-5);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  background: var(--opp-color-surface);
+}
+
+.pc__panel h2,
+.pc__section h2 {
+  font-size: var(--opp-font-size-lg);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.pc__options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--opp-space-3);
+}
+
+.pc__field {
+  flex: 0 1 24rem;
+  min-width: 0;
+}
+
+.pc__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+  align-items: baseline;
+  margin: 0;
+}
+
+// ── Notices ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+.pc__notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--opp-space-2);
+  align-items: start;
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+}
+
+.pc__notice--info {
+  border-color: var(--opp-color-info-border);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+}
+
+.pc__notice--warning {
+  border-color: var(--opp-color-warning-border);
+  background: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+}
+
+// ── Conflict groups ──────────────────────────────────────────────────────────────────────────────────────────
+
+.pc__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+}
+
+.pc__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3) var(--opp-space-4);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-inline-start: calc(var(--opp-border-width) * 4) solid var(--opp-color-warning-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.pc__group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2) var(--opp-space-3);
+}
+
+.pc__group-title {
+  margin: 0;
+  font-size: var(--opp-font-size-md);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.pc__open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  min-height: var(--opp-target-min);
+  margin-inline-start: auto;
+  font-size: var(--opp-font-size-sm);
+}
+
+.pc__table-wrap {
+  overflow-x: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-sm);
+}
+
+.pc__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pc__table th,
+.pc__table td {
+  padding: var(--opp-space-1) var(--opp-cell-padding-x);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.pc__table thead th {
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+  white-space: nowrap;
+}
+
+.pc__table tbody tr:last-child > * {
+  border-block-end: 0;
+}
+
+.pc__name {
+  font-weight: var(--opp-font-weight-medium);
+  white-space: nowrap;
+}
+
+.pc__use {
+  width: 1%;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pc__radio {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  margin: 0;
+  accent-color: var(--opp-color-accent);
+}
+
+.pc__row--source {
+  background: var(--opp-color-selected);
+}
+
+.pc__value--strong {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.pc__none {
+  color: var(--opp-color-text-muted);
+  font-style: italic;
+}

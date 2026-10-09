@@ -3,6 +3,7 @@ import { CODING_FIELDS, CodingMock } from './mock-coding';
 import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
 import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
+import { PrivilegeConflictsMock } from './mock-privilege-conflicts';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
 import { SearchTermReportsMock } from './mock-search-term-reports';
@@ -110,6 +111,8 @@ export interface MockControl {
   readonly freshness: FreshnessMock;
   /** Search Terms Reports (#180): reports, writes received (create with Idempotency-Key, re-run, delete, export). */
   readonly termReports: SearchTermReportsMock;
+  /** Privilege conflicts (E13-T02): the report, its CSV and propagations received. */
+  readonly privilegeConflicts: PrivilegeConflictsMock;
   /** Document-list views and the saved layout (E16-T09). */
   readonly gridViews: GridViewsMock;
   /** The body of the last `POST …/searches` (sort, fields). */
@@ -439,6 +442,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const created = new Set<string>();
   const workspaceWrites: MockControl['workspaceWrites'] = [];
   const termReports = new SearchTermReportsMock();
+  const privilegeConflicts = new PrivilegeConflictsMock();
   const jobsMock = new JobsMock({
     userId: principal.userId,
     viewAll: permissions.includes('Job.ViewAll'),
@@ -469,6 +473,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     workspaceWrites,
     savedSearches,
     termReports,
+    privilegeConflicts,
     gridViews,
     lastSearch: () => lastSearch,
     highlights,
@@ -653,6 +658,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Search Terms Reports (#180): ./mock-search-term-reports.ts.
     const termReport = signedIn ? termReports.handle(route, method, path, url) : undefined;
     if (termReport) return termReport;
+    // Privilege conflicts (E13-T02): ./mock-privilege-conflicts.ts.
+    const conflicts = signedIn ? privilegeConflicts.handle(route, method, path, url) : undefined;
+    if (conflicts) return conflicts;
     // Highlight Sets and term hits (E16-T12): ./mock-highlights.ts.
     const highlighted = signedIn ? highlights.handle(route, method, path, url) : undefined;
     if (highlighted) return highlighted;
