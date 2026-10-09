@@ -27,7 +27,7 @@ public sealed class PreservationLockEnforcementTests(MigrationPostgresFixture po
     [
         "bates_range", "coding_event", "document", "document_overlay_event", "document_set_snapshot", "document_set_snapshot_page",
         "export", "export_document", "export_file", "import_batch", "page", "page_image", "page_set", "production", "redaction_revision",
-        "search_term_report", "stored_object",
+        "review_batch", "review_batch_checkout", "review_batch_document", "review_batch_set", "search_term_report", "stored_object",
     ];
 
     private const string CurrentState = "current state that review work replaces; its history is guarded (coding_event, overlay events, redaction revisions)";

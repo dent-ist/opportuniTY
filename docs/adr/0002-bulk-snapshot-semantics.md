@@ -258,6 +258,9 @@ imported metadata and overlays are not event-sourced, and the copy's size is bou
 
 **Retention:** unconfirmed snapshots 24 h; job snapshots 90 days after the job ends unless referenced by an export,
 production or saved report, which keeps them for the life of the matter (ADR-014).
+*Amendment 2026-10-08 (E10-T05, #93):* a snapshot with purpose `ReviewBatch` (needs `ReviewBatch.Manage`; members
+authorized with `Document.View`) is the source of a review Batch Set; once a Batch Set uses it, it is kept for the life of
+the matter, and the Batch Set copies its membership into frozen batches at creation (row "Review batch" of §4).
 
 ### 10. Implementation (E10-T03, 2026-10-05)
 

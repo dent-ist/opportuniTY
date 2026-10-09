@@ -33,6 +33,7 @@ internal static class ProtectedOperation
     public const string GridView = "Document-list views and layouts";
     public const string HighlightSet = "Highlight Sets and highlighting toggles";
     public const string Redaction = "Redactions, Redaction Sets and reasons";
+    public const string ReviewBatch = "Review Batch Sets, batches, check-out/in, assignment and QC conflicts";
     public const string Snapshot = "Frozen sets (snapshots)";
     public const string Import = "Import jobs, reports and profiles";
     public const string Job = "Job status";
@@ -485,6 +486,44 @@ internal static class RouteAttackCatalog
             new RouteProbe("bulk coding job", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report", HttpStatusCode.OK),
             new RouteProbe("bulk coding job, skippedHidden", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report?outcome=skippedHidden", HttpStatusCode.OK)),
 
+        // Coding history and review batches (E10-T05). Status changes accept any answer PEP-1 admitted for the caller's own
+        // batch (they change it once, then may answer 409); foreign sets and batches must look exactly like unknown ones.
+        Case("GET", Ws + "/documents/{documentId}/coding-history", ProtectedOperation.Coding,
+            new RouteProbe("document", HttpMethod.Get, (o, t) => Doc(o, t) + "/coding-history", HttpStatusCode.OK),
+            new RouteProbe("document, one field", HttpMethod.Get, (o, t) => Doc(o, t) + $"/coding-history?fieldId={o.Fields.Responsive}", HttpStatusCode.OK)),
+        Case("POST", Ws + "/review-batch-sets", ProtectedOperation.ReviewBatch,
+            new RouteProbe("frozen set in the body", HttpMethod.Post, (o, _) => W(o) + "/review-batch-sets", HttpStatusCode.Created,
+                (_, t) => J(BatchSetBody(t.ReviewBatchSnapshotId))),
+            new RouteProbe("first-pass set in the body", HttpMethod.Post, (o, _) => W(o) + "/review-batch-sets", HttpStatusCode.Created,
+                (o, t) =>
+                {
+                    var body = BatchSetBody(o.ReviewBatchSnapshotId);
+                    body["reviewPass"] = "qc";
+                    body["qcOfBatchSetId"] = t.FirstPassBatchSetId.ToString();
+                    return J(body);
+                })),
+        Case("GET", Ws + "/review-batch-sets", ProtectedOperation.ReviewBatch, WorkspaceOnly(HttpMethod.Get, "/review-batch-sets", HttpStatusCode.OK)),
+        Case("GET", Ws + "/review-batch-sets/{batchSetId}", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch set", HttpMethod.Get, (o, t) => $"{W(o)}/review-batch-sets/{t.FirstPassBatchSetId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/review-batch-sets/{batchSetId}/conflicts", ProtectedOperation.ReviewBatch,
+            new RouteProbe("QC batch set", HttpMethod.Get, (o, t) => $"{W(o)}/review-batch-sets/{t.QcBatchSetId}/conflicts", HttpStatusCode.OK)),
+        Case("GET", Ws + "/review-batches", ProtectedOperation.ReviewBatch,
+            WorkspaceOnly(HttpMethod.Get, "/review-batches", HttpStatusCode.OK),
+            new RouteProbe("batch set in the query", HttpMethod.Get, (o, t) => $"{W(o)}/review-batches?batchSetId={t.FirstPassBatchSetId}", HttpStatusCode.OK,
+                Expectation: ForeignExpectation.EmptySet)),
+        Case("GET", Ws + "/review-batches/{batchId}", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Get, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/review-batches/{batchId}/documents", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Get, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}/documents", HttpStatusCode.OK)),
+        Case("POST", Ws + "/review-batches/{batchId}/check-out", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Post, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}/check-out", null, IfMatch: "*")),
+        Case("POST", Ws + "/review-batches/{batchId}/check-in", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Post, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}/check-in", null,
+                (_, _) => J(new JsonObject { ["completed"] = false }), IfMatch: "*")),
+        Case("PUT", Ws + "/review-batches/{batchId}/assignment", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Put, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}/assignment", null,
+                (o, _) => J(new JsonObject { ["assigneeId"] = o.Owner.ToString() }), IfMatch: "*")),
+
         // Redactions (E11-T04): Redaction Sets by id, reasons by workspace-local code, document redactions by document and set.
         Case("GET", Ws + "/redaction-sets", ProtectedOperation.Redaction, WorkspaceOnly(HttpMethod.Get, "/redaction-sets", HttpStatusCode.OK)),
         Case("POST", Ws + "/redaction-sets", ProtectedOperation.Redaction,
@@ -640,6 +679,14 @@ internal static class RouteAttackCatalog
         Exempt("*", "/health/ready", "anonymous readiness probe"),
         Exempt("GET", "/openapi/{documentName}.json", "the public API description"),
     ];
+
+    private static JsonObject BatchSetBody(Guid snapshotId) => new()
+    {
+        ["name"] = "Probe " + Guid.NewGuid().ToString("N"),
+        ["snapshotId"] = snapshotId.ToString(),
+        ["batchPrefix"] = "P" + Guid.NewGuid().ToString("N")[..12],
+        ["maxBatchSize"] = 5,
+    };
 
     private static RouteCase Exempt(string method, string pattern, string reason) => new(method, pattern, ProtectedOperation.Workspace, [], reason);
 

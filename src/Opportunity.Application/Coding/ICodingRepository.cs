@@ -81,7 +81,7 @@ public interface ICodingRepository
     Task<IReadOnlyDictionary<int, JsonNode>> GetValuesAsOfVersionAsync(
         Guid workspaceId, Guid documentId, long documentVersion, CancellationToken cancellationToken = default);
 
-    /// <summary>Provenance events in commit order, filtered (e.g. by actor type for reports), keyset-paged.</summary>
+    /// <summary>Provenance events in commit order (or newest first), filtered (e.g. by actor type for reports), keyset-paged.</summary>
     Task<CodingEventPage> GetEventsAsync(CodingEventQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -113,6 +113,16 @@ public interface ICodingRepository
     /// </summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<int, FieldCodingState>>> GetFieldStatesAsync(
         Guid workspaceId, IReadOnlyCollection<Guid> documentIds, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// E10-T05 first-pass vs QC conflicts, by (document, field): on the documents of review Batch Set
+    /// <paramref name="qcSetId"/>, a reviewer's call is their last own value change of a field while holding the document's
+    /// batch (a checkout window); a conflict is a QC call that differs from the first-pass call of
+    /// <paramref name="firstPassSetId"/>. <paramref name="excludedFieldIds"/> are left out.
+    /// </summary>
+    Task<IReadOnlyList<ReviewBatches.ReviewConflict>> GetReviewConflictsAsync(
+        Guid workspaceId, Guid qcSetId, Guid firstPassSetId, IReadOnlyCollection<int> excludedFieldIds, ReviewBatches.ReviewConflictCursor? after,
+        int limit, CancellationToken cancellationToken = default);
 }
 
 public sealed record CodingActor(Guid ActorId, CodingActorType Type);
@@ -300,6 +310,12 @@ public sealed record CodingEventQuery(Guid WorkspaceId)
     public CodingEventCursor? After { get; init; }
 
     public int Limit { get; init; } = 100;
+
+    /// <summary>Fields whose events are left out (e.g. the fields hidden from the caller, E05-T06).</summary>
+    public IReadOnlyCollection<int> ExcludedFieldIds { get; init; } = [];
+
+    /// <summary>Newest first (document history); <see cref="After"/> then continues towards older events.</summary>
+    public bool Descending { get; init; }
 }
 
 public sealed record CodingEventPage(IReadOnlyList<CodingEvent> Events, CodingEventCursor? Next);

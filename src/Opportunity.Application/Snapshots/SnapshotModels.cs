@@ -124,7 +124,7 @@ public sealed record SnapshotRecord
 
     public DateTimeOffset? ExpiredAt { get; init; }
 
-    /// <summary>Whether any job targets the snapshot (a referenced snapshot no longer expires as unconfirmed).</summary>
+    /// <summary>Whether any job or review Batch Set uses the snapshot (a referenced snapshot no longer expires as unconfirmed).</summary>
     public bool Referenced { get; init; }
 }
 

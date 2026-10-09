@@ -41,6 +41,7 @@ public enum Permission
     ViewManageShared = 29,
     HighlightSetManage = 30,
     WorkspaceManageHolds = 31,
+    ReviewBatchManage = 32,
 }
 
 /// <summary>Catalogue entry: the dotted wire name used in docs, audit details and the API, and what it allows.</summary>
@@ -88,6 +89,7 @@ public static class PermissionCatalog
         new(Permission.WorkspaceManageHolds, "Workspace.ManageHolds", "Place, release and approve the release of preservation locks (legal holds) (ADR-014 §2)."),
         new(Permission.ViewManageShared, "View.ManageShared", "Create, change and delete the document-list views shared with the whole workspace."),
         new(Permission.HighlightSetManage, "HighlightSet.Manage", "Create, change and delete the workspace's Highlight Sets (persistent term highlighting)."),
+        new(Permission.ReviewBatchManage, "ReviewBatch.Manage", "Create review Batch Sets, assign and reassign batches, check in others' batches and read first-pass/QC conflicts."),
     ];
 
     private static readonly Dictionary<Permission, PermissionInfo> ByPermission = All.ToDictionary(p => p.Permission);

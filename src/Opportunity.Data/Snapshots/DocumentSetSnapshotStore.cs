@@ -34,7 +34,8 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
         s.excluded_no_access, s.excluded_missing, s.inclusion_counts::text, s.page_count, s.root_sha256, s.materialized_at,
         s.created_by, s.created_by_display, s.created_by_groups, s.correlation_id, s.client_idempotency_key, s.created_at,
         s.attempt_count, s.expired_at,
-        EXISTS (SELECT 1 FROM opportunity.job j WHERE j.workspace_id = s.workspace_id AND j.target_snapshot_id = s.snapshot_id),
+        EXISTS (SELECT 1 FROM opportunity.job j WHERE j.workspace_id = s.workspace_id AND j.target_snapshot_id = s.snapshot_id)
+            OR EXISTS (SELECT 1 FROM opportunity.review_batch_set r WHERE r.workspace_id = s.workspace_id AND r.snapshot_id = s.snapshot_id),
         s.expansion
         """;
 
@@ -581,6 +582,9 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
                       -- discarded draft lets it go.
                       AND NOT EXISTS (SELECT 1 FROM opportunity.production p
                                        WHERE p.workspace_id = @ws AND p.snapshot_id = c.snapshot_id AND p.status <> 4)
+                      -- A Batch Set's source stays for the life of the matter (E10-T05).
+                      AND NOT EXISTS (SELECT 1 FROM opportunity.review_batch_set r
+                                       WHERE r.workspace_id = @ws AND r.snapshot_id = c.snapshot_id)
                     ORDER BY c.created_at
                     LIMIT @limit
                       FOR UPDATE)

@@ -51,7 +51,7 @@ public enum SetOperationKind
     /// <summary>On-screen, unsaved search-term report preview: the only job that may use a reader.</summary>
     SearchTermReportPreview,
 
-    /// <summary>Review batch (post-MVP, Q-33).</summary>
+    /// <summary>Review batch membership (E10-T05; frozen review sets, Q-33).</summary>
     ReviewBatch,
 
     /// <summary>The interactive grid and review cursor: not a job; always a live reader (ADR-002 §8, Q-33).</summary>
@@ -219,6 +219,7 @@ public static class SnapshotStrategyRules
         SnapshotPurpose.Export => SetOperationKind.Export,
         SnapshotPurpose.Production => SetOperationKind.Production,
         SnapshotPurpose.Report => SetOperationKind.SavedSearchTermReport,
+        SnapshotPurpose.ReviewBatch => SetOperationKind.ReviewBatch,
         _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "Unknown snapshot purpose."),
     };
 

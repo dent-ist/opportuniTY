@@ -7398,6 +7398,261 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/privilege-conflicts": {
+      "get": {
+        "tags": [
+          "Privilege"
+        ],
+        "summary": "Families and duplicate groups with inconsistent privilege calls, with each member's values and who set them.",
+        "description": "Families: a member coded Privilege Status = Withhold next to members that are not (Q-14), and, with responsivenessField (a single-choice coding field id), members with different responsiveness calls. Duplicates: members whose Privilege Status differs, at least one being other than Not Privileged. Only documents you may see are listed or counted; a group appears only when they alone are in conflict. productionId (needs Production.Create) keeps groups with a member in that production. At most 1,000 groups per kind (truncated tells there are more).",
+        "operationId": "GetPrivilegeConflicts",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "responsivenessField",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeConflictReportResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-conflicts/propagations": {
+      "post": {
+        "tags": [
+          "Privilege"
+        ],
+        "summary": "Copy chosen documents' privilege calls to the rest of their duplicate groups as one bulk coding job; 202 with the job.",
+        "description": "Each group names the member whose values of fields (privilege field ids; default Privilege Status and Basis) the group's other members you may code get. The targets are frozen at once; each chunk re-checks your access, leaves fields someone else changed after the freeze alone (Q-07) and references the source's originating coding event (provenance). Needs Coding.WritePrivilege. Follow the job at Location and its outcomes at …/bulk-coding/{jobId}/report.",
+        "operationId": "PropagatePrivilegeCalls",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivilegeConflictPropagationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-conflicts/export": {
+      "get": {
+        "tags": [
+          "Privilege"
+        ],
+        "summary": "The privilege conflict report as CSV (UTF-8 with BOM), one row per listed document. Audited.",
+        "operationId": "ExportPrivilegeConflicts",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "responsivenessField",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/search-index": {
       "get": {
         "tags": [
@@ -7558,13 +7813,938 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/coding-history": {
+      "get": {
+        "tags": [
+          "Coding"
+        ],
+        "summary": "A document's coding history, newest first: field, old and new value, actor, time and job or interactive.",
+        "description": "Built from CodingEvent provenance. source is interactive (jobId null) or job; actorType tells human review from bulk jobs, system rules and models. Fields you may not see are never listed; fieldId narrows to one field.",
+        "operationId": "GetDocumentCodingHistory",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fieldId",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfCodingHistoryEntryResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batch-sets": {
+      "post": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Cut a ReviewBatch snapshot into batches of at most N documents, keeping families (and optionally threads) together.",
+        "description": "Freeze the documents first (POST …/snapshots, purpose ReviewBatch, e.g. from a saved search). Membership is frozen at creation; batches are named {prefix}_0001…. A QC set names the first-pass set it checks. Audited.",
+        "operationId": "CreateReviewBatchSet",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReviewBatchSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchSetResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Batch Sets, newest first, with batch counts by status and the documents you may see.",
+        "operationId": "ListReviewBatchSets",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfReviewBatchSetResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batch-sets/{batchSetId}": {
+      "get": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "A Batch Set with its settings and batch counts by status.",
+        "operationId": "GetReviewBatchSet",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchSetResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batch-sets/{batchSetId}/conflicts": {
+      "get": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Where a QC set's calls differ from its first pass: document, field, both calls and reviewers.",
+        "description": "A call is the reviewer's last own coding change of the field while holding the document's batch (CodingEvent provenance). Documents and fields you may not see are left out. 409 for a first-pass set.",
+        "operationId": "ListReviewBatchConflicts",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfReviewConflictResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batches": {
+      "get": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Batches by set and number; filter by batchSetId, status (available, checkedOut, completed) and assigneeId (or me).",
+        "operationId": "ListReviewBatches",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchSetId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assigneeId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfReviewBatchResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batches/{batchId}": {
+      "get": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "A batch with its status, assignee and ETag.",
+        "operationId": "GetReviewBatch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batches/{batchId}/documents": {
+      "get": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "The batch's documents in review order (documents you may not see are left out).",
+        "operationId": "ListReviewBatchDocuments",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfReviewBatchDocumentResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batches/{batchId}/check-out": {
+      "post": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Check an available batch out to yourself (If-Match required; audited).",
+        "operationId": "CheckOutReviewBatch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batches/{batchId}/check-in": {
+      "post": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Check your batch in, completed or not (managers may check in anyone's; If-Match required; audited).",
+        "operationId": "CheckInReviewBatch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckInReviewBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batches/{batchId}/assignment": {
+      "put": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Assign a batch to a reviewer (checked out to them, also to reopen a completed batch) or make it available (If-Match; audited).",
+        "operationId": "AssignReviewBatch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewBatchAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/snapshots": {
       "post": {
         "tags": [
           "Snapshots"
         ],
         "summary": "Freeze a document set (query, document IDs or another snapshot) and return its frozen count.",
-        "description": "201 with the Ready snapshot when it was frozen in the request; 202 with Location of the snapshot while a large set materializes. Documents you may not act on for the purpose are never included. Needs Coding.Bulk, Export.Create, Production.Create or Search.Execute (Report), by purpose.",
+        "description": "201 with the Ready snapshot when it was frozen in the request; 202 with Location of the snapshot while a large set materializes. Documents you may not act on for the purpose are never included. Needs Coding.Bulk, Export.Create, Production.Create, Search.Execute (Report) or ReviewBatch.Manage (ReviewBatch), by purpose.",
         "operationId": "CreateSnapshot",
         "parameters": [
           {
@@ -10863,6 +12043,7 @@
           "Productions"
         ],
         "summary": "Finalize an allocated draft (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.",
+        "description": "409 PRIVILEGE_WITHHELD while members are coded Withhold; 409 PRIVILEGE_CONFLICTS while members' families or duplicate groups have unresolved privilege conflicts (E13-T02), unless the body gives privilegeConflictOverride with a reason (needs PrivilegeLog.Generate; recorded in the manifest and audited). Neither answer counts or names documents.",
         "operationId": "FinalizeProduction",
         "parameters": [
           {
@@ -10882,6 +12063,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FinalizeProductionRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -10889,6 +12086,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProductionResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -12648,6 +13855,17 @@
           }
         }
       },
+      "CheckInReviewBatchRequest": {
+        "required": [
+          "completed"
+        ],
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "boolean"
+          }
+        }
+      },
       "ChoiceOrderRequest": {
         "required": [
           "choiceIds"
@@ -12666,6 +13884,14 @@
             }
           }
         }
+      },
+      "CodingActorTypeResource": {
+        "enum": [
+          "human",
+          "bulkHuman",
+          "systemRule",
+          "model"
+        ]
       },
       "CodingChangeRequest": {
         "required": [
@@ -12687,6 +13913,12 @@
           },
           "value": { }
         }
+      },
+      "CodingChangeSourceResource": {
+        "enum": [
+          "interactive",
+          "job"
+        ]
       },
       "CodingEditorResource": {
         "required": [
@@ -12784,6 +14016,123 @@
             "format": "date-time"
           }
         }
+      },
+      "CodingHistoryActorResource": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CodingHistoryEntryResource": {
+        "required": [
+          "eventId",
+          "occurredAt",
+          "fieldId",
+          "fieldName",
+          "kind",
+          "oldValue",
+          "newValue",
+          "documentVersion",
+          "actor",
+          "actorType",
+          "source",
+          "jobId",
+          "originEventId"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "format": "date-time"
+          },
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fieldName": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CodingHistoryKindResource"
+          },
+          "oldValue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "newValue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "documentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/CodingHistoryActorResource"
+          },
+          "actorType": {
+            "$ref": "#/components/schemas/CodingActorTypeResource"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CodingChangeSourceResource"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "originEventId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "CodingHistoryKindResource": {
+        "enum": [
+          "changed",
+          "skippedConcurrentEdit"
+        ]
       },
       "CodingIndexingStateResource": {
         "enum": [
@@ -13604,6 +14953,59 @@
           }
         }
       },
+      "CreateReviewBatchSetRequest": {
+        "required": [
+          "name",
+          "snapshotId",
+          "batchPrefix",
+          "maxBatchSize"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "batchPrefix": {
+            "type": "string"
+          },
+          "maxBatchSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "keepFamiliesTogether": {
+            "type": "boolean",
+            "default": true
+          },
+          "keepThreadsTogether": {
+            "type": "boolean",
+            "default": false
+          },
+          "reviewPass": {
+            "$ref": "#/components/schemas/ReviewPassResource"
+          },
+          "qcOfBatchSetId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "reviewerGroup": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CreateSearchTermReportRequest": {
         "required": [
           "name",
@@ -13714,6 +15116,31 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BulkCodingReportItemResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfCodingHistoryEntryResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingHistoryEntryResource"
             }
           },
           "nextCursor": {
@@ -14089,6 +15516,106 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProductionResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfReviewBatchDocumentResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewBatchDocumentResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfReviewBatchResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewBatchResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfReviewBatchSetResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewBatchSetResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfReviewConflictResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewConflictResource"
             }
           },
           "nextCursor": {
@@ -16290,6 +17817,21 @@
           "identifier",
           null
         ]
+      },
+      "FinalizeProductionRequest": {
+        "type": "object",
+        "properties": {
+          "privilegeConflictOverride": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrivilegeConflictOverrideRequest"
+              }
+            ]
+          }
+        }
       },
       "GridLayoutRequest": {
         "type": "object",
@@ -19142,6 +20684,256 @@
           }
         }
       },
+      "PrivilegeCodedValueResource": {
+        "required": [
+          "values",
+          "choiceIds",
+          "changedBy",
+          "changedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "choiceIds": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "changedBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewerResource"
+              }
+            ]
+          },
+          "changedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "PrivilegeConflictGroupResource": {
+        "required": [
+          "kind",
+          "groupId",
+          "reasons",
+          "members"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PrivilegeConflictKindResource"
+          },
+          "groupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeConflictReasonResource"
+            }
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeConflictMemberResource"
+            }
+          }
+        }
+      },
+      "PrivilegeConflictKindResource": {
+        "enum": [
+          "family",
+          "duplicates"
+        ]
+      },
+      "PrivilegeConflictMemberResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "familySequence",
+          "isPrimary",
+          "inProduction",
+          "privilegeStatus",
+          "privilegeBasis",
+          "responsiveness"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "familySequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "inProduction": {
+            "type": "boolean"
+          },
+          "privilegeStatus": {
+            "$ref": "#/components/schemas/PrivilegeCodedValueResource"
+          },
+          "privilegeBasis": {
+            "$ref": "#/components/schemas/PrivilegeCodedValueResource"
+          },
+          "responsiveness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrivilegeCodedValueResource"
+              }
+            ]
+          }
+        }
+      },
+      "PrivilegeConflictOverrideRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "PrivilegeConflictPropagationGroup": {
+        "required": [
+          "duplicateGroupId",
+          "sourceDocumentId"
+        ],
+        "type": "object",
+        "properties": {
+          "duplicateGroupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceDocumentId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "PrivilegeConflictPropagationRequest": {
+        "required": [
+          "groups"
+        ],
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeConflictPropagationGroup"
+            }
+          },
+          "fields": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "PrivilegeConflictReasonResource": {
+        "enum": [
+          "withheldMember",
+          "responsivenessDiffers",
+          "privilegeCallsDiffer"
+        ]
+      },
+      "PrivilegeConflictReportResource": {
+        "required": [
+          "generatedAt",
+          "responsivenessFieldId",
+          "productionId",
+          "familyConflictCount",
+          "duplicateConflictCount",
+          "truncated",
+          "groups"
+        ],
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "format": "date-time"
+          },
+          "responsivenessFieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "productionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "familyConflictCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "duplicateConflictCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeConflictGroupResource"
+            }
+          }
+        }
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -20774,6 +22566,379 @@
               "string"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "ReviewBatchAssignmentRequest": {
+        "required": [
+          "assigneeId"
+        ],
+        "type": "object",
+        "properties": {
+          "assigneeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "ReviewBatchDocumentResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "position"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "position": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ReviewBatchResource": {
+        "required": [
+          "batchId",
+          "batchSetId",
+          "batchSetName",
+          "ordinal",
+          "name",
+          "reviewPass",
+          "status",
+          "documentCount",
+          "assignee",
+          "statusChangedAt",
+          "statusChangedBy",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "batchSetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "batchSetName": {
+            "type": "string"
+          },
+          "ordinal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reviewPass": {
+            "$ref": "#/components/schemas/ReviewPassResource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewBatchStatusResource"
+          },
+          "documentCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "assignee": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewBatchUserResource"
+              }
+            ]
+          },
+          "statusChangedAt": {
+            "format": "date-time"
+          },
+          "statusChangedBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ReviewBatchSetResource": {
+        "required": [
+          "batchSetId",
+          "name",
+          "batchPrefix",
+          "maxBatchSize",
+          "keepFamiliesTogether",
+          "keepThreadsTogether",
+          "reviewPass",
+          "qcOfBatchSetId",
+          "reviewerGroup",
+          "snapshotId",
+          "batchCount",
+          "documentCount",
+          "statusCounts",
+          "createdBy",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "batchSetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "batchPrefix": {
+            "type": "string"
+          },
+          "maxBatchSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "keepFamiliesTogether": {
+            "type": "boolean"
+          },
+          "keepThreadsTogether": {
+            "type": "boolean"
+          },
+          "reviewPass": {
+            "$ref": "#/components/schemas/ReviewPassResource"
+          },
+          "qcOfBatchSetId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "reviewerGroup": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "batchCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "documentCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "statusCounts": {
+            "$ref": "#/components/schemas/ReviewBatchStatusCounts"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/ReviewBatchUserResource"
+          },
+          "createdAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ReviewBatchStatusCounts": {
+        "required": [
+          "available",
+          "checkedOut",
+          "completed"
+        ],
+        "type": "object",
+        "properties": {
+          "available": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "checkedOut": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "completed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ReviewBatchStatusResource": {
+        "enum": [
+          "available",
+          "checkedOut",
+          "completed"
+        ]
+      },
+      "ReviewBatchUserResource": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ReviewCallResource": {
+        "required": [
+          "value",
+          "reviewer",
+          "at",
+          "batchId",
+          "batchName",
+          "eventId"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "reviewer": {
+            "$ref": "#/components/schemas/ReviewBatchUserResource"
+          },
+          "at": {
+            "format": "date-time"
+          },
+          "batchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "batchName": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ReviewConflictResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "fieldId",
+          "fieldName",
+          "firstPass",
+          "qc"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "fieldName": {
+            "type": "string"
+          },
+          "firstPass": {
+            "$ref": "#/components/schemas/ReviewCallResource"
+          },
+          "qc": {
+            "$ref": "#/components/schemas/ReviewCallResource"
+          }
+        }
+      },
+      "ReviewPassResource": {
+        "enum": [
+          "firstPass",
+          "qc"
+        ]
+      },
+      "ReviewerResource": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
           }
         }
       },
@@ -23080,7 +25245,8 @@
           "bulkCoding",
           "export",
           "production",
-          "report"
+          "report",
+          "reviewBatch"
         ]
       },
       "SnapshotResourceSourceKind": {
@@ -23817,6 +25983,12 @@
     },
     {
       "name": "Relationships"
+    },
+    {
+      "name": "Privilege"
+    },
+    {
+      "name": "Review batches"
     },
     {
       "name": "Snapshots"
