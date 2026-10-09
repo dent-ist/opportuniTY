@@ -289,6 +289,8 @@ public sealed class AuditStoreTests(MigrationPostgresFixture postgres)
         var openMatter = () => DropAsync("2010-02-01");
         (await openMatter.Should().ThrowAsync<PostgresException>()).Which.MessageText.Should().Contain(active.ToString());
 
+        // E14-T03: the purge removes only what the hash chain and a signed checkpoint cover (the retention job seals first).
+        await AuditChainTestSupport.SealAndCheckpointAsync(db);
         (await DropAsync("2010-01-01")).Should().Be(2);
         (await db.ScalarAsync<long>("SELECT count(*) FROM pg_class WHERE relname = 'audit_event_p201001'")).Should().Be(0);
         var purged = (await AuditSamples.ReadAllAsync(db, null)).Single(e => e.Event.Action == AuditTaxonomy.Audit.Purged);

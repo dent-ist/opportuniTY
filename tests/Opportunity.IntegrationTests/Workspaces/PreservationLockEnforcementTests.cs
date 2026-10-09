@@ -7,6 +7,7 @@ using Opportunity.Application.Workspaces;
 using Opportunity.Core.Security;
 using Opportunity.Data;
 using Opportunity.Data.Workspaces;
+using Opportunity.IntegrationTests.Audit;
 using Opportunity.IntegrationTests.Documents;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.IntegrationTests.Productions;
@@ -336,6 +337,7 @@ public sealed class PreservationLockEnforcementTests(MigrationPostgresFixture po
         }
 
         await PreservationLockTestSql.ReleaseAllAsync(db, ws);
+        await AuditChainTestSupport.SealAndCheckpointAsync(db);
         await using (var drop = retention.CreateCommand("SELECT audit.drop_expired_partition('2010-03-01')"))
         {
             ((long)(await drop.ExecuteScalarAsync(Ct))!).Should().Be(1);

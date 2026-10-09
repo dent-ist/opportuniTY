@@ -329,6 +329,9 @@ public static class AuditTaxonomy
 
         /// <summary>A Bates allocation overlapped another production's range or failed its integrity check (E12-T03).</summary>
         public const string BatesConflict = "BatesConflict";
+
+        /// <summary><c>audit verify</c> found a modified, missing or reordered event or a bad checkpoint (E14-T03).</summary>
+        public const string ChainBroken = "ChainBroken";
     }
 
     /// <summary>Key management (E05-T09): data keys and KEKs created, rotated or rewrapped, and destroyed. Key ids only.</summary>
@@ -349,6 +352,12 @@ public static class AuditTaxonomy
         public const string Category = "Audit";
         public const string Queried = "Queried";
         public const string Purged = "Purged";
+
+        /// <summary>A signed hash-chain checkpoint taken on request (manual, before a purge or deletion run; E14-T03).</summary>
+        public const string CheckpointCreated = "CheckpointCreated";
+
+        /// <summary><c>audit verify</c> checked the chain (Outcome Failure when it found tampering; E14-T03).</summary>
+        public const string Verified = "Verified";
     }
 
     /// <summary>Every allowed (Category, Action) pair.</summary>

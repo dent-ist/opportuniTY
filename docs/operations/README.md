@@ -14,6 +14,7 @@ recorder copies every dead-lettered or parked message into PostgreSQL (`jobs dlq
 | [Alert runbooks](alerts.md) | a Prometheus alert fired (one section per alert) |
 | [Metrics, dashboards and alerts](metrics.md) | finding the metric, dashboard panel or alert threshold for a pipeline signal |
 | [Secrets, keys and envelope encryption](keys-and-secrets.md) | supplying secrets, rotating KEKs and data keys (rewrap job), backing up keys, giving a workspace its own key, crypto-shredding (`keys …` CLI) |
+| [Audit hash chain and `audit verify`](audit-chain.md) | proving the audit trail was not modified, deleted or reordered; exporting signed checkpoints for an exhibit; sealing before an audit purge or deletion run (`audit …` CLI) |
 
 ## Tools
 
