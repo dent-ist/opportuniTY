@@ -227,7 +227,7 @@ public sealed record WorkspaceKeyCounts(int Active, int Retired, int Destroyed)
 public sealed record WorkspaceDeletionQuery(Guid? RequestedBy = null, bool OpenOnly = false, int Limit = 200);
 
 /// <summary>
-/// PostgreSQL store of deletion requests and runs (E20-T02, V0054). Rows are installation-level and never deleted.
+/// PostgreSQL store of deletion requests and runs (E20-T02, V0057). Rows are installation-level and never deleted.
 /// Every request-side write takes its audit event in the same transaction; every run-side write requires the caller's
 /// lease. Writes that start or continue destruction re-check the legal hold in their transaction and throw
 /// <see cref="PreservationLockedException"/> when one is active.

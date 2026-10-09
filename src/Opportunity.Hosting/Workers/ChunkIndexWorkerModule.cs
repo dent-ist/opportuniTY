@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Npgsql;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
 using Opportunity.Application.Workspaces.Deletion;
@@ -68,6 +69,14 @@ public static class ChunkIndexWorkerModule
         configuration.GetSection(WorkspaceDeletionOptions.SectionName).Bind(deletion);
         services.AddPostgresWorkspaceDeletions();
         services.AddWorkspaceDeletionCoordinator(deletion);
+
+        // Before a purge the workspace's audit chain gets a signed checkpoint (E14-T03, ADR-013 §3.4), with the sealer
+        // login (ConnectionStrings:AuditSealer). Without it the dispatcher's 10-minute checkpoints are the evidence.
+        if (configuration.GetConnectionString(AuditChainDataSource.ConnectionStringName) is { Length: > 0 } sealer)
+        {
+            services.AddAuditChain(_ => NpgsqlDataSource.Create(sealer));
+            services.TryAddSingleton<IBeforeWorkspaceDeletion, AuditCheckpointBeforeDeletion>();
+        }
 
         if (!string.IsNullOrWhiteSpace(configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)))
         {

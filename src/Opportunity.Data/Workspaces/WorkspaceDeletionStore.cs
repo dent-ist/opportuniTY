@@ -16,7 +16,7 @@ using Opportunity.Data.Audit;
 namespace Opportunity.Data.Workspaces;
 
 /// <summary>
-/// PostgreSQL <see cref="IWorkspaceDeletionStore"/> (E20-T02, V0054). Deletion rows are installation-level; every write
+/// PostgreSQL <see cref="IWorkspaceDeletionStore"/> (E20-T02, V0057). Deletion rows are installation-level; every write
 /// that carries a workspace audit event runs in that workspace's transaction so the event lands in its chain. Run-side
 /// writes require the caller's lease; destructive ones re-check the legal hold in the same transaction
 /// (<c>assert_workspace_not_preserved</c>), and the purge itself goes through the owner-run functions of V0054.
@@ -875,7 +875,7 @@ public sealed class WorkspaceDeletionStore(NpgsqlDataSource dataSource) : IWorks
 }
 
 /// <summary>
-/// Recognizes the database's write fence (SQLSTATE <c>O0410</c>, V0054): a workspace being deleted accepts no new jobs,
+/// Recognizes the database's write fence (SQLSTATE <c>O0410</c>, V0057): a workspace being deleted accepts no new jobs,
 /// documents, objects or search work.
 /// </summary>
 public static class WorkspaceFenceViolation

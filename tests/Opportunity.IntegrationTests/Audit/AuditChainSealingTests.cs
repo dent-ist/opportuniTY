@@ -133,6 +133,35 @@ public sealed class AuditChainSealingTests(MigrationPostgresFixture postgres)
         TestContext.Current.SendDiagnosticMessage($"competing sealers skipped a busy chain {busy} times");
     }
 
+    /// <summary>
+    /// E20-T02 × E14-T03: before a workspace's purge starts, its chain gets a signed BeforeDeletion checkpoint covering
+    /// every event so far. A requested checkpoint is itself audited, so running the hook again (a resumed deletion) adds
+    /// exactly one checkpoint, covering that audit event; the chain stays intact.
+    /// </summary>
+    [Fact]
+    public async Task Workspace_deletion_checkpoints_the_workspace_chain_before_the_purge()
+    {
+        await using var h = await AuditChainHarness.CreateAsync(postgres);
+        var ws = await h.Db.CreateWorkspaceAsync();
+        var other = await h.Db.CreateWorkspaceAsync();
+        await h.WriteAsync(ws, 4);
+        await h.WriteAsync(other, 2);
+        var hook = new Opportunity.Data.Audit.AuditCheckpointBeforeDeletion(h.Sealer);
+
+        await hook.BeforePurgeAsync(Guid.CreateVersion7(), ws, Ct);
+        (await h.Db.ColumnAsync($"SELECT reason || '|' || sequence FROM audit.checkpoint WHERE chain_id = '{ws}'"))
+            .Should().Equal("BeforeDeletion|4");
+
+        await hook.BeforePurgeAsync(Guid.CreateVersion7(), ws, Ct);
+        (await h.Db.ColumnAsync($"SELECT reason || '|' || sequence FROM audit.checkpoint WHERE chain_id = '{ws}' ORDER BY sequence"))
+            .Should().Equal("BeforeDeletion|4", "BeforeDeletion|5");
+        (await h.Db.ScalarAsync<long>($"SELECT count(*) FROM audit.checkpoint WHERE chain_id = '{other}'"))
+            .Should().Be(0, "only the deleted workspace's chain is checkpointed");
+        var report = await h.VerifyAsync(ws);
+        report.Intact.Should().BeTrue(string.Join("; ", report.Issues.Select(x => x.Message)));
+        report.Checkpoints.Should().Be(2);
+    }
+
     [Fact]
     public async Task Checkpoints_are_signed_only_when_a_chain_advanced_and_cover_contiguous_ranges()
     {

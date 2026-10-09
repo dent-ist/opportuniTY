@@ -170,7 +170,7 @@ Every object records `KeyId` from day one (ADR-011 §6). Per-workspace keys are 
 step 7 makes residual copies in backups unreadable and the certificate can say so. Without them, residual backups
 are readable until they expire, and the certificate states that expiry date instead.
 
-### 10. Implementation notes (E20-T02, #167, V0054)
+### 10. Implementation notes (E20-T02, #167, V0057)
 
 1. Requests, runs, step records and certificates live in installation-level tables (`workspace_deletion`,
    `workspace_deletion_step`, `destruction_certificate`; the application role cannot delete them), so they outlive the

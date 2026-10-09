@@ -1,4 +1,4 @@
--- V0054: defensible workspace deletion (E20-T02, #167; ADR-014 §3-§9, Q-23, Q-16, Q-40).
+-- V0057: defensible workspace deletion (E20-T02, #167; ADR-014 §3-§9, Q-23, Q-16, Q-40).
 --
 -- workspace_deletion: one row per deletion request. A Workspace Admin requests (retention profile, reason, optional
 --   external reference); a different person holding the installation permission Installation.ApproveDeletion approves;

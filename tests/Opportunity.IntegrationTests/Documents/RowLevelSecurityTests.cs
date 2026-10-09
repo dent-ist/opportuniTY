@@ -38,7 +38,7 @@ public sealed class RowLevelSecurityTests(MigrationPostgresFixture postgres)
     private static readonly string[] SecurityDefinerAllowList =
         [
             "coding_event_ensure_partitions", "search_work_drop_expired_partitions", "search_work_ensure_partitions",
-            // Workspace deletion (E20-T02, V0054): purge and count one deleting workspace's rows across tables.
+            // Workspace deletion (E20-T02, V0057): purge and count one deleting workspace's rows across tables.
             "workspace_purge_batch", "workspace_purge_counts",
         ];
 
