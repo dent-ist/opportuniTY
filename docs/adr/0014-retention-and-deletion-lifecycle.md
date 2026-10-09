@@ -66,6 +66,20 @@ Preservation lock (legal hold): separate records, any number, valid in Active / 
 4. Every destructive step of a deletion run re-checks for active locks in the same transaction that records the step's
    start (§4.2). A lock placed during a run halts it before the next destructive step (`Deleting(Halted)`); already
    completed steps are irreversible and are listed in the halt report.
+5. *Implementation note (E20-T01, #166, V0048):* locks live in `opportunity.preservation_lock` (never deleted; only the
+   release columns change, once) with an active count on the workspace row. Enforcement is in PostgreSQL: statement
+   triggers on the preserved tables (documents and their pages, images and object registry, coding and overlay history,
+   redaction revisions, snapshots and their membership, productions, the Bates ledger, exports, import batches, search
+   term reports) raise SQLSTATE `O0423` for a held workspace, for every role including the owner; TRUNCATE is refused
+   while any workspace is held; the workspace row cannot be deleted or moved to `Deleting`/`Purged`; and
+   `audit.drop_expired_partition` refuses a partition holding a held workspace's events. The API turns `O0423` into
+   `423 preservation-locked` with a `Workspace.DeletionBlocked` audit event, so a delete path added later needs no code
+   of its own; `PreservationLockEnforcementTests` makes every new tenant table be classified as guarded or exempt.
+   Background retention skips held workspaces (snapshot expiry; the reindex keeps the retired index). Deviation from
+   §2.2 for the MVP: the release's second person is a per-lock option (default on, chosen when the lock is placed), and
+   both people hold the workspace permission `Workspace.ManageHolds`; the §3 request/approve/wait flow with an
+   installation Retention Approver arrives with E20-T02. `opportunity.assert_workspace_not_preserved` is the check
+   E20-T02's deletion steps call.
 
 ### 3. Deletion requests and two-person approval (Q-23)
 

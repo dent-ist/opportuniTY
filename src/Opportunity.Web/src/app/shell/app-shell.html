@@ -4,6 +4,14 @@
   @if (workspace(); as ws) {
     <span class="shell__divider" aria-hidden="true"></span>
     <opp-workspace-switcher [workspace]="ws" />
+    @if (onHold()) {
+      <opp-badge
+        tone="warning"
+        icon="lock"
+        title="Nothing in this workspace can be deleted while a legal hold applies"
+        >Legal hold</opp-badge
+      >
+    }
   } @else {
     <nav class="shell__nav" aria-label="Installation">
       <ul class="shell__tabs">

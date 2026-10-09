@@ -82,18 +82,17 @@ public static class BulkCodingParameters
     private const string OperationsKey = "operations";
     private const string SecurityKey = "securityAffecting";
     private const string PropagationKey = "propagation";
+    private const string GroupsKey = "groupPropagation";
+
+    /// <summary>The most groups one grouped propagation job carries (E13-T02).</summary>
+    public const int MaxGroups = 1_000;
 
     public static JsonObject ToJson(IReadOnlyList<CodingFieldOperation> operations, bool securityAffecting, PropagationJobParameters? propagation = null)
     {
         ArgumentNullException.ThrowIfNull(operations);
         var json = new JsonObject
         {
-            [OperationsKey] = new JsonArray([.. operations.Select(o => (JsonNode)new JsonObject
-            {
-                ["fieldId"] = o.FieldId,
-                ["operation"] = o.Kind.ToString(),
-                ["value"] = o.Value?.DeepClone(),
-            })]),
+            [OperationsKey] = OperationsJson(operations),
             [SecurityKey] = securityAffecting,
         };
         if (propagation is not null)
@@ -102,12 +101,72 @@ public static class BulkCodingParameters
             {
                 ["previewId"] = propagation.PreviewId.ToString("D"),
                 ["sourceDocumentId"] = propagation.SourceDocumentId.ToString("D"),
-                ["originEventIds"] = new JsonObject([.. propagation.OriginEventIds.OrderBy(o => o.Key).Select(o =>
-                    new KeyValuePair<string, JsonNode?>(o.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), o.Value.ToString("D")))]),
+                ["originEventIds"] = OriginsJson(propagation.OriginEventIds),
             };
         }
 
         return json;
+    }
+
+    /// <summary>
+    /// A grouped propagation (E13-T02 "propagate privilege call to duplicates"): per duplicate group, the source's values
+    /// and their origin events. The job's chunks pick each member's group by its current duplicate group.
+    /// </summary>
+    public static JsonObject ToJson(IReadOnlyList<GroupPropagationEntry> groups, bool securityAffecting)
+    {
+        ArgumentNullException.ThrowIfNull(groups);
+        return new JsonObject
+        {
+            [SecurityKey] = securityAffecting,
+            [GroupsKey] = new JsonObject
+            {
+                ["scope"] = "duplicates",
+                ["groups"] = new JsonArray([.. groups.OrderBy(g => g.DuplicateGroupId).Select(g => (JsonNode)new JsonObject
+                {
+                    ["duplicateGroupId"] = g.DuplicateGroupId.ToString("D"),
+                    ["sourceDocumentId"] = g.SourceDocumentId.ToString("D"),
+                    [OperationsKey] = OperationsJson(g.Operations),
+                    ["originEventIds"] = OriginsJson(g.OriginEventIds),
+                })]),
+            },
+        };
+    }
+
+    /// <summary>The groups of a grouped propagation job, or null for any other job; throws <see cref="FormatException"/> when malformed.</summary>
+    public static IReadOnlyList<GroupPropagationEntry>? Groups(JsonObject parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (parameters[GroupsKey] is not { } node)
+        {
+            return null;
+        }
+
+        if (node is not JsonObject { } item || item["groups"] is not JsonArray { Count: > 0 and <= MaxGroups } array)
+        {
+            throw new FormatException("The job's grouped propagation is malformed.");
+        }
+
+        var groups = new List<GroupPropagationEntry>(array.Count);
+        foreach (var entry in array)
+        {
+            if (entry is not JsonObject g
+                || !Guid.TryParse(g["duplicateGroupId"]?.GetValue<string>(), out var groupId)
+                || !Guid.TryParse(g["sourceDocumentId"]?.GetValue<string>(), out var sourceId)
+                || g[OperationsKey] is not JsonArray operations
+                || g["originEventIds"] is not JsonObject origins)
+            {
+                throw new FormatException("A group of the job's grouped propagation is malformed.");
+            }
+
+            groups.Add(new GroupPropagationEntry(groupId, sourceId, ParseOperations(operations), ParseOrigins(origins)));
+        }
+
+        if (groups.Select(g => g.DuplicateGroupId).Distinct().Count() != groups.Count)
+        {
+            throw new FormatException("The job names a duplicate group more than once.");
+        }
+
+        return groups;
     }
 
     /// <summary>
@@ -130,6 +189,35 @@ public static class BulkCodingParameters
             throw new FormatException("The job's propagation parameters are malformed.");
         }
 
+        return new PropagationJobParameters(previewId, sourceId, ParseOrigins(origins));
+    }
+
+    /// <summary>The operations of <paramref name="parameters"/>; throws <see cref="FormatException"/> when malformed.</summary>
+    public static IReadOnlyList<CodingFieldOperation> Parse(JsonObject parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (parameters[OperationsKey] is not JsonArray array)
+        {
+            throw new FormatException("The job names no coding operations.");
+        }
+
+        return ParseOperations(array);
+    }
+
+    private static JsonArray OperationsJson(IReadOnlyList<CodingFieldOperation> operations) =>
+        new([.. operations.Select(o => (JsonNode)new JsonObject
+        {
+            ["fieldId"] = o.FieldId,
+            ["operation"] = o.Kind.ToString(),
+            ["value"] = o.Value?.DeepClone(),
+        })]);
+
+    private static JsonObject OriginsJson(IReadOnlyDictionary<int, Guid> origins) =>
+        new([.. origins.OrderBy(o => o.Key).Select(o =>
+            new KeyValuePair<string, JsonNode?>(o.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), o.Value.ToString("D")))]);
+
+    private static Dictionary<int, Guid> ParseOrigins(JsonObject origins)
+    {
         var ids = new Dictionary<int, Guid>();
         foreach (var (key, value) in origins)
         {
@@ -142,14 +230,12 @@ public static class BulkCodingParameters
             ids[fieldId] = eventId;
         }
 
-        return new PropagationJobParameters(previewId, sourceId, ids);
+        return ids;
     }
 
-    /// <summary>The operations of <paramref name="parameters"/>; throws <see cref="FormatException"/> when malformed.</summary>
-    public static IReadOnlyList<CodingFieldOperation> Parse(JsonObject parameters)
+    private static List<CodingFieldOperation> ParseOperations(JsonArray array)
     {
-        ArgumentNullException.ThrowIfNull(parameters);
-        if (parameters[OperationsKey] is not JsonArray { Count: > 0 and <= CodingWriteRequest.MaxOperations } array)
+        if (array.Count is 0 or > CodingWriteRequest.MaxOperations)
         {
             throw new FormatException("The job names no coding operations.");
         }

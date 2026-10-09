@@ -9,6 +9,7 @@ using Opportunity.Data.Audit;
 using Opportunity.Data.Jobs;
 using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
+using Opportunity.Data.Workspaces;
 using Opportunity.Messaging;
 using Opportunity.Search;
 using Opportunity.Search.Projection;
@@ -57,6 +58,7 @@ public static class ChunkIndexWorkerModule
         services.TryAddSingleton<IJobRepository, JobRepository>();
         services.AddPostgresJobChunkStore();
         services.AddPostgresSearchWatermarkStore();
+        services.AddPostgresPreservationLocks();
         services.AddReindexCoordinator(configuration);
 
         if (!string.IsNullOrWhiteSpace(configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)))

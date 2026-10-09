@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Application.Search.Reindex;
+using Opportunity.Application.Workspaces;
 using Opportunity.Core.Jobs;
 using Opportunity.Search.Indexing;
 using Opportunity.Search.Projection;
@@ -26,7 +27,9 @@ namespace Opportunity.Search.Reindex;
 /// <item><b>Switching</b>: <see cref="IIndexManager.CompleteRebuildAsync"/> (refresh, one <c>_aliases</c> request) and
 /// the job completes. The generation sequence and the visible watermark are per workspace and continue unchanged.</item>
 /// <item><b>Switched → Retaining → Completed</b>: after the settle delay the old dedicated index is write-blocked, after
-/// <see cref="ReindexOptions.Retention"/> it is deleted (a shared index loses the workspace's documents).</item>
+/// <see cref="ReindexOptions.Retention"/> it is deleted (a shared index loses the workspace's documents) — not while the
+/// workspace is under a preservation lock (legal hold, E20-T01): the deletion then waits and checks again every
+/// <see cref="ReindexOptions.PreservationRecheckInterval"/>.</item>
 /// </list>
 /// Cancelling the job before the switch aborts: the placement goes back to its current location and the target is
 /// dropped, once more after the settle delay in case a writer with a cached placement recreated it.
@@ -38,6 +41,7 @@ internal sealed partial class ReindexCoordinator(
     IIndexManager indexes,
     IProjectionService projections,
     ReindexValidator validator,
+    IPreservationLockGuard holds,
     ReindexOptions options,
     TimeProvider time,
     ILogger<ReindexCoordinator> logger)
@@ -197,6 +201,12 @@ internal sealed partial class ReindexCoordinator(
                 if (now < run.NextStepAt)
                 {
                     return null;
+                }
+
+                if (await holds.IsLockedAsync(run.WorkspaceId, cancellationToken).ConfigureAwait(false))
+                {
+                    LogRetentionHeld(logger, run.WorkspaceId, run.JobId);
+                    return run with { NextStepAt = now + options.PreservationRecheckInterval };
                 }
 
                 await RetireAsync(run, run.Source, (l, ct) => indexes.DropAsync(run.WorkspaceId, l, ct), cancellationToken).ConfigureAwait(false);
@@ -436,6 +446,10 @@ internal sealed partial class ReindexCoordinator(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reindex {JobId} of workspace {WorkspaceId} left a location in place: {Reason}")]
     private static partial void LogRetireSkipped(ILogger logger, Guid workspaceId, Guid jobId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Reindex {JobId}: the retired index of workspace {WorkspaceId} is kept while the workspace is under a preservation lock")]
+    private static partial void LogRetentionHeld(ILogger logger, Guid workspaceId, Guid jobId);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Reindex {JobId} of workspace {WorkspaceId}: step failed; retried on the next pass")]
     private static partial void LogStepFailed(ILogger logger, Guid workspaceId, Guid jobId, Exception exception);

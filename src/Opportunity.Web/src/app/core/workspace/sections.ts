@@ -11,6 +11,11 @@ export const PERMISSIONS = {
   searchExecute: 'Search.Execute',
   searchTermReportRun: 'SearchTermReport.Run',
   codingWrite: 'Coding.Write',
+  /** Security-affecting fields: privilege, confidentiality, wall membership (Q-11). */
+  codingWritePrivilege: 'Coding.WritePrivilege',
+  codingBulk: 'Coding.Bulk',
+  /** Privilege logs and the privilege conflicts report (E13-T02). */
+  privilegeLogGenerate: 'PrivilegeLog.Generate',
   downloadNative: 'Document.DownloadNative',
   productionCreate: 'Production.Create',
   importRun: 'Import.Run',
@@ -19,6 +24,8 @@ export const PERMISSIONS = {
   manageFields: 'Workspace.ManageFields',
   manageUsers: 'Workspace.ManageUsers',
   manageSecurity: 'Workspace.ManageSecurity',
+  /** Place and release legal holds (preservation locks, E20-T01). */
+  manageHolds: 'Workspace.ManageHolds',
   auditRead: 'Audit.Read',
   /** Create, change and delete shared document-list views (E16-T09, "manage views"). */
   manageSharedViews: 'View.ManageShared',
@@ -59,6 +66,12 @@ export const SEARCH_AREAS: readonly WorkspaceSection[] = [
     path: 'terms-reports',
     label: 'Search Terms Reports',
     permission: PERMISSIONS.searchTermReportRun,
+  },
+  // Families and duplicates with inconsistent privilege calls (E13-T02): a QC report like Search Terms Reports.
+  {
+    path: 'privilege-conflicts',
+    label: 'Privilege Conflicts',
+    permission: PERMISSIONS.privilegeLogGenerate,
   },
 ];
 

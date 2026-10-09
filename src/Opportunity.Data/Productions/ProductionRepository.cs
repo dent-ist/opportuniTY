@@ -24,7 +24,7 @@ namespace Opportunity.Data.Productions;
 /// <c>pg_advisory_xact_lock</c> on (workspace, prefix key), so two allocations of one prefix serialize and live ranges
 /// never overlap; the database itself refuses changes to finalized productions (triggers).
 /// </summary>
-public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProductionStore
+public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : IProductionStore
 {
     private const int PlanBatch = 5_000;
 
@@ -700,7 +700,8 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
         await using var command = tx.Command(
             """
             SELECT pd.sequence, pd.document_id, pd.document_version, pd.output, pd.units, pd.beg_number, pd.end_number, pd.prod_beg_bates,
-                   pd.prod_end_bates, pd.prod_beg_attach, pd.prod_end_attach, d.control_number, pd.family_key, pd.first_offset
+                   pd.prod_end_bates, pd.prod_beg_attach, pd.prod_end_attach, d.control_number, pd.family_key, pd.first_offset,
+                   pd.page_count, pd.designation, pd.designation_choice_id, pd.designation_source
               FROM opportunity.production_document pd
               LEFT JOIN opportunity.document d ON d.workspace_id = pd.workspace_id AND d.document_id = pd.document_id
              WHERE pd.workspace_id = @ws AND pd.production_id = @id AND pd.sequence > @after
@@ -719,7 +720,9 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
                 rows.Add(new ProductionDocumentRow(
                     reader.GetInt64(0), reader.GetGuid(1), reader.GetGuid(12), reader.GetInt64(13), reader.GetInt64(2), (ProductionOutputKind)reader.GetInt16(3), reader.GetInt32(4),
                     NullableInt64(reader, 5), NullableInt64(reader, 6), NullableString(reader, 7), NullableString(reader, 8),
-                    NullableString(reader, 9), NullableString(reader, 10), NullableString(reader, 11)));
+                    NullableString(reader, 9), NullableString(reader, 10), NullableString(reader, 11),
+                    reader.GetInt32(14), NullableString(reader, 15), reader.IsDBNull(16) ? null : reader.GetInt32(16),
+                    reader.IsDBNull(17) ? null : (DesignationSource)reader.GetInt16(17)));
             }
         }
 
@@ -807,11 +810,14 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
 
     public async Task<ProductionWriteResult> FinalizeAsync(
         Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
-        IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default)
+        IReadOnlyList<AuditEvent> audit, DesignationPlan designations, AuditEvent designationAudit, PrivilegeConflictOverrideWrite? conflictOverride = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(manifest);
         ArgumentNullException.ThrowIfNull(manifestSha256);
         ArgumentNullException.ThrowIfNull(audit);
+        ArgumentNullException.ThrowIfNull(designations);
+        ArgumentNullException.ThrowIfNull(designationAudit);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         var current = await ReadOneAsync(tx, productionId, forUpdate: true, cancellationToken).ConfigureAwait(false);
         if (current is null)
@@ -848,6 +854,28 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
                     + "privilege call, then allocate Bates numbers again.");
         }
 
+        // E13-T02 AC 2: unresolved family or duplicate privilege conflicts block too, unless an authorized override with a
+        // reason was given; then the manifest and audit events that record the override are written instead.
+        if (await CodingRepository.AnyProductionPrivilegeConflictAsync(tx, productionId, cancellationToken).ConfigureAwait(false))
+        {
+            if (conflictOverride is null)
+            {
+                return new ProductionWriteResult(ProductionWriteStatus.PrivilegeConflicts, current,
+                    Reason: "Documents in this production have unresolved family or duplicate privilege conflicts. Resolve them (see the "
+                        + "privilege conflicts report for this production) or finalize with an override and a reason.");
+            }
+
+            (manifest, manifestSha256, audit) = (conflictOverride.Manifest, conflictOverride.ManifestSha256, conflictOverride.Audit);
+        }
+
+        // E12-T04: each member's designation is frozen from the coding store under the same gate (confidentiality
+        // designation changes enter it too), so the stamp and the load-file value come from this one value.
+        var (refusal, frozen) = await FreezeDesignationsAsync(tx, productionId, designations, cancellationToken).ConfigureAwait(false);
+        if (refusal is not null)
+        {
+            return new ProductionWriteResult(ProductionWriteStatus.DesignationRefused, current, Reason: refusal);
+        }
+
         await using (var update = tx.Command(
             """
             UPDATE opportunity.production
@@ -872,6 +900,19 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
         {
             await AuditSql.InsertAsync(tx, auditEvent, cancellationToken).ConfigureAwait(false);
         }
+
+        var details = new Dictionary<string, string?>(designationAudit.Details, StringComparer.Ordinal)
+        {
+            ["Designated"] = frozen.Designated.ToString(CultureInfo.InvariantCulture),
+            ["ByDocument"] = frozen.ByDocument.ToString(CultureInfo.InvariantCulture),
+            ["ByFamily"] = frozen.ByFamily.ToString(CultureInfo.InvariantCulture),
+            ["ByOverride"] = frozen.ByOverride.ToString(CultureInfo.InvariantCulture),
+        };
+        await AuditSql.InsertAsync(tx, Resource(designationAudit, workspaceId, productionId, AuditTaxonomy.Production.DesignationsFrozen) with
+        {
+            Details = details,
+            SnapshotId = current.SnapshotId,
+        }, cancellationToken).ConfigureAwait(false);
 
         var record = (await ReadOneAsync(tx, productionId, forUpdate: false, cancellationToken).ConfigureAwait(false))!;
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);

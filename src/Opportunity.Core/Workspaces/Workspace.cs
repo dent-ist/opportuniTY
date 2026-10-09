@@ -38,6 +38,9 @@ public sealed class Workspace
     /// <summary>Optimistic concurrency version of the settings, the API's ETag (ADR-019 §2.7).</summary>
     public long RowVersion { get; set; } = 1;
 
+    /// <summary>Active preservation locks (legal holds, ADR-014 §2); maintained by the database, never written by the application.</summary>
+    public int ActivePreservationLocks { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

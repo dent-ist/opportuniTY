@@ -126,6 +126,21 @@ public static class AuditTaxonomy
 
         /// <summary>An administrator enabled coding/privilege fields for overlay by one import (Q-31).</summary>
         public const string OverlayEnabled = "OverlayEnabled";
+
+        /// <summary>A review Batch Set was created from a snapshot (E10-T05): one event with its settings and counts.</summary>
+        public const string BatchSetCreated = "ReviewBatchSet.Created";
+
+        /// <summary>A reviewer checked a batch out to themselves.</summary>
+        public const string BatchCheckedOut = "ReviewBatch.CheckedOut";
+
+        /// <summary>A batch was checked in (returned or completed) by its reviewer or a manager.</summary>
+        public const string BatchCheckedIn = "ReviewBatch.CheckedIn";
+
+        /// <summary>A manager assigned a batch to a reviewer, or made it available again.</summary>
+        public const string BatchAssigned = "ReviewBatch.Assigned";
+
+        public const string BatchSetResourceType = "ReviewBatchSet";
+        public const string BatchResourceType = "ReviewBatch";
     }
 
     public static class Import
@@ -163,6 +178,18 @@ public static class AuditTaxonomy
         public const string ResourceType = "Export";
     }
 
+    /// <summary>Privilege review (E13): conflict overrides and reports.</summary>
+    public static class Privilege
+    {
+        public const string Category = "Privilege";
+
+        /// <summary>A production was finalized over unresolved family or duplicate privilege conflicts, with a reason (E13-T02).</summary>
+        public const string ConflictOverride = "ConflictOverride";
+
+        /// <summary>The privilege conflict report was downloaded as CSV through the gateway (E13-T02).</summary>
+        public const string ConflictReportExported = "ConflictReportExported";
+    }
+
     /// <summary>Productions (E12-T02/T03, ADR-013 §5, Q-54).</summary>
     public static class Production
     {
@@ -189,6 +216,18 @@ public static class AuditTaxonomy
 
         /// <summary>A re-verification found differences from the manifest.</summary>
         public const string VerificationFailed = "VerificationFailed";
+
+        /// <summary>A draft's designation of one member was set by a person, with a reason (E12-T04).</summary>
+        public const string DesignationOverridden = "DesignationOverridden";
+
+        /// <summary>A draft's designation override was removed; the family rule applies again.</summary>
+        public const string DesignationOverrideRemoved = "DesignationOverrideRemoved";
+
+        /// <summary>Every member's designation was frozen at finalization (rule and counts by source).</summary>
+        public const string DesignationsFrozen = "DesignationsFrozen";
+
+        /// <summary>A re-designation overlay load file was downloaded.</summary>
+        public const string RedesignationExported = "RedesignationExported";
 
         /// <summary>The audit resource type of production events.</summary>
         public const string ResourceType = "Production";
@@ -223,6 +262,22 @@ public static class AuditTaxonomy
         public const string Category = "Workspace";
         public const string Created = "Created";
         public const string SettingsChanged = "SettingsChanged";
+
+        /// <summary>A preservation lock (legal hold) was placed (E20-T01, ADR-014 §2); resource = the lock id.</summary>
+        public const string HoldPlaced = "HoldPlaced";
+
+        /// <summary>Release of a lock that needs a second person's approval was requested.</summary>
+        public const string HoldReleaseRequested = "HoldReleaseRequested";
+
+        /// <summary>A pending release request was withdrawn (by its requester or another hold manager).</summary>
+        public const string HoldReleaseCancelled = "HoldReleaseCancelled";
+
+        public const string HoldReleased = "HoldReleased";
+
+        /// <summary>A delete or purge was refused because the workspace is under a preservation lock (423).</summary>
+        public const string DeletionBlocked = "DeletionBlocked";
+
+        public const string PreservationLockResourceType = "PreservationLock";
     }
 
     /// <summary>
@@ -281,12 +336,14 @@ public static class AuditTaxonomy
             "SavedSearch.Created", "SavedSearch.Modified", "SavedSearch.Deleted", "SavedSearch.Shared",
             "GridView.Created", "GridView.Modified", "GridView.Deleted",
             "HighlightSet.Created", "HighlightSet.Modified", "HighlightSet.Deleted"),
-        .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled"),
-        .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded"),
+        .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled",
+            "ReviewBatchSet.Created", "ReviewBatch.CheckedOut", "ReviewBatch.CheckedIn", "ReviewBatch.Assigned"),
+        .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded", "ConflictReportExported"),
         .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
-            "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified"),
+            "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
+            "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported"),
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",
@@ -294,7 +351,8 @@ public static class AuditTaxonomy
         .. Expand("Workspace", "Created", "SettingsChanged", "Closed", "Reopened", "HoldPlaced", "HoldReleaseRequested",
             "HoldReleased", "DeletionRequested", "DeletionApproved", "DeletionCancelled", "DeletionStarted",
             "DeletionStepCompleted", "DeletionHalted", "Deleted",
-            "Field.Created", "Field.Modified", "Field.Retired", "CodingLayout.Created", "CodingLayout.Modified", "CodingLayout.Deleted"),
+            "Field.Created", "Field.Modified", "Field.Retired", "CodingLayout.Created", "CodingLayout.Modified", "CodingLayout.Deleted",
+            "HoldReleaseCancelled", "DeletionBlocked"),
         .. Expand("Admin", "ConfigChanged", "UserProvisioned", "UserDeactivated", "KeyCreated", "KeyRotated", "KeyDestroyed",
             "SecretRotated"),
         .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged"),

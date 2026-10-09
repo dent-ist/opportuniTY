@@ -17,7 +17,10 @@ public sealed class MigrationPostgresFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        _container = new PostgreSqlBuilder($"postgres:{ReadPostgresVersion()}").Build();
+        _container = new PostgreSqlBuilder($"postgres:{ReadPostgresVersion()}")
+            .WithCreateParameterModifier(parameters =>
+                (parameters.HostConfig ??= new Docker.DotNet.Models.HostConfig()).ShmSize = Opportunity.Testing.Postgres.PostgresFixture.PostgresShmBytes)
+            .Build();
         await _container.StartAsync();
     }
 

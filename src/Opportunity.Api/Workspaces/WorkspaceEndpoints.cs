@@ -309,7 +309,8 @@ public sealed class WorkspaceEndpoints : IApiEndpointModule
             workspace.StorageProfile,
             workspace.RowVersion,
             workspace.UpdatedAt,
-            placement);
+            placement,
+            workspace.ActivePreservationLocks);
     }
 
     private static WorkspaceResourceStatus Status(WorkspaceStatus status) =>

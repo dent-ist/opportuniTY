@@ -1,11 +1,15 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { WorkspaceDirectory } from '../../core/workspace/workspace-api';
+import { PERMISSIONS } from '../../core/workspace/sections';
+import { WorkspaceContext } from '../../core/workspace/workspace-context';
+import { LegalHoldApi } from './legal-hold-api';
 
 /**
- * Workspace deletion as the settings page sees it. The backends are not built yet: the preservation lock (legal hold,
- * E20-T01 / #166) and defensible deletion (E20-T02 / #167). Until they are, `NotYetAvailableDeletion` answers
- * `unavailable` without calling any API, and the page shows the entry point disabled with that reason. When they land,
- * an HTTP adapter of this port answers `locked` (deletion blocked, with the lock's details) or `allowed` (with what the
- * deletion removes and keeps), and `DeleteWorkspaceDialog` already handles both.
+ * Workspace deletion as the settings page sees it. Legal holds (preservation locks, E20-T01 / #166) exist; defensible
+ * deletion (E20-T02 / #167) does not yet. `HoldAwareDeletion` answers `locked` (with the hold's details) while a hold
+ * applies and `unavailable` otherwise; `NotYetAvailableDeletion` answers `unavailable` without calling any API. When
+ * #167 lands, its adapter answers `allowed` (with what the deletion removes and keeps) instead of `unavailable`, and
+ * `DeleteWorkspaceDialog` already handles every case.
  */
 export type DeletionAvailability =
   | { readonly kind: 'unavailable'; readonly reason: string }
@@ -51,7 +55,11 @@ export const DEFAULT_DELETION_SUMMARY: DeletionSummary = {
 
 /** Why the entry point is disabled in this version. */
 export const DELETION_NOT_AVAILABLE =
-  'Deleting a workspace is not available in this version. It arrives together with preservation locks (legal holds): a deletion will then be blocked while a lock applies, and otherwise needs a request approved by a second person.';
+  'Deleting a workspace is not available in this version. When it arrives, a deletion is blocked while a legal hold applies, and otherwise needs a request approved by a second person.';
+
+/** Why deletion is blocked when the caller cannot read the holds themselves. */
+export const DELETION_BLOCKED_BY_HOLD =
+  'Deletion is blocked while a legal hold (preservation lock) applies to this workspace.';
 
 @Injectable()
 export abstract class WorkspaceDeletion {
@@ -65,6 +73,41 @@ export abstract class WorkspaceDeletion {
 export class NotYetAvailableDeletion extends WorkspaceDeletion {
   availability(): Promise<DeletionAvailability> {
     return Promise.resolve({ kind: 'unavailable', reason: DELETION_NOT_AVAILABLE });
+  }
+
+  request(): Promise<void> {
+    return Promise.reject(new Error(DELETION_NOT_AVAILABLE));
+  }
+}
+
+/**
+ * This version with legal holds: `locked` while a hold applies (the oldest active hold's details when the caller manages
+ * holds), otherwise `unavailable` because deletion itself (#167) is not built. Reads the workspace afresh, so the answer
+ * follows a hold placed or released a moment ago.
+ */
+@Injectable()
+export class HoldAwareDeletion extends WorkspaceDeletion {
+  private readonly directory = inject(WorkspaceDirectory);
+  private readonly context = inject(WorkspaceContext);
+  private readonly holds = inject(LegalHoldApi);
+
+  async availability(): Promise<DeletionAvailability> {
+    const workspace = await this.directory.get(this.context.workspaceId);
+    if (Number(workspace.activePreservationLocks ?? 0) === 0)
+      return { kind: 'unavailable', reason: DELETION_NOT_AVAILABLE };
+    if (!this.context.can(PERMISSIONS.manageHolds))
+      return { kind: 'unavailable', reason: DELETION_BLOCKED_BY_HOLD };
+    const active = (await this.holds.list()).items.filter((h) => h.status !== 'released');
+    const oldest = active[active.length - 1];
+    if (!oldest) return { kind: 'unavailable', reason: DELETION_NOT_AVAILABLE };
+    return {
+      kind: 'locked',
+      lock: {
+        placedBy: oldest.placedBy.displayName || oldest.placedBy.userId,
+        placedAt: String(oldest.placedAt),
+        reason: oldest.reason,
+      },
+    };
   }
 
   request(): Promise<void> {

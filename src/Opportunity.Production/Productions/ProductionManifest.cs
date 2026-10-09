@@ -40,7 +40,7 @@ public static class ProductionManifest
 
     public static (string Json, byte[] Sha256) Build(
         ProductionRecord production, SnapshotRecord snapshot, CodingHighWater? coding, ProductionSoftware software, Guid finalizedBy,
-        DateTimeOffset finalizedAt)
+        DateTimeOffset finalizedAt, string? privilegeConflictOverrideReason = null)
     {
         ArgumentNullException.ThrowIfNull(production);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -108,6 +108,15 @@ public static class ProductionManifest
             json.WriteString("renderer", software.Renderer);
             json.WriteString("volumeWriter", software.VolumeWriter);
             json.WriteEndObject();
+
+            // E13-T02 AC 2: present only when the production was finalized over unresolved privilege conflicts.
+            if (privilegeConflictOverrideReason is not null)
+            {
+                json.WriteStartObject("privilegeConflictOverride");
+                json.WriteString("reason", privilegeConflictOverrideReason);
+                json.WriteString("by", finalizedBy.ToString("D"));
+                json.WriteEndObject();
+            }
 
             json.WriteString("finalizedAt", finalizedAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
             json.WriteString("finalizedBy", finalizedBy.ToString("D"));

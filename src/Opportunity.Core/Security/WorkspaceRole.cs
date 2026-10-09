@@ -38,7 +38,7 @@ public static class RoleCatalog
         Role(WorkspaceRole.QcReviewer, "QcReviewer", "QC Reviewer",
         [
             Permission.DocumentView, Permission.SearchExecute, Permission.SavedSearchShare, Permission.SearchTermReportRun, Permission.CodingWrite,
-            Permission.CodingBulk, Permission.RedactionApply, Permission.RedactionRemove,
+            Permission.CodingBulk, Permission.RedactionApply, Permission.RedactionRemove, Permission.ReviewBatchManage,
         ]),
         Role(WorkspaceRole.PrivilegeReviewer, "PrivilegeReviewer", "Privilege Reviewer",
         [

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Search;
 using Opportunity.Application.Search.Reindex;
+using Opportunity.Application.Workspaces;
 using Opportunity.Search.Indexing;
 using Opportunity.Search.Projection;
 
@@ -77,7 +78,8 @@ public static class ReindexCoordinatorRegistration
 {
     /// <summary>
     /// Registers the reindex coordinator (E07-T11) and its hosted loop. The host also registers <see cref="IReindexStore"/>,
-    /// <see cref="IJobRepository"/>, <see cref="IJobChunkRepository"/>, <see cref="ISearchFreshnessReader"/>, index
+    /// <see cref="IJobRepository"/>, <see cref="IJobChunkRepository"/>, <see cref="ISearchFreshnessReader"/>,
+    /// <see cref="IPreservationLockGuard"/>, index
     /// management and the projection pipeline (the chunk index worker registration brings the last two).
     /// </summary>
     public static IServiceCollection AddReindexCoordinator(this IServiceCollection services, IConfiguration? configuration = null)
@@ -103,7 +105,8 @@ public static class ReindexCoordinatorRegistration
         services.TryAddSingleton(sp => new ReindexCoordinator(
             sp.GetRequiredService<IReindexStore>(), sp.GetRequiredService<IJobRepository>(), sp.GetRequiredService<IJobChunkRepository>(),
             sp.GetRequiredService<IIndexManager>(), sp.GetRequiredService<IProjectionService>(), sp.GetRequiredService<ReindexValidator>(),
-            sp.GetRequiredService<ReindexOptions>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILogger<ReindexCoordinator>>()));
+            sp.GetRequiredService<IPreservationLockGuard>(), sp.GetRequiredService<ReindexOptions>(), sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<ReindexCoordinator>>()));
         return services;
     }
 

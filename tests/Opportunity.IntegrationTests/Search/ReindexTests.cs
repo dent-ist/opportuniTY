@@ -14,6 +14,7 @@ using Opportunity.Application.Jobs;
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Application.Search.Reindex;
 using Opportunity.Application.SearchWork;
+using Opportunity.Application.Workspaces;
 using Opportunity.Core.Coding;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.SearchWork;
@@ -21,6 +22,7 @@ using Opportunity.Correctness.ShadowLedger;
 using Opportunity.Data.Jobs;
 using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
+using Opportunity.Data.Workspaces;
 using Opportunity.IntegrationTests.Containers;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.IntegrationTests.SearchWork;
@@ -106,6 +108,30 @@ public sealed class ReindexTests(OpenSearchFixture openSearch, MigrationPostgres
         verdict.ShadowLedger.StaleOverwrites.Should().Be(0);
         verdict.ShadowLedger.MissingDocs.Should().Be(0);
         await InteractiveIndexWorkerTests.AssertIndexMatchesPostgresAsync(r.H, w.Id, w.Documents);
+    }
+
+    [Fact]
+    public async Task A_legal_hold_keeps_the_retired_index_until_the_hold_is_released()
+    {
+        await using var r = await ReindexHarness.CreateAsync(openSearch, postgres, o => o.PreservationRecheckInterval = TimeSpan.FromMilliseconds(200));
+        var w = await r.IndexedWorkspaceAsync(documents: 12);
+        var alias = (await r.H.Indexes.ResolveAsync(w.Id, IndexPurpose.Read, Ct)).Read;
+        await Workspaces.PreservationLockTestSql.PlaceAsync(r.H.Db.Core, w.Id);
+
+        var job = await r.StartAsync(w.Id);
+        await r.DriveAsync(w.Id, job, run => run.Phase == ReindexPhase.Retaining);
+        for (var i = 0; i < 3; i++)
+        {
+            await Task.Delay(250, Ct);
+            await r.Coordinator("coordinator").StepAsync(w.Id, job, Ct);
+        }
+
+        (await r.Store.GetAsync(w.Id, job, Ct))!.Phase.Should().Be(ReindexPhase.Retaining, "the retired index waits for the hold");
+        (await r.IndexExistsAsync(alias.Index + "-g2")).Should().BeTrue();
+
+        await Workspaces.PreservationLockTestSql.ReleaseAllAsync(r.H.Db.Core, w.Id);
+        await r.DriveAsync(w.Id, job, run => run.Phase == ReindexPhase.Completed);
+        (await r.IndexExistsAsync(alias.Index + "-g2")).Should().BeFalse("released, the retired generation is deleted");
     }
 
     [Fact]
@@ -256,6 +282,7 @@ public sealed class ReindexTests(OpenSearchFixture openSearch, MigrationPostgres
                 s.AddSingleton<IJobRepository>(sp => new JobRepository(sp.GetRequiredService<NpgsqlDataSource>()));
                 s.AddPostgresJobChunkStore();
                 s.AddPostgresSearchWatermarkStore();
+                s.AddPostgresPreservationLocks();
                 s.AddReindexCoordinatorCore(options);
             });
             return new ReindexHarness(h, options);
@@ -295,6 +322,7 @@ public sealed class ReindexTests(OpenSearchFixture openSearch, MigrationPostgres
             H.Indexes,
             H.Projections,
             H.Services.GetRequiredService<ReindexValidator>(),
+            H.Services.GetRequiredService<IPreservationLockGuard>(),
             Options,
             TimeProvider.System,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ReindexCoordinator>.Instance)

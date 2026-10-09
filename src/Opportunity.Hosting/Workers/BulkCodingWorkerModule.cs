@@ -56,6 +56,8 @@ public static class BulkCodingWorkerModule
         services.TryAddSingleton<ICodingRepository>(sp => new CodingRepository(
             sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IRestrictionClassBinding>()));
         services.TryAddSingleton<IFieldAccessFilter, UnrestrictedFieldAccess>();
+        // Grouped propagations (E13-T02) read each member's current duplicate group.
+        services.TryAddSingleton<ICodingPropagationRepository>(sp => new CodingPropagationRepository(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddOpportunityAuthorization();
         // The worker host is a WebApplication: once authorization services exist it adds the authorization middleware,
         // which needs the full registration (no endpoint of the worker uses a policy).

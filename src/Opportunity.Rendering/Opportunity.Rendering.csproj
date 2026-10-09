@@ -20,6 +20,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- E12-T04 endorsement font (SIL OFL 1.1; the license travels with it): embedded, so endorsed pages never depend on host fonts. -->
+    <EmbeddedResource Include="Fonts\LiberationSans-Regular.ttf" LogicalName="Opportunity.Rendering.Fonts.LiberationSans-Regular.ttf" />
+    <EmbeddedResource Include="Fonts\LICENSE-LiberationSans.txt" LogicalName="Opportunity.Rendering.Fonts.LICENSE-LiberationSans.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Opportunity.UnitTests" />
     <InternalsVisibleTo Include="Opportunity.IntegrationTests" />
   </ItemGroup>

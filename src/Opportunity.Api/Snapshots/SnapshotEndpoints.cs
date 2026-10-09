@@ -43,7 +43,7 @@ public sealed class SnapshotEndpoints : IApiEndpointModule
             .WithDescription(
                 "201 with the Ready snapshot when it was frozen in the request; 202 with Location of the snapshot while a large " +
                 "set materializes. Documents you may not act on for the purpose are never included. Needs Coding.Bulk, " +
-                "Export.Create, Production.Create or Search.Execute (Report), by purpose.")
+                "Export.Create, Production.Create, Search.Execute (Report) or ReviewBatch.Manage (ReviewBatch), by purpose.")
             .RequireIdempotencyKey()
             .Produces<SnapshotResource>(StatusCodes.Status201Created)
             .Produces<SnapshotResource>(StatusCodes.Status202Accepted)
@@ -85,7 +85,7 @@ public sealed class SnapshotEndpoints : IApiEndpointModule
 
         if (request is null || !Enum.IsDefined(request.Purpose))
         {
-            return Problems.Validation(new Dictionary<string, string[]> { ["purpose"] = ["Purpose must be BulkCoding, Export, Production or Report."] });
+            return Problems.Validation(new Dictionary<string, string[]> { ["purpose"] = ["Purpose must be BulkCoding, Export, Production, Report or ReviewBatch."] });
         }
 
         var query = request.Query;

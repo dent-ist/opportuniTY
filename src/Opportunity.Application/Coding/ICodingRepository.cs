@@ -52,6 +52,15 @@ public interface ICodingRepository
         ClaimedChunk chunk, CodingWriteRequest request, IReadOnlyList<JobItemResult> additionalItems, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Several coding writes in one chunk transaction (a grouped propagation, E13-T02: each duplicate group gets its own
+    /// source's values): each write is applied as <see cref="ApplyChunkAsync(ClaimedChunk, CodingWriteRequest, IReadOnlyList{JobItemResult}, CancellationToken)"/>
+    /// applies one, then one IndexChunkTask for every changed document and fence F3 commit the chunk. When any write is
+    /// refused (invalid, replayed), nothing is written and that write's result is returned without a commit.
+    /// </summary>
+    Task<CodingChunkResult> ApplyChunkAsync(
+        ClaimedChunk chunk, IReadOnlyList<CodingWriteRequest> writes, IReadOnlyList<JobItemResult> additionalItems, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Documents whose coding a job changed (at least one <see cref="CodingEventKind.ValueChanged"/> event of the job),
     /// in DocumentId order after <paramref name="after"/>: the "applied" list of a bulk coding report.
     /// </summary>
@@ -72,7 +81,7 @@ public interface ICodingRepository
     Task<IReadOnlyDictionary<int, JsonNode>> GetValuesAsOfVersionAsync(
         Guid workspaceId, Guid documentId, long documentVersion, CancellationToken cancellationToken = default);
 
-    /// <summary>Provenance events in commit order, filtered (e.g. by actor type for reports), keyset-paged.</summary>
+    /// <summary>Provenance events in commit order (or newest first), filtered (e.g. by actor type for reports), keyset-paged.</summary>
     Task<CodingEventPage> GetEventsAsync(CodingEventQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -84,11 +93,36 @@ public interface ICodingRepository
         Guid workspaceId, Guid documentId, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// <see cref="GetLatestChangeEventIdsAsync(Guid, Guid, IReadOnlyCollection{int}, CancellationToken)"/> for many
+    /// documents in one statement: per document, per field, the CodingEvent that set its current value.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<int, Guid>>> GetLatestChangeEventIdsAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Families and duplicate groups whose live members are in privilege conflict (E13-T02,
+    /// <see cref="PrivilegeConflictRules"/>), each with all its live members and their Privilege Status, Basis and
+    /// (when asked) responsiveness values with who last changed them. Set-based: one statement per kind finds the groups,
+    /// one more reads their members. It never authorizes; the caller filters members by visibility.
+    /// </summary>
+    Task<PrivilegeConflictCandidates> FindPrivilegeConflictsAsync(PrivilegeConflictQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Current state of <paramref name="fieldIds"/> only, per live document (documents without any of them map to an
     /// empty dictionary; missing or deleted documents are omitted): the light read of a propagation preview.
     /// </summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<int, FieldCodingState>>> GetFieldStatesAsync(
         Guid workspaceId, IReadOnlyCollection<Guid> documentIds, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// E10-T05 first-pass vs QC conflicts, by (document, field): on the documents of review Batch Set
+    /// <paramref name="qcSetId"/>, a reviewer's call is their last own value change of a field while holding the document's
+    /// batch (a checkout window); a conflict is a QC call that differs from the first-pass call of
+    /// <paramref name="firstPassSetId"/>. <paramref name="excludedFieldIds"/> are left out.
+    /// </summary>
+    Task<IReadOnlyList<ReviewBatches.ReviewConflict>> GetReviewConflictsAsync(
+        Guid workspaceId, Guid qcSetId, Guid firstPassSetId, IReadOnlyCollection<int> excludedFieldIds, ReviewBatches.ReviewConflictCursor? after,
+        int limit, CancellationToken cancellationToken = default);
 }
 
 public sealed record CodingActor(Guid ActorId, CodingActorType Type);
@@ -276,6 +310,12 @@ public sealed record CodingEventQuery(Guid WorkspaceId)
     public CodingEventCursor? After { get; init; }
 
     public int Limit { get; init; } = 100;
+
+    /// <summary>Fields whose events are left out (e.g. the fields hidden from the caller, E05-T06).</summary>
+    public IReadOnlyCollection<int> ExcludedFieldIds { get; init; } = [];
+
+    /// <summary>Newest first (document history); <see cref="After"/> then continues towards older events.</summary>
+    public bool Descending { get; init; }
 }
 
 public sealed record CodingEventPage(IReadOnlyList<CodingEvent> Events, CodingEventCursor? Next);

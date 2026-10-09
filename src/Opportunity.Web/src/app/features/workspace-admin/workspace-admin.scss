@@ -252,3 +252,101 @@ form {
   flex-direction: column;
   gap: var(--opp-space-4);
 }
+
+// Legal holds (E20-T01): the multi-line reason field matches the design-system text field.
+
+.wsa__textarea-field,
+.wsa__check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+}
+
+.wsa__label {
+  font-size: var(--opp-font-size-control);
+  font-weight: var(--opp-font-weight-medium);
+  color: var(--opp-color-text);
+}
+
+.wsa__required {
+  color: var(--opp-color-danger-text);
+  margin-inline-start: var(--opp-space-1);
+}
+
+.wsa__textarea {
+  width: 100%;
+  padding: var(--opp-space-2) var(--opp-control-padding-x);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font: inherit;
+  font-size: var(--opp-font-size-control);
+  resize: vertical;
+}
+
+.wsa__textarea[aria-invalid='true'] {
+  border-color: var(--opp-color-danger-border);
+  box-shadow: inset 0 0 0 1px var(--opp-color-danger-border);
+}
+
+.wsa__textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wsa__hint,
+.wsa__field-error {
+  margin: 0;
+  font-size: var(--opp-font-size-xs);
+}
+
+.wsa__hint {
+  color: var(--opp-color-text-muted);
+}
+
+.wsa__field-error {
+  color: var(--opp-color-danger-text);
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.wsa__holds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wsa__hold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface-sunken);
+}
+
+.wsa__hold-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+
+.wsa__hold-reason {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.wsa__history summary {
+  cursor: pointer;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.wsa__history[open] summary {
+  margin-block-end: var(--opp-space-2);
+}

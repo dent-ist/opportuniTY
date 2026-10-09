@@ -122,7 +122,12 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             .WithName("FinalizeProduction")
             .WithTags(Tag)
             .WithSummary("Finalize an allocated draft (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.")
+            .WithDescription(
+                "409 PRIVILEGE_WITHHELD while members are coded Withhold; 409 PRIVILEGE_CONFLICTS while members' families or duplicate " +
+                "groups have unresolved privilege conflicts (E13-T02), unless the body gives privilegeConflictOverride with a reason " +
+                "(needs PrivilegeLog.Generate; recorded in the manifest and audited). Neither answer counts or names documents.")
             .Produces<ProductionResource>()
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
@@ -163,6 +168,54 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{productionId}/designations", ListDesignationsAsync)
+            .RequirePermission(Permission.ProductionCreate)
+            .WithName("ListProductionDesignations")
+            .WithTags(Tag)
+            .WithSummary("Each document's confidentiality designation in production order: its own, the one it is produced with and why (document, family or override).")
+            .WithDescription(
+                "For a draft the designations are computed from the current coding with the specification's family rule and the overrides; once " +
+                "finalized they are the values frozen at finalization, stamped on every page and written to the load file. Needs allocated Bates numbers.")
+            .Produces<CursorPage<ProductionDesignationResource>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPut("/{productionId}/designation-overrides/{documentId}", OverrideDesignationAsync)
+            .RequirePermission(Permission.ProductionCreate)
+            .WithName("OverrideProductionDesignation")
+            .WithTags(Tag)
+            .WithSummary("Produce one document of a draft with another designation than the family rule gives, with a reason (audited).")
+            .Produces<DesignationOverrideResource>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapDelete("/{productionId}/designation-overrides/{documentId}", RemoveDesignationOverrideAsync)
+            .RequirePermission(Permission.ProductionCreate)
+            .WithName("RemoveProductionDesignationOverride")
+            .WithTags(Tag)
+            .WithSummary("Remove a draft document's designation override; the family rule applies again (audited).")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapGet("/{productionId}/redesignation-report", RedesignationReportAsync)
+            .RequirePermission(Permission.ProductionCreate)
+            .WithName("GetProductionRedesignationReport")
+            .WithTags(Tag)
+            .WithSummary("Produced documents whose designation would differ now from the one they were produced with, with their Bates ranges.")
+            .WithDescription(
+                "Compares each document's designation frozen at finalization with what the production's family rule and overrides give for the " +
+                "current coding. The overlay load file (…/redesignation-overlay) carries the same rows. Documents you may not view are only counted.")
+            .Produces<RedesignationReportResource>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{productionId}/verification", VerifyAsync)
             .RequirePermission(Permission.ProductionCreate)
@@ -334,8 +387,8 @@ public sealed class ProductionEndpoints : IApiEndpointModule
     }
 
     internal static async Task<IResult> FinalizeAsync(
-        string workspaceId, string productionId, HttpContext context, IProductionStore productions, ProductionService service, IJobRepository jobs,
-        CancellationToken cancellationToken)
+        string workspaceId, string productionId, FinalizeProductionRequest? request, HttpContext context, IProductionStore productions,
+        ProductionService service, IJobRepository jobs, CancellationToken cancellationToken)
     {
         _ = workspaceId;
         if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } current)
@@ -349,7 +402,16 @@ public sealed class ProductionEndpoints : IApiEndpointModule
         }
 
         var access = context.GetWorkspaceAccess()!;
-        var outcome = await service.FinalizeAsync(access.Principal, access.WorkspaceId, current.ProductionId, current.RowVersion, cancellationToken).ConfigureAwait(false);
+        if (request?.PrivilegeConflictOverride is { Reason: null })
+        {
+            return Problems.Validation(new Dictionary<string, string[]>
+            {
+                ["privilegeConflictOverride.reason"] = ["Give the reason for overriding the privilege conflicts."],
+            });
+        }
+
+        var outcome = await service.FinalizeAsync(access.Principal, access.WorkspaceId, current.ProductionId, current.RowVersion,
+            request?.PrivilegeConflictOverride?.Reason, cancellationToken).ConfigureAwait(false);
         return await ResultAsync(context, outcome, jobs, cancellationToken).ConfigureAwait(false);
     }
 
@@ -422,13 +484,168 @@ public sealed class ProductionEndpoints : IApiEndpointModule
         var (rows, restricted, last) = await service.ListDocumentsAsync(access.Principal, access.WorkspaceId, production.ProductionId, after, limit, cancellationToken)
             .ConfigureAwait(false);
         var items = rows.Select(r => new ProductionDocumentResource(r.Sequence, r.DocumentId, r.ControlNumber, ProductionSpecificationRules.Resource(r.Output),
-            r.Units, r.ProdBegBates, r.ProdEndBates, r.ProdBegAttach, r.ProdEndAttach)).ToList();
+            r.Units, r.ProdBegBates, r.ProdEndBates, r.ProdBegAttach, r.ProdEndAttach, r.DesignationSource is null ? null : r.Designation ?? string.Empty)).ToList();
         var next = last is { } l && rows.Count + restricted == limit
             ? PageCursor.Encode(access.Principal.UserId, access.WorkspaceId, production.ProductionId.ToString("N"), l.ToString(CultureInfo.InvariantCulture))
             : null;
         return TypedResults.Ok(new CursorPage<ProductionDocumentResource>(items, next,
             new TotalCount(items.Count, next is null && after == 0 ? TotalRelation.Eq : TotalRelation.Gte)));
     }
+
+    internal static async Task<IResult> ListDesignationsAsync(
+        string workspaceId, string productionId, [AsParameters] PageQuery page, HttpContext context, IProductionStore productions,
+        ProductionService service, IFieldCatalogRepository fields, IFieldAccessFilter fieldAccess, CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (page.Validate() is { } invalid)
+        {
+            return invalid;
+        }
+
+        if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } production)
+        {
+            return Problems.NotFound(NotFoundDetail);
+        }
+
+        var access = context.GetWorkspaceAccess()!;
+        long after = 0;
+        if (page.Cursor is { } cursor
+            && (PageCursor.Decode(cursor, access.Principal.UserId, access.WorkspaceId, 2) is not [var id, var sequence]
+                || id != production.ProductionId.ToString("N") || !long.TryParse(sequence, NumberStyles.None, CultureInfo.InvariantCulture, out after)))
+        {
+            return PageCursor.Invalid();
+        }
+
+        var limit = page.EffectiveLimit;
+        var (rows, restricted, last) = await service.ListDesignationsAsync(access.Principal, production, after, limit, cancellationToken).ConfigureAwait(false);
+        var names = await DesignationNamesAsync(access, ProductionService.PlanOf(production), fields, fieldAccess, cancellationToken).ConfigureAwait(false);
+        var items = rows.Select(r => new ProductionDesignationResource(
+            r.Sequence, r.DocumentId, r.ControlNumber, r.ProdBegBates, r.ProdEndBates,
+            names is null ? null : r.OwnChoiceId,
+            names is not null && r.OwnChoiceId is { } own && names.TryGetValue(own, out var name) ? name : null,
+            r.ChoiceId, r.Legend, Source(r.Source), r.OverrideReason)).ToList();
+        var next = last is { } l && rows.Count + restricted == limit
+            ? PageCursor.Encode(access.Principal.UserId, access.WorkspaceId, production.ProductionId.ToString("N"), l.ToString(CultureInfo.InvariantCulture))
+            : null;
+        return TypedResults.Ok(new CursorPage<ProductionDesignationResource>(items, next,
+            new TotalCount(items.Count, next is null && after == 0 ? TotalRelation.Eq : TotalRelation.Gte)));
+    }
+
+    internal static async Task<IResult> OverrideDesignationAsync(
+        string workspaceId, string productionId, string documentId, DesignationOverrideRequest request, HttpContext context,
+        IProductionStore productions, ProductionService service, CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } production
+            || !Guid.TryParse(documentId, out var document))
+        {
+            return Problems.NotFound(NotFoundDetail);
+        }
+
+        if (request is null)
+        {
+            return Problems.Validation(new Dictionary<string, string[]> { ["body"] = ["Send the designation and the reason."] });
+        }
+
+        var access = context.GetWorkspaceAccess()!;
+        var (outcome, row) = await service.OverrideDesignationAsync(access.Principal, access.WorkspaceId, production.ProductionId, document, request,
+            cancellationToken).ConfigureAwait(false);
+        if (outcome.Status != ProductionOutcomeStatus.Ok || row is null)
+        {
+            return outcome.Status == ProductionOutcomeStatus.NotFound ? Problems.NotFound("No such production or document.") : Problem(outcome);
+        }
+
+        var legend = row.ChoiceId is { } choice
+            ? ProductionService.PlanOf(production).Levels.FirstOrDefault(l => l.ChoiceId == choice)?.Legend ?? string.Empty
+            : string.Empty;
+        return TypedResults.Ok(new DesignationOverrideResource(row.DocumentId, row.ChoiceId, legend, row.Reason, row.CreatedBy, row.CreatedAt));
+    }
+
+    internal static async Task<IResult> RemoveDesignationOverrideAsync(
+        string workspaceId, string productionId, string documentId, HttpContext context, IProductionStore productions, ProductionService service,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } production
+            || !Guid.TryParse(documentId, out var document))
+        {
+            return Problems.NotFound(NotFoundDetail);
+        }
+
+        var access = context.GetWorkspaceAccess()!;
+        var outcome = await service.RemoveDesignationOverrideAsync(access.Principal, access.WorkspaceId, production.ProductionId, document, cancellationToken)
+            .ConfigureAwait(false);
+        return outcome.Status switch
+        {
+            ProductionOutcomeStatus.Ok => TypedResults.NoContent(),
+            ProductionOutcomeStatus.NotFound => Problems.NotFound("No such production, document or override."),
+            _ => Problem(outcome),
+        };
+    }
+
+    internal static async Task<IResult> RedesignationReportAsync(
+        string workspaceId, string productionId, [AsParameters] PageQuery page, HttpContext context, IProductionStore productions,
+        ProductionService service, CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (page.Validate() is { } invalid)
+        {
+            return invalid;
+        }
+
+        if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } production)
+        {
+            return Problems.NotFound(NotFoundDetail);
+        }
+
+        var access = context.GetWorkspaceAccess()!;
+        long after = 0;
+        if (page.Cursor is { } cursor
+            && (PageCursor.Decode(cursor, access.Principal.UserId, access.WorkspaceId, 2) is not [var id, var sequence]
+                || id != production.ProductionId.ToString("N") || !long.TryParse(sequence, NumberStyles.None, CultureInfo.InvariantCulture, out after)))
+        {
+            return PageCursor.Invalid();
+        }
+
+        var (outcome, report) = await service.RedesignationReportAsync(access.Principal, production, after, page.EffectiveLimit, cancellationToken)
+            .ConfigureAwait(false);
+        if (report is null)
+        {
+            return Problem(outcome);
+        }
+
+        var next = report.NextAfter is { } n
+            ? PageCursor.Encode(access.Principal.UserId, access.WorkspaceId, production.ProductionId.ToString("N"), n.ToString(CultureInfo.InvariantCulture))
+            : null;
+        return TypedResults.Ok(new RedesignationReportResource(
+            production.ProductionId,
+            [.. report.Rows.Select(r => new RedesignationResource(r.Sequence, r.DocumentId, r.ControlNumber, r.ProdBegBates, r.ProdEndBates,
+                r.ProducedChoiceId, r.ProducedLegend, r.CurrentChoiceId, r.CurrentLegend))],
+            next,
+            report.Restricted));
+    }
+
+    /// <summary>Names of the designation field's choices, or null when the caller may not see the field (field-level restriction).</summary>
+    private static async Task<Dictionary<int, string>?> DesignationNamesAsync(
+        WorkspaceAccess access, DesignationPlan plan, IFieldCatalogRepository fields, IFieldAccessFilter fieldAccess, CancellationToken cancellationToken)
+    {
+        if (plan.FieldId is not { } fieldId)
+        {
+            return [];
+        }
+
+        var catalog = await fields.GetCatalogAsync(access.WorkspaceId, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var restricted = await fieldAccess.RestrictedFieldIdsAsync(access.WorkspaceId, access.Principal, catalog, cancellationToken).ConfigureAwait(false);
+        return restricted.Contains(fieldId) ? null : catalog.ChoicesOf(fieldId).ToDictionary(c => c.ChoiceId, c => c.Name);
+    }
+
+    private static DesignationSourceResource Source(DesignationSource source) => source switch
+    {
+        DesignationSource.Document => DesignationSourceResource.Document,
+        DesignationSource.Family => DesignationSourceResource.Family,
+        DesignationSource.Override => DesignationSourceResource.Override,
+        _ => DesignationSourceResource.None,
+    };
 
     internal static async Task<IResult> VerifyAsync(
         string workspaceId, string productionId, HttpContext context, IProductionStore productions, ProductionService service,
@@ -563,6 +780,20 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             detail: outcome.Reason,
             type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
             extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_WITHHELD" }),
+        ProductionOutcomeStatus.PrivilegeConflicts => TypedResults.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Unresolved privilege conflicts",
+            detail: outcome.Reason,
+            type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
+            extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_CONFLICTS" }),
+        ProductionOutcomeStatus.Forbidden => Problems.Create(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden,
+            outcome.Reason ?? "You do not have permission for this operation."),
+        ProductionOutcomeStatus.DesignationRefused => TypedResults.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Designations cannot be produced as specified",
+            detail: outcome.Reason,
+            type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
+            extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "DESIGNATION_REFUSED" }),
         _ => Problems.Create(StatusCodes.Status409Conflict, ProblemCodes.Conflict, outcome.Reason ?? "The production's state does not allow this."),
     };
 

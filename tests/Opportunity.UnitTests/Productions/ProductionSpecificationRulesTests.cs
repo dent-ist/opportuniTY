@@ -158,5 +158,12 @@ public class ProductionSpecificationRulesTests
         values.SpecificationJson.Should().Be(normalized.Json);
         values.SpecificationSha256.Should().Be(Convert.ToHexStringLower(normalized.Sha256));
         (values.FirstNumber, values.LastNumber, values.Documents).Should().Be((1L, 42L, 10L));
+        json.Should().NotContain("privilegeConflictOverride", "only a production finalized over privilege conflicts records an override");
+
+        // E13-T02 AC 2: an override is recorded in the manifest with its reason and who gave it.
+        var (overridden, overriddenSha) = ProductionManifest.Build(production, snapshot, null, software, production.CreatedBy, at, "Clawback agreement \"7\"");
+        overriddenSha.Should().NotEqual(sha);
+        overridden.Should().Contain($"\"privilegeConflictOverride\":{{\"reason\":\"Clawback agreement \\u00227\\u0022\",\"by\":\"{production.CreatedBy:D}\"}}");
+        ProductionManifest.Read(overridden).AssignmentsSha256.Should().Be(values.AssignmentsSha256);
     }
 }

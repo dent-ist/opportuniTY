@@ -33,6 +33,7 @@ internal static class ProtectedOperation
     public const string GridView = "Document-list views and layouts";
     public const string HighlightSet = "Highlight Sets and highlighting toggles";
     public const string Redaction = "Redactions, Redaction Sets and reasons";
+    public const string ReviewBatch = "Review Batch Sets, batches, check-out/in, assignment and QC conflicts";
     public const string Snapshot = "Frozen sets (snapshots)";
     public const string Import = "Import jobs, reports and profiles";
     public const string Job = "Job status";
@@ -331,6 +332,21 @@ internal static class RouteAttackCatalog
         Case("PUT", Ws + "/role-assignments/groups", ProtectedOperation.Workspace,
             new RouteProbe("IdP group name", HttpMethod.Put, (o, _) => W(o) + "/role-assignments/groups?name=cn%3Dattack-probe", HttpStatusCode.OK,
                 (_, _) => J(new JsonObject { ["roles"] = new JsonArray() }), IfMatch: "*", HasForeignIdentifier: false)),
+        // Legal holds (E20-T01). The world's lock is released, so release steps answer 409 for its own workspace.
+        Case("GET", Ws + "/preservation-locks", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/preservation-locks", HttpStatusCode.OK)),
+        Case("POST", Ws + "/preservation-locks", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Post, "/preservation-locks", HttpStatusCode.BadRequest, _ => J(new JsonObject { ["reason"] = " " }))),
+        Case("GET", Ws + "/preservation-locks/{lockId}", ProtectedOperation.Workspace,
+            new RouteProbe("preservation lock", HttpMethod.Get, (o, t) => $"{W(o)}/preservation-locks/{t.PreservationLockId}", HttpStatusCode.OK)),
+        Case("POST", Ws + "/preservation-locks/{lockId}/release", ProtectedOperation.Workspace,
+            new RouteProbe("preservation lock", HttpMethod.Post, (o, t) => $"{W(o)}/preservation-locks/{t.PreservationLockId}/release",
+                HttpStatusCode.Conflict, (_, _) => J(new JsonObject { ["reason"] = "probe" }), IfMatch: "*")),
+        Case("POST", Ws + "/preservation-locks/{lockId}/release/approve", ProtectedOperation.Workspace,
+            new RouteProbe("preservation lock", HttpMethod.Post, (o, t) => $"{W(o)}/preservation-locks/{t.PreservationLockId}/release/approve",
+                HttpStatusCode.Conflict, IfMatch: "*")),
+        Case("POST", Ws + "/preservation-locks/{lockId}/release/cancel", ProtectedOperation.Workspace,
+            new RouteProbe("preservation lock", HttpMethod.Post, (o, t) => $"{W(o)}/preservation-locks/{t.PreservationLockId}/release/cancel",
+                HttpStatusCode.Conflict, IfMatch: "*")),
         Case("GET", Ws + "/fields", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/fields", HttpStatusCode.OK)),
         Case("GET", Ws + "/coding-layouts", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/coding-layouts", HttpStatusCode.OK)),
 
@@ -445,9 +461,68 @@ internal static class RouteAttackCatalog
         Case("POST", Ws + "/coding-propagations", ProtectedOperation.Coding,
             new RouteProbe("preview in the body", HttpMethod.Post, (o, _) => W(o) + "/coding-propagations", HttpStatusCode.OK,
                 (_, t) => J(new JsonObject { ["previewId"] = t.PropagationPreviewId.ToString() }))),
+        // Privilege conflicts (E13-T02): the report (JSON and CSV through the gateway) may be scoped to a production; the
+        // propagation names source documents and duplicate groups in its body.
+        Case("GET", Ws + "/privilege-conflicts", ProtectedOperation.Coding,
+            WorkspaceOnly(HttpMethod.Get, "/privilege-conflicts", HttpStatusCode.OK),
+            new RouteProbe("production in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-conflicts?productionId={t.FinalizedProductionId}",
+                HttpStatusCode.OK)),
+        Case("GET", Ws + "/privilege-conflicts/export", ProtectedOperation.Coding,
+            WorkspaceOnly(HttpMethod.Get, "/privilege-conflicts/export", HttpStatusCode.OK),
+            new RouteProbe("production in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-conflicts/export?productionId={t.FinalizedProductionId}",
+                HttpStatusCode.OK)),
+        Case("POST", Ws + "/privilege-conflicts/propagations", ProtectedOperation.Coding,
+            // The probe document is in no duplicate group: the own request is a validation problem, a foreign source a 404.
+            new RouteProbe("source document and duplicate group in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-conflicts/propagations",
+                HttpStatusCode.BadRequest,
+                (_, t) => J(new JsonObject
+                {
+                    ["groups"] = new JsonArray(new JsonObject
+                    {
+                        ["duplicateGroupId"] = t.DocumentId.ToString(), ["sourceDocumentId"] = t.DocumentId.ToString(),
+                    }),
+                }))),
         Case("GET", Ws + "/bulk-coding/{jobId}/report", ProtectedOperation.Coding,
             new RouteProbe("bulk coding job", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report", HttpStatusCode.OK),
             new RouteProbe("bulk coding job, skippedHidden", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report?outcome=skippedHidden", HttpStatusCode.OK)),
+
+        // Coding history and review batches (E10-T05). Status changes accept any answer PEP-1 admitted for the caller's own
+        // batch (they change it once, then may answer 409); foreign sets and batches must look exactly like unknown ones.
+        Case("GET", Ws + "/documents/{documentId}/coding-history", ProtectedOperation.Coding,
+            new RouteProbe("document", HttpMethod.Get, (o, t) => Doc(o, t) + "/coding-history", HttpStatusCode.OK),
+            new RouteProbe("document, one field", HttpMethod.Get, (o, t) => Doc(o, t) + $"/coding-history?fieldId={o.Fields.Responsive}", HttpStatusCode.OK)),
+        Case("POST", Ws + "/review-batch-sets", ProtectedOperation.ReviewBatch,
+            new RouteProbe("frozen set in the body", HttpMethod.Post, (o, _) => W(o) + "/review-batch-sets", HttpStatusCode.Created,
+                (_, t) => J(BatchSetBody(t.ReviewBatchSnapshotId))),
+            new RouteProbe("first-pass set in the body", HttpMethod.Post, (o, _) => W(o) + "/review-batch-sets", HttpStatusCode.Created,
+                (o, t) =>
+                {
+                    var body = BatchSetBody(o.ReviewBatchSnapshotId);
+                    body["reviewPass"] = "qc";
+                    body["qcOfBatchSetId"] = t.FirstPassBatchSetId.ToString();
+                    return J(body);
+                })),
+        Case("GET", Ws + "/review-batch-sets", ProtectedOperation.ReviewBatch, WorkspaceOnly(HttpMethod.Get, "/review-batch-sets", HttpStatusCode.OK)),
+        Case("GET", Ws + "/review-batch-sets/{batchSetId}", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch set", HttpMethod.Get, (o, t) => $"{W(o)}/review-batch-sets/{t.FirstPassBatchSetId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/review-batch-sets/{batchSetId}/conflicts", ProtectedOperation.ReviewBatch,
+            new RouteProbe("QC batch set", HttpMethod.Get, (o, t) => $"{W(o)}/review-batch-sets/{t.QcBatchSetId}/conflicts", HttpStatusCode.OK)),
+        Case("GET", Ws + "/review-batches", ProtectedOperation.ReviewBatch,
+            WorkspaceOnly(HttpMethod.Get, "/review-batches", HttpStatusCode.OK),
+            new RouteProbe("batch set in the query", HttpMethod.Get, (o, t) => $"{W(o)}/review-batches?batchSetId={t.FirstPassBatchSetId}", HttpStatusCode.OK,
+                Expectation: ForeignExpectation.EmptySet)),
+        Case("GET", Ws + "/review-batches/{batchId}", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Get, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/review-batches/{batchId}/documents", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Get, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}/documents", HttpStatusCode.OK)),
+        Case("POST", Ws + "/review-batches/{batchId}/check-out", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Post, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}/check-out", null, IfMatch: "*")),
+        Case("POST", Ws + "/review-batches/{batchId}/check-in", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Post, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}/check-in", null,
+                (_, _) => J(new JsonObject { ["completed"] = false }), IfMatch: "*")),
+        Case("PUT", Ws + "/review-batches/{batchId}/assignment", ProtectedOperation.ReviewBatch,
+            new RouteProbe("batch", HttpMethod.Put, (o, t) => $"{W(o)}/review-batches/{t.ReviewBatchId}/assignment", null,
+                (o, _) => J(new JsonObject { ["assigneeId"] = o.Owner.ToString() }), IfMatch: "*")),
 
         // Redactions (E11-T04): Redaction Sets by id, reasons by workspace-local code, document redactions by document and set.
         Case("GET", Ws + "/redaction-sets", ProtectedOperation.Redaction, WorkspaceOnly(HttpMethod.Get, "/redaction-sets", HttpStatusCode.OK)),
@@ -589,6 +664,25 @@ internal static class RouteAttackCatalog
             new RouteProbe("production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/documents", HttpStatusCode.OK)),
         Case("POST", Ws + "/productions/{productionId}/verification", ProtectedOperation.ProductionInclusion,
             new RouteProbe("production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/verification", HttpStatusCode.OK)),
+        // Designations (E12-T04): the production and the document are both identifiers; a foreign document in an own production
+        // must answer like an unknown one.
+        Case("GET", Ws + "/productions/{productionId}/designations", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/designations", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/productions/{productionId}/designation-overrides/{documentId}", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production and document", HttpMethod.Put, (o, t) => $"{W(o)}/productions/{t.DraftProductionId}/designation-overrides/{t.DocumentId}",
+                null, (_, _) => J(new JsonObject { ["choiceId"] = null, ["reason"] = "Attack probe" })),
+            new RouteProbe("own draft, another workspace's document", HttpMethod.Put,
+                (o, t) => $"{W(o)}/productions/{o.DraftProductionId}/designation-overrides/{t.DocumentId}", null,
+                (_, _) => J(new JsonObject { ["choiceId"] = null, ["reason"] = "Attack probe" }))),
+        Case("DELETE", Ws + "/productions/{productionId}/designation-overrides/{documentId}", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production and document", HttpMethod.Delete,
+                (o, t) => $"{W(o)}/productions/{t.DraftProductionId}/designation-overrides/{t.DocumentId}", null),
+            new RouteProbe("own draft, another workspace's document", HttpMethod.Delete,
+                (o, t) => $"{W(o)}/productions/{o.DraftProductionId}/designation-overrides/{t.DocumentId}", null)),
+        Case("GET", Ws + "/productions/{productionId}/redesignation-report", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-report", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/redesignation-overlay", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-overlay", HttpStatusCode.OK)),
 
         // Routes without a workspace-scoped identifier.
         Exempt("GET", V1 + "/me", "the caller's own session; no identifier"),
@@ -604,6 +698,14 @@ internal static class RouteAttackCatalog
         Exempt("*", "/health/ready", "anonymous readiness probe"),
         Exempt("GET", "/openapi/{documentName}.json", "the public API description"),
     ];
+
+    private static JsonObject BatchSetBody(Guid snapshotId) => new()
+    {
+        ["name"] = "Probe " + Guid.NewGuid().ToString("N"),
+        ["snapshotId"] = snapshotId.ToString(),
+        ["batchPrefix"] = "P" + Guid.NewGuid().ToString("N")[..12],
+        ["maxBatchSize"] = 5,
+    };
 
     private static RouteCase Exempt(string method, string pattern, string reason) => new(method, pattern, ProtectedOperation.Workspace, [], reason);
 

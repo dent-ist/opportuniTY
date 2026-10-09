@@ -3,6 +3,7 @@ import { CODING_FIELDS, CodingMock } from './mock-coding';
 import { documentText, serveContent, snippetsFor, type Rendition } from './mock-content';
 import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
+import { PrivilegeConflictsMock } from './mock-privilege-conflicts';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
 import { SearchTermReportsMock } from './mock-search-term-reports';
@@ -12,6 +13,7 @@ import { RedactionsMock } from './mock-redactions';
 import { FieldAdminMock } from './mock-field-admin';
 import { RoleAdminMock } from './mock-role-admin';
 import { RelationshipsMock, hitRelations } from './mock-relationships';
+import { LegalHoldsMock } from './mock-legal-holds';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -109,12 +111,16 @@ export interface MockControl {
   readonly freshness: FreshnessMock;
   /** Search Terms Reports (#180): reports, writes received (create with Idempotency-Key, re-run, delete, export). */
   readonly termReports: SearchTermReportsMock;
+  /** Privilege conflicts (E13-T02): the report, its CSV and propagations received. */
+  readonly privilegeConflicts: PrivilegeConflictsMock;
   /** Document-list views and the saved layout (E16-T09). */
   readonly gridViews: GridViewsMock;
   /** The body of the last `POST …/searches` (sort, fields). */
   readonly lastSearch: () => Record<string, unknown> | null;
   /** Relationships and coding propagation (E16-T10): previews and applies received. */
   readonly relationships: RelationshipsMock;
+  /** Legal holds (E20-T01): holds per workspace (ws-2 starts held) and writes received. */
+  readonly legalHolds: LegalHoldsMock;
 }
 
 /**
@@ -261,6 +267,7 @@ export const ALL_PERMISSIONS = [
   'Workspace.ManageFields',
   'Workspace.RequestDeletion',
   'HighlightSet.Manage',
+  'Workspace.ManageHolds',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -435,6 +442,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const created = new Set<string>();
   const workspaceWrites: MockControl['workspaceWrites'] = [];
   const termReports = new SearchTermReportsMock();
+  const privilegeConflicts = new PrivilegeConflictsMock();
   const jobsMock = new JobsMock({
     userId: principal.userId,
     viewAll: permissions.includes('Job.ViewAll'),
@@ -455,7 +463,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     () => documents,
     options.propagationThreshold,
   );
+  const legalHolds = new LegalHoldsMock();
   const control: MockControl = {
+    legalHolds,
     relationships,
     freshness,
     imports,
@@ -463,6 +473,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     workspaceWrites,
     savedSearches,
     termReports,
+    privilegeConflicts,
     gridViews,
     lastSearch: () => lastSearch,
     highlights,
@@ -514,6 +525,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Fields, choices and coding layouts (E04-T06): ./mock-field-admin.ts.
     const administered = signedIn ? fieldAdmin.handle(route, method, path) : undefined;
     if (administered) return administered;
+    // Legal holds (E20-T01): ./mock-legal-holds.ts.
+    const held = signedIn ? legalHolds.handle(route, method, path) : undefined;
+    if (held) return held;
     // Roles, permissions and user/group assignment (E05-T08): ./mock-role-admin.ts.
     const roles = signedIn ? roleAdmin.handle(route, method, path, url) : undefined;
     if (roles) return roles;
@@ -644,6 +658,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Search Terms Reports (#180): ./mock-search-term-reports.ts.
     const termReport = signedIn ? termReports.handle(route, method, path, url) : undefined;
     if (termReport) return termReport;
+    // Privilege conflicts (E13-T02): ./mock-privilege-conflicts.ts.
+    const conflicts = signedIn ? privilegeConflicts.handle(route, method, path, url) : undefined;
+    if (conflicts) return conflicts;
     // Highlight Sets and term hits (E16-T12): ./mock-highlights.ts.
     const highlighted = signedIn ? highlights.handle(route, method, path, url) : undefined;
     if (highlighted) return highlighted;
@@ -820,6 +837,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     if (signedIn && ws && method === 'GET')
       return json(route, {
         ...ws,
+        activePreservationLocks: legalHolds.activeCount(wsPath![1]),
         permissions: created.has(wsPath![1]) ? ALL_PERMISSIONS : permissions,
       });
     unhandled.push(`${route.request().method()} ${path}`);

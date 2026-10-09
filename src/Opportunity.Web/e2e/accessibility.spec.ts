@@ -20,6 +20,7 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/searches/terms-reports/new?savedSearch=ss-1',
   '/w/ws-1/searches/terms-reports/str-1',
   '/w/ws-1/searches/terms-reports/str-2',
+  '/w/ws-1/searches/privilege-conflicts',
   '/w/ws-1/documents?termReport=str-1&term=str-1-t1',
   '/w/ws-1/jobs',
   '/w/ws-1/jobs/job-exp-3',
@@ -29,6 +30,8 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/admin/fields',
   '/w/ws-1/admin/audit',
   '/w/ws-1/admin/settings',
+  // ws-2 is under a legal hold with a pending release and a released hold (E20-T01).
+  '/w/ws-2/admin/settings',
   '/w/ws-1/admin/setup',
   '/w/ws-1/admin/highlight-sets',
   '/w/ws-1/admin/choices',
@@ -50,6 +53,11 @@ const POPUPS = [
     name: 'Add user or group dialog',
     path: '/w/ws-1/admin/users-groups',
     trigger: { role: 'button', name: /Add user or group/ },
+  },
+  {
+    name: 'Place legal hold dialog',
+    path: '/w/ws-1/admin/settings',
+    trigger: { role: 'button', name: /Place legal hold/ },
   },
   {
     name: 'workspace switcher',

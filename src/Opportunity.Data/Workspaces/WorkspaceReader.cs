@@ -32,10 +32,11 @@ internal static class WorkspaceColumns
     public const string Select =
         """
         w.workspace_id, w.name, w.matter_number, w.display_time_zone, w.status, w.closed_at, w.epoch,
-        w.control_number_case_sensitive, w.created_at, w.updated_at, w.storage_profile, w.row_version
+        w.control_number_case_sensitive, w.created_at, w.updated_at, w.storage_profile, w.row_version,
+        w.active_preservation_locks
         """;
 
-    public const int Count = 12;
+    public const int Count = 13;
 
     public static Workspace Read(NpgsqlDataReader reader) => new()
     {
@@ -51,5 +52,6 @@ internal static class WorkspaceColumns
         UpdatedAt = reader.GetFieldValue<DateTimeOffset>(9),
         StorageProfile = reader.GetString(10),
         RowVersion = reader.GetInt64(11),
+        ActivePreservationLocks = reader.GetInt32(12),
     };
 }
