@@ -6,11 +6,11 @@ using RabbitMQ.Client.Exceptions;
 namespace Opportunity.Messaging;
 
 /// <summary>
-/// A publisher-confirm channel on the publish connection. <see cref="PublishAsync"/> returns only once the broker has
+/// A publisher-confirm channel on the publish connection of one credential (null: the default user). <see cref="PublishAsync"/> returns only once the broker has
 /// confirmed the message (routed with <c>mandatory</c>, persisted by the quorum queues); every other outcome is a
 /// <see cref="MessagePublishException"/>. Concurrent publishes are pipelined on the one channel.
 /// </summary>
-internal sealed class ConfirmedChannel(RabbitMqConnections connections, RabbitMqOptions options) : IAsyncDisposable
+internal sealed class ConfirmedChannel(RabbitMqConnections connections, RabbitMqOptions options, string? credential = null) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IChannel? _channel;
@@ -85,7 +85,7 @@ internal sealed class ConfirmedChannel(RabbitMqConnections connections, RabbitMq
                 return _channel;
             }
 
-            var connection = await connections.GetAsync(ConnectionPurpose.Publish, cancellationToken).ConfigureAwait(false);
+            var connection = await connections.GetAsync(ConnectionPurpose.Publish, credential, cancellationToken).ConfigureAwait(false);
             if (!connection.IsOpen)
             {
                 // Automatic recovery is reconnecting; fail fast so the caller keeps the work unpublished.

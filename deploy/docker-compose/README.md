@@ -36,8 +36,20 @@ One machine, one of everything (architecture baseline §16/§29 developer regres
   S3 secret and the dev OIDC client secret come from `.env` (`./opportunity.sh init`; rerun it after an update to add
   new ones), and any setting can also be passed as a file (`<Setting>_FILE`, e.g. `ConnectionStrings__App_FILE`).
 - **No Redis/Valkey** (§16, §34). CI fails if one appears.
-- **Database logins**: `opportunity_owner` runs the migrator and owns every object (no superuser, no CREATEROLE);
-  `opportunity_runtime` (api and worker, `ConnectionStrings__App`) is a member of `opportunity_app`: DML only.
+- **Database logins** (E05-T07): `opportunity_owner` runs the migrator and owns every object (no superuser, no
+  CREATEROLE). Each runtime component has its own login, none a superuser or able to bypass row-level security:
+  `opportunity_api` (api) and `opportunity_worker` (the combined worker) are members of `opportunity_app` (DML only),
+  `opportunity_monitor` (postgres-exporter) of `pg_monitor` only. `postgres/init/30-component-logins.sh` creates them
+  on first start and `./opportunity.sh up` re-applies it, so a password changed in `.env` takes effect.
+- **Broker users and message trust** (E05-T07): the `RABBITMQ_USER` administrator is used by the migrator (topology)
+  and the management UI only. `rabbitmq/users.sh` (run by `./opportunity.sh up`) creates `opportunity-dispatcher`
+  (publishes work) and one user per queue area (`opportunity-import`, `-index`, `-render`, `-export`, `-production`,
+  `-bulkcoding`) that may consume only its own queues; the worker opens one connection per area with that user. The
+  API has no broker user. Message envelopes are HMAC-signed (key `ENVELOPE_HMAC_SECRET_KEY`, the secret
+  `envelope-hmac-k1`; `OPPORTUNITY_ENVELOPE_SIGNING=false` switches it off), and a forged, unsigned or badly signed
+  message is dead-lettered and audited as `Integrity.MessageRejected`. Start the stack with `./opportunity.sh up` (or
+  `make up`): a bare `docker compose up` creates the database logins on a new volume but not the broker users. See
+  [docs/operations/message-trust.md](../../docs/operations/message-trust.md).
 - The application containers run as in production: non-root, `read_only`, `cap_drop: [ALL]`, `no-new-privileges`.
 
 ## Signing in (developer IdP)

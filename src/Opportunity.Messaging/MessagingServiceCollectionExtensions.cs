@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Bootstrap;
+using Opportunity.Application.Keys;
 using Opportunity.Application.Messaging;
 using Opportunity.Contracts.Messaging;
 
@@ -25,6 +26,9 @@ public static class MessagingServiceCollectionExtensions
         services.TryAddSingleton(options);
         services.TryAddSingleton(_ => MessageContracts.CreateRegistry());
         services.TryAddSingleton(sp => new MessageSerializer(sp.GetRequiredService<MessageTypeRegistry>()));
+        services.TryAddSingleton(sp => options.Signing.Enabled
+            ? new EnvelopeSigner(options.Signing, sp.GetService<ISecretProvider>())
+            : EnvelopeSigner.Disabled);
         services.TryAddSingleton<RabbitMqConnections>();
         services.TryAddSingleton<RabbitMqMessagePublisher>();
         services.TryAddSingleton<IMessagePublisher>(sp => sp.GetRequiredService<RabbitMqMessagePublisher>());

@@ -200,9 +200,12 @@ public sealed class RabbitMqTopology
 }
 
 /// <summary>
-/// RabbitMQ permission patterns (configure, write, read) for one component in one virtual host (ADR-015 D9.5):
+/// RabbitMQ permission patterns (configure, write, read) for one component in one virtual host (ADR-015 D9.5, E05-T07):
 /// the dispatcher may only publish to the work exchange and consume the dead-letter recorder's queue; a worker may only
-/// consume its own area's queues and publish to its own retry and dead-letter exchanges; only the migrator configures.
+/// consume its own area's work queues (never another area's, never a <c>*.dlq</c> or <c>*.parking</c> queue) and publish
+/// to its own retry and dead-letter exchanges; only the migrator (the operator's user) configures and reads the
+/// diagnostic queues. <c>deploy/docker-compose/rabbitmq/users.sh</c> applies the same patterns; a unit test keeps them
+/// in step.
 /// </summary>
 public sealed record RabbitMqPermissions(string Configure, string Write, string Read)
 {
@@ -217,12 +220,23 @@ public sealed record RabbitMqPermissions(string Configure, string Write, string 
     public static RabbitMqPermissions Worker(params string[] areas)
     {
         ArgumentNullException.ThrowIfNull(areas);
-        var alternatives = string.Join('|', areas.Select(Escape));
+        var queues = WorkQueues.All.Where(q => areas.Contains(q.Area, StringComparer.Ordinal)).Select(q => q.Name).ToList();
+        if (queues.Count == 0)
+        {
+            throw new ArgumentException($"No work queue belongs to [{string.Join(", ", areas)}].", nameof(areas));
+        }
+
         return new RabbitMqPermissions(
             Nothing,
-            $@"^({alternatives})\.(retry|dlx)$",
-            $@"^({alternatives})\.[^.]+$");
+            $@"^({string.Join('|', areas.Select(Escape))})\.(retry|dlx)$",
+            $"^({string.Join('|', queues.Select(Escape))})$");
     }
+
+    /// <summary>Permissions of the user of one queue area (<see cref="RabbitMqOptions.AreaConnectionStrings"/>).</summary>
+    public static RabbitMqPermissions ForArea(string area) => Worker(area);
+
+    /// <summary>Every queue area with its own broker user, e.g. <c>render</c> → <see cref="ForArea"/>.</summary>
+    public static IReadOnlyList<string> Areas { get; } = [.. WorkQueues.All.Select(q => q.Area).Distinct(StringComparer.Ordinal)];
 
     private static string Escape(string value) => System.Text.RegularExpressions.Regex.Escape(value);
 }

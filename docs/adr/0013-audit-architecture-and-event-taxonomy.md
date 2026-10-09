@@ -150,7 +150,7 @@ M1 events ship with `E14-T01`/`E05-T04`; the rest with the owning feature, and `
 | **Admin** | `ConfigChanged`, `UserProvisioned`, `UserDeactivated`, `KeyCreated`, `KeyRotated`, `KeyDestroyed`, `SecretRotated` | Installation | setting name, old and new value **unless secret**; system chain |
 | **Audit** | `Queried`, `Exported`, `CheckpointCreated`, `Verified`, `Purged` | Workspace | query filters; who reads the audit is itself audited |
 | **Job** | `Created`, `Cancelled`, `Failed`, `CompletedWithErrors`, `Replayed` | Job | job type, counts, DLQ replay reason |
-| **Integrity** | `HashMismatch`, `ChainBroken`, `FenceViolation`, `EnvelopeMismatch`, `BatesConflict` | any | raised by scrub, verify CLI, workers (ADR-014 fence, envelope check in `E06-T05`) |
+| **Integrity** | `HashMismatch`, `ChainBroken`, `FenceViolation`, `EnvelopeMismatch`, `BatesConflict`, `MessageRejected` | any | raised by scrub, verify CLI, workers (ADR-014 fence, envelope check in `E06-T05`). Since `E05-T07` a refused message is `MessageRejected` with reason `EnvelopeMismatch`, `SignatureMissing`, `SignatureInvalid` or `SignatureKeyUnknown`; `EnvelopeMismatch` remains for earlier events |
 
 Every §24 protected operation (open, view, native download, image retrieval, export, production inclusion) maps to a
 row above: `Document.*`, `Export.*` and `Production.Run`. Production inclusion is audited at chunk level with the

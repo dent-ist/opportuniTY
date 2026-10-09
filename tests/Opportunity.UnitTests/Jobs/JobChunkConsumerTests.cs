@@ -101,7 +101,7 @@ public sealed class JobChunkConsumerTests
         _chunks.Writes.Should().Be(0);
         var audit = _audit.Events.Should().ContainSingle().Subject;
         audit.Category.Should().Be("Integrity");
-        audit.Action.Should().Be("EnvelopeMismatch");
+        audit.Action.Should().Be("MessageRejected");
         audit.WorkspaceId.Should().BeNull("rejections are installation-level events");
         audit.Outcome.Should().Be(AuditOutcome.Denied);
         audit.ReasonCode.Should().Be("EnvelopeMismatch");

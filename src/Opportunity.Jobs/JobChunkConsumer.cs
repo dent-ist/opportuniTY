@@ -32,7 +32,7 @@ public sealed class JobChunkConsumerOptions
 /// <item>Envelope validation: the hinted workspace and job must be present.</item>
 /// <item>Claim under RLS with the hinted workspace — the claim is the inbox (conditional transition, ADR-010 §5.3).
 /// An invisible row, or one whose job, operation, sequence or idempotency key disagrees with the envelope, is
-/// rejected: <c>Integrity.EnvelopeMismatch</c> audit event, dead-lettered, nothing written. Every other unclaimable
+/// rejected: <c>Integrity.MessageRejected</c> audit event (reason <c>EnvelopeMismatch</c>), dead-lettered, nothing written. Every other unclaimable
 /// outcome (duplicate, settled, lease held, job paused or cancelling, workspace not Active) is acked and dropped.</item>
 /// <item>The executor for the chunk's <see cref="ChunkOperationKind"/> runs with workspace, actor and parameters from
 /// PostgreSQL, under a heartbeat that extends the lease and stops the work at fence F2.</item>
@@ -45,7 +45,7 @@ public sealed class JobChunkConsumerOptions
 /// </summary>
 public sealed partial class JobChunkConsumer : IMessageHandler<JobChunkMessage>
 {
-    public const string RejectionReason = "EnvelopeMismatch";
+    public const string RejectionReason = MessageRejectionReasons.EnvelopeMismatch;
 
     private readonly IJobChunkRepository _chunks;
     private readonly Dictionary<ChunkOperationKind, IJobChunkExecutor> _executors;
@@ -397,30 +397,17 @@ public sealed partial class JobChunkConsumer : IMessageHandler<JobChunkMessage>
     {
         var envelope = message.Envelope;
         LogRejected(_logger, payload.ChunkId, envelope.WorkspaceId, envelope.JobId, field);
-        await _audit.WriteAsync(new AuditEvent
-        {
-            WorkspaceId = null,
-            OccurredAt = _time.GetUtcNow(),
-            Category = AuditTaxonomy.Integrity.Category,
-            Action = AuditTaxonomy.Integrity.EnvelopeMismatch,
-            ActorType = AuditActorType.Service,
-            ActorId = _options.WorkerId,
-            ActorDisplay = message.Queue.WorkerType,
-            ResourceType = "JobChunk",
-            ResourceId = payload.ChunkId.ToString(),
-            Outcome = AuditOutcome.Denied,
-            ReasonCode = RejectionReason,
-            CorrelationId = envelope.CorrelationId,
-            Details = new Dictionary<string, string?>(StringComparer.Ordinal)
-            {
-                ["claimedWorkspaceId"] = envelope.WorkspaceId?.ToString(),
-                ["claimedJobId"] = envelope.JobId?.ToString(),
-                ["messageType"] = envelope.MessageType,
-                ["messageId"] = envelope.MessageId.ToString(),
-                ["queue"] = message.Queue.Name,
-                ["mismatch"] = field,
-            },
-        }, CancellationToken.None).ConfigureAwait(false);
+        await _audit.WriteAsync(
+            MessageRejection.AuditEvent(
+                envelope,
+                message.Queue,
+                MessageRejectionReasons.EnvelopeMismatch,
+                _options.WorkerId,
+                "JobChunk",
+                payload.ChunkId.ToString(),
+                _time.GetUtcNow(),
+                new Dictionary<string, string?>(StringComparer.Ordinal) { ["mismatch"] = field }),
+            CancellationToken.None).ConfigureAwait(false);
 
         if (release is not null)
         {

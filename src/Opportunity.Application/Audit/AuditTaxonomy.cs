@@ -327,6 +327,13 @@ public static class AuditTaxonomy
         /// <summary>A worker rejected a message whose envelope disagrees with PostgreSQL (ADR-013 §5, ADR-015 D9.3).</summary>
         public const string EnvelopeMismatch = "EnvelopeMismatch";
 
+        /// <summary>
+        /// A message was refused and dead-lettered (E05-T07, ADR-015 D9.3/D9.5): its envelope disagrees with PostgreSQL
+        /// (reason <c>EnvelopeMismatch</c>), or its HMAC signature is missing, invalid or under an unknown key. Replaces
+        /// <see cref="EnvelopeMismatch"/> for new events.
+        /// </summary>
+        public const string MessageRejected = "MessageRejected";
+
         /// <summary>A Bates allocation overlapped another production's range or failed its integrity check (E12-T03).</summary>
         public const string BatesConflict = "BatesConflict";
     }
@@ -382,7 +389,8 @@ public static class AuditTaxonomy
             "SecretRotated"),
         .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged"),
         .. Expand("Job", "Created", "Cancelled", "Failed", "CompletedWithErrors", "Replayed"),
-        .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict"),
+        .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict",
+            "MessageRejected"),
     ];
 
     /// <summary>The category that may carry <see cref="AuditEvent.RestrictedDetails"/> (Q-16 search text).</summary>

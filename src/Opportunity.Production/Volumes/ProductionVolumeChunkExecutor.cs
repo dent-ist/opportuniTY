@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
+using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
 using Opportunity.Application.Exports;
 using Opportunity.Application.Fields;
@@ -26,7 +27,9 @@ namespace Opportunity.Production.Volumes;
 /// <list type="number">
 /// <item>Re-checks the run's initiator: <c>Production.Create</c> (else the job is cancelled) and every member (Q-15). A
 /// production cannot drop a member without breaking its Bates numbering, so a member the initiator may no longer
-/// access fails the run instead of being excluded.</item>
+/// access fails the run instead of being excluded (the Q-15 policy for productions; exports exclude). The delta — each
+/// denied member with its precise reason — is audited as <c>Job.Failed</c> before the run fails (E05-T07); the
+/// requester sees only the count.</item>
 /// <item>Reads only what finalization froze: each member's Bates numbers, designation, page set and redaction version
 /// (Q-08), so every run of the production writes the same bytes.</item>
 /// <item>Images every Bates page in the member's render session (<see cref="IProducedPageImager"/>, the sandbox):
@@ -48,8 +51,14 @@ public sealed class ProductionVolumeChunkExecutor(
     IFieldAccessFilter fieldAccess,
     IObjectStore store,
     IProducedPageImager imager,
-    ProductionVolumeOptions options) : IJobChunkExecutor
+    ProductionVolumeOptions options,
+    IAuditEventWriter audit) : IJobChunkExecutor
 {
+    /// <summary>Reason code of a run failed by the Q-15 re-check (the denied members are in the audit details).</summary>
+    public const string AccessChanged = ExportChunkExecutor.AccessChanged;
+
+    private const int DeniedPerAuditEvent = 100;
+
     public const string PageKindSource = "Page";
     public const string PageKindTechnicalIssue = "TechnicalIssue";
     public const string PageKindSlipSheet = "SlipSheet";
@@ -107,11 +116,31 @@ public sealed class ProductionVolumeChunkExecutor(
         // Q-15: every member is re-authorized for the initiator against current security state.
         var decisions = await authorization.AuthorizeManyAsync(
             principal, ws, Permission.ProductionCreate, [.. members.Select(m => m.DocumentId)], DenialAudit.Caller, cancellationToken).ConfigureAwait(false);
-        var denied = members.Count(m => !decisions.TryGetValue(m.DocumentId, out var d) || !d.IsAllowed);
-        if (denied > 0)
+        var denied = members
+            .Select(m => (m.Sequence, m.DocumentId, Reason: decisions.TryGetValue(m.DocumentId, out var d) ? (d.IsAllowed ? null : d.Reason) : AuthorizationReasons.DocumentNotFound))
+            .Where(m => m.Reason is not null)
+            .ToList();
+        if (denied.Count > 0)
         {
-            throw new PermanentChunkException("AccessChanged", string.Create(CultureInfo.InvariantCulture,
-                $"{denied} document(s) of this production are no longer accessible to the run's initiator; a production cannot leave members out of its Bates numbering."));
+            foreach (var part in denied.Chunk(DeniedPerAuditEvent))
+            {
+                await audit.WriteAsync(ExportChunkExecutor.WorkerEvent(volume, chunk, AuditTaxonomy.Job.Failed, new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["ProductionId"] = productionId.ToString(),
+                    ["ExportId"] = volume.ExportId.ToString(),
+                    ["Policy"] = "FailRun",
+                    ["Count"] = part.Length.ToString(CultureInfo.InvariantCulture),
+                    ["Documents"] = string.Join(',', part.Select(m => m.DocumentId.ToString("N") + ":" + m.Reason)),
+                }) with
+                {
+                    Category = AuditTaxonomy.Job.Category,
+                    Outcome = AuditOutcome.Failure,
+                    ReasonCode = AccessChanged,
+                }, cancellationToken).ConfigureAwait(false);
+            }
+
+            throw new PermanentChunkException(AccessChanged, string.Create(CultureInfo.InvariantCulture,
+                $"{denied.Count} document(s) of this production are no longer accessible to the run's initiator; a production cannot leave members out of its Bates numbering."));
         }
 
         var source = await exports.ReadDocumentsAsync(ws, [.. members.Select(m => m.DocumentId)], cancellationToken).ConfigureAwait(false);

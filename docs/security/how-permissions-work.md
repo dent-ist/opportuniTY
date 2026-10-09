@@ -233,7 +233,7 @@ calls the PDP; none has its own rules.
 | PEP-2 | **Use cases on sets of documents** (bulk coding, imports, jobs) | Per-document classes and walls for the whole set, in one batched call | Built for the paths that exist (#47); grows with each feature |
 | PEP-3 | **Protected-content gateway**: natives, images, text, renditions | Every byte, every download link, prefetch included; audited before the first byte | Built (#49) |
 | PEP-4 | **Search** | Hidden classes and walls are filtered inside OpenSearch, **and** every page of hits is re-checked against PostgreSQL before it is returned (stale hits show nothing, Q-12) | Built (#64, #67) |
-| PEP-5 | **Background workers** | A job runs as the person who started it, and their access is re-checked **for every chunk**: if access is removed mid-job, the rest is skipped | Partly built; hardening in #52 |
+| PEP-5 | **Background workers** | A job runs as the person who started it, and their access is re-checked **for every chunk**: if they lose the job's permission the rest is cancelled; documents they can no longer see are left out of an export (and bulk coding) or fail a production run, and the difference is audited (Q-15). A worker also refuses any message whose workspace does not match the work it names, or (with signing on) whose signature is missing or wrong | Built (#100, #92, #104, #52; [runbook](../operations/message-trust.md)) |
 | PEP-6 | **PostgreSQL row-level security** | Workspace isolation only: a query can never read or write another workspace's rows, even if code has a bug | Built (#48) |
 | PEP-7 | **Audit viewer** | `Audit.Read`, `Audit.ReadSearchText`, walls on document details | Planned (#118) |
 

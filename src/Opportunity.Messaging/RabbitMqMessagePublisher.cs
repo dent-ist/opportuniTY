@@ -11,22 +11,27 @@ namespace Opportunity.Messaging;
 /// <summary>
 /// <see cref="IMessagePublisher"/> over RabbitMQ: builds the envelope (UUIDv7 message id, W3C trace context from a
 /// <c>send {queue}</c> producer span), publishes it persistent and mandatory to <see cref="RabbitMqTopology.WorkExchange"/>
-/// and completes only after the broker confirm.
+/// and completes only after the broker confirm. With envelope signing on (E05-T07) the message carries an HMAC over its
+/// body and destination (<see cref="EnvelopeSigner"/>).
 /// </summary>
 public sealed class RabbitMqMessagePublisher : IMessagePublisher, IAsyncDisposable, IDisposable
 {
     private readonly ConfirmedChannel _channel;
     private readonly MessageSerializer _serializer;
     private readonly TimeProvider _time;
+    private readonly EnvelopeSigner _signer;
 
     public RabbitMqMessagePublisher(
-        RabbitMqConnections connections, RabbitMqOptions options, MessageSerializer serializer, TimeProvider time)
+        RabbitMqConnections connections, RabbitMqOptions options, MessageSerializer serializer, TimeProvider time, EnvelopeSigner? signer = null)
     {
         ArgumentNullException.ThrowIfNull(connections);
         ArgumentNullException.ThrowIfNull(options);
         _channel = new ConfirmedChannel(connections, options);
         _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _signer = signer ?? (options.Signing.Enabled
+            ? throw new ArgumentException("Envelope signing is enabled; pass the EnvelopeSigner.", nameof(signer))
+            : EnvelopeSigner.Disabled);
     }
 
     internal ConfirmedChannel Channel => _channel;
@@ -72,10 +77,18 @@ public sealed class RabbitMqMessagePublisher : IMessagePublisher, IAsyncDisposab
             properties.CorrelationId = envelope.CorrelationId;
         }
 
+        var body = MessageSerializer.Serialize(envelope);
+        if (_signer.Enabled)
+        {
+            var signature = new Dictionary<string, object?>(StringComparer.Ordinal);
+            await _signer.SignAsync(message.Destination.Name, body, signature, cancellationToken).ConfigureAwait(false);
+            properties.Headers = signature;
+        }
+
         try
         {
             await _channel.PublishAsync(
-                RabbitMqTopology.WorkExchange, message.Destination.Name, properties, MessageSerializer.Serialize(envelope), cancellationToken)
+                RabbitMqTopology.WorkExchange, message.Destination.Name, properties, body, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (MessagePublishException ex)

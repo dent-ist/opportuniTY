@@ -27,6 +27,12 @@ public static class TransportHeaders
     /// <summary>UTC time of the last failure.</summary>
     public const string FailedAt = "opportunity-failed-at";
 
+    /// <summary>Key id of the envelope HMAC (E05-T07, <see cref="EnvelopeSigner"/>).</summary>
+    public const string SignatureKeyId = "opportunity-signature-kid";
+
+    /// <summary>The envelope HMAC, <c>v1.</c> + base64 (<see cref="EnvelopeSigner"/>).</summary>
+    public const string Signature = "opportunity-signature";
+
     /// <summary>Quorum queues count failed deliveries here (RabbitMQ 4).</summary>
     public const string DeliveryCount = "x-delivery-count";
 
@@ -71,4 +77,13 @@ public static class FailureReasons
     public const string RetriesExhausted = "retries-exhausted";
     public const string UnknownMessageType = "unknown-message-type";
     public const string UnsupportedSchemaVersion = "unsupported-schema-version";
+
+    /// <summary>E05-T07: signing is on and the message carries no signature.</summary>
+    public const string SignatureMissing = "signature-missing";
+
+    /// <summary>E05-T07: the signature does not match the envelope and destination.</summary>
+    public const string SignatureInvalid = "signature-invalid";
+
+    /// <summary>E05-T07: the signature names a key id the consumer does not accept.</summary>
+    public const string SignatureKeyUnknown = "signature-key-unknown";
 }

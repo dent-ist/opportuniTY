@@ -67,7 +67,7 @@ internal sealed class ProductionVolumeHarness : IAsyncDisposable
         new(Exports.Exports, ProductionStore, Exports.Import.Jobs, Store, Imager, Options, NullLogger<ProductionVolumeCoordinator>.Instance);
 
     public ProductionVolumeChunkExecutor Executor(IObjectStore? store = null) =>
-        new(Exports.Exports, ProductionStore, Exports.Import.Jobs, Exports.Pdp(), new UnrestrictedFieldAccess(), store ?? Store, Imager, Options);
+        new(Exports.Exports, ProductionStore, Exports.Import.Jobs, Exports.Pdp(), new UnrestrictedFieldAccess(), store ?? Store, Imager, Options, Exports.Audit);
 
     public JobChunkConsumer Consumer(IObjectStore? store = null) => new(
         Exports.Import.Chunks, [Executor(store)], new InMemoryAuditEventWriter(), new JobLeaseOptions(),
