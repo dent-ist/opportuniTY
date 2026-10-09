@@ -388,7 +388,10 @@ jobs:
           docker run --rm -v "$PWD/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro" \
             -v "$PWD/observability/alerts.yaml:/etc/prometheus/alerts.yaml:ro" --entrypoint promtool \
             "prom/prometheus:${PROMETHEUS}@${PROMETHEUS_DIGEST}" check config /etc/prometheus/prometheus.yaml
-          python3 -m json.tool observability/grafana/dashboards/opportunity-overview.json >/dev/null
+          # E19-T05: every alert fires on its induced-failure series and stays quiet on healthy ones.
+          docker run --rm -v "$PWD/observability:/etc/prometheus:ro" --entrypoint promtool \
+            "prom/prometheus:${PROMETHEUS}@${PROMETHEUS_DIGEST}" test rules /etc/prometheus/alerts.test.yaml
+          for f in observability/grafana/dashboards/*.json; do python3 -m json.tool "$f" >/dev/null; done
       - name: Preflight, build and start; waits until every service is healthy
         run: ./opportunity.sh up
       - name: Smoke checks

@@ -138,13 +138,13 @@ public static class OpportunityMetricCatalog
 
     public static MetricDefinition IndexChunkTasks { get; } = new(
         "opportunity.index.chunk_tasks", MetricKind.Gauge, "{task}",
-        "IndexChunkTask backlog by status and lane.",
-        [TelemetryAttributes.Status, TelemetryAttributes.Lane], "E07-T06");
+        "IndexChunkTasks not yet Applied (Pending, Dispatched, Running, RetryWait, Failed) by status and lane, over all workspaces; sampled by the dispatcher.",
+        [TelemetryAttributes.Status, TelemetryAttributes.Lane], "E19-T05");
 
     public static MetricDefinition IndexChunkTaskOldestAge { get; } = new(
         "opportunity.index.chunk_task.oldest_age", MetricKind.Gauge, "s",
-        "Age of the oldest IndexChunkTask per non-terminal status.",
-        [TelemetryAttributes.Status, TelemetryAttributes.Lane], "E07-T06");
+        "Age of the oldest IndexChunkTask per status and lane: since its lease began for Running (stuck >= 15 min alerts), since its commit otherwise; 0 when none.",
+        [TelemetryAttributes.Status, TelemetryAttributes.Lane], "E19-T05");
 
     public static MetricDefinition IndexChunkTaskAttempts { get; } = new(
         "opportunity.index.chunk_task.attempts", MetricKind.Counter, "{task}",
@@ -179,9 +179,19 @@ public static class OpportunityMetricCatalog
         [TelemetryAttributes.JobType, TelemetryAttributes.Status], "E06-T05");
 
     public static MetricDefinition JobsActive { get; } = new(
-        "opportunity.jobs.active", MetricKind.UpDownCounter, "{job}",
-        "Jobs not in a terminal status, by job type.",
-        [TelemetryAttributes.JobType], "E06-T05");
+        "opportunity.jobs.active", MetricKind.Gauge, "{job}",
+        "Jobs not in a terminal status, by job type, over all workspaces; sampled from PostgreSQL by the dispatcher.",
+        [TelemetryAttributes.JobType], "E19-T05");
+
+    public static MetricDefinition JobChunkBacklog { get; } = new(
+        "opportunity.job.chunk.backlog", MetricKind.Gauge, "{chunk}",
+        "Open job chunks (Pending, Dispatched, Running, RetryWait) by job type and status, over all workspaces.",
+        [TelemetryAttributes.JobType, TelemetryAttributes.Status], "E19-T05");
+
+    public static MetricDefinition JobChunkOldestAge { get; } = new(
+        "opportunity.job.chunk.oldest_age", MetricKind.Gauge, "s",
+        "Age of the oldest open job chunk by job type and status: since its claim for Running (ADR-010 §7.6: alert at 15 min), since its last status change otherwise; 0 when none.",
+        [TelemetryAttributes.JobType, TelemetryAttributes.Status], "E19-T05");
 
     public static MetricDefinition JobChunks { get; } = new(
         "opportunity.job.chunks", MetricKind.Counter, "{chunk}",
@@ -211,6 +221,7 @@ public static class OpportunityMetricCatalog
         SearchGenerationCommitted, SearchGenerationIndexed, SearchGenerationLag, SearchIndexLag, SearchCommitToSearchable,
         SecurityProjectionLag, SearchStaleVersionRejections, IndexChunkTasks, IndexChunkTaskOldestAge,
         IndexChunkTaskAttempts, IndexChunkTaskDuration, IndexBulkItems,
-        SearchRequestDuration, SearchPostFilterDropped, Jobs, JobsActive, JobChunks, JobChunkDuration, AuditWriteDuration,
+        SearchRequestDuration, SearchPostFilterDropped, Jobs, JobsActive, JobChunks, JobChunkDuration, JobChunkBacklog,
+        JobChunkOldestAge, AuditWriteDuration,
     ];
 }

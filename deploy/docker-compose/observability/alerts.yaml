@@ -1,5 +1,69 @@
-# Prometheus alert rules (ADR-017 §6; E19-T05 owns the full set and tunes thresholds). Loaded by prometheus.yaml.
+# Prometheus alert rules as code (ADR-017 §6, E19-T05). Loaded by prometheus.yaml; the metric catalog and the meaning of
+# every alert are in docs/operations/metrics.md.
+#
+# Rules:
+# - every alert has severity (critical pages, warning tickets), summary, description and a runbook_url pointing at a
+#   heading in docs/operations (AlertRunbookTests);
+# - every alert has an induced-failure case in alerts.test.yaml (`promtool test rules`, run by ObservabilityRuleTests
+#   and CI), and application metric names must exist in the catalog (ObservabilityConfigTests);
+# - application gauges are sampled by every dispatcher instance, so rules take `max` over instances.
 groups:
+  - name: opportunity-search-consistency
+    rules:
+      # §17/§26: an interactive edit is searchable within 1 s (p95). Histogram over the last 5 minutes of observations.
+      - alert: InteractiveCommitToSearchableSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="interactive"}[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Interactive edits take more than 1 s to become searchable (p95)"
+          description: "p95 commit → searchable on the interactive lane is {{ $value | humanizeDuration }} (target < 1 s)."
+          runbook_url: "docs/operations/alerts.md#interactivecommittosearchableslow"
+
+      # Q-10: security-affecting changes (restrictions, walls, privilege) reach the index within 5 s p95.
+      - alert: SecurityProjectionLagHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(opportunity_search_security_projection_lag_seconds_bucket[5m]))
+          ) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Security-affecting changes take more than 5 s to reach the search index (p95)"
+          description: "p95 security projection lag is {{ $value | humanizeDuration }} (Q-10 objective ≤ 5 s). Search post-filters still enforce access."
+          runbook_url: "docs/operations/alerts.md#securityprojectionlaghigh"
+
+      # §26: bulk work (imports, mass edits) is searchable within 2 minutes. The gauge is the age of the oldest work
+      # record above the watermark, so it also catches a pipeline that stopped completing anything.
+      - alert: BulkIndexLagHigh
+        expr: max by (opportunity_workspace_id) (opportunity_search_index_lag_seconds) > 120
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Search index lag above 2 minutes"
+          description: "The oldest committed change not yet searchable in workspace {{ $labels.opportunity_workspace_id }} is {{ $value | humanizeDuration }} old (target ≤ 2 min)."
+          runbook_url: "docs/operations/alerts.md#bulkindexlaghigh"
+
+      # §28: the visible watermark must advance while committed generations are ahead of it.
+      - alert: SearchWatermarkStuck
+        expr: |
+          max by (opportunity_workspace_id) (opportunity_search_generation_lag) > 0
+          unless on (opportunity_workspace_id)
+          max by (opportunity_workspace_id) (changes(opportunity_search_generation_indexed[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Search watermark is not advancing"
+          description: "Workspace {{ $labels.opportunity_workspace_id }} has {{ $value }} committed generations not yet searchable and its watermark has not moved for 10 minutes."
+          runbook_url: "docs/operations/alerts.md#searchwatermarkstuck"
+
   - name: opportunity-outbox
     rules:
       # E06-T04: the oldest SearchOutbox row not yet dispatched (Pending, Claimed or Failed), max over dispatcher instances.
@@ -11,5 +75,193 @@ groups:
         annotations:
           summary: "Search outbox lane {{ $labels.opportunity_lane }} is not being dispatched"
           description: "The oldest undispatched SearchOutbox row is {{ $value | humanizeDuration }} old (> 60 s). Check RabbitMQ and the dispatcher worker."
-          # Every alert links to its runbook (E06-T06); a unit test keeps the links valid.
           runbook_url: "docs/operations/re-dispatch-stuck-work.md#outboxoldestagehigh"
+
+  - name: opportunity-queues
+    rules:
+      # ADR-010 §7.6: any dead-lettered or parked message. The broker keeps DLQ messages for diagnostics (14 days); purge
+      # the queue once the PostgreSQL rows behind them are settled, which clears the alert.
+      - alert: DeadLetterQueueNotEmpty
+        expr: max by (messaging_destination_name, opportunity_queue_state) (opportunity_queue_depth{opportunity_queue_state=~"dlq|parking"}) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Messages in {{ $labels.messaging_destination_name }}"
+          description: "{{ $value }} messages in the {{ $labels.opportunity_queue_state }} queue {{ $labels.messaging_destination_name }}."
+          runbook_url: "docs/operations/alerts.md#deadletterqueuenotempty"
+
+      - alert: IndexQueueWithoutConsumers
+        expr: max by (messaging_destination_name) (opportunity_queue_consumers{messaging_destination_name=~"index\\..+"}) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No index worker consumes {{ $labels.messaging_destination_name }}"
+          description: "Index lane queue {{ $labels.messaging_destination_name }} has had no consumer for 5 minutes; nothing on that lane becomes searchable."
+          runbook_url: "docs/operations/alerts.md#indexqueuewithoutconsumers"
+
+      - alert: DeadLetterRecorderDown
+        expr: max(opportunity_queue_consumers{messaging_destination_name="opportunity.dead-letter.record"}) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The dead-letter recorder is not consuming"
+          description: "opportunity.dead-letter.record has no consumer: dead-lettered messages are not copied into PostgreSQL."
+          runbook_url: "docs/operations/alerts.md#deadletterrecorderdown"
+
+  - name: opportunity-index-and-jobs
+    rules:
+      - alert: IndexChunkTasksFailed
+        expr: max by (opportunity_lane) (opportunity_index_chunk_tasks{opportunity_status="Failed"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Failed index tasks on lane {{ $labels.opportunity_lane }}"
+          description: "{{ $value }} IndexChunkTasks are Failed: their documents stay unsearchable (and hold the watermark) until replayed."
+          runbook_url: "docs/operations/alerts.md#indexchunktasksfailed"
+
+      # ADR-010 §7.6: maximum chunk runtime is 15 minutes.
+      - alert: IndexChunkTaskRunningTooLong
+        expr: max by (opportunity_lane) (opportunity_index_chunk_task_oldest_age_seconds{opportunity_status="Running"}) >= 900
+        labels:
+          severity: warning
+        annotations:
+          summary: "An index task has been running for 15 minutes"
+          description: "The oldest Running IndexChunkTask on lane {{ $labels.opportunity_lane }} started {{ $value | humanizeDuration }} ago."
+          runbook_url: "docs/operations/alerts.md#indexchunktaskrunningtoolong"
+
+      - alert: JobChunkRunningTooLong
+        expr: max by (opportunity_job_type) (opportunity_job_chunk_oldest_age_seconds{opportunity_status="Running"}) >= 900
+        labels:
+          severity: warning
+        annotations:
+          summary: "A {{ $labels.opportunity_job_type }} chunk has been running for 15 minutes"
+          description: "The oldest Running {{ $labels.opportunity_job_type }} chunk was claimed {{ $value | humanizeDuration }} ago (ADR-010 maximum 15 min)."
+          runbook_url: "docs/operations/alerts.md#jobchunkrunningtoolong"
+
+      - alert: JobChunksFailed
+        expr: sum by (opportunity_job_type) (increase(opportunity_job_chunks_total{opportunity_outcome="failed"}[15m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.opportunity_job_type }} chunks failed"
+          description: "About {{ $value | humanize }} {{ $labels.opportunity_job_type }} chunks failed permanently in the last 15 minutes."
+          runbook_url: "docs/operations/alerts.md#jobchunksfailed"
+
+  - name: opportunity-workers
+    rules:
+      - alert: WorkerHeartbeatStale
+        expr: max by (worker_type) (opportunity_worker_heartbeat_age_seconds) > 120
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Worker {{ $labels.worker_type }} stopped reporting heartbeats"
+          description: "The last heartbeat of {{ $labels.worker_type }} is {{ $value | humanizeDuration }} old."
+          runbook_url: "docs/operations/alerts.md#workerheartbeatstale"
+
+  - name: opportunity-search-and-api
+    rules:
+      # §17: simple search p95 < 1 s, complex < 3 s (comparative on developer hardware, Q-44).
+      - alert: SearchLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, opportunity_search_class) (rate(opportunity_search_request_duration_seconds_bucket{opportunity_search_class="simple"}[5m]))
+          ) > 1
+          or
+          histogram_quantile(0.95,
+            sum by (le, opportunity_search_class) (rate(opportunity_search_request_duration_seconds_bucket{opportunity_search_class="complex"}[5m]))
+          ) > 3
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.opportunity_search_class }} searches are slow (p95)"
+          description: "p95 of {{ $labels.opportunity_search_class }} searches is {{ $value | humanizeDuration }} (targets: simple < 1 s, complex < 3 s)."
+          runbook_url: "docs/operations/alerts.md#searchlatencyhigh"
+
+      # §17: 99.9 % availability over 30 days; page at a 14.4x burn rate (2 % of the budget in 1 hour).
+      - alert: ApiErrorBudgetBurn
+        expr: |
+          (
+            sum(rate(http_server_request_duration_seconds_count{job="opportunity/opportunity-api", http_response_status_code=~"5.."}[1h]))
+            / sum(rate(http_server_request_duration_seconds_count{job="opportunity/opportunity-api"}[1h]))
+          ) > 14.4 * 0.001
+          and
+          (
+            sum(rate(http_server_request_duration_seconds_count{job="opportunity/opportunity-api", http_response_status_code=~"5.."}[5m]))
+            / sum(rate(http_server_request_duration_seconds_count{job="opportunity/opportunity-api"}[5m]))
+          ) > 14.4 * 0.001
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 5xx errors are burning the availability budget"
+          description: "{{ $value | humanizePercentage }} of API requests fail with 5xx (budget 0.1 %)."
+          runbook_url: "docs/operations/alerts.md#apierrorbudgetburn"
+
+  - name: opportunity-postgres
+    rules:
+      # RPO ≤ 5 min (§17). Needs archive_timeout ≤ 60 s (E19-T08): rows changing (so WAL being written) while the last
+      # archive is older than 4 minutes means WAL is not being archived. An idle database writes no WAL and does not
+      # alert; without archiving configured postgres_exporter reports no archive age and nothing alerts.
+      - alert: WalArchiveLagHigh
+        expr: |
+          max by (instance) (pg_stat_archiver_last_archive_age) > 240
+          and on (instance)
+          sum by (instance) (
+            increase(pg_stat_database_tup_inserted[5m]) + increase(pg_stat_database_tup_updated[5m])
+            + increase(pg_stat_database_tup_deleted[5m])
+          ) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL WAL is not being archived (RPO at risk)"
+          description: "The last WAL segment was archived {{ $value | humanizeDuration }} ago while WAL is being written (alert above 4 min; RPO 5 min)."
+          runbook_url: "docs/operations/alerts.md#walarchivelaghigh"
+
+      - alert: WalArchiveFailing
+        expr: max by (instance) (increase(pg_stat_archiver_failed_count[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL archive_command keeps failing"
+          description: "{{ $value | humanize }} WAL archive attempts failed in the last 5 minutes."
+          runbook_url: "docs/operations/alerts.md#walarchivefailing"
+
+      - alert: PostgresReplicationLagHigh
+        expr: max by (instance) (pg_replication_lag_seconds) > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL replica {{ $labels.instance }} is behind"
+          description: "Replay lag is {{ $value | humanizeDuration }}."
+          runbook_url: "docs/operations/alerts.md#postgresreplicationlaghigh"
+
+  - name: opportunity-opensearch
+    rules:
+      - alert: OpenSearchBulkRejections
+        expr: sum by (name) (increase(elasticsearch_thread_pool_rejected_count{type="write"}[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpenSearch node {{ $labels.name }} rejects bulk writes"
+          description: "{{ $value | humanize }} write thread-pool rejections in 5 minutes; index workers retry, lag grows."
+          runbook_url: "docs/operations/alerts.md#opensearchbulkrejections"
+
+      - alert: OpenSearchHeapHigh
+        expr: |
+          max by (name) (
+            elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}
+          ) > 0.9
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpenSearch node {{ $labels.name }} heap above 90 %"
+          description: "Heap use is {{ $value | humanizePercentage }} of the maximum."
+          runbook_url: "docs/operations/alerts.md#opensearchheaphigh"

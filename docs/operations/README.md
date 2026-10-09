@@ -11,6 +11,8 @@ recorder copies every dead-lettered or parked message into PostgreSQL (`jobs dlq
 | [Replay failed work](replay-failed-work.md) | chunks, index tasks or SearchOutbox rows are `Failed`; a job ended *completed with errors*; DLQ depth > 0 |
 | [Alias reindex](alias-reindex.md) | the search projection must be rebuilt into a new index generation (mapping change, corruption) |
 | [Deletion verification](deletion-verification.md) | proving that a workspace's data is gone from PostgreSQL, OpenSearch and object storage |
+| [Alert runbooks](alerts.md) | a Prometheus alert fired (one section per alert) |
+| [Metrics, dashboards and alerts](metrics.md) | finding the metric, dashboard panel or alert threshold for a pipeline signal |
 
 ## Tools
 
@@ -51,24 +53,23 @@ done, 1 not found, 2 usage.
 
 ## Alerts and metrics → runbooks
 
-The full alert set (E19-T05, #161) does not exist yet. Today `deploy/docker-compose/observability/alerts.yaml` holds one
-rule; it carries a `runbook_url`, and a unit test (`AlertRunbookTests`) fails the build when an alert has no runbook or
-links to a missing one. New alerts must follow the same rule.
+The metric catalog, dashboards and the full alert set (E19-T05, #161) are described in [metrics.md](metrics.md); each
+alert has a section in [alerts.md](alerts.md). The rules live in `deploy/docker-compose/observability/alerts.yaml`;
+every alert carries a `runbook_url` (`AlertRunbookTests` fails the build when one is missing or points at a missing
+heading) and fires in an induced-failure case of `alerts.test.yaml` (`promtool test rules`). New alerts must follow the
+same rules.
 
 | Alert / metric (ADR-017 catalog) | Runbook |
 |---|---|
 | **`OutboxOldestAgeHigh`** (`opportunity.outbox.oldest_age` > 60 s) | [re-dispatch-stuck-work.md#outboxoldestagehigh](re-dispatch-stuck-work.md#outboxoldestagehigh) |
+| **`BulkIndexLagHigh`**, **`SearchWatermarkStuck`**, **`IndexChunkTaskRunningTooLong`**, **`JobChunkRunningTooLong`**, **`IndexQueueWithoutConsumers`**, **`WorkerHeartbeatStale`** | [alerts.md](alerts.md), then [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
+| **`IndexChunkTasksFailed`**, **`JobChunksFailed`** | [alerts.md](alerts.md), then [replay-failed-work.md](replay-failed-work.md) |
+| **`DeadLetterQueueNotEmpty`** (`opportunity.queue.depth` with state `dlq`/`parking` > 0), **`DeadLetterRecorderDown`** | [alerts.md](alerts.md), then [replay-failed-work.md#dead-letter-queues](replay-failed-work.md#dead-letter-queues) |
+| **`InteractiveCommitToSearchableSlow`**, **`SecurityProjectionLagHigh`**, **`SearchLatencyHigh`**, **`ApiErrorBudgetBurn`** | [alerts.md](alerts.md) |
+| **`WalArchiveLagHigh`**, **`WalArchiveFailing`**, **`PostgresReplicationLagHigh`**, **`OpenSearchBulkRejections`**, **`OpenSearchHeapHigh`** | [alerts.md](alerts.md) |
 | `opportunity.outbox.pending`, `opportunity.outbox.publish_latency`, `opportunity.dispatcher.published` | [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
-| `opportunity.index.chunk_tasks`, `opportunity.index.chunk_task.oldest_age` | [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
-| `opportunity.queue.depth{state="ready"}`, `opportunity.queue.consumers`, `opportunity.worker.heartbeat.age` | [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
-| `opportunity.queue.depth` with `opportunity.queue.state` = `dlq` or `parking` | [replay-failed-work.md#dead-letter-queues](replay-failed-work.md#dead-letter-queues) |
-| `opportunity.index.chunk_task.attempts`, `opportunity.job.chunks` with `opportunity.outcome` = `failed` | [replay-failed-work.md](replay-failed-work.md) |
-| `opportunity.search.index_lag`, `opportunity.search.generation.lag` (= `.committed` − `.indexed`; watermark stuck; also the dispatcher's "Search watermark tick failed" / refresh warnings) | [replay-failed-work.md](replay-failed-work.md), then [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
+| `opportunity.index.chunk_tasks`, `opportunity.index.chunk_task.oldest_age`, `opportunity.job.chunk.backlog`, `opportunity.job.chunk.oldest_age`, `opportunity.jobs.active` | [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
 | `opportunity.dlq.messages` (messages recorded by the dead-letter recorder, by queue and reason) | [replay-failed-work.md#dead-letter-queues](replay-failed-work.md#dead-letter-queues) |
-| `opportunity.queue.consumers` for `opportunity.dead-letter.record` = 0, or its `ready` depth growing | the dispatcher (which runs the recorder) is down or cannot reach PostgreSQL: [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md) |
-
-ADR-010 §7.6 also names alerts for *chunk Running > 15 min* and *oldest Pending age*; they arrive with E19-T05 and map
-to [re-dispatch-stuck-work.md](re-dispatch-stuck-work.md).
 
 ## Dead-letter records
 

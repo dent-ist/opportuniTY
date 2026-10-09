@@ -1,0 +1,550 @@
+# Induced-failure tests for alerts.yaml (E19-T05): each alert gets the series a real failure produces and must fire, and
+# a healthy (or merely similar) series and must stay quiet. Run with:
+#   promtool test rules alerts.test.yaml
+# (ObservabilityRuleTests runs it in the pinned Prometheus image; CI's compose job does too.)
+rule_files:
+  - alerts.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # --- Search consistency ---------------------------------------------------------------------------------------------
+  - name: interactive commit to searchable p95 above 1 s fires; a slow bulk lane does not
+    interval: 1m
+    input_series:
+      - series: 'opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="interactive", le="0.5"}'
+        values: '0+0x30'
+      - series: 'opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="interactive", le="1"}'
+        values: '0+0x30'
+      - series: 'opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="interactive", le="2"}'
+        values: '0+60x30'
+      - series: 'opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="interactive", le="+Inf"}'
+        values: '0+60x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: InteractiveCommitToSearchableSlow
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: InteractiveCommitToSearchableSlow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Interactive edits take more than 1 s to become searchable (p95)"
+              description: "p95 commit → searchable on the interactive lane is 1.95s (target < 1 s)."
+              runbook_url: "docs/operations/alerts.md#interactivecommittosearchableslow"
+
+  - name: interactive lane under 1 s stays quiet while the bulk lane is slow
+    interval: 1m
+    input_series:
+      - series: 'opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="interactive", le="0.5"}'
+        values: '0+60x30'
+      - series: 'opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="interactive", le="+Inf"}'
+        values: '0+60x30'
+      - series: 'opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="bulk", le="60"}'
+        values: '0+0x30'
+      - series: 'opportunity_search_commit_to_searchable_seconds_bucket{opportunity_lane="bulk", le="+Inf"}'
+        values: '0+60x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: InteractiveCommitToSearchableSlow
+        exp_alerts: []
+
+  - name: security projection lag p95 above 5 s fires
+    interval: 1m
+    input_series:
+      - series: 'opportunity_search_security_projection_lag_seconds_bucket{opportunity_lane="security", le="5"}'
+        values: '0+0x20'
+      - series: 'opportunity_search_security_projection_lag_seconds_bucket{opportunity_lane="security", le="10"}'
+        values: '0+10x20'
+      - series: 'opportunity_search_security_projection_lag_seconds_bucket{opportunity_lane="security", le="+Inf"}'
+        values: '0+10x20'
+      - series: 'opportunity_search_security_projection_lag_seconds_bucket{opportunity_lane="security-bulk", le="5"}'
+        values: '0+0x20'
+      - series: 'opportunity_search_security_projection_lag_seconds_bucket{opportunity_lane="security-bulk", le="10"}'
+        values: '0+10x20'
+      - series: 'opportunity_search_security_projection_lag_seconds_bucket{opportunity_lane="security-bulk", le="+Inf"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SecurityProjectionLagHigh
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: SecurityProjectionLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Security-affecting changes take more than 5 s to reach the search index (p95)"
+              description: "p95 security projection lag is 9.75s (Q-10 objective ≤ 5 s). Search post-filters still enforce access."
+              runbook_url: "docs/operations/alerts.md#securityprojectionlaghigh"
+
+  - name: security projection lag within the objective stays quiet
+    interval: 1m
+    input_series:
+      - series: 'opportunity_search_security_projection_lag_seconds_bucket{opportunity_lane="security", le="1"}'
+        values: '0+10x20'
+      - series: 'opportunity_search_security_projection_lag_seconds_bucket{opportunity_lane="security", le="+Inf"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SecurityProjectionLagHigh
+        exp_alerts: []
+
+  - name: index lag growing past 2 minutes fires after 10 minutes; a steady short lag does not
+    interval: 1m
+    input_series:
+      # A stuck bulk pipeline: the oldest unsearchable change ages by 60 s every minute.
+      - series: 'opportunity_search_index_lag_seconds{opportunity_workspace_id="0190a1b2-0000-7000-8000-000000000001"}'
+        values: '0+60x30'
+      - series: 'opportunity_search_index_lag_seconds{opportunity_workspace_id="0190a1b2-0000-7000-8000-000000000002"}'
+        values: '5+0x30'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: BulkIndexLagHigh
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: BulkIndexLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              opportunity_workspace_id: "0190a1b2-0000-7000-8000-000000000001"
+            exp_annotations:
+              summary: "Search index lag above 2 minutes"
+              description: "The oldest committed change not yet searchable in workspace 0190a1b2-0000-7000-8000-000000000001 is 15m 0s old (target ≤ 2 min)."
+              runbook_url: "docs/operations/alerts.md#bulkindexlaghigh"
+
+  - name: a watermark that does not move while generations are pending fires; a moving one does not
+    interval: 1m
+    input_series:
+      - series: 'opportunity_search_generation_lag{opportunity_workspace_id="stuck"}'
+        values: '10+0x20'
+      - series: 'opportunity_search_generation_indexed{opportunity_workspace_id="stuck"}'
+        values: '100+0x20'
+      - series: 'opportunity_search_generation_lag{opportunity_workspace_id="moving"}'
+        values: '10+0x20'
+      - series: 'opportunity_search_generation_indexed{opportunity_workspace_id="moving"}'
+        values: '100+1x20'
+      - series: 'opportunity_search_generation_lag{opportunity_workspace_id="idle"}'
+        values: '0+0x20'
+      - series: 'opportunity_search_generation_indexed{opportunity_workspace_id="idle"}'
+        values: '100+0x20'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: SearchWatermarkStuck
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              opportunity_workspace_id: stuck
+            exp_annotations:
+              summary: "Search watermark is not advancing"
+              description: "Workspace stuck has 10 committed generations not yet searchable and its watermark has not moved for 10 minutes."
+              runbook_url: "docs/operations/alerts.md#searchwatermarkstuck"
+
+  # --- Outbox ---------------------------------------------------------------------------------------------------------
+  - name: outbox age above 60 s fires; short spikes do not
+    interval: 1m
+    input_series:
+      # Broker unreachable: the oldest undispatched interactive row ages by 30 s per minute.
+      - series: 'opportunity_outbox_oldest_age_seconds{opportunity_lane="interactive", instance="dispatcher-a"}'
+        values: '0+30x10'
+      - series: 'opportunity_outbox_oldest_age_seconds{opportunity_lane="interactive", instance="dispatcher-b"}'
+        values: '0+30x10'
+      - series: 'opportunity_outbox_oldest_age_seconds{opportunity_lane="security", instance="dispatcher-a"}'
+        values: '0 2 0 3 0 1 0 2 0 1 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: OutboxOldestAgeHigh
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: OutboxOldestAgeHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              opportunity_lane: interactive
+            exp_annotations:
+              summary: "Search outbox lane interactive is not being dispatched"
+              description: "The oldest undispatched SearchOutbox row is 2m 30s old (> 60 s). Check RabbitMQ and the dispatcher worker."
+              runbook_url: "docs/operations/re-dispatch-stuck-work.md#outboxoldestagehigh"
+
+  # --- Queues ---------------------------------------------------------------------------------------------------------
+  - name: a dead-lettered message fires at once; a deep work queue does not
+    interval: 1m
+    input_series:
+      - series: 'opportunity_queue_depth{messaging_destination_name="index.bulk.dlq", opportunity_queue_state="dlq"}'
+        values: '0 0 1 1 1 1'
+      - series: 'opportunity_queue_depth{messaging_destination_name="indexing.parking", opportunity_queue_state="parking"}'
+        values: '0+0x5'
+      - series: 'opportunity_queue_depth{messaging_destination_name="index.bulk", opportunity_queue_state="ready"}'
+        values: '5000+0x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: DeadLetterQueueNotEmpty
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: DeadLetterQueueNotEmpty
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              messaging_destination_name: index.bulk.dlq
+              opportunity_queue_state: dlq
+            exp_annotations:
+              summary: "Messages in index.bulk.dlq"
+              description: "1 messages in the dlq queue index.bulk.dlq."
+              runbook_url: "docs/operations/alerts.md#deadletterqueuenotempty"
+
+  - name: an index lane without consumers fires after 5 minutes; other queues without consumers do not
+    interval: 1m
+    input_series:
+      - series: 'opportunity_queue_consumers{messaging_destination_name="index.bulk"}'
+        values: '2 2 0+0x10'
+      - series: 'opportunity_queue_consumers{messaging_destination_name="index.interactive"}'
+        values: '16+0x12'
+      - series: 'opportunity_queue_consumers{messaging_destination_name="render.chunks"}'
+        values: '0+0x12'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: IndexQueueWithoutConsumers
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: IndexQueueWithoutConsumers
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              messaging_destination_name: index.bulk
+            exp_annotations:
+              summary: "No index worker consumes index.bulk"
+              description: "Index lane queue index.bulk has had no consumer for 5 minutes; nothing on that lane becomes searchable."
+              runbook_url: "docs/operations/alerts.md#indexqueuewithoutconsumers"
+
+  - name: the dead-letter recorder without a consumer fires
+    interval: 1m
+    input_series:
+      - series: 'opportunity_queue_consumers{messaging_destination_name="opportunity.dead-letter.record"}'
+        values: '1 1 0+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: DeadLetterRecorderDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: DeadLetterRecorderDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "The dead-letter recorder is not consuming"
+              description: "opportunity.dead-letter.record has no consumer: dead-lettered messages are not copied into PostgreSQL."
+              runbook_url: "docs/operations/alerts.md#deadletterrecorderdown"
+
+  # --- Index tasks and jobs -------------------------------------------------------------------------------------------
+  - name: failed index tasks fire after 5 minutes
+    interval: 1m
+    input_series:
+      - series: 'opportunity_index_chunk_tasks{opportunity_status="Failed", opportunity_lane="bulk"}'
+        values: '0 0 2+0x10'
+      - series: 'opportunity_index_chunk_tasks{opportunity_status="Pending", opportunity_lane="bulk"}'
+        values: '500+0x12'
+      - series: 'opportunity_index_chunk_tasks{opportunity_status="Failed", opportunity_lane="security-bulk"}'
+        values: '0+0x12'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: IndexChunkTasksFailed
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: IndexChunkTasksFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              opportunity_lane: bulk
+            exp_annotations:
+              summary: "Failed index tasks on lane bulk"
+              description: "2 IndexChunkTasks are Failed: their documents stay unsearchable (and hold the watermark) until replayed."
+              runbook_url: "docs/operations/alerts.md#indexchunktasksfailed"
+
+  - name: an index task Running for 15 minutes fires; old Pending tasks do not
+    interval: 1m
+    input_series:
+      - series: 'opportunity_index_chunk_task_oldest_age_seconds{opportunity_status="Running", opportunity_lane="bulk"}'
+        values: '0+60x20'
+      - series: 'opportunity_index_chunk_task_oldest_age_seconds{opportunity_status="Pending", opportunity_lane="security-bulk"}'
+        values: '3600+60x20'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: IndexChunkTaskRunningTooLong
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: IndexChunkTaskRunningTooLong
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              opportunity_lane: bulk
+            exp_annotations:
+              summary: "An index task has been running for 15 minutes"
+              description: "The oldest Running IndexChunkTask on lane bulk started 15m 0s ago."
+              runbook_url: "docs/operations/alerts.md#indexchunktaskrunningtoolong"
+
+  - name: a job chunk Running for 15 minutes fires
+    interval: 1m
+    input_series:
+      - series: 'opportunity_job_chunk_oldest_age_seconds{opportunity_job_type="Import", opportunity_status="Running"}'
+        values: '0+60x20'
+      - series: 'opportunity_job_chunk_oldest_age_seconds{opportunity_job_type="BulkCoding", opportunity_status="Running"}'
+        values: '30+0x20'
+      - series: 'opportunity_job_chunk_oldest_age_seconds{opportunity_job_type="BulkCoding", opportunity_status="Pending"}'
+        values: '7200+0x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: JobChunkRunningTooLong
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              opportunity_job_type: Import
+            exp_annotations:
+              summary: "A Import chunk has been running for 15 minutes"
+              description: "The oldest Running Import chunk was claimed 16m 0s ago (ADR-010 maximum 15 min)."
+              runbook_url: "docs/operations/alerts.md#jobchunkrunningtoolong"
+
+  - name: a permanently failed job chunk fires; retries and commits do not
+    interval: 1m
+    input_series:
+      - series: 'opportunity_job_chunks_total{opportunity_job_type="Import", opportunity_outcome="failed"}'
+        values: '0 0 0 1 1 1 1'
+      - series: 'opportunity_job_chunks_total{opportunity_job_type="BulkCoding", opportunity_outcome="retry"}'
+        values: '0+3x6'
+      - series: 'opportunity_job_chunks_total{opportunity_job_type="BulkCoding", opportunity_outcome="committed"}'
+        values: '0+50x6'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: JobChunksFailed
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: JobChunksFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              opportunity_job_type: Import
+            exp_annotations:
+              summary: "Import chunks failed"
+              description: "About 1 Import chunks failed permanently in the last 15 minutes."
+              runbook_url: "docs/operations/alerts.md#jobchunksfailed"
+
+  # --- Workers --------------------------------------------------------------------------------------------------------
+  - name: a worker without heartbeats for 2 minutes fires
+    interval: 1m
+    input_series:
+      - series: 'opportunity_worker_heartbeat_age_seconds{worker_type="indexing"}'
+        values: '5 5 5 60 120 180 240 300 360 420'
+      - series: 'opportunity_worker_heartbeat_age_seconds{worker_type="dispatcher"}'
+        values: '5+0x9'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: WorkerHeartbeatStale
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: WorkerHeartbeatStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              worker_type: indexing
+            exp_annotations:
+              summary: "Worker indexing stopped reporting heartbeats"
+              description: "The last heartbeat of indexing is 5m 0s old."
+              runbook_url: "docs/operations/alerts.md#workerheartbeatstale"
+
+  # --- Search latency and API -----------------------------------------------------------------------------------------
+  - name: complex searches above 3 s p95 fire; fast simple searches do not
+    interval: 1m
+    input_series:
+      - series: 'opportunity_search_request_duration_seconds_bucket{opportunity_search_class="complex", opportunity_outcome="ok", le="1"}'
+        values: '0+0x30'
+      - series: 'opportunity_search_request_duration_seconds_bucket{opportunity_search_class="complex", opportunity_outcome="ok", le="5"}'
+        values: '0+20x30'
+      - series: 'opportunity_search_request_duration_seconds_bucket{opportunity_search_class="complex", opportunity_outcome="ok", le="+Inf"}'
+        values: '0+20x30'
+      - series: 'opportunity_search_request_duration_seconds_bucket{opportunity_search_class="simple", opportunity_outcome="ok", le="0.25"}'
+        values: '0+100x30'
+      - series: 'opportunity_search_request_duration_seconds_bucket{opportunity_search_class="simple", opportunity_outcome="ok", le="+Inf"}'
+        values: '0+100x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: SearchLatencyHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              opportunity_search_class: complex
+            exp_annotations:
+              summary: "complex searches are slow (p95)"
+              description: "p95 of complex searches is 4.8s (targets: simple < 1 s, complex < 3 s)."
+              runbook_url: "docs/operations/alerts.md#searchlatencyhigh"
+
+  - name: API 5xx above the burn-rate threshold fires; a healthy API does not
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="opportunity/opportunity-api", http_response_status_code="200"}'
+        values: '0+100x20'
+      - series: 'http_server_request_duration_seconds_count{job="opportunity/opportunity-api", http_response_status_code="500"}'
+        values: '0+10x20'
+      - series: 'http_server_request_duration_seconds_count{job="opportunity/opportunity-worker-indexing", http_response_status_code="500"}'
+        values: '0+1000x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ApiErrorBudgetBurn
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "API 5xx errors are burning the availability budget"
+              description: "9.091% of API requests fail with 5xx (budget 0.1 %)."
+              runbook_url: "docs/operations/alerts.md#apierrorbudgetburn"
+
+  - name: a healthy API stays quiet
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="opportunity/opportunity-api", http_response_status_code="200"}'
+        values: '0+1000x20'
+      - series: 'http_server_request_duration_seconds_count{job="opportunity/opportunity-api", http_response_status_code="503"}'
+        values: '0+0x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ApiErrorBudgetBurn
+        exp_alerts: []
+
+  # --- PostgreSQL -----------------------------------------------------------------------------------------------------
+  - name: WAL written but not archived for more than 4 minutes fires
+    interval: 1m
+    input_series:
+      # archive_command hangs: nothing is archived while the database keeps writing WAL.
+      - series: 'pg_stat_archiver_last_archive_age{instance="postgres-exporter:9187"}'
+        values: '0+60x10'
+      - series: 'pg_stat_database_tup_inserted{instance="postgres-exporter:9187", datname="opportunity"}'
+        values: '0+500x10'
+      - series: 'pg_stat_database_tup_updated{instance="postgres-exporter:9187", datname="opportunity"}'
+        values: '0+200x10'
+      - series: 'pg_stat_database_tup_deleted{instance="postgres-exporter:9187", datname="opportunity"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: WalArchiveLagHigh
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: WalArchiveLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: postgres-exporter:9187
+            exp_annotations:
+              summary: "PostgreSQL WAL is not being archived (RPO at risk)"
+              description: "The last WAL segment was archived 6m 0s ago while WAL is being written (alert above 4 min; RPO 5 min)."
+              runbook_url: "docs/operations/alerts.md#walarchivelaghigh"
+
+  - name: an idle database with an old last archive and a healthy archiver stay quiet
+    interval: 1m
+    input_series:
+      # Idle: no rows change, so no WAL waits to be archived.
+      - series: 'pg_stat_archiver_last_archive_age{instance="idle:9187"}'
+        values: '0+60x10'
+      - series: 'pg_stat_database_tup_inserted{instance="idle:9187", datname="opportunity"}'
+        values: '4096+0x10'
+      - series: 'pg_stat_database_tup_updated{instance="idle:9187", datname="opportunity"}'
+        values: '512+0x10'
+      - series: 'pg_stat_database_tup_deleted{instance="idle:9187", datname="opportunity"}'
+        values: '0+0x10'
+      # Busy and healthy: archive_timeout (60 s) archives a segment every minute.
+      - series: 'pg_stat_archiver_last_archive_age{instance="busy:9187"}'
+        values: '30+0x10'
+      - series: 'pg_stat_database_tup_inserted{instance="busy:9187", datname="opportunity"}'
+        values: '0+500x10'
+      - series: 'pg_stat_database_tup_updated{instance="busy:9187", datname="opportunity"}'
+        values: '0+0x10'
+      - series: 'pg_stat_database_tup_deleted{instance="busy:9187", datname="opportunity"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WalArchiveLagHigh
+        exp_alerts: []
+
+  - name: a failing archive_command fires after 5 minutes
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_archiver_failed_count{instance="postgres-exporter:9187"}'
+        values: '0 0 1+1x12'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: WalArchiveFailing
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: WalArchiveFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: postgres-exporter:9187
+            exp_annotations:
+              summary: "PostgreSQL archive_command keeps failing"
+              description: "5 WAL archive attempts failed in the last 5 minutes."
+              runbook_url: "docs/operations/alerts.md#walarchivefailing"
+
+  - name: a replica more than 60 s behind fires after 5 minutes
+    interval: 1m
+    input_series:
+      - series: 'pg_replication_lag_seconds{instance="replica:9187"}'
+        values: '0+30x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PostgresReplicationLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: replica:9187
+            exp_annotations:
+              summary: "PostgreSQL replica replica:9187 is behind"
+              description: "Replay lag is 5m 0s."
+              runbook_url: "docs/operations/alerts.md#postgresreplicationlaghigh"
+
+  # --- OpenSearch -----------------------------------------------------------------------------------------------------
+  - name: bulk write rejections fire; search rejections do not
+    interval: 1m
+    input_series:
+      - series: 'elasticsearch_thread_pool_rejected_count{name="opensearch-1", type="write"}'
+        values: '0 0 5 10 15 20'
+      - series: 'elasticsearch_thread_pool_rejected_count{name="opensearch-1", type="search"}'
+        values: '0+100x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: OpenSearchBulkRejections
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: OpenSearchBulkRejections
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: opensearch-1
+            exp_annotations:
+              summary: "OpenSearch node opensearch-1 rejects bulk writes"
+              description: "15 write thread-pool rejections in 5 minutes; index workers retry, lag grows."
+              runbook_url: "docs/operations/alerts.md#opensearchbulkrejections"
+
+  - name: OpenSearch heap above 90 % for 15 minutes fires
+    interval: 1m
+    input_series:
+      - series: 'elasticsearch_jvm_memory_used_bytes{name="opensearch-1", area="heap"}'
+        values: '950+0x20'
+      - series: 'elasticsearch_jvm_memory_max_bytes{name="opensearch-1", area="heap"}'
+        values: '1000+0x20'
+      - series: 'elasticsearch_jvm_memory_used_bytes{name="opensearch-2", area="heap"}'
+        values: '500+0x20'
+      - series: 'elasticsearch_jvm_memory_max_bytes{name="opensearch-2", area="heap"}'
+        values: '1000+0x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: OpenSearchHeapHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: OpenSearchHeapHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              name: opensearch-1
+            exp_annotations:
+              summary: "OpenSearch node opensearch-1 heap above 90 %"
+              description: "Heap use is 95% of the maximum."
+              runbook_url: "docs/operations/alerts.md#opensearchheaphigh"

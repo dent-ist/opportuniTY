@@ -141,6 +141,13 @@ public interface ISearchWorkMaintenance
     /// <summary>SearchOutbox backlog of one workspace per lane (lanes without rows are left out).</summary>
     Task<IReadOnlyList<OutboxLaneBacklog>> GetOutboxLaneBacklogAsync(Guid workspaceId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// IndexChunkTasks not yet Applied, open job chunks and unfinished jobs of one workspace, grouped for the pipeline
+    /// gauges (E19-T05): <c>opportunity.index.chunk_tasks</c>, <c>opportunity.job.chunk.backlog</c>,
+    /// <c>opportunity.jobs.active</c> and their oldest ages. Groups without rows are left out.
+    /// </summary>
+    Task<PipelineBacklog> GetPipelineBacklogAsync(Guid workspaceId, CancellationToken cancellationToken = default);
+
     /// <summary>Workspaces whose work the dispatcher and the recovery visit (every workspace not yet purged).</summary>
     Task<IReadOnlyList<Guid>> GetWorkspacesAsync(CancellationToken cancellationToken = default);
 
