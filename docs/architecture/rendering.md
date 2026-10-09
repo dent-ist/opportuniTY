@@ -185,6 +185,15 @@ page's resolution. `PageEndorser.Version` (pipeline version, Skia, LibTiff.NET, 
 produced images; a unit test pins the SHA-256 of a generated page, so a library or font upgrade that changes the output
 fails it until the pipeline version is bumped. The sandbox and in-process results are tested to be byte-identical.
 
+### Burning redactions (E12-T05)
+
+An endorsement request may carry the page's redactions (normalized rectangles, ADR-012 §2). They are burned into the
+page's own pixels before the bands and stamps are added, in the same sandboxed call: a black box is filled black and a
+labelled box white with its reason's label in black (aliased, embedded font), framed just outside the box. Integer
+arithmetic only, so the output stays deterministic; the endorsed page reports where the source page sits in it
+(`PageTopPx`, `PageHeightPx`). The production volume writer (docs/architecture/production-volumes.md) calls it through
+`IProducedPageImager`, implemented here over the render session.
+
 ## Viewer delivery (E11-T03)
 
 The protected-content gateway serves only derived renditions inline, and only as `image/png`, `image/jpeg` or

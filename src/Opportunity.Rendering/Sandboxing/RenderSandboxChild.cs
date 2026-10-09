@@ -151,9 +151,9 @@ public static class RenderSandboxChild
         {
             var file = Endorsing.PageEndorser.EndorseToFile(new Endorsing.EndorseRequest(
                 request.InputPath, endorse.Frame, request.OutputDirectory, endorse.Format, endorse.Layout, endorse.Dpi, endorse.BlankWidthPx,
-                endorse.BlankHeightPx), settings);
+                endorse.BlankHeightPx, endorse.Redactions), settings);
             Send(writer, new SandboxMessage(SandboxMessageTypes.Endorsed, Endorsed: new SandboxEndorsed(
-                Path.GetFileName(file.Path), file.WidthPx, file.HeightPx, file.Dpi, file.Format, file.ColorMode)));
+                Path.GetFileName(file.Path), file.WidthPx, file.HeightPx, file.Dpi, file.Format, file.ColorMode, file.PageTopPx, file.PageHeightPx)));
         }
         catch (RenderException ex)
         {

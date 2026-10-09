@@ -85,6 +85,7 @@ public static class ProductionContentRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<IApiEndpointModule, ProductionContentEndpoints>();
+        services.AddProductionVolumeContentEndpoints();
         return services;
     }
 }

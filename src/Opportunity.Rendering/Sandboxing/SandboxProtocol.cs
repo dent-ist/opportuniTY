@@ -52,10 +52,12 @@ internal sealed record SandboxLimits(long CpuSeconds, long DataBytes, long FileB
 internal sealed record SandboxRenderRequest(string? InputPath, string OutputDirectory, IReadOnlyList<int>? Pages, bool Review, SandboxEndorseRequest? Endorse = null);
 
 internal sealed record SandboxEndorseRequest(
-    int Frame, PageImageFormat Format, Endorsing.EndorsementLayout Layout, int? Dpi, int BlankWidthPx, int BlankHeightPx);
+    int Frame, PageImageFormat Format, Endorsing.EndorsementLayout Layout, int? Dpi, int BlankWidthPx, int BlankHeightPx,
+    IReadOnlyList<Endorsing.BurnedRedaction>? Redactions = null);
 
 /// <param name="FileName">A plain file name inside the request's output directory.</param>
-internal sealed record SandboxEndorsed(string FileName, int WidthPx, int HeightPx, int Dpi, PageImageFormat Format, PageColorMode ColorMode);
+internal sealed record SandboxEndorsed(
+    string FileName, int WidthPx, int HeightPx, int Dpi, PageImageFormat Format, PageColorMode ColorMode, int PageTopPx = 0, int PageHeightPx = 0);
 
 internal static class SandboxMessageTypes
 {

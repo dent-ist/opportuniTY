@@ -4,17 +4,23 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Npgsql;
 
+using Opportunity.Application.Fields;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
 using Opportunity.Contracts.Messaging.Jobs;
 using Opportunity.Data.Audit;
+using Opportunity.Data.Exports;
+using Opportunity.Data.Identity;
 using Opportunity.Data.Jobs;
+using Opportunity.Data.Productions;
 using Opportunity.Data.Rendering;
 using Opportunity.Data.SearchWork;
 using Opportunity.Jobs;
 using Opportunity.Messaging;
+using Opportunity.Production.Volumes;
 using Opportunity.Rendering.Jobs;
 using Opportunity.Rendering.Sandboxing;
+using Opportunity.Security.Authorization;
 
 namespace Opportunity.Hosting.Workers;
 
@@ -26,6 +32,11 @@ namespace Opportunity.Hosting.Workers;
 /// storage, ADR-015 D12.1); without that section the module registers nothing beyond its placeholder. With RabbitMQ
 /// configured the consumer is bound to <c>render.chunks</c>, where the job dispatcher publishes render chunks (failed
 /// deliveries are retried and parked per ADR-010 §7 by the messaging layer).
+/// <para>
+/// It also writes production volumes (E12-T05): their pages are decoded, redacted and endorsed in the render sandbox,
+/// so the <see cref="ProductionVolumeChunkExecutor"/> and the <see cref="ProductionVolumeCoordinatorService"/> run here,
+/// with the PDP for the per-chunk re-authorization of the run's initiator (Q-15).
+/// </para>
 /// </summary>
 public static class RenderingWorkerModule
 {
@@ -47,6 +58,15 @@ public static class RenderingWorkerModule
         services.AddJobChunkConsumer();
         services.AddRenderJobs(BindOptions(configuration), sandbox: BindSandboxOptions(configuration));
 
+        // Production volumes (E12-T05).
+        services.AddPostgresSecurityState();
+        services.AddOpportunityAuthorization();
+        services.AddAuthorization();
+        services.TryAddSingleton<IFieldAccessFilter, UnrestrictedFieldAccess>();
+        services.AddPostgresExportStore();
+        services.AddPostgresProductionStore();
+        services.AddProductionVolumeJobs(BindVolumeOptions(configuration));
+
         if (!string.IsNullOrWhiteSpace(configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)))
         {
             services.AddRabbitMqMessaging(RabbitMqOptions.Bind(configuration));
@@ -61,6 +81,18 @@ public static class RenderingWorkerModule
     {
         ArgumentNullException.ThrowIfNull(configuration);
         return new RenderJobOptions { TempDirectory = configuration["Render:TempDirectory"] };
+    }
+
+    /// <summary><c>Production:Volume:DocumentConcurrency</c> and <c>Production:Volume:TempDirectory</c> (E12-T05).</summary>
+    public static ProductionVolumeOptions BindVolumeOptions(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var defaults = new ProductionVolumeOptions();
+        return new ProductionVolumeOptions
+        {
+            DocumentConcurrency = configuration.GetValue("Production:Volume:DocumentConcurrency", defaults.DocumentConcurrency),
+            TempDirectory = configuration["Production:Volume:TempDirectory"] ?? configuration["Render:TempDirectory"],
+        };
     }
 
     /// <summary>

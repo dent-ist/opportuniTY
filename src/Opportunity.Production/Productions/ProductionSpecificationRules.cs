@@ -44,6 +44,44 @@ public static partial class ProductionSpecificationRules
         new(["avi", "m4a", "mov", "mp3", "mp4", "wav", "wma", "wmv"], ProductionOutputResource.Native),
     ];
 
+    /// <summary>Pages of these file types are produced in the colour format (Q-21: by file type, not by detection).</summary>
+    public static IReadOnlyList<string> DefaultColorFileTypes { get; } = ["bmp", "gif", "heic", "jpeg", "jpg", "png", "ppt", "pptx"];
+
+    public const string DefaultWithheldText = "Withheld – Privileged";
+    public const string DefaultTechnicalIssueText = "Technical Issue";
+    public const string DefaultNativeSlipSheetText = "Document Produced in Native Format";
+    public const int MaxPlaceholderLength = 200;
+
+    /// <summary>
+    /// The default DAT columns of a production (E12-T05, Q-19): header and source in order. Metadata fields that are not
+    /// system fields (Custodian, From, To, CC, BCC, Subject) are found by name and left out when the workspace has none.
+    /// </summary>
+    private static readonly (string Header, ExportColumnKind? Column, int? FieldId, string? FieldName)[] DefaultLoadFileColumns =
+    [
+        ("ProdBegBates", ExportColumnKind.ProdBegBates, null, null),
+        ("ProdEndBates", ExportColumnKind.ProdEndBates, null, null),
+        ("ProdBegAttach", ExportColumnKind.ProdBegAttach, null, null),
+        ("ProdEndAttach", ExportColumnKind.ProdEndAttach, null, null),
+        ("Custodian", null, null, "Custodian"),
+        ("AllCustodians", null, SystemFields.AllCustodians, null),
+        ("FileName", null, SystemFields.FileName, null),
+        ("FileExtension", null, SystemFields.FileExtension, null),
+        ("DateSent", null, SystemFields.DateSent, null),
+        ("DateCreated", null, SystemFields.DateCreated, null),
+        ("DateLastModified", null, SystemFields.DateLastModified, null),
+        ("From", null, null, "From"),
+        ("To", null, null, "To"),
+        ("CC", null, null, "CC"),
+        ("BCC", null, null, "BCC"),
+        ("Subject", null, null, "Subject"),
+        ("MD5Hash", null, SystemFields.Md5, null),
+        ("Confidentiality", ExportColumnKind.Confidentiality, null, null),
+        ("Redacted", ExportColumnKind.Redacted, null, null),
+        ("PageCount", ExportColumnKind.ProducedPages, null, null),
+        ("NativeLink", ExportColumnKind.NativePath, null, null),
+        ("TextLink", ExportColumnKind.TextPath, null, null),
+    ];
+
     public static IReadOnlyList<ProductionEndorsement> DefaultEndorsements { get; } =
     [
         new(EndorsementPositionResource.BottomLeft, "{confidentiality}"),
@@ -164,6 +202,24 @@ public static partial class ProductionSpecificationRules
             Add("images.dpi", "Resolution is 72 to 600 DPI.");
         }
 
+        var colorTypes = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var raw in images.ColorFileTypes ?? DefaultColorFileTypes)
+        {
+            if (NormalizeExtension(raw) is not { } extension || !ExtensionPattern().IsMatch(extension))
+            {
+                Add("images.colorFileTypes", $"'{raw}' is not a file extension (letters, digits, '_', '+', '-'; up to 20).");
+            }
+            else
+            {
+                colorTypes.Add(extension);
+            }
+        }
+
+        if (colorTypes.Count > MaxExtensionsPerRule)
+        {
+            Add("images.colorFileTypes", string.Create(CultureInfo.InvariantCulture, $"At most {MaxExtensionsPerRule} colour file types."));
+        }
+
         // Output by file type.
         var defaultOutput = input.DefaultOutput ?? ProductionOutputResource.Image;
         if (!Enum.IsDefined(defaultOutput))
@@ -213,19 +269,26 @@ public static partial class ProductionSpecificationRules
         // Load file (as for exports) plus date format and time zone.
         var loadFile = input.LoadFile ?? new ProductionLoadFileSettings();
         var includeNatives = defaultOutput == ProductionOutputResource.Native || rules.Any(r => r.Output == ProductionOutputResource.Native);
+        // E12-T05: the production volume defaults to <Bates prefix>_VOL001 (ticket review), named like an export's otherwise.
+        var volume = loadFile.Volume ?? new ExportVolumeRequest();
+        if (string.IsNullOrWhiteSpace(volume.Prefix))
+        {
+            volume = volume with { Prefix = DefaultVolumePrefix(prefix) };
+        }
+
         var exportRequest = new CreateExportRequest(
             Guid.Empty,
-            loadFile.Fields is { Count: > 0 } fields ? fields : [new ExportFieldRequest(FieldId: SystemFields.ControlNumber)],
+            loadFile.Fields is { Count: > 0 } fields ? fields : DefaultLoadFileFields(catalog, restricted, includeNatives, input.IncludeText),
             null,
             loadFile.Delimiters,
             loadFile.Encoding,
             includeNatives,
             input.IncludeText,
             IncludeImages: true,
-            loadFile.Volume,
+            volume,
             loadFile.PathSeparator,
             loadFile.TextEncoding);
-        var settings = ExportSettingsRules.Normalize(exportRequest, catalog, restricted, out var loadFileErrors);
+        var settings = ExportSettingsRules.Normalize(exportRequest, catalog, restricted, production: true, out var loadFileErrors);
         foreach (var (key, messages) in loadFileErrors)
         {
             foreach (var message in messages)
@@ -296,6 +359,27 @@ public static partial class ProductionSpecificationRules
 
         var designations = NormalizeDesignations(input.Designations, catalog, restricted, Add);
 
+        // Placeholder, technical-issue and slip-sheet texts (E12-T05).
+        var placeholders = input.Placeholders ?? new ProductionPlaceholderSettings();
+        string Placeholder(string key, string? text, string fallback)
+        {
+            var value = text is null ? fallback : text.Trim();
+            if (value.Length is 0 or > MaxPlaceholderLength || value.Any(char.IsControl))
+            {
+                Add("placeholders." + key, string.Create(CultureInfo.InvariantCulture, $"A placeholder text has 1 to {MaxPlaceholderLength} characters and no control characters."));
+            }
+            else if (TokenPattern().Matches(value).Select(m => m.Groups[1].Value).FirstOrDefault(t => !Tokens.Contains(t)) is { } unknown)
+            {
+                Add("placeholders." + key, $"Unknown placeholder {{{unknown}}}; use {{bates}}, {{confidentiality}} or {{production}}.");
+            }
+
+            return value;
+        }
+
+        var withheld = Placeholder("withheld", placeholders.Withheld, DefaultWithheldText);
+        var technical = Placeholder("technicalIssue", placeholders.TechnicalIssue, DefaultTechnicalIssueText);
+        var slipSheet = Placeholder("nativeSlipSheet", placeholders.NativeSlipSheet, DefaultNativeSlipSheetText);
+
         if (problems.Count > 0 || settings is null || designations is null)
         {
             errors = Collect(problems);
@@ -305,7 +389,7 @@ public static partial class ProductionSpecificationRules
         errors = [];
         var normalized = new ProductionSpecification(
             new ProductionBatesSettings(prefix, bates.StartNumber, bates.Padding, suffix, bates.Level),
-            new ProductionImageSettings(format, colorFormat, dpi),
+            new ProductionImageSettings(format, colorFormat, dpi, [.. colorTypes]),
             defaultOutput,
             rules,
             input.IncludeText,
@@ -321,9 +405,51 @@ public static partial class ProductionSpecificationRules
                 dateFormat,
                 timeZone),
             new ProductionEndorsementSettings([.. stamps.OrderBy(s => s.Position)], fontSize, endorsements.ExpandCanvas ?? true, margin),
-            designations);
+            designations,
+            new ProductionPlaceholderSettings(withheld, technical, slipSheet),
+            input.RedactionSetId);
         var json = Serialize(normalized);
         return new NormalizedSpecification(normalized, json, Hash(json));
+    }
+
+    /// <summary>The default volume prefix of a Bates prefix: <c>ABC</c> → <c>ABC_VOL</c> (letters, digits, '_' and '-', at most 20).</summary>
+    public static string DefaultVolumePrefix(string batesPrefix)
+    {
+        var safe = new string([.. (batesPrefix ?? string.Empty).Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_')]);
+        return (safe.Length > 16 ? safe[..16] : safe) + "_VOL";
+    }
+
+    /// <summary>The default production DAT columns that exist in the workspace and the caller may see (E12-T05).</summary>
+    public static IReadOnlyList<ExportFieldRequest> DefaultLoadFileFields(FieldCatalog catalog, IReadOnlySet<int> restricted, bool includeNatives, bool includeText)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(restricted);
+        var fields = new List<ExportFieldRequest>();
+        foreach (var (header, column, fieldId, fieldName) in DefaultLoadFileColumns)
+        {
+            if (column is { } kind)
+            {
+                if ((kind == ExportColumnKind.NativePath && !includeNatives) || (kind == ExportColumnKind.TextPath && !includeText))
+                {
+                    continue;
+                }
+
+                fields.Add(new ExportFieldRequest(Column: Enum.Parse<ExportColumnResource>(kind.ToString()), Header: header));
+                continue;
+            }
+
+            var field = fieldId is { } id
+                ? catalog.Find(id)
+                : catalog.Fields.Where(f => !f.IsDeleted && !f.IsSystem
+                        && string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(f => f.FieldId).FirstOrDefault();
+            if (field is { IsDeleted: false } && !restricted.Contains(field.FieldId))
+            {
+                fields.Add(new ExportFieldRequest(FieldId: field.FieldId, Header: header));
+            }
+        }
+
+        return fields;
     }
 
     /// <summary>The designation levels of a normalized specification, lowest first.</summary>

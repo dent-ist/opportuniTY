@@ -238,6 +238,10 @@ public sealed record BatesIntegrityReport(
 /// <param name="PageCount">Pages of the member's active page set at the freeze.</param>
 /// <param name="Designation">The designation legend frozen at finalization (E12-T04); empty when nothing is stamped.</param>
 /// <param name="DesignationSource">Null until the production is finalized (and for productions finalized before E12-T04).</param>
+/// <param name="PageSetId">The page set frozen at finalization (E12-T05); null before.</param>
+/// <param name="RedactionSetId">The Redaction Set burned into the member's images, frozen at finalization (E12-T05).</param>
+/// <param name="RedactionVersion">The member's redaction version in that set at finalization (0: never redacted).</param>
+/// <param name="RedactionCount">Active redactions at that version.</param>
 public sealed record ProductionDocumentRow(
     long Sequence,
     Guid DocumentId,
@@ -256,7 +260,11 @@ public sealed record ProductionDocumentRow(
     int PageCount = 0,
     string? Designation = null,
     int? DesignationChoiceId = null,
-    DesignationSource? DesignationSource = null);
+    DesignationSource? DesignationSource = null,
+    Guid? PageSetId = null,
+    Guid? RedactionSetId = null,
+    long? RedactionVersion = null,
+    int? RedactionCount = null);
 
 /// <summary>
 /// What decides a production's designations (E12-T04, from its specification): the designation field, its levels
@@ -312,6 +320,15 @@ public enum DesignationOverrideStatus
 
 /// <summary>Counts of the designations frozen at finalization, by source (audited).</summary>
 public sealed record DesignationFreezeSummary(long Designated, long ByDocument, long ByFamily, long ByOverride);
+
+/// <summary>One page of a frozen page set with the stored image a production decodes (E12-T05).</summary>
+/// <param name="Image">Null when the page has no stored, committed image (the page becomes a technical-issue page).</param>
+/// <param name="Frame">The page's frame in a multi-page image file.</param>
+public sealed record ProducedSourcePage(int Ordinal, Guid PageSetId, Exports.ExportSourceObject? Image, Core.Pages.PageImageFormat? Format, int Frame);
+
+/// <summary>One redaction of a member as of its frozen version (E12-T05): the page, the box and how it is drawn.</summary>
+/// <param name="Label">The reason's box label, printed inside a labelled box.</param>
+public sealed record FrozenRedaction(Guid RedactionId, Guid PageSetId, int Ordinal, Core.Redactions.NormalizedRect Rect, Core.Redactions.RedactionType Type, string Label);
 
 /// <summary>A cross-reference hit: a document's numbers in a production.</summary>
 public sealed record BatesLookupRow(
@@ -410,10 +427,26 @@ public interface IProductionStore
     /// privilege conflicts exist unless <paramref name="conflictOverride"/> is given (E13-T02), and (<see cref="ProductionWriteStatus.DesignationRefused"/>)
     /// when a member carries a designation the levels do not list, or a designated member would get no stamp.
     /// </summary>
+    /// <remarks>
+    /// E12-T05: every member's active page set and its redaction version in <paramref name="redactionSetId"/> (the
+    /// workspace's Default set when null) are frozen too, so every volume run burns the same redactions on the same pages
+    /// (Q-08). A named set that does not exist refuses the finalization (<see cref="ProductionWriteStatus.InvalidState"/>).
+    /// </remarks>
     Task<ProductionWriteResult> FinalizeAsync(
         Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
         IReadOnlyList<AuditEvent> audit, DesignationPlan designations, AuditEvent designationAudit, PrivilegeConflictOverrideWrite? conflictOverride = null,
-        CancellationToken cancellationToken = default);
+        Guid? redactionSetId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The pages of frozen page sets (E12-T05) by document, in ordinal order, each with the image a production decodes
+    /// (the original, else the review raster) and its frame in that file.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<ProducedSourcePage>>> ReadSourcePagesAsync(
+        Guid workspaceId, IReadOnlyCollection<(Guid DocumentId, Guid PageSetId)> pageSets, CancellationToken cancellationToken = default);
+
+    /// <summary>The redactions of each document in the set as of its frozen version (ADR-012 §3.5), with their box labels.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<FrozenRedaction>>> ReadFrozenRedactionsAsync(
+        Guid workspaceId, Guid redactionSetId, IReadOnlyCollection<(Guid DocumentId, long Version)> documents, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// A page of the members' designations in production order: frozen values once finalized (or voided), else

@@ -6,6 +6,7 @@ using BitMiracle.LibTiff.Classic;
 
 using Opportunity.Core.Pages;
 using Opportunity.Core.Productions;
+using Opportunity.Core.Redactions;
 using Opportunity.DataGenerator.Corpus.Volumes;
 using Opportunity.Rendering.Endorsing;
 using Opportunity.Rendering.Renderers;
@@ -216,6 +217,56 @@ public sealed class PageEndorserTests : IDisposable
         control.Should().Throw<ArgumentException>();
         var webp = () => PageEndorser.Validate(Request(tiff, PageImageFormat.WebP));
         webp.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Redactions_are_burned_into_the_page_pixels_before_it_is_endorsed_deterministically()
+    {
+        // E12-T05: a black box is black to the last device pixel (rounded outward); a labelled box is white with its label
+        // in black, framed just outside; nothing else of the page changes.
+        var source = Write("page.png", ContentPng(600, 800, color: true));
+        var black = new NormalizedRect(100_000, 100_000, 300_000, 150_000);
+        var labelled = new NormalizedRect(400_000, 500_000, 500_000, 120_000);
+        var request = Request(source, PageImageFormat.Png) with
+        {
+            Redactions = [new BurnedRedaction(black, RedactionType.Black), new BurnedRedaction(labelled, RedactionType.Labelled, "Redacted – Privileged")],
+        };
+
+        var burned = PageEndorser.Endorse(request);
+        var plain = PageEndorser.Endorse(Request(source, PageImageFormat.Png));
+        PageEndorser.Endorse(request).Content.Should().Equal(burned.Content, "burning is deterministic");
+        (burned.PageTopPx, burned.PageHeightPx, burned.WidthPx).Should().Be((0, 800, 600));
+
+        using var image = SKBitmap.Decode(burned.Content);
+        using var original = SKBitmap.Decode(plain.Content);
+        var box = RedactionGeometry.BurnedPixels(black, 600, 800);
+        box.Should().Be(new PixelRect(60, 80, 180, 120));
+        Ink(image, box.X, box.Y, box.Width, box.Height).Should().Be(box.Width * box.Height, "every pixel inside a black box is black");
+        var label = RedactionGeometry.BurnedPixels(labelled, 600, 800);
+        var white = White(image, label.X, label.Y, label.Width, label.Height);
+        var ink = Ink(image, label.X, label.Y, label.Width, label.Height);
+        (white + ink).Should().Be(label.Width * label.Height, "inside a labelled box there is only the white fill and the label's black glyphs");
+        ink.Should().BePositive("the label is printed");
+        Ink(image, label.X - 1, label.Y, 1, label.Height).Should().Be(label.Height, "the frame is drawn just outside the box");
+        for (var y = 0; y < 800; y += 7)
+        {
+            for (var x = 0; x < 600; x += 7)
+            {
+                var inside = (x >= box.X - 3 && x < box.X + box.Width + 3 && y >= box.Y - 3 && y < box.Y + box.Height + 3)
+                    || (x >= label.X - 3 && x < label.X + label.Width + 3 && y >= label.Y - 3 && y < label.Y + label.Height + 3);
+                if (!inside)
+                {
+                    image.GetPixel(x, y).Should().Be(original.GetPixel(x, y), "pixels outside the redactions are the page's own");
+                }
+            }
+        }
+
+        var tiff = PageEndorser.Endorse(request with { Format = PageImageFormat.TiffG4 });
+        var bits = ReadTiff(tiff.Content, out var width, out _);
+        CountBlack(bits, width, box.X, box.Y, box.Width, box.Height).Should().Be(box.Width * box.Height, "the burn survives TIFF G4 thresholding");
+
+        var outside = () => PageEndorser.Validate(request with { Redactions = [new BurnedRedaction(new NormalizedRect(900_000, 0, 200_000, 10), RedactionType.Black)] });
+        outside.Should().Throw<ArgumentException>();
     }
 
     /// <summary>Band height for a layout at a resolution: margin + text line + padding (see PageEndorser).</summary>

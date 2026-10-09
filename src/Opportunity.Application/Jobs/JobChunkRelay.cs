@@ -84,6 +84,9 @@ public sealed class JobChunkRelay(
         ChunkOperationKind.RenderChunk => WorkQueues.Rendering,
         ChunkOperationKind.ExportChunk => WorkQueues.Export,
         ChunkOperationKind.ProductionChunk => WorkQueues.Production,
+
+        // Volume writing (E12-T05) decodes, redacts and endorses pages in the render sandbox, so the rendering worker runs it.
+        ChunkOperationKind.ProductionVolumeChunk => WorkQueues.Rendering,
         // Reindex (E07-T11) chooses its queue with its worker.
         _ => null,
     };

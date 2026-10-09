@@ -23,6 +23,22 @@ public enum ExportColumnKind
 
     NativePath,
     TextPath,
+
+    /// <summary>Productions only (E12-T05): the member's ProdBegBates.</summary>
+    ProdBegBates,
+
+    ProdEndBates,
+    ProdBegAttach,
+    ProdEndAttach,
+
+    /// <summary>Productions only: the frozen designation legend stamped on the member's pages.</summary>
+    Confidentiality,
+
+    /// <summary>Productions only: <c>Yes</c> when redactions were burned into the member's images.</summary>
+    Redacted,
+
+    /// <summary>Productions only: the member's produced image count.</summary>
+    ProducedPages,
 }
 
 /// <summary>One DAT column, in output order.</summary>
@@ -122,14 +138,29 @@ public static partial class ExportSettingsRules
         [ExportColumnKind.ParentId] = "ParentID",
         [ExportColumnKind.NativePath] = "NativePath",
         [ExportColumnKind.TextPath] = "TextPath",
+        [ExportColumnKind.ProdBegBates] = "ProdBegBates",
+        [ExportColumnKind.ProdEndBates] = "ProdEndBates",
+        [ExportColumnKind.ProdBegAttach] = "ProdBegAttach",
+        [ExportColumnKind.ProdEndAttach] = "ProdEndAttach",
+        [ExportColumnKind.Confidentiality] = "Confidentiality",
+        [ExportColumnKind.Redacted] = "Redacted",
+        [ExportColumnKind.ProducedPages] = "PageCount",
     };
+
+    /// <summary>Columns only a production volume fills (E12-T05).</summary>
+    public static bool IsProductionColumn(ExportColumnKind kind) => kind >= ExportColumnKind.ProdBegBates;
 
     /// <summary>
     /// The settings of <paramref name="request"/>, or the validation errors by request member. Fields must exist, be
     /// live and visible to the caller (<paramref name="restricted"/> lists the ones they may not see).
     /// </summary>
     public static ExportSettings? Normalize(
-        CreateExportRequest request, FieldCatalog catalog, IReadOnlySet<int> restricted, out Dictionary<string, string[]> errors)
+        CreateExportRequest request, FieldCatalog catalog, IReadOnlySet<int> restricted, out Dictionary<string, string[]> errors) =>
+        Normalize(request, catalog, restricted, production: false, out errors);
+
+    /// <param name="production">A production's load file (E12-T05): the production columns (Bates, designation, …) are allowed.</param>
+    public static ExportSettings? Normalize(
+        CreateExportRequest request, FieldCatalog catalog, IReadOnlySet<int> restricted, bool production, out Dictionary<string, string[]> errors)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -238,7 +269,19 @@ public static partial class ExportSettingsRules
             }
             else
             {
+                if (!Enum.IsDefined(item.Column!.Value))
+                {
+                    Add(key, "Unknown column.");
+                    continue;
+                }
+
                 var kind = Enum.Parse<ExportColumnKind>(item.Column!.Value.ToString());
+                if (IsProductionColumn(kind) && !production)
+                {
+                    Add(key, "Only a production's load file has this column.");
+                    continue;
+                }
+
                 if ((kind == ExportColumnKind.NativePath && !request.IncludeNatives) || (kind == ExportColumnKind.TextPath && !request.IncludeText))
                 {
                     Add(key, "A path column needs those files included.");

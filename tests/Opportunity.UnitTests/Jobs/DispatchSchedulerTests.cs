@@ -73,6 +73,7 @@ public sealed class DispatchSchedulerTests
     [InlineData(ChunkOperationKind.RenderChunk, "render.chunks")]
     [InlineData(ChunkOperationKind.ExportChunk, "export.chunks")]
     [InlineData(ChunkOperationKind.ProductionChunk, "production.chunks")]
+    [InlineData(ChunkOperationKind.ProductionVolumeChunk, "render.chunks")]
     [InlineData(ChunkOperationKind.RelationshipChunk, "import.chunks")]
     public void Job_chunks_go_to_their_operation_queue_payload_free(ChunkOperationKind operation, string queue)
     {

@@ -3,6 +3,7 @@
 
 import { ProductionImageFormatResource } from '../models/production-image-format-resource';
 export interface ProductionImageSettings {
+  colorFileTypes?: Array<string> | null;
   colorFormat?: null | ProductionImageFormatResource;
   dpi?: number | string | null;
   format?: null | ProductionImageFormatResource;

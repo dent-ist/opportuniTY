@@ -304,7 +304,11 @@ public sealed partial class ExportCoordinator(
         }
     }
 
-    private async Task<List<ExportFileRecord>> AllFilesAsync(Guid ws, Guid exportId, ExportFileKind[] kinds, CancellationToken cancellationToken)
+    private Task<List<ExportFileRecord>> AllFilesAsync(Guid ws, Guid exportId, ExportFileKind[] kinds, CancellationToken cancellationToken) =>
+        AllFilesAsync(exports, ws, exportId, kinds, cancellationToken);
+
+    internal static async Task<List<ExportFileRecord>> AllFilesAsync(
+        IExportStore exports, Guid ws, Guid exportId, ExportFileKind[] kinds, CancellationToken cancellationToken)
     {
         var all = new List<ExportFileRecord>();
         string? after = null;
@@ -321,10 +325,15 @@ public sealed partial class ExportCoordinator(
         }
     }
 
-    /// <summary>Writes <paramref name="prefix"/> followed by the parts (each verified against its registered hash).</summary>
-    private async Task<NewExportFile> PutAsync(
+    private Task<NewExportFile> PutAsync(
         Guid ws, Guid exportId, Guid runId, string name, ExportFileKind kind, string path, byte[] prefix, List<ExportFileRecord> parts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        PutPartsAsync(store, ws, exportId, runId, name, kind, path, prefix, parts, cancellationToken);
+
+    /// <summary>Writes <paramref name="prefix"/> followed by the parts (each verified against its registered hash).</summary>
+    internal static async Task<NewExportFile> PutPartsAsync(
+        IObjectStore store, Guid ws, Guid exportId, Guid runId, string name, ExportFileKind kind, string path, byte[] prefix,
+        IReadOnlyList<ExportFileRecord> parts, CancellationToken cancellationToken)
     {
         // Part paths are parts/{sequence:D6}.ext, so path order is chunk order.
         var sources = new List<Func<Task<Stream>>> { () => Task.FromResult<Stream>(new MemoryStream(prefix, writable: false)) };
@@ -347,8 +356,13 @@ public sealed partial class ExportCoordinator(
         }
     }
 
-    private async Task<NewExportFile> PutFileAsync(
-        Guid ws, Guid exportId, Guid runId, string name, ExportFileKind kind, string path, string localPath, CancellationToken cancellationToken)
+    private Task<NewExportFile> PutFileAsync(
+        Guid ws, Guid exportId, Guid runId, string name, ExportFileKind kind, string path, string localPath, CancellationToken cancellationToken) =>
+        PutLocalFileAsync(store, ws, exportId, runId, name, kind, path, localPath, cancellationToken);
+
+    internal static async Task<NewExportFile> PutLocalFileAsync(
+        IObjectStore store, Guid ws, Guid exportId, Guid runId, string name, ExportFileKind kind, string path, string localPath,
+        CancellationToken cancellationToken)
     {
         var content = File.OpenRead(localPath);
         await using (content.ConfigureAwait(false))
@@ -359,7 +373,7 @@ public sealed partial class ExportCoordinator(
         }
     }
 
-    private static NewExportFile Registered(PutObjectResult result, ExportFileKind kind, string path) => new(
+    internal static NewExportFile Registered(PutObjectResult result, ExportFileKind kind, string path) => new(
         path,
         kind,
         result.Key.Value,

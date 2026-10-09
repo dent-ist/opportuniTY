@@ -267,7 +267,8 @@ public sealed partial class SandboxedRenderer : IRenderer
 
             var child = await EnsureChildAsync(cancellationToken).ConfigureAwait(false);
             await child.SendAsync(SandboxProtocol.Serialize(new SandboxRenderRequest(input, output, null, false, new SandboxEndorseRequest(
-                request.Frame, request.Format, request.Layout, request.Dpi, request.BlankWidthPx, request.BlankHeightPx))), cancellationToken).ConfigureAwait(false);
+                request.Frame, request.Format, request.Layout, request.Dpi, request.BlankWidthPx, request.BlankHeightPx,
+                request.Redactions is { Count: > 0 } burned ? burned : null))), cancellationToken).ConfigureAwait(false);
             var message = await child.ReceiveAsync(cancellationToken).ConfigureAwait(false);
             switch (message.Type)
             {

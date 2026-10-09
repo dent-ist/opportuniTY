@@ -683,6 +683,27 @@ internal static class RouteAttackCatalog
             new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-report", HttpStatusCode.OK)),
         Case("GET", Ws + "/productions/{productionId}/redesignation-overlay", ProtectedOperation.ProductionInclusion,
             new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-overlay", HttpStatusCode.OK)),
+        // Production volumes (E12-T05): the production and the run are both identifiers; a foreign run under an own production
+        // (or a foreign file under an own run) must answer like an unknown one.
+        Case("POST", Ws + "/productions/{productionId}/volumes", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/volumes", null)),
+        Case("GET", Ws + "/productions/{productionId}/volumes", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/volumes", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/volumes/{volumeId}", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production and run", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/volumes/{t.ProductionVolumeId}", HttpStatusCode.OK),
+            new RouteProbe("own production, another workspace's run", HttpMethod.Get,
+                (o, t) => $"{W(o)}/productions/{o.FinalizedProductionId}/volumes/{t.ProductionVolumeId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/volumes/{volumeId}/files", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production and run", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/volumes/{t.ProductionVolumeId}/files",
+                HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/volumes/{volumeId}/files/{fileId}/content", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production, run and file", HttpMethod.Get,
+                (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/volumes/{t.ProductionVolumeId}/files/{t.ProductionVolumeFileId}/content", HttpStatusCode.OK),
+            new RouteProbe("own run, another workspace's file", HttpMethod.Get,
+                (o, t) => $"{W(o)}/productions/{o.FinalizedProductionId}/volumes/{o.ProductionVolumeId}/files/{t.ProductionVolumeFileId}/content", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/volumes/{volumeId}/package", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production and run", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/volumes/{t.ProductionVolumeId}/package",
+                HttpStatusCode.OK)),
 
         // Routes without a workspace-scoped identifier.
         Exempt("GET", V1 + "/me", "the caller's own session; no identifier"),

@@ -173,7 +173,7 @@ public sealed partial class ExportContentEndpoints : IApiEndpointModule
     }
 
     /// <summary>Streams every delivered file of the export into one ZIP, in path order, each verified while it streams.</summary>
-    private sealed class PackageResult(IObjectStore store, IExportStore exports, ExportRecord export, Guid auditEventId, ILogger logger) : IResult
+    internal sealed class PackageResult(IObjectStore store, IExportStore exports, ExportRecord export, Guid auditEventId, ILogger logger) : IResult
     {
         public async Task ExecuteAsync(HttpContext httpContext)
         {

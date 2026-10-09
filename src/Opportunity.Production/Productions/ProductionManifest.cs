@@ -13,8 +13,9 @@ namespace Opportunity.Production.Productions;
 
 /// <summary>
 /// Software that decides a production's output (E12-T02: "renderer/tool versions"), recorded in its manifest. A re-run
-/// on different versions is expected to differ and must be reported as such. Components that do not exist yet are
-/// recorded as null: the render pipeline (E11-T02) and the production image/text writer (E12-T05).
+/// on different versions is expected to differ and must be reported as such. The volume writer (E12-T05) is recorded
+/// here; the page imager (render pipeline and endorser) that wrote a volume's images is recorded in that volume's own
+/// manifest, by the rendering worker that ran it (renderer stays null here).
 /// </summary>
 public sealed record ProductionSoftware(string Opportunity, string Runtime, string BatesAllocator, string? Renderer, string? VolumeWriter)
 {
@@ -24,7 +25,7 @@ public sealed record ProductionSoftware(string Opportunity, string Runtime, stri
         RuntimeInformation.FrameworkDescription,
         BatesAssignmentHasher.Prefix,
         Renderer: null,
-        VolumeWriter: null);
+        VolumeWriter: Volumes.ProductionVolumeSettings.WriterVersion);
 }
 
 /// <summary>

@@ -12861,6 +12861,315 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/volumes": {
+      "post": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Write a finalized production's volume (202 with the run and its job): images, natives, text, DAT/OPT and manifest.",
+        "description": "Pages are imaged in the render sandbox from the page sets frozen at finalization, with the frozen redactions burned in and the endorsements stamped (TIFF G4, or JPEG for the colour file types). Native members get a slip sheet, placeholder members a 'Withheld' page and pages that cannot be imaged a 'Technical Issue' page, each taking its Bates number. A redacted document's text is never the original. 409 unless the production is finalized.",
+        "operationId": "StartProductionVolume",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionVolumeResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "The production's volume runs, newest first, with their status, counts and manifest SHA-256.",
+        "operationId": "ListProductionVolumes",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/volumes/{volumeId}": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "One volume run with its status, report (counts, manifest SHA-256) and job progress.",
+        "operationId": "GetProductionVolume",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "volumeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/volumes/{volumeId}/files": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "The delivered files of a completed volume run, in path order, with size and SHA-256 (the run's initiator only).",
+        "operationId": "ListProductionVolumeFiles",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "volumeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/exports/{exportId}/files/{fileId}/content": {
       "get": {
         "tags": [
@@ -13756,6 +14065,190 @@
             "description": "OK",
             "content": {
               "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/volumes/{volumeId}/files/{fileId}/content": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Download one file of a completed production volume run (the run's initiator only).",
+        "description": "Always an attachment of type application/octet-stream; a single byte range is supported. Audited.",
+        "operationId": "DownloadProductionVolumeFile",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "volumeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Partial Content",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Range Not Satisfiable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/volumes/{volumeId}/package": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Download a completed production volume run as one ZIP: manifest and the volume (the run's initiator only). Audited.",
+        "description": "Streamed; entries are stored uncompressed under their volume paths (ZIP64). Use the file downloads to resume.",
+        "operationId": "DownloadProductionVolumePackage",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "volumeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/zip": {
                 "schema": {
                   "$ref": "#/components/schemas/Stream"
                 }
@@ -17415,6 +17908,13 @@
           "parentId",
           "nativePath",
           "textPath",
+          "prodBegBates",
+          "prodEndBates",
+          "prodBegAttach",
+          "prodEndAttach",
+          "confidentiality",
+          "redacted",
+          "producedPages",
           null
         ]
       },
@@ -21970,6 +22470,15 @@
               "string"
             ],
             "format": "int32"
+          },
+          "colorFileTypes": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -22103,6 +22612,29 @@
           "placeholder",
           null
         ]
+      },
+      "ProductionPlaceholderSettings": {
+        "type": "object",
+        "properties": {
+          "withheld": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "technicalIssue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "nativeSlipSheet": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
       },
       "ProductionResource": {
         "required": [
@@ -22288,6 +22820,23 @@
                 "$ref": "#/components/schemas/ProductionDesignationSettings"
               }
             ]
+          },
+          "placeholders": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProductionPlaceholderSettings"
+              }
+            ]
+          },
+          "redactionSetId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -22320,6 +22869,144 @@
             "$ref": "#/components/schemas/ProductionIntegrityResource"
           }
         }
+      },
+      "ProductionVolumeReportResource": {
+        "required": [
+          "documents",
+          "images",
+          "natives",
+          "texts",
+          "files",
+          "totalBytes",
+          "manifestSha256"
+        ],
+        "type": "object",
+        "properties": {
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "images": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "natives": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "texts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "files": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "totalBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "manifestSha256": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductionVolumeResource": {
+        "required": [
+          "volumeId",
+          "productionId",
+          "workspaceId",
+          "volume",
+          "status",
+          "statusReason",
+          "report",
+          "job",
+          "createdBy",
+          "createdAt",
+          "completedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "volumeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "volume": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProductionVolumeStatusResource"
+          },
+          "statusReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "report": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProductionVolumeReportResource"
+              }
+            ]
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobResource"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ProductionVolumeStatusResource": {
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
       },
       "QueryHistoryEntryResource": {
         "required": [

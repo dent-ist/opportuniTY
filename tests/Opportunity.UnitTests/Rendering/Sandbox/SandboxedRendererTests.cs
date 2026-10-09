@@ -77,6 +77,12 @@ public sealed class SandboxedRendererTests : IDisposable
             new(tiff, 1, output, Opportunity.Core.Pages.PageImageFormat.TiffG4, layout),
             new(jpeg, 0, output, Opportunity.Core.Pages.PageImageFormat.Jpeg, layout),
             new(null, 0, output, Opportunity.Core.Pages.PageImageFormat.TiffG4, layout with { BodyLines = ["Withheld for Privilege"] }, 300, 2550, 3300),
+            new(tiff, 0, output, Opportunity.Core.Pages.PageImageFormat.TiffG4, layout, Redactions:
+            [
+                new(new Opportunity.Core.Redactions.NormalizedRect(100_000, 100_000, 400_000, 200_000), Opportunity.Core.Redactions.RedactionType.Black),
+                new(new Opportunity.Core.Redactions.NormalizedRect(200_000, 600_000, 600_000, 100_000), Opportunity.Core.Redactions.RedactionType.Labelled,
+                    "Redacted – PII"),
+            ]),
         ];
 
         var session = renderer.BeginDocument(work);
