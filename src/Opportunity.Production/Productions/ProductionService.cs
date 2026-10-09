@@ -84,7 +84,7 @@ public sealed partial class ProductionService(
 {
     public const int MaxNameLength = 200;
 
-    public const int MaxOverrideReasonLength = 2_000;
+    public const int MaxConflictOverrideReasonLength = 2_000;
 
     public async Task<ProductionOutcome> CreateAsync(
         SecurityPrincipal principal, Guid workspaceId, CreateProductionRequest request, Guid? snapshotId, CancellationToken cancellationToken = default)
@@ -260,10 +260,10 @@ public sealed partial class ProductionService(
         var overrideReason = privilegeConflictOverrideReason?.Trim();
         if (overrideReason is not null)
         {
-            if (overrideReason.Length is 0 or > MaxOverrideReasonLength)
+            if (overrideReason.Length is 0 or > MaxConflictOverrideReasonLength)
             {
                 return ProductionOutcome.Invalid("privilegeConflictOverride.reason",
-                    $"Give the reason for overriding the privilege conflicts (1 to {MaxOverrideReasonLength} characters).");
+                    $"Give the reason for overriding the privilege conflicts (1 to {MaxConflictOverrideReasonLength} characters).");
             }
 
             if (!(await authorization.AuthorizeAsync(principal, workspaceId, Permission.PrivilegeLogGenerate, cancellationToken).ConfigureAwait(false)).IsAllowed)
