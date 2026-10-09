@@ -217,6 +217,11 @@ response buffering and compression off and a one-hour read timeout; put the same
 of the API (the API sends a heartbeat every 15 s and `X-Accel-Buffering: no`, and ends a stream after 30 minutes for
 the browser to reconnect; `Jobs__Events__*` settings). The polling fallback is `GET …/jobs?updatedSince=`.
 
+API and BFF responses are not compressed by the proxy (`gzip off` in `web/api-proxy.conf`): nginx turns a strong ETag
+into a weak one (`W/"3"`) when it compresses a response, and the API compares `If-Match` strongly, so a client that
+sends back the ETag it read would always get 412. Any other proxy in front of the API must likewise keep ETags strong
+(do not compress `/api` and `/bff` there, or make sure it leaves `ETag` unchanged).
+
 Failed or stuck work is recovered from PostgreSQL, never by re-publishing dead-lettered messages. The worker image has
 an operations CLI for that, e.g. `docker compose run --rm --no-deps worker jobs failures --workspace <id> --job <id>`;
 see the runbooks in [docs/operations](../../docs/operations/README.md).
