@@ -6918,6 +6918,261 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/privilege-conflicts": {
+      "get": {
+        "tags": [
+          "Privilege"
+        ],
+        "summary": "Families and duplicate groups with inconsistent privilege calls, with each member's values and who set them.",
+        "description": "Families: a member coded Privilege Status = Withhold next to members that are not (Q-14), and, with responsivenessField (a single-choice coding field id), members with different responsiveness calls. Duplicates: members whose Privilege Status differs, at least one being other than Not Privileged. Only documents you may see are listed or counted; a group appears only when they alone are in conflict. productionId (needs Production.Create) keeps groups with a member in that production. At most 1,000 groups per kind (truncated tells there are more).",
+        "operationId": "GetPrivilegeConflicts",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "responsivenessField",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeConflictReportResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-conflicts/propagations": {
+      "post": {
+        "tags": [
+          "Privilege"
+        ],
+        "summary": "Copy chosen documents' privilege calls to the rest of their duplicate groups as one bulk coding job; 202 with the job.",
+        "description": "Each group names the member whose values of fields (privilege field ids; default Privilege Status and Basis) the group's other members you may code get. The targets are frozen at once; each chunk re-checks your access, leaves fields someone else changed after the freeze alone (Q-07) and references the source's originating coding event (provenance). Needs Coding.WritePrivilege. Follow the job at Location and its outcomes at …/bulk-coding/{jobId}/report.",
+        "operationId": "PropagatePrivilegeCalls",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivilegeConflictPropagationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-conflicts/export": {
+      "get": {
+        "tags": [
+          "Privilege"
+        ],
+        "summary": "The privilege conflict report as CSV (UTF-8 with BOM), one row per listed document. Audited.",
+        "operationId": "ExportPrivilegeConflicts",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "responsivenessField",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/search-index": {
       "get": {
         "tags": [
@@ -10383,6 +10638,7 @@
           "Productions"
         ],
         "summary": "Finalize an allocated draft (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.",
+        "description": "409 PRIVILEGE_WITHHELD while members are coded Withhold; 409 PRIVILEGE_CONFLICTS while members' families or duplicate groups have unresolved privilege conflicts (E13-T02), unless the body gives privilegeConflictOverride with a reason (needs PrivilegeLog.Generate; recorded in the manifest and audited). Neither answer counts or names documents.",
         "operationId": "FinalizeProduction",
         "parameters": [
           {
@@ -10402,6 +10658,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FinalizeProductionRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -10409,6 +10681,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProductionResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -15811,6 +16093,21 @@
           null
         ]
       },
+      "FinalizeProductionRequest": {
+        "type": "object",
+        "properties": {
+          "privilegeConflictOverride": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrivilegeConflictOverrideRequest"
+              }
+            ]
+          }
+        }
+      },
       "GridLayoutRequest": {
         "type": "object",
         "properties": {
@@ -18479,6 +18776,256 @@
           }
         }
       },
+      "PrivilegeCodedValueResource": {
+        "required": [
+          "values",
+          "choiceIds",
+          "changedBy",
+          "changedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "choiceIds": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "changedBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewerResource"
+              }
+            ]
+          },
+          "changedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "PrivilegeConflictGroupResource": {
+        "required": [
+          "kind",
+          "groupId",
+          "reasons",
+          "members"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PrivilegeConflictKindResource"
+          },
+          "groupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeConflictReasonResource"
+            }
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeConflictMemberResource"
+            }
+          }
+        }
+      },
+      "PrivilegeConflictKindResource": {
+        "enum": [
+          "family",
+          "duplicates"
+        ]
+      },
+      "PrivilegeConflictMemberResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "familySequence",
+          "isPrimary",
+          "inProduction",
+          "privilegeStatus",
+          "privilegeBasis",
+          "responsiveness"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "familySequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "inProduction": {
+            "type": "boolean"
+          },
+          "privilegeStatus": {
+            "$ref": "#/components/schemas/PrivilegeCodedValueResource"
+          },
+          "privilegeBasis": {
+            "$ref": "#/components/schemas/PrivilegeCodedValueResource"
+          },
+          "responsiveness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrivilegeCodedValueResource"
+              }
+            ]
+          }
+        }
+      },
+      "PrivilegeConflictOverrideRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "PrivilegeConflictPropagationGroup": {
+        "required": [
+          "duplicateGroupId",
+          "sourceDocumentId"
+        ],
+        "type": "object",
+        "properties": {
+          "duplicateGroupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceDocumentId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "PrivilegeConflictPropagationRequest": {
+        "required": [
+          "groups"
+        ],
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeConflictPropagationGroup"
+            }
+          },
+          "fields": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "PrivilegeConflictReasonResource": {
+        "enum": [
+          "withheldMember",
+          "responsivenessDiffers",
+          "privilegeCallsDiffer"
+        ]
+      },
+      "PrivilegeConflictReportResource": {
+        "required": [
+          "generatedAt",
+          "responsivenessFieldId",
+          "productionId",
+          "familyConflictCount",
+          "duplicateConflictCount",
+          "truncated",
+          "groups"
+        ],
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "format": "date-time"
+          },
+          "responsivenessFieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "productionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "familyConflictCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "duplicateConflictCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeConflictGroupResource"
+            }
+          }
+        }
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -20111,6 +20658,22 @@
               "string"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "ReviewerResource": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
           }
         }
       },
@@ -23142,6 +23705,9 @@
     },
     {
       "name": "Relationships"
+    },
+    {
+      "name": "Privilege"
     },
     {
       "name": "Snapshots"

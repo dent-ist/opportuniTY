@@ -445,6 +445,27 @@ internal static class RouteAttackCatalog
         Case("POST", Ws + "/coding-propagations", ProtectedOperation.Coding,
             new RouteProbe("preview in the body", HttpMethod.Post, (o, _) => W(o) + "/coding-propagations", HttpStatusCode.OK,
                 (_, t) => J(new JsonObject { ["previewId"] = t.PropagationPreviewId.ToString() }))),
+        // Privilege conflicts (E13-T02): the report (JSON and CSV through the gateway) may be scoped to a production; the
+        // propagation names source documents and duplicate groups in its body.
+        Case("GET", Ws + "/privilege-conflicts", ProtectedOperation.Coding,
+            WorkspaceOnly(HttpMethod.Get, "/privilege-conflicts", HttpStatusCode.OK),
+            new RouteProbe("production in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-conflicts?productionId={t.FinalizedProductionId}",
+                HttpStatusCode.OK)),
+        Case("GET", Ws + "/privilege-conflicts/export", ProtectedOperation.Coding,
+            WorkspaceOnly(HttpMethod.Get, "/privilege-conflicts/export", HttpStatusCode.OK),
+            new RouteProbe("production in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-conflicts/export?productionId={t.FinalizedProductionId}",
+                HttpStatusCode.OK)),
+        Case("POST", Ws + "/privilege-conflicts/propagations", ProtectedOperation.Coding,
+            // The probe document is in no duplicate group: the own request is a validation problem, a foreign source a 404.
+            new RouteProbe("source document and duplicate group in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-conflicts/propagations",
+                HttpStatusCode.BadRequest,
+                (_, t) => J(new JsonObject
+                {
+                    ["groups"] = new JsonArray(new JsonObject
+                    {
+                        ["duplicateGroupId"] = t.DocumentId.ToString(), ["sourceDocumentId"] = t.DocumentId.ToString(),
+                    }),
+                }))),
         Case("GET", Ws + "/bulk-coding/{jobId}/report", ProtectedOperation.Coding,
             new RouteProbe("bulk coding job", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report", HttpStatusCode.OK),
             new RouteProbe("bulk coding job, skippedHidden", HttpMethod.Get, (o, t) => $"{W(o)}/bulk-coding/{t.BulkCodingJobId}/report?outcome=skippedHidden", HttpStatusCode.OK)),

@@ -40,10 +40,17 @@ public sealed class BulkCodingChunkExecutor(
     IFieldCatalogRepository fields,
     IFieldAccessFilter fieldAccess,
     IJobRepository jobs,
-    TimeProvider time) : IJobChunkExecutor
+    TimeProvider time,
+    ICodingPropagationRepository? relationships = null) : IJobChunkExecutor
 {
     /// <summary>Reason code of members excluded because the initiator lost access (ADR-015 D9.4).</summary>
     public const string AccessChanged = "AccessChanged";
+
+    /// <summary>
+    /// Reason code of grouped-propagation members left alone because they are no longer in one of the job's duplicate
+    /// groups (a dedupe run regrouped them since the submission, E13-T02).
+    /// </summary>
+    public const string DuplicateGroupChanged = "DuplicateGroupChanged";
 
     /// <summary>Service identity in the chunk audit events, acting on behalf of the initiator (ADR-013 §4).</summary>
     public const string ServiceActor = "service:bulk-coding";
@@ -63,10 +70,15 @@ public sealed class BulkCodingChunkExecutor(
 
         IReadOnlyList<CodingFieldOperation> operations;
         PropagationJobParameters? propagation;
+        IReadOnlyList<GroupPropagationEntry>? groups;
         try
         {
-            operations = BulkCodingParameters.Parse(chunk.Parameters);
-            propagation = BulkCodingParameters.Propagation(chunk.Parameters);
+            groups = BulkCodingParameters.Groups(chunk.Parameters);
+            // A grouped propagation writes each group's own values; the field checks below cover every group's fields.
+            operations = groups is null
+                ? BulkCodingParameters.Parse(chunk.Parameters)
+                : [.. groups.SelectMany(g => g.Operations).DistinctBy(o => o.FieldId)];
+            propagation = groups is null ? BulkCodingParameters.Propagation(chunk.Parameters) : null;
         }
         catch (FormatException ex)
         {
@@ -151,6 +163,11 @@ public sealed class BulkCodingChunkExecutor(
             }
         }
 
+        if (groups is not null)
+        {
+            return await ApplyGroupedAsync(context, groups, targets, excluded, snapshotId, cancellationToken).ConfigureAwait(false);
+        }
+
         // Fence F2 before the PostgreSQL batch; F3 runs inside the coding transaction.
         await context.CheckFenceAsync(cancellationToken).ConfigureAwait(false);
         var result = await coding.ApplyChunkAsync(chunk, new CodingWriteRequest
@@ -164,7 +181,89 @@ public sealed class BulkCodingChunkExecutor(
             OriginEventIds = propagation?.OriginEventIds,
             Audit = ChunkAudit(chunk, snapshotId, excluded.Count),
         }, excluded, cancellationToken).ConfigureAwait(false);
+        return await CompleteAsync(context, result, cancellationToken).ConfigureAwait(false);
+    }
 
+    /// <summary>
+    /// A grouped propagation chunk (E13-T02): each target gets the values of its current duplicate group's source, one
+    /// coding write per group (each referencing that source's origin events), all in the chunk's one transaction. A
+    /// target no longer in one of the job's groups is left alone and reported (<see cref="DuplicateGroupChanged"/>).
+    /// </summary>
+    private async Task<ChunkExecutionResult> ApplyGroupedAsync(
+        ChunkExecutionContext context, IReadOnlyList<GroupPropagationEntry> groups, List<CodingTarget> targets, List<JobItemResult> excluded,
+        Guid snapshotId, CancellationToken cancellationToken)
+    {
+        var chunk = context.Chunk;
+        if (relationships is null)
+        {
+            throw new PermanentChunkException("NoRelationshipStore", "This worker cannot read duplicate groups.");
+        }
+
+        var current = await relationships.GetDuplicateGroupIdsAsync(context.WorkspaceId, [.. targets.Select(t => t.DocumentId)], cancellationToken)
+            .ConfigureAwait(false);
+        var byGroup = groups.ToDictionary(g => g.DuplicateGroupId);
+        var perGroup = new SortedDictionary<Guid, List<CodingTarget>>();
+        foreach (var target in targets)
+        {
+            if (current.TryGetValue(target.DocumentId, out var groupId) && byGroup.ContainsKey(groupId))
+            {
+                if (!perGroup.TryGetValue(groupId, out var list))
+                {
+                    perGroup[groupId] = list = [];
+                }
+
+                list.Add(target);
+            }
+            else
+            {
+                excluded.Add(new JobItemResult(JobItemResultKind.SkippedConcurrentEdit, target.DocumentId, null, null, DuplicateGroupChanged));
+            }
+        }
+
+        var audit = ChunkAudit(chunk, snapshotId, excluded.Count);
+        var writes = new List<CodingWriteRequest>(perGroup.Count);
+        foreach (var (groupId, members) in perGroup)
+        {
+            var group = byGroup[groupId];
+            writes.Add(new CodingWriteRequest
+            {
+                WorkspaceId = context.WorkspaceId,
+                IdempotencyKey = chunk.IdempotencyKey + ":g" + writes.Count.ToString(CultureInfo.InvariantCulture),
+                Actor = new CodingActor(chunk.InitiatedBy, CodingActorType.BulkHuman),
+                JobId = chunk.Lease.JobId,
+                Documents = members,
+                Operations = group.Operations,
+                OriginEventIds = group.OriginEventIds,
+                Audit = audit with
+                {
+                    Details = new Dictionary<string, string?>(audit.Details)
+                    {
+                        ["DuplicateGroupId"] = groupId.ToString(),
+                        ["SourceDocumentId"] = group.SourceDocumentId.ToString(),
+                    },
+                },
+            });
+        }
+
+        await context.CheckFenceAsync(cancellationToken).ConfigureAwait(false);
+        var result = writes.Count > 0
+            ? await coding.ApplyChunkAsync(chunk, writes, excluded, cancellationToken).ConfigureAwait(false)
+            // Nothing left to write: the chunk still commits with its item results and its audit event.
+            : await coding.ApplyChunkAsync(chunk, new CodingWriteRequest
+            {
+                WorkspaceId = context.WorkspaceId,
+                IdempotencyKey = chunk.IdempotencyKey,
+                Actor = new CodingActor(chunk.InitiatedBy, CodingActorType.BulkHuman),
+                JobId = chunk.Lease.JobId,
+                Documents = [],
+                Operations = groups[0].Operations,
+                Audit = audit,
+            }, excluded, cancellationToken).ConfigureAwait(false);
+        return await CompleteAsync(context, result, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ChunkExecutionResult> CompleteAsync(ChunkExecutionContext context, CodingChunkResult result, CancellationToken cancellationToken)
+    {
         switch (result.Coding.Outcome)
         {
             case CodingWriteOutcome.Applied:

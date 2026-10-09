@@ -153,7 +153,20 @@ public enum ProductionWriteStatus
 
     /// <summary>E13-T01: members are coded Privilege Status = Withhold, so the production cannot be finalized.</summary>
     PrivilegeWithheld,
+
+    /// <summary>
+    /// E13-T02: members' families or duplicate groups have unresolved privilege conflicts and no override was given, so
+    /// the production cannot be finalized.
+    /// </summary>
+    PrivilegeConflicts,
 }
+
+/// <summary>
+/// An authorized override of the privilege conflict gate (E13-T02 AC 2), used only when conflicts exist at the
+/// finalization: the manifest that records it (with its SHA-256) and the audit events that replace the plain ones
+/// (<c>Privilege.ConflictOverride</c> with the reason among them).
+/// </summary>
+public sealed record PrivilegeConflictOverrideWrite(string Manifest, byte[] ManifestSha256, IReadOnlyList<AuditEvent> Audit);
 
 public sealed record ProductionWriteResult(
     ProductionWriteStatus Status, ProductionRecord? Production = null, IReadOnlyList<BatesRangeConflict>? Conflicts = null, string? Reason = null);
@@ -325,10 +338,13 @@ public interface IProductionStore
     Task<bool> FailAllocationAsync(
         Guid workspaceId, Guid productionId, Guid jobId, string reason, IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default);
 
-    /// <summary>Draft (Allocated) → Finalized: stores the manifest, marks the range Produced, writes the audit events.</summary>
+    /// <summary>
+    /// Draft (Allocated) → Finalized: stores the manifest, marks the range Produced, writes the audit events. Refused
+    /// while members are withheld, and while privilege conflicts exist unless <paramref name="conflictOverride"/> is given.
+    /// </summary>
     Task<ProductionWriteResult> FinalizeAsync(
         Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
-        IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default);
+        IReadOnlyList<AuditEvent> audit, PrivilegeConflictOverrideWrite? conflictOverride = null, CancellationToken cancellationToken = default);
 
     /// <summary>Finalized → Voided: the range becomes Voided (never reissued).</summary>
     Task<ProductionWriteResult> VoidAsync(

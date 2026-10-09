@@ -163,6 +163,18 @@ public static class AuditTaxonomy
         public const string ResourceType = "Export";
     }
 
+    /// <summary>Privilege review (E13): conflict overrides and reports.</summary>
+    public static class Privilege
+    {
+        public const string Category = "Privilege";
+
+        /// <summary>A production was finalized over unresolved family or duplicate privilege conflicts, with a reason (E13-T02).</summary>
+        public const string ConflictOverride = "ConflictOverride";
+
+        /// <summary>The privilege conflict report was downloaded as CSV through the gateway (E13-T02).</summary>
+        public const string ConflictReportExported = "ConflictReportExported";
+    }
+
     /// <summary>Productions (E12-T02/T03, ADR-013 §5, Q-54).</summary>
     public static class Production
     {
@@ -282,7 +294,7 @@ public static class AuditTaxonomy
             "GridView.Created", "GridView.Modified", "GridView.Deleted",
             "HighlightSet.Created", "HighlightSet.Modified", "HighlightSet.Deleted"),
         .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled"),
-        .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded"),
+        .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded", "ConflictReportExported"),
         .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",

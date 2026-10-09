@@ -52,6 +52,15 @@ public interface ICodingRepository
         ClaimedChunk chunk, CodingWriteRequest request, IReadOnlyList<JobItemResult> additionalItems, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Several coding writes in one chunk transaction (a grouped propagation, E13-T02: each duplicate group gets its own
+    /// source's values): each write is applied as <see cref="ApplyChunkAsync(ClaimedChunk, CodingWriteRequest, IReadOnlyList{JobItemResult}, CancellationToken)"/>
+    /// applies one, then one IndexChunkTask for every changed document and fence F3 commit the chunk. When any write is
+    /// refused (invalid, replayed), nothing is written and that write's result is returned without a commit.
+    /// </summary>
+    Task<CodingChunkResult> ApplyChunkAsync(
+        ClaimedChunk chunk, IReadOnlyList<CodingWriteRequest> writes, IReadOnlyList<JobItemResult> additionalItems, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Documents whose coding a job changed (at least one <see cref="CodingEventKind.ValueChanged"/> event of the job),
     /// in DocumentId order after <paramref name="after"/>: the "applied" list of a bulk coding report.
     /// </summary>
@@ -82,6 +91,21 @@ public interface ICodingRepository
     /// </summary>
     Task<IReadOnlyDictionary<int, Guid>> GetLatestChangeEventIdsAsync(
         Guid workspaceId, Guid documentId, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see cref="GetLatestChangeEventIdsAsync(Guid, Guid, IReadOnlyCollection{int}, CancellationToken)"/> for many
+    /// documents in one statement: per document, per field, the CodingEvent that set its current value.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<int, Guid>>> GetLatestChangeEventIdsAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Families and duplicate groups whose live members are in privilege conflict (E13-T02,
+    /// <see cref="PrivilegeConflictRules"/>), each with all its live members and their Privilege Status, Basis and
+    /// (when asked) responsiveness values with who last changed them. Set-based: one statement per kind finds the groups,
+    /// one more reads their members. It never authorizes; the caller filters members by visibility.
+    /// </summary>
+    Task<PrivilegeConflictCandidates> FindPrivilegeConflictsAsync(PrivilegeConflictQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Current state of <paramref name="fieldIds"/> only, per live document (documents without any of them map to an

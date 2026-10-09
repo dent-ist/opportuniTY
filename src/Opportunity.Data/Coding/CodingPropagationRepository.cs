@@ -73,6 +73,74 @@ public sealed class CodingPropagationRepository(NpgsqlDataSource dataSource) : I
         return new PropagationCandidates(candidates, candidates.Count > limit);
     }
 
+    public async Task<IReadOnlyList<(Guid DuplicateGroupId, PropagationCandidate Member)>> GetDuplicateGroupMembersAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> duplicateGroupIds, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(duplicateGroupIds);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        var members = new List<(Guid, PropagationCandidate)>();
+        if (duplicateGroupIds.Count == 0)
+        {
+            return members;
+        }
+
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using (var command = tx.Command(
+            """
+            SELECT d.duplicate_group_id, d.document_id, ps.document_version, d.control_number
+            FROM opportunity.document d
+            JOIN opportunity.document_projection_state ps ON ps.workspace_id = d.workspace_id AND ps.document_id = d.document_id AND NOT ps.is_deleted
+            WHERE d.workspace_id = @ws AND d.duplicate_group_id = ANY(@groups)
+            ORDER BY d.duplicate_group_id, d.document_id
+            LIMIT @limit
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("groups", duplicateGroupIds.Distinct().ToArray());
+            command.Parameters.AddWithValue("limit", limit + 1);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                members.Add((reader.GetGuid(0), new PropagationCandidate(reader.GetGuid(1), reader.GetInt64(2), reader.GetString(3))));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return members;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, Guid>> GetDuplicateGroupIdsAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+        var groups = new Dictionary<Guid, Guid>();
+        if (documentIds.Count == 0)
+        {
+            return groups;
+        }
+
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using (var command = tx.Command(
+            """
+            SELECT d.document_id, d.duplicate_group_id
+            FROM opportunity.document d
+            JOIN opportunity.document_projection_state ps ON ps.workspace_id = d.workspace_id AND ps.document_id = d.document_id AND NOT ps.is_deleted
+            WHERE d.workspace_id = @ws AND d.document_id = ANY(@ids) AND d.duplicate_group_id IS NOT NULL
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("ids", documentIds.Distinct().ToArray());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                groups[reader.GetGuid(0)] = reader.GetGuid(1);
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return groups;
+    }
+
     public async Task SaveAsync(CodingPropagationPreview preview, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(preview);

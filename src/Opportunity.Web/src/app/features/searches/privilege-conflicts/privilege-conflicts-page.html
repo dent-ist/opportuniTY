@@ -1,0 +1,273 @@
+<div class="pc__header">
+  <div class="pc__heading-group">
+    <h1 class="pc__title">Privilege Conflicts</h1>
+    <p class="pc__muted">
+      Families and duplicates whose privilege calls do not agree. Fix them in Documents, or copy one
+      document's privilege call to its duplicates. Unresolved conflicts block finalizing a
+      production unless they are overridden with a reason.
+    </p>
+  </div>
+  <div class="pc__actions">
+    <a oppButton="secondary" [href]="exportUrl()" download>
+      <opp-icon name="download" />
+      Download CSV
+    </a>
+  </div>
+</div>
+
+<section class="pc__panel" aria-labelledby="pc-check">
+  <h2 id="pc-check">Check</h2>
+  <div class="pc__options">
+    <opp-select
+      class="pc__field"
+      label="Responsiveness field"
+      hint="Families whose members have different calls in this field are listed too."
+      placeholder="Do not check responsiveness"
+      [options]="fieldOptions()"
+      [(value)]="responsiveness"
+    />
+    <button type="button" oppButton="primary" [busy]="loading()" (click)="run()">
+      <opp-icon name="refresh" />
+      Run report
+    </button>
+  </div>
+  <p class="pc__notice">
+    <opp-icon name="lock" />
+    <span>
+      Only documents you can see are checked. A conflict that needs a document you cannot see is not
+      listed and not counted.
+    </span>
+  </p>
+</section>
+
+@if (!report()) {
+  @if (error(); as e) {
+    <opp-error-state [error]="e" (retry)="run()" />
+  } @else {
+    <opp-loading-state label="Checking privilege calls…" />
+  }
+} @else {
+  @let r = report()!;
+  <p class="pc__summary">
+    <strong>{{ summary() }}</strong>
+    <span class="pc__muted">· Checked {{ checkedAt() }}</span>
+  </p>
+  @if (error(); as e) {
+    <opp-error-state [error]="e" (retry)="run()" />
+  }
+  @if (r.truncated) {
+    <p class="pc__notice pc__notice--warning">
+      <opp-icon name="warning" />
+      <span>
+        There are more conflicts than one report lists (1,000 families and 1,000 duplicate groups).
+        Resolve these, then run the report again.
+      </span>
+    </p>
+  }
+  @if (startedJob(); as jobId) {
+    <p class="pc__notice pc__notice--info">
+      <opp-icon name="info" />
+      <span>
+        Propagation started.
+        <a [routerLink]="['/w', workspaceId, 'jobs', jobId]">View in Jobs</a>
+        and run the report again when the job has finished.
+      </span>
+    </p>
+  }
+
+  @if (r.groups.length === 0) {
+    <opp-empty-state
+      title="No privilege conflicts"
+      message="Every family and duplicate group you can see has consistent privilege calls."
+    />
+  }
+
+  @if (families().length > 0) {
+    <section class="pc__section" aria-labelledby="pc-families">
+      <h2 id="pc-families">Families</h2>
+      @for (g of families(); track g.groupId) {
+        <article class="pc__group" [attr.aria-labelledby]="'pc-g-' + g.groupId">
+          <div class="pc__group-head">
+            <h3 class="pc__group-title" [id]="'pc-g-' + g.groupId">{{ title(g) }}</h3>
+            @for (reason of g.reasons; track reason) {
+              <opp-badge tone="warning" icon="warning" [attr.title]="reasonDescriptions[reason]">
+                {{ reasonLabels[reason] }}
+              </opp-badge>
+            }
+            <a
+              class="pc__open"
+              [routerLink]="['/w', workspaceId, 'documents']"
+              [queryParams]="documentsParams(g)"
+              [attr.aria-label]="'Open ' + title(g) + ' in Documents'"
+            >
+              <opp-icon name="documents" />
+              Open in Documents
+            </a>
+          </div>
+          <div
+            class="pc__table-wrap"
+            tabindex="0"
+            role="region"
+            [attr.aria-label]="title(g) + ', members'"
+          >
+            <table class="pc__table">
+              <thead>
+                <tr>
+                  <th scope="col">Control Number</th>
+                  <th scope="col">Privilege Status</th>
+                  <th scope="col">Privilege Basis</th>
+                  @if (showResponsiveness()) {
+                    <th scope="col">{{ responsivenessName() }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (m of g.members; track m.documentId) {
+                  <tr>
+                    <th scope="row" class="pc__name">
+                      {{ m.controlNumber }}
+                      <span class="pc__small">
+                        {{ m.familySequence === 0 ? 'Parent' : 'Attachment ' + m.familySequence }}
+                      </span>
+                    </th>
+                    <ng-container
+                      *ngTemplateOutlet="cell; context: { $implicit: m.status, strong: true }"
+                    />
+                    <ng-container *ngTemplateOutlet="cell; context: { $implicit: m.basis }" />
+                    @if (showResponsiveness()) {
+                      <ng-container
+                        *ngTemplateOutlet="cell; context: { $implicit: m.responsiveness }"
+                      />
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </article>
+      }
+    </section>
+  }
+
+  @if (duplicates().length > 0) {
+    <section class="pc__section" aria-labelledby="pc-duplicates">
+      <div class="pc__section-head">
+        <h2 id="pc-duplicates">Duplicates</h2>
+        @if (canPropagate) {
+          <div class="pc__actions">
+            <span class="pc__muted" aria-live="polite">
+              {{ ready().length === 1 ? '1 group selected' : ready().length + ' groups selected' }}
+            </span>
+            <button
+              type="button"
+              oppButton="primary"
+              [busy]="propagating()"
+              [disabled]="ready().length === 0"
+              (click)="propagate()"
+            >
+              Propagate privilege call…
+            </button>
+          </div>
+        }
+      </div>
+      @if (canPropagate) {
+        <p class="pc__muted">
+          To copy one document's privilege call to the rest of its duplicates, choose it with
+          <em>Use this call</em>, select the group, then <em>Propagate privilege call</em>.
+        </p>
+      }
+      @for (g of duplicates(); track g.groupId) {
+        <article class="pc__group" [attr.aria-labelledby]="'pc-g-' + g.groupId">
+          <div class="pc__group-head">
+            <h3 class="pc__group-title" [id]="'pc-g-' + g.groupId">{{ title(g) }}</h3>
+            @for (reason of g.reasons; track reason) {
+              <opp-badge tone="warning" icon="warning" [attr.title]="reasonDescriptions[reason]">
+                {{ reasonLabels[reason] }}
+              </opp-badge>
+            }
+            @if (canPropagate) {
+              <opp-checkbox
+                class="pc__select"
+                [checked]="isSelected(g)"
+                [disabled]="!sourceOf(g)"
+                [ariaLabel]="'Select for propagation: ' + title(g)"
+                (checkedChange)="setSelected(g, $event)"
+              >
+                Select for propagation
+              </opp-checkbox>
+            }
+            <a
+              class="pc__open"
+              [routerLink]="['/w', workspaceId, 'documents']"
+              [queryParams]="documentsParams(g)"
+              [attr.aria-label]="'Open ' + title(g) + ' in Documents'"
+            >
+              <opp-icon name="documents" />
+              Open in Documents
+            </a>
+          </div>
+          <div
+            class="pc__table-wrap"
+            tabindex="0"
+            role="region"
+            [attr.aria-label]="title(g) + ', members'"
+          >
+            <table class="pc__table">
+              <thead>
+                <tr>
+                  @if (canPropagate) {
+                    <th scope="col" class="pc__use">Use this call</th>
+                  }
+                  <th scope="col">Control Number</th>
+                  <th scope="col">Privilege Status</th>
+                  <th scope="col">Privilege Basis</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (m of g.members; track m.documentId) {
+                  <tr [class.pc__row--source]="canPropagate && sourceOf(g) === m.documentId">
+                    @if (canPropagate) {
+                      <td class="pc__use">
+                        <input
+                          type="radio"
+                          class="pc__radio"
+                          [name]="'pc-source-' + g.groupId"
+                          [checked]="sourceOf(g) === m.documentId"
+                          [attr.aria-label]="'Use the call of ' + m.controlNumber"
+                          (change)="setSource(g, m.documentId)"
+                        />
+                      </td>
+                    }
+                    <th scope="row" class="pc__name">
+                      {{ m.controlNumber }}
+                      @if (m.isPrimary) {
+                        <opp-badge tone="info">Primary</opp-badge>
+                      }
+                    </th>
+                    <ng-container
+                      *ngTemplateOutlet="cell; context: { $implicit: m.status, strong: true }"
+                    />
+                    <ng-container *ngTemplateOutlet="cell; context: { $implicit: m.basis }" />
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </article>
+      }
+    </section>
+  }
+}
+
+<ng-template #cell let-value let-strong="strong">
+  <td>
+    @if (valueText(value); as text) {
+      <span [class.pc__value--strong]="strong">{{ text }}</span>
+    } @else {
+      <span class="pc__none">Not coded</span>
+    }
+    @if (reviewer(value); as by) {
+      <span class="pc__small">{{ by }}</span>
+    }
+  </td>
+</ng-template>

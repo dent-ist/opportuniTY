@@ -165,6 +165,92 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         return new CodingChunkResult(result, commit, null);
     }
 
+    public async Task<CodingChunkResult> ApplyChunkAsync(
+        ClaimedChunk chunk, IReadOnlyList<CodingWriteRequest> writes, IReadOnlyList<JobItemResult> additionalItems,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunk);
+        ArgumentNullException.ThrowIfNull(writes);
+        ArgumentNullException.ThrowIfNull(additionalItems);
+        if (writes.Count == 0)
+        {
+            throw new ArgumentException("A grouped chunk names at least one write.", nameof(writes));
+        }
+
+        var lease = chunk.Lease;
+        foreach (var request in writes)
+        {
+            if (request.WorkspaceId != lease.WorkspaceId || request.JobId != lease.JobId || request.Actor.Type == CodingActorType.Human)
+            {
+                throw new ArgumentException("A chunk write is a job-originated write of the leased chunk's workspace and job.", nameof(writes));
+            }
+
+            var shapeErrors = ValidateShape(request);
+            if (shapeErrors.Count > 0)
+            {
+                return new CodingChunkResult(CodingWriteResult.Failed(CodingWriteOutcome.Invalid, [.. shapeErrors]), null, null);
+            }
+        }
+
+        CodingWriteResult merged;
+        ChunkCommitResult commit;
+        await using (var tx = await WorkspaceTransaction.BeginAsync(dataSource, lease.WorkspaceId, cancellationToken).ConfigureAwait(false))
+        {
+            var plan = new WritePlan();
+            var documents = new List<DocumentCodingResult>();
+            var restrictionChanges = new List<RestrictionClassChange>();
+            var events = 0;
+            var security = false;
+            foreach (var request in writes)
+            {
+                var (result, written) = await ApplyInTransactionAsync(tx, request, restrictions, cancellationToken).ConfigureAwait(false);
+                if (result.Outcome != CodingWriteOutcome.Applied)
+                {
+                    // Disposing the transaction rolls back the writes before this one.
+                    return new CodingChunkResult(result, null, null);
+                }
+
+                documents.AddRange(result.Documents);
+                restrictionChanges.AddRange(result.RestrictionChanges);
+                events += result.EventsWritten;
+                security |= result.TouchesSecurityAffectingField;
+                plan.BumpedDocuments.AddRange(written.BumpedDocuments);
+                plan.TouchesSecurity |= written.TouchesSecurity;
+            }
+
+            merged = new CodingWriteResult(CodingWriteOutcome.Applied, documents, [], events, security) { RestrictionChanges = restrictionChanges };
+            var task = plan.BumpedDocuments.Count == 0 ? null : new NewIndexChunkTask
+            {
+                JobId = lease.JobId,
+                ChunkId = lease.ChunkId,
+                Kind = IndexTaskKind.BulkCoding,
+                Membership = chunk.Membership,
+                ChangeMask = ChangeMask(plan),
+                IdempotencyKey = ChunkIdempotencyKey.ForChunk(lease.WorkspaceId, lease.JobId, chunk.Sequence, ChunkOperationKind.IndexChunk, 0),
+            };
+            (commit, var taskId) = await SearchWorkSql.CommitChunkAsync(tx, lease, Completion(merged, additionalItems), task, cancellationToken)
+                .ConfigureAwait(false);
+            if (commit.Committed)
+            {
+                await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return new CodingChunkResult(merged, commit, taskId);
+            }
+        }
+
+        if (commit.Outcome != ChunkCommitOutcome.LeaseLost)
+        {
+            var release = await new JobChunkRepository(dataSource).ReleaseAsync(lease, cancellationToken).ConfigureAwait(false);
+            commit = release switch
+            {
+                ChunkReleaseOutcome.Cancelled => commit with { Outcome = ChunkCommitOutcome.Cancelled },
+                ChunkReleaseOutcome.ReturnedToPending => commit with { Outcome = ChunkCommitOutcome.JobNotRunning },
+                _ => commit with { Outcome = ChunkCommitOutcome.LeaseLost },
+            };
+        }
+
+        return new CodingChunkResult(merged, commit, null);
+    }
+
     /// <summary>
     /// Q-31 coding-field values of an import chunk, inside the chunk's transaction: one state-based write per distinct set
     /// of values (actor <see cref="CodingActorType.SystemRule"/> on behalf of the job), so every change gets its
@@ -437,6 +523,147 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return events;
     }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<int, Guid>>> GetLatestChangeEventIdsAsync(
+        Guid workspaceId, IReadOnlyCollection<Guid> documentIds, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+        ArgumentNullException.ThrowIfNull(fieldIds);
+        var events = new Dictionary<Guid, Dictionary<int, Guid>>();
+        if (documentIds.Count == 0 || fieldIds.Count == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyDictionary<int, Guid>>();
+        }
+
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using (var command = tx.Command(
+            """
+            SELECT DISTINCT ON (e.document_id, e.field_id) e.document_id, e.field_id, e.event_id
+            FROM opportunity.coding_event e
+            WHERE e.workspace_id = @ws AND e.document_id = ANY(@docs) AND e.field_id = ANY(@fields) AND e.event_kind = 1
+            ORDER BY e.document_id, e.field_id, e.document_version DESC, e.occurred_at DESC
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("docs", documentIds.Distinct().ToArray());
+            command.Parameters.AddWithValue("fields", fieldIds.Distinct().ToArray());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var documentId = reader.GetGuid(0);
+                if (!events.TryGetValue(documentId, out var fields))
+                {
+                    events[documentId] = fields = [];
+                }
+
+                fields[reader.GetInt32(1)] = reader.GetGuid(2);
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return events.ToDictionary(e => e.Key, e => (IReadOnlyDictionary<int, Guid>)e.Value);
+    }
+
+    public async Task<PrivilegeConflictCandidates> FindPrivilegeConflictsAsync(PrivilegeConflictQuery query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentOutOfRangeException.ThrowIfLessThan(query.MaxGroups, 1);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, query.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        var families = await ConflictGroupsAsync(tx, PrivilegeConflictSql.FamilyGroups, query, cancellationToken).ConfigureAwait(false);
+        var duplicates = await ConflictGroupsAsync(tx, PrivilegeConflictSql.DuplicateGroups, query, cancellationToken).ConfigureAwait(false);
+        var truncated = families.Count > query.MaxGroups || duplicates.Count > query.MaxGroups;
+        var familyKeys = families.Take(query.MaxGroups).ToArray();
+        var groupKeys = duplicates.Take(query.MaxGroups).ToArray();
+        var members = new Dictionary<(PrivilegeConflictKind, Guid), List<PrivilegeConflictMember>>();
+        if (familyKeys.Length + groupKeys.Length > 0)
+        {
+            await using var command = tx.Command(PrivilegeConflictSql.Members);
+            AddConflictParameters(command, query);
+            command.Parameters.AddWithValue("families", familyKeys);
+            command.Parameters.AddWithValue("groups", groupKeys);
+            command.Parameters.AddWithValue("basis", PrivilegeFields.Basis);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var key = ((PrivilegeConflictKind)reader.GetInt32(0), reader.GetGuid(1));
+                if (!members.TryGetValue(key, out var list))
+                {
+                    members[key] = list = [];
+                }
+
+                list.Add(new PrivilegeConflictMember(
+                    reader.GetGuid(2),
+                    reader.GetString(3),
+                    reader.GetInt32(4),
+                    reader.GetBoolean(5),
+                    reader.GetBoolean(6),
+                    CodedValue(reader, 7),
+                    CodedValue(reader, 10),
+                    CodedValue(reader, 13)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        List<PrivilegeConflictCandidate> groups =
+        [
+            .. familyKeys.Select(k => new PrivilegeConflictCandidate(PrivilegeConflictKind.Family, k,
+                members.GetValueOrDefault((PrivilegeConflictKind.Family, k)) ?? [])),
+            .. groupKeys.Select(k => new PrivilegeConflictCandidate(PrivilegeConflictKind.Duplicates, k,
+                members.GetValueOrDefault((PrivilegeConflictKind.Duplicates, k)) ?? [])),
+        ];
+        return new PrivilegeConflictCandidates(groups, truncated);
+    }
+
+    /// <summary>
+    /// E13-T02 AC 2: whether a member of the production belongs to a family with a live member coded Privilege Status =
+    /// Withhold, or to a duplicate group whose live members' privilege calls differ (<see cref="PrivilegeConflictRules"/>).
+    /// Over every document, whoever finalizes: the caller only learns that conflicts exist (Q-52).
+    /// </summary>
+    internal static async Task<bool> AnyProductionPrivilegeConflictAsync(WorkspaceTransaction tx, Guid productionId, CancellationToken cancellationToken)
+    {
+        await using var command = tx.Command(PrivilegeConflictSql.ProductionGate);
+        command.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        command.Parameters.AddWithValue("id", productionId);
+        command.Parameters.AddWithValue("status", PrivilegeFields.Status);
+        command.Parameters.AddWithValue("withhold", PrivilegeFields.Keys.Withhold);
+        command.Parameters.AddWithValue("notPrivileged", PrivilegeFields.Keys.NotPrivileged);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+    }
+
+    private static async Task<List<Guid>> ConflictGroupsAsync(
+        WorkspaceTransaction tx, string sql, PrivilegeConflictQuery query, CancellationToken cancellationToken)
+    {
+        await using var command = tx.Command(sql);
+        AddConflictParameters(command, query);
+        command.Parameters.AddWithValue("limit", query.MaxGroups + 1);
+        var keys = new List<Guid>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            keys.Add(reader.GetGuid(0));
+        }
+
+        return keys;
+    }
+
+    private static void AddConflictParameters(NpgsqlCommand command, PrivilegeConflictQuery query)
+    {
+        command.Parameters.AddWithValue("ws", query.WorkspaceId);
+        command.Parameters.AddWithValue("status", PrivilegeFields.Status);
+        command.Parameters.AddWithValue("withhold", PrivilegeFields.Keys.Withhold);
+        command.Parameters.AddWithValue("notPrivileged", PrivilegeFields.Keys.NotPrivileged);
+        // Field ids start at 1, so 0 matches no coding row: no responsiveness rule.
+        command.Parameters.AddWithValue("resp", query.ResponsivenessFieldId ?? 0);
+        command.Parameters.Add(new NpgsqlParameter("production", NpgsqlDbType.Uuid) { Value = (object?)query.ProductionId ?? DBNull.Value });
+    }
+
+    private static PrivilegeCodedValue CodedValue(NpgsqlDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal)
+            ? PrivilegeCodedValue.Empty
+            : new PrivilegeCodedValue(
+                reader.IsDBNull(ordinal + 2) ? [] : reader.GetFieldValue<int[]>(ordinal + 2),
+                reader.GetGuid(ordinal),
+                reader.GetFieldValue<DateTimeOffset>(ordinal + 1));
 
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<int, FieldCodingState>>> GetFieldStatesAsync(
         Guid workspaceId, IReadOnlyCollection<Guid> documentIds, IReadOnlyCollection<int> fieldIds, CancellationToken cancellationToken = default)
@@ -1344,6 +1571,138 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
     }
 
     private sealed record PlannedEvent(Guid DocumentId, int FieldId, CodingEventKind Kind, JsonNode? Prior, JsonNode? New, long Version);
+
+    /// <summary>
+    /// Privilege conflict detection (E13-T02), set-based. Seeds come from the choice index (documents coded Withhold, or
+    /// with any privilege call for duplicates, or any responsiveness call), so a workspace without privilege calls costs
+    /// nothing; each statement then groups the seeds' live families or duplicate groups once. Choices are found by
+    /// <c>system_key</c>, never by id or name.
+    /// </summary>
+    private static class PrivilegeConflictSql
+    {
+        private const string Live =
+            "JOIN opportunity.document_projection_state ps ON ps.workspace_id = d.workspace_id AND ps.document_id = d.document_id AND NOT ps.is_deleted";
+
+        private const string Status =
+            """
+            status AS (
+                SELECT c.document_id, c.choice_id, ch.system_key
+                FROM opportunity.document_coding_choice c
+                JOIN opportunity.choice ch ON ch.workspace_id = c.workspace_id AND ch.field_id = c.field_id AND ch.choice_id = c.choice_id
+                WHERE c.workspace_id = @ws AND c.field_id = @status)
+            """;
+
+        private const string InProduction =
+            "LEFT JOIN opportunity.production_document pd ON pd.workspace_id = d.workspace_id AND pd.production_id = @production AND pd.document_id = d.document_id";
+
+        public const string FamilyGroups =
+            $"""
+            WITH {Status},
+            seeds AS (
+                SELECT d.family_id FROM status s
+                JOIN opportunity.document d ON d.workspace_id = @ws AND d.document_id = s.document_id
+                WHERE s.system_key = @withhold
+                UNION
+                SELECT d.family_id FROM opportunity.document_coding_choice r
+                JOIN opportunity.document d ON d.workspace_id = r.workspace_id AND d.document_id = r.document_id
+                WHERE r.workspace_id = @ws AND r.field_id = @resp)
+            SELECT d.family_id
+            FROM seeds
+            JOIN opportunity.document d ON d.workspace_id = @ws AND d.family_id = seeds.family_id
+            {Live}
+            LEFT JOIN status s ON s.document_id = d.document_id
+            LEFT JOIN opportunity.document_coding_choice r ON r.workspace_id = d.workspace_id AND r.document_id = d.document_id AND r.field_id = @resp
+            {InProduction}
+            GROUP BY d.family_id
+            HAVING count(DISTINCT d.document_id) > 1
+               AND ((bool_or(s.system_key = @withhold) AND bool_or(s.system_key IS DISTINCT FROM @withhold)) OR count(DISTINCT r.choice_id) > 1)
+               AND (@production::uuid IS NULL OR bool_or(pd.document_id IS NOT NULL))
+            ORDER BY min(d.control_number_sort_key), d.family_id
+            LIMIT @limit
+            """;
+
+        public const string DuplicateGroups =
+            $"""
+            WITH {Status},
+            seeds AS (
+                SELECT DISTINCT d.duplicate_group_id FROM status s
+                JOIN opportunity.document d ON d.workspace_id = @ws AND d.document_id = s.document_id
+                WHERE s.system_key IS DISTINCT FROM @notPrivileged AND d.duplicate_group_id IS NOT NULL)
+            SELECT d.duplicate_group_id
+            FROM seeds
+            JOIN opportunity.document d ON d.workspace_id = @ws AND d.duplicate_group_id = seeds.duplicate_group_id
+            {Live}
+            LEFT JOIN status s ON s.document_id = d.document_id
+            {InProduction}
+            GROUP BY d.duplicate_group_id
+            HAVING count(DISTINCT coalesce(s.choice_id, 0)) > 1
+               AND bool_or(s.choice_id IS NOT NULL AND s.system_key IS DISTINCT FROM @notPrivileged)
+               AND (@production::uuid IS NULL OR bool_or(pd.document_id IS NOT NULL))
+            ORDER BY min(d.control_number_sort_key), d.duplicate_group_id
+            LIMIT @limit
+            """;
+
+        private const string MemberColumns =
+            "d.document_id, d.control_number, d.family_sequence, d.is_duplicate_primary, d.control_number_sort_key";
+
+        private static string Coded(string alias, string field) =>
+            $"""
+            {alias}.changed_by, {alias}.changed_at,
+                   (SELECT array_agg(c.choice_id ORDER BY c.choice_id) FROM opportunity.document_coding_choice c
+                     WHERE c.workspace_id = @ws AND c.document_id = m.document_id AND c.field_id = {field})
+            """;
+
+        private static string CodedJoin(string alias, string field) =>
+            $"LEFT JOIN opportunity.document_coding_field {alias} ON {alias}.workspace_id = @ws AND {alias}.document_id = m.document_id AND {alias}.field_id = {field}";
+
+        public static readonly string Members =
+            $"""
+            WITH m AS (
+                SELECT 1 AS kind, d.family_id AS group_id, array_position(@families, d.family_id) AS group_order, {MemberColumns}
+                FROM opportunity.document d {Live}
+                WHERE d.workspace_id = @ws AND d.family_id = ANY(@families)
+                UNION ALL
+                SELECT 2, d.duplicate_group_id, array_position(@groups, d.duplicate_group_id), {MemberColumns}
+                FROM opportunity.document d {Live}
+                WHERE d.workspace_id = @ws AND d.duplicate_group_id = ANY(@groups))
+            SELECT m.kind, m.group_id, m.document_id, m.control_number, m.family_sequence, m.is_duplicate_primary,
+                   EXISTS (SELECT FROM opportunity.production_document pd
+                            WHERE pd.workspace_id = @ws AND pd.production_id = @production AND pd.document_id = m.document_id),
+                   {Coded("sf", "@status")},
+                   {Coded("bf", "@basis")},
+                   {Coded("rf", "@resp")}
+            FROM m
+            {CodedJoin("sf", "@status")}
+            {CodedJoin("bf", "@basis")}
+            {CodedJoin("rf", "@resp")}
+            ORDER BY m.kind, m.group_order, CASE WHEN m.kind = 1 THEN m.family_sequence ELSE 0 END, m.is_duplicate_primary DESC,
+                     m.control_number_sort_key, m.document_id
+            """;
+
+        /// <summary>A member's family has a live withheld member, or its duplicate group's live members' calls differ.</summary>
+        public const string ProductionGate =
+            $"""
+            WITH {Status},
+            members AS (
+                SELECT d.family_id, d.duplicate_group_id
+                FROM opportunity.production_document pd
+                JOIN opportunity.document d ON d.workspace_id = pd.workspace_id AND d.document_id = pd.document_id
+                WHERE pd.workspace_id = @ws AND pd.production_id = @id)
+            SELECT EXISTS (
+                SELECT FROM (SELECT DISTINCT family_id FROM members) f
+                JOIN opportunity.document d ON d.workspace_id = @ws AND d.family_id = f.family_id
+                {Live}
+                JOIN status s ON s.document_id = d.document_id AND s.system_key = @withhold)
+            OR EXISTS (
+                SELECT FROM (SELECT DISTINCT duplicate_group_id FROM members WHERE duplicate_group_id IS NOT NULL) g
+                JOIN opportunity.document d ON d.workspace_id = @ws AND d.duplicate_group_id = g.duplicate_group_id
+                {Live}
+                LEFT JOIN status s ON s.document_id = d.document_id
+                GROUP BY g.duplicate_group_id
+                HAVING count(DISTINCT coalesce(s.choice_id, 0)) > 1
+                   AND bool_or(s.choice_id IS NOT NULL AND s.system_key IS DISTINCT FROM @notPrivileged))
+            """;
+    }
 
     private sealed class WritePlan
     {

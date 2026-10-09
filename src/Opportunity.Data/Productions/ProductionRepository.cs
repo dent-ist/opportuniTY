@@ -807,7 +807,7 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
 
     public async Task<ProductionWriteResult> FinalizeAsync(
         Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
-        IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default)
+        IReadOnlyList<AuditEvent> audit, PrivilegeConflictOverrideWrite? conflictOverride = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(manifest);
         ArgumentNullException.ThrowIfNull(manifestSha256);
@@ -846,6 +846,20 @@ public sealed class ProductionRepository(NpgsqlDataSource dataSource) : IProduct
             return new ProductionWriteResult(ProductionWriteStatus.PrivilegeWithheld, current,
                 Reason: "Documents in this production are coded Privilege Status = Withhold. Take them out of the frozen set or change their "
                     + "privilege call, then allocate Bates numbers again.");
+        }
+
+        // E13-T02 AC 2: unresolved family or duplicate privilege conflicts block too, unless an authorized override with a
+        // reason was given; then the manifest and audit events that record the override are written instead.
+        if (await CodingRepository.AnyProductionPrivilegeConflictAsync(tx, productionId, cancellationToken).ConfigureAwait(false))
+        {
+            if (conflictOverride is null)
+            {
+                return new ProductionWriteResult(ProductionWriteStatus.PrivilegeConflicts, current,
+                    Reason: "Documents in this production have unresolved family or duplicate privilege conflicts. Resolve them (see the "
+                        + "privilege conflicts report for this production) or finalize with an override and a reason.");
+            }
+
+            (manifest, manifestSha256, audit) = (conflictOverride.Manifest, conflictOverride.ManifestSha256, conflictOverride.Audit);
         }
 
         await using (var update = tx.Command(

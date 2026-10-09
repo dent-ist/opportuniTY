@@ -64,6 +64,7 @@ internal sealed class BulkCodingHarness : IAsyncDisposable
         services.AddSingleton<IFieldCatalogRepository>(db.Core.Fields);
         services.AddSingleton<IUserDirectory>(new PostgresUserDirectory(app));
         services.AddSingleton<IFieldAccessFilter, UnrestrictedFieldAccess>();
+        services.AddSingleton<ICodingPropagationRepository>(new CodingPropagationRepository(app));
         services.AddOpportunityAuthorization();
         services.AddScoped<BulkCodingService>();
         services.AddScoped<BulkCodingChunkExecutor>();

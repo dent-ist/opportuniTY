@@ -229,6 +229,12 @@ export type { UpdateDedupePolicy$Params as UpdateDedupePolicy$Params } from './f
 export { updateDedupePolicy as updateDedupePolicy } from './fn/relationships/update-dedupe-policy';
 export type { StartDedupeRun$Params as StartDedupeRun$Params } from './fn/relationships/start-dedupe-run';
 export { startDedupeRun as startDedupeRun } from './fn/relationships/start-dedupe-run';
+export type { GetPrivilegeConflicts$Params as GetPrivilegeConflicts$Params } from './fn/privilege/get-privilege-conflicts';
+export { getPrivilegeConflicts as getPrivilegeConflicts } from './fn/privilege/get-privilege-conflicts';
+export type { PropagatePrivilegeCalls$Params as PropagatePrivilegeCalls$Params } from './fn/privilege/propagate-privilege-calls';
+export { propagatePrivilegeCalls as propagatePrivilegeCalls } from './fn/privilege/propagate-privilege-calls';
+export type { ExportPrivilegeConflicts$Params as ExportPrivilegeConflicts$Params } from './fn/privilege/export-privilege-conflicts';
+export { exportPrivilegeConflicts as exportPrivilegeConflicts } from './fn/privilege/export-privilege-conflicts';
 export type { ListSnapshots$Params as ListSnapshots$Params } from './fn/snapshots/list-snapshots';
 export { listSnapshots as listSnapshots } from './fn/snapshots/list-snapshots';
 export type { CreateSnapshot$Params as CreateSnapshot$Params } from './fn/snapshots/create-snapshot';

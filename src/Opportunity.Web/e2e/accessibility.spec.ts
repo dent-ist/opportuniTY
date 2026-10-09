@@ -20,6 +20,7 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/searches/terms-reports/new?savedSearch=ss-1',
   '/w/ws-1/searches/terms-reports/str-1',
   '/w/ws-1/searches/terms-reports/str-2',
+  '/w/ws-1/searches/privilege-conflicts',
   '/w/ws-1/documents?termReport=str-1&term=str-1-t1',
   '/w/ws-1/jobs',
   '/w/ws-1/jobs/job-exp-3',

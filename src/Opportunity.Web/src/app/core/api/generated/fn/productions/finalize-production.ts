@@ -7,11 +7,13 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
+import { FinalizeProductionRequest } from '../../models/finalize-production-request';
 import { ProductionResource } from '../../models/production-resource';
 
 export interface FinalizeProduction$Params {
   workspaceId: string;
   productionId: string;
+  body?: null | FinalizeProductionRequest;
 }
 
 export function finalizeProduction(
@@ -24,6 +26,7 @@ export function finalizeProduction(
   if (params) {
     rb.path('workspaceId', params.workspaceId, {});
     rb.path('productionId', params.productionId, {});
+    rb.body(params.body, 'application/json');
   }
 
   return http.request(rb.build({ responseType: 'json', accept: 'application/json', context })).pipe(
