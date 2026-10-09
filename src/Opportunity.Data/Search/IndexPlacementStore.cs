@@ -137,6 +137,17 @@ public sealed class IndexPlacementStore(NpgsqlDataSource dataSource) : IIndexPla
         return pool;
     }
 
+    public async Task<bool> AcceptsPlacementAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        // The registry is read-open; a workspace in Deleting or Purged is never placed again (E20-T02).
+        await using var tx = await WorkspaceTransaction.BeginInstallationAsync(dataSource, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command("SELECT status FROM opportunity.workspace WHERE workspace_id = @ws");
+        command.Parameters.AddWithValue("ws", workspaceId);
+        var status = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return status is not ("Deleting" or "Purged");
+    }
+
     public async Task AdjustSharedPoolAsync(
         int poolNumber, int workspaceDelta, long bytesDelta, long closeAtBytes, CancellationToken cancellationToken = default)
     {

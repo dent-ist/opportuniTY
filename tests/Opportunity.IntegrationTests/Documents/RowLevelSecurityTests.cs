@@ -36,7 +36,11 @@ public sealed class RowLevelSecurityTests(MigrationPostgresFixture postgres)
 
     /// <summary>Reviewed SECURITY DEFINER functions (ADR-015 D7.4.4).</summary>
     private static readonly string[] SecurityDefinerAllowList =
-        ["coding_event_ensure_partitions", "search_work_drop_expired_partitions", "search_work_ensure_partitions"];
+        [
+            "coding_event_ensure_partitions", "search_work_drop_expired_partitions", "search_work_ensure_partitions",
+            // Workspace deletion (E20-T02, V0054): purge and count one deleting workspace's rows across tables.
+            "workspace_purge_batch", "workspace_purge_counts",
+        ];
 
     private const string IsolationExpression = "(workspace_id = (NULLIF(current_setting('app.workspace_id'::text, true), ''::text))::uuid)";
 

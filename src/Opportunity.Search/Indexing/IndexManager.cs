@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Search.Indexing;
+using Opportunity.Application.Workspaces.Deletion;
 
 using static Opportunity.Search.Indexing.JsonBodies;
 
@@ -20,7 +21,7 @@ internal sealed partial class IndexManager(
     IndexTemplates templates,
     OpenSearchOptions options,
     TimeProvider timeProvider,
-    ILogger<IndexManager> logger) : IIndexManager, IWorkspaceSearchPlacement
+    ILogger<IndexManager> logger) : IIndexManager, IWorkspaceSearchPlacement, IWorkspaceSearchPurge
 {
     private const string AlreadyExists = "resource_already_exists_exception";
 
@@ -51,6 +52,11 @@ internal sealed partial class IndexManager(
         if (await store.GetAsync(workspaceId, cancellationToken).ConfigureAwait(false) is { } existing)
         {
             return ToPlacement(Remember(existing));
+        }
+
+        if (!await store.AcceptsPlacementAsync(workspaceId, cancellationToken).ConfigureAwait(false))
+        {
+            throw new WorkspaceFencedException(workspaceId, "search placement");
         }
 
         var decision = PlacementPolicy.Decide(options, request);
@@ -252,6 +258,107 @@ internal sealed partial class IndexManager(
         await RequireRetiredAsync(workspaceId, location, cancellationToken).ConfigureAwait(false);
         await DeleteLocationAsync(workspaceId, location, cancellationToken).ConfigureAwait(false);
         LogLocationDropped(logger, workspaceId, location.Kind, location.Generation, location.Revision);
+    }
+
+    /// <summary>
+    /// E20-T02: deletes every dedicated index of the workspace (any revision or generation, with its alias) and removes
+    /// its documents from every shared index (term + routing), waiting for the cluster to finish and refresh. The
+    /// placement record is left to the database purge; the cached placement is dropped.
+    /// </summary>
+    public async Task<WorkspaceSearchPurgeResult> PurgeAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        RequireWorkspace(workspaceId);
+        Forget(workspaceId);
+        var dedicated = await DedicatedIndexesAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+        long documents = 0;
+        if (dedicated.Count > 0)
+        {
+            documents += await CountAsync(DedicatedPattern(workspaceId), null, cancellationToken).ConfigureAwait(false);
+        }
+
+        foreach (var index in dedicated)
+        {
+            await connection.SendAsync(HttpMethod.Delete, Escape(index), null, cancellationToken, HttpStatusCode.NotFound).ConfigureAwait(false);
+        }
+
+        var routing = workspaceId.ToString("D");
+        var started = await connection.SendAsync(HttpMethod.Post,
+            $"{Escape(SharedPattern)}/_delete_by_query?routing={routing}&conflicts=proceed&refresh=true&wait_for_completion=false"
+            + "&allow_no_indices=true&ignore_unavailable=true&expand_wildcards=open",
+            Obj(("query", Obj(("term", Obj(("workspaceId", routing)))))), cancellationToken, HttpStatusCode.NotFound).ConfigureAwait(false);
+        if (started.Body?["task"]?.GetValue<string>() is { } task)
+        {
+            documents += await AwaitDeleteTaskAsync(task, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            documents += started.Body?["deleted"]?.GetValue<long>() ?? 0;
+        }
+
+        LogWorkspacePurged(logger, workspaceId, dedicated.Count, documents);
+        return new WorkspaceSearchPurgeResult(dedicated.Count, documents);
+    }
+
+    public async Task<WorkspaceSearchInventory> CountAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        RequireWorkspace(workspaceId);
+        var dedicated = await DedicatedIndexesAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+        var documents = await CountAsync(SharedPattern, Obj(("term", Obj(("workspaceId", workspaceId.ToString("D"))))), cancellationToken)
+            .ConfigureAwait(false);
+        if (dedicated.Count > 0)
+        {
+            documents += await CountAsync(DedicatedPattern(workspaceId), null, cancellationToken).ConfigureAwait(false);
+        }
+
+        return new WorkspaceSearchInventory(documents, dedicated.Count);
+    }
+
+    private string SharedPattern => $"{Names.Prefix}-shared-*";
+
+    private string DedicatedPattern(Guid workspaceId) => Names.DedicatedAlias(workspaceId) + "*";
+
+    /// <summary>Every physical index of the workspace's dedicated alias name, open or closed, current or retired.</summary>
+    private async Task<IReadOnlyList<string>> DedicatedIndexesAsync(Guid workspaceId, CancellationToken cancellationToken)
+    {
+        var response = await connection.SendAsync(HttpMethod.Get,
+            $"{Escape(DedicatedPattern(workspaceId))}?expand_wildcards=all&allow_no_indices=true&ignore_unavailable=true&filter_path=*.settings.index.uuid",
+            null, cancellationToken, HttpStatusCode.NotFound).ConfigureAwait(false);
+        return response.Status == HttpStatusCode.NotFound || response.Body is not JsonObject map
+            ? []
+            : [.. map.Select(kv => kv.Key).Order(StringComparer.Ordinal)];
+    }
+
+    private async Task<long> CountAsync(string pattern, JsonObject? query, CancellationToken cancellationToken)
+    {
+        var response = await connection.SendAsync(HttpMethod.Post,
+            $"{Escape(pattern)}/_count?allow_no_indices=true&ignore_unavailable=true&expand_wildcards=open",
+            query is null ? null : Obj(("query", query)), cancellationToken, HttpStatusCode.NotFound).ConfigureAwait(false);
+        return response.Status == HttpStatusCode.NotFound ? 0 : response.Body?["count"]?.GetValue<long>() ?? 0;
+    }
+
+    /// <summary>Polls an asynchronous delete-by-query until it completes; returns the documents it deleted.</summary>
+    private async Task<long> AwaitDeleteTaskAsync(string task, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var status = await connection.SendAsync(HttpMethod.Get, $"_tasks/{Escape(task)}", null, cancellationToken).ConfigureAwait(false);
+            if (status.Body?["completed"]?.GetValue<bool>() == true)
+            {
+                if (status.Body["error"] is { } error)
+                {
+                    throw new InvalidOperationException($"Deleting a workspace's documents failed: {error["type"]} {error["reason"]}");
+                }
+
+                if (status.Body["response"]?["failures"] is JsonArray { Count: > 0 } failures)
+                {
+                    throw new InvalidOperationException($"Deleting a workspace's documents failed for {failures.Count} document(s).");
+                }
+
+                return status.Body["response"]?["deleted"]?.GetValue<long>() ?? 0;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), timeProvider, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     async Task<WorkspaceSearchPlacementInfo> IWorkspaceSearchPlacement.PlaceAsync(
@@ -515,6 +622,9 @@ internal sealed partial class IndexManager(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Dropped the retired {Kind} generation {Generation} revision {Revision} location of workspace {WorkspaceId}")]
     private static partial void LogLocationDropped(ILogger logger, Guid workspaceId, IndexPlacementKind kind, int generation, int revision);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Removed workspace {WorkspaceId} from search: {Indexes} dedicated index(es) and {Documents} document(s) deleted")]
+    private static partial void LogWorkspacePurged(ILogger logger, Guid workspaceId, int indexes, long documents);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rebuild of workspace {WorkspaceId} aborted; the current placement keeps serving")]
     private static partial void LogRebuildAborted(ILogger logger, Guid workspaceId);

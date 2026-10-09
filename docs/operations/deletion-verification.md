@@ -5,11 +5,12 @@ that nothing of a workspace remains where it should not (e.g. after a failed run
 installation operator with a database role that bypasses RLS (ADR-014 §7: a check through the application role would
 see nothing and prove nothing) and read access to OpenSearch and object storage.
 
-> **Status (2026-10-04):** workspace deletion itself (request, two-person approval, fenced run and certificate) is
-> E20-T02 and is **not built**; the ADR-014 interim position applies: nothing deletes workspace data. The checks below
-> work today and are the ones the deletion run must automate and record on its certificate. Records retained by the
-> workspace's retention profile (ADR-014 §5, default `RetainRecords`: production outputs, privilege logs, referenced
-> snapshot membership, the certificate and **audit**) are expected to remain.
+> **Status (2026-10-09):** workspace deletion (request, two-person approval, fenced run and certificate, E20-T02) runs
+> these checks itself and records them on its certificate ([workspace-deletion.md](workspace-deletion.md)); use this
+> runbook to investigate a run that ended `CompletedWithResiduals` or to check independently. Records retained by the
+> workspace's retention profile (ADR-014 §5, default `RetainRecords`: productions with their members, Bates ranges,
+> volume outputs, source snapshots, jobs and Redaction Sets; always the tombstone, legal hold and data key records, the
+> certificate and **audit**) are expected to remain.
 
 ## 1. PostgreSQL
 

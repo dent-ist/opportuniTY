@@ -18,6 +18,12 @@
   font-size: var(--opp-font-size-2xl);
 }
 
+.workspaces__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
 .workspaces__section {
   display: flex;
   flex-direction: column;

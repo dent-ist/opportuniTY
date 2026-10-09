@@ -67,7 +67,8 @@ public sealed class DeadLetterStore(NpgsqlDataSource dataSource) : IDeadLetterSt
                 await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
                 return inserted == 0 ? DeadLetterWriteOutcome.Duplicate : DeadLetterWriteOutcome.Workspace;
             }
-            catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.InsufficientPrivilege)
+            catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.InsufficientPrivilege
+                or Workspaces.WorkspaceFenceViolation.SqlState)
             {
                 // No such workspace (or RLS rejects it): keep the record at installation level with the claimed id.
             }

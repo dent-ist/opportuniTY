@@ -396,6 +396,8 @@ public sealed class InteractiveIndexWorkerTests(OpenSearchFixture openSearch, Mi
         var w = await h.Db.WorkspaceAsync(documents: 1);
         await CodeAsync(h, w, w.Documents[0], true);
         var message = (await h.DispatchAsync(w.Id)).Single();
+        // Placed first: a workspace being deleted gets no new placement (E20-T02 fence).
+        await h.TargetAsync(w.Id);
         await h.Db.Core.ExecuteAsync("UPDATE opportunity.workspace SET status = 'Deleting', closed_at = now() WHERE workspace_id = @ws", ("ws", w.Id));
 
         await h.HandleAsync(message);

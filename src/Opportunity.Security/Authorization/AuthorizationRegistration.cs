@@ -44,7 +44,7 @@ public static class AuthorizationRegistration
         // PDP without ASP.NET routing. The API's full authorization services come from AddOpportunityAuthentication.
         services.AddAuthorizationCore(options =>
         {
-            foreach (var permission in InstallationPermissions.All)
+            foreach (var permission in InstallationPermissions.All.Append(InstallationPermissions.ApproveDeletion))
             {
                 options.AddPolicy(InstallationAuthorizationConventions.PolicyName(permission), policy => policy
                     .RequireAuthenticatedUser()

@@ -38,6 +38,16 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/admin/coding-layouts',
   '/w/ws-1/admin/users-groups',
   '/w/ws-1/admin/roles-security',
+  // A requester sees only their own deletions (none yet) (E20-T02).
+  '/workspace-deletions',
+];
+
+/** Workspace deletions as a Retention Approver (E20-T02): a request to approve and a finished run. */
+const APPROVER_ROUTES = [
+  '/workspaces',
+  '/workspace-deletions',
+  '/workspace-deletions/del-7',
+  '/workspace-deletions/del-5',
 ];
 
 /** Popups are rendered only while open, so each is opened and checked separately. */
@@ -58,6 +68,11 @@ const POPUPS = [
     name: 'Place legal hold dialog',
     path: '/w/ws-1/admin/settings',
     trigger: { role: 'button', name: /Place legal hold/ },
+  },
+  {
+    name: 'Delete workspace dialog',
+    path: '/w/ws-1/admin/settings',
+    trigger: { role: 'button', name: /Delete workspace/ },
   },
   {
     name: 'workspace switcher',
@@ -86,6 +101,23 @@ for (const theme of THEMES) {
         await expectNoSeriousAxeViolations(page, testInfo);
       });
     }
+
+    test.describe('retention approver', () => {
+      test.use({
+        api: {
+          installationPermissions: [
+            'Installation.ManageWorkspaces',
+            'Installation.ApproveDeletion',
+          ],
+        },
+      });
+      for (const path of APPROVER_ROUTES) {
+        test(path, async ({ page }, testInfo) => {
+          await openPage(page, path);
+          await expectNoSeriousAxeViolations(page, testInfo);
+        });
+      }
+    });
 
     test('workspace sidebar collapsed to icons', async ({ page }, testInfo) => {
       await openPage(page, '/w/ws-1/admin/fields');
@@ -489,7 +521,13 @@ for (const theme of THEMES) {
       test(`${popup.name} open`, async ({ page }, testInfo) => {
         await openPage(page, popup.path);
         await page.getByRole(popup.trigger.role, { name: popup.trigger.name }).click();
-        await expect(page.getByRole('menu').or(page.getByRole('dialog')).first()).toBeVisible();
+        await expect(
+          page
+            .getByRole('menu')
+            .or(page.getByRole('dialog'))
+            .or(page.getByRole('alertdialog'))
+            .first(),
+        ).toBeVisible();
         await expectNoSeriousAxeViolations(page, testInfo);
       });
     }

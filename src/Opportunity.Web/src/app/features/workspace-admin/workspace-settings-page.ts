@@ -44,9 +44,10 @@ import { HttpLegalHoldApi, LegalHoldApi } from './legal-hold-api';
 import { LegalHoldCard } from './legal-hold-card';
 import {
   type DeletionAvailability,
-  HoldAwareDeletion,
+  HttpWorkspaceDeletion,
   WorkspaceDeletion,
 } from './workspace-deletion';
+import type { DeletionView } from '../workspace-deletions/workspace-deletions-api';
 
 const PLACEMENT_KIND: Record<WorkspaceSearchPlacementKind, string> = {
   shared: 'Shared index',
@@ -64,8 +65,8 @@ const PLACEMENT_STATE: Record<WorkspaceSearchPlacementState, string> = {
  * Admin › Workspace Settings (E04-T07): name, matter number and display time zone (everything `PUT
  * /api/v1/workspaces/{id}` changes, sent with `If-Match`), the read-only storage profile, search index placement and
  * projection generation, legal holds (E20-T01: the hold state for every member, placing and releasing for hold
- * managers) and the deletion entry point. Deletion follows `WorkspaceDeletion`: blocked while a legal hold applies,
- * otherwise not available in this version (#167), so no deletion API is called.
+ * managers) and the deletion entry point (E20-T02): blocked while a legal hold applies, a request for Workspace Admins
+ * (a second person approves it on the Workspace deletions page), or the open request with a link to its progress.
  */
 @Component({
   selector: 'opp-workspace-settings-page',
@@ -84,7 +85,7 @@ const PLACEMENT_STATE: Record<WorkspaceSearchPlacementState, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     { provide: LegalHoldApi, useClass: HttpLegalHoldApi },
-    { provide: WorkspaceDeletion, useClass: HoldAwareDeletion },
+    { provide: WorkspaceDeletion, useClass: HttpWorkspaceDeletion },
   ],
   host: { class: 'wsa-page' },
 })
@@ -143,6 +144,8 @@ export class WorkspaceSettingsPage {
         return 'Deletion is blocked while a legal hold (preservation lock) applies to this workspace.';
       case 'allowed':
         return 'Removes the workspace and its contents once a second person approves the request.';
+      case 'pending':
+        return this.pendingText(state.deletion);
       default:
         return 'Checking whether this workspace can be deleted…';
     }
@@ -151,6 +154,22 @@ export class WorkspaceSettingsPage {
   constructor() {
     void this.load();
     void this.deletion.availability().then((a) => this.deletionState.set(a));
+  }
+
+  /** The open deletion, in words: who asked when, and where it stands. */
+  protected pendingText(d: DeletionView): string {
+    const by = d.requestedBy.displayName || 'a Workspace Admin';
+    const asked = `Deletion was requested by ${by} on ${this.date(d.requestedAt)}`;
+    switch (d.status) {
+      case 'requested':
+        return `${asked} and is waiting for approval by a second person.`;
+      case 'approved':
+        return `${asked} and approved. It starts on ${this.date(d.runNotBefore)} unless it is cancelled before then.`;
+      case 'halted':
+        return `${asked}. It is paused by a legal hold.`;
+      default:
+        return `${asked} and is in progress.`;
+    }
   }
 
   /** Active legal holds as the workspace resource reports them. */
@@ -252,23 +271,24 @@ export class WorkspaceSettingsPage {
     const state = this.deletionState();
     const ws = this.workspace();
     if (!ws || !state || state.kind === 'unavailable') return;
-    const ref = this.dialogs.open<boolean, DeleteWorkspaceData>(DeleteWorkspaceDialog, {
+    if (state.kind !== 'locked' && state.kind !== 'allowed') return;
+    const ref = this.dialogs.open<DeletionView, DeleteWorkspaceData>(DeleteWorkspaceDialog, {
       data: { workspaceName: ws.name, availability: state },
       role: 'alertdialog',
-      width: '40rem',
-      autoFocus: state.kind === 'allowed' ? 'input' : '[data-autofocus]',
+      width: '42rem',
+      autoFocus: state.kind === 'allowed' ? 'input[type="radio"]:checked' : '[data-autofocus]',
+      injector: this.injector,
     });
-    if ((await firstValueFrom(ref.closed)) !== true) return;
-    try {
-      await this.deletion.request(ws.name);
+    const requested = await firstValueFrom(ref.closed);
+    if (requested) {
+      this.deletionState.set({ kind: 'pending', deletion: requested });
       this.toasts.show('Deletion requested. It starts once a second person approves it.', {
         tone: 'success',
       });
-    } catch (e) {
-      this.toasts.show(e instanceof Error ? e.message : 'The deletion request failed.', {
-        tone: 'error',
-      });
+      return;
     }
+    // Closed without a request (or after a conflict): show what the server has now.
+    this.deletionState.set(await this.deletion.availability().catch(() => state));
   }
 
   private apply(workspace: Workspace): void {

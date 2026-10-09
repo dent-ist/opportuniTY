@@ -195,5 +195,6 @@ public static class SearchServiceCollectionExtensions
         services.TryAddSingleton<IndexManager>();
         services.TryAddSingleton<IIndexManager>(sp => sp.GetRequiredService<IndexManager>());
         services.TryAddSingleton<IWorkspaceSearchPlacement>(sp => sp.GetRequiredService<IndexManager>());
+        services.TryAddSingleton<IWorkspaceSearchPurge>(sp => sp.GetRequiredService<IndexManager>());
     }
 }

@@ -1,0 +1,139 @@
+// One workspace deletion (E20-T02): request, approval and progress.
+
+.wdl__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-4);
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+}
+
+.wdl__card-title {
+  font-size: var(--opp-font-size-lg);
+}
+
+.wdl__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--opp-space-3) var(--opp-space-5);
+  margin: 0;
+}
+
+.wdl__facts dt {
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.wdl__facts dd {
+  margin: var(--opp-space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.wdl__wide {
+  grid-column: 1 / -1;
+}
+
+.wdl__text {
+  white-space: pre-line;
+}
+
+.wdl__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+.wdl__textarea-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  max-width: 40rem;
+}
+
+.wdl__label {
+  font-size: var(--opp-font-size-control);
+  font-weight: var(--opp-font-weight-medium);
+  color: var(--opp-color-text);
+}
+
+.wdl__textarea {
+  width: 100%;
+  padding: var(--opp-space-2) var(--opp-control-padding-x);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font: inherit;
+  font-size: var(--opp-font-size-control);
+  resize: vertical;
+}
+
+.wdl__textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+// Progress: the marker shows done / current / paused / waiting with an icon or the step number.
+
+.wdl__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wdl__step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--opp-space-3);
+  align-items: start;
+}
+
+.wdl__step-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-pill);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.wdl__step.is-done .wdl__step-marker {
+  border-color: var(--opp-color-success-border);
+  background: var(--opp-color-success-bg);
+  color: var(--opp-color-success-text);
+}
+
+.wdl__step.is-current .wdl__step-marker {
+  border-color: var(--opp-color-accent);
+  color: var(--opp-color-accent-text);
+}
+
+.wdl__step.is-halted .wdl__step-marker {
+  border-color: var(--opp-color-warning-border);
+  background: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+}
+
+.wdl__step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  min-width: 0;
+}
+
+.wdl__step-label {
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.wdl__step.is-waiting .wdl__step-label {
+  color: var(--opp-color-text-muted);
+}
