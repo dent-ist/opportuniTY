@@ -19,6 +19,9 @@ public class PostgresFixture : DependencyFixture
     private const string HostAlias = "postgres";
     private const int Port = 5432;
 
+    /// <summary>/dev/shm of the test server (Docker's default is 64 MiB).</summary>
+    public const long PostgresShmBytes = 512L * 1024 * 1024;
+
     private readonly PostgreSqlContainer _container;
 
     public PostgresFixture()
@@ -31,6 +34,10 @@ public class PostgresFixture : DependencyFixture
             .WithPassword("opportunity")
             // Durability is irrelevant for throwaway test data; trade it for speed.
             .WithCommand("-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off")
+            // Every test gets its own database, and the cumulative statistics of all of them live in dynamic shared
+            // memory (/dev/shm). Docker's 64 MiB default runs out late in a full run ("could not resize shared memory
+            // segment ... No space left on device"), so give the server room.
+            .WithCreateParameterModifier(parameters => (parameters.HostConfig ??= new Docker.DotNet.Models.HostConfig()).ShmSize = PostgresShmBytes)
             .Build();
     }
 
