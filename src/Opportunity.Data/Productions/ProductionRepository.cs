@@ -701,7 +701,8 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
             """
             SELECT pd.sequence, pd.document_id, pd.document_version, pd.output, pd.units, pd.beg_number, pd.end_number, pd.prod_beg_bates,
                    pd.prod_end_bates, pd.prod_beg_attach, pd.prod_end_attach, d.control_number, pd.family_key, pd.first_offset,
-                   pd.page_count, pd.designation, pd.designation_choice_id, pd.designation_source
+                   pd.page_count, pd.designation, pd.designation_choice_id, pd.designation_source,
+                   pd.page_set_id, pd.redaction_set_id, pd.redaction_version, pd.redaction_count
               FROM opportunity.production_document pd
               LEFT JOIN opportunity.document d ON d.workspace_id = pd.workspace_id AND d.document_id = pd.document_id
              WHERE pd.workspace_id = @ws AND pd.production_id = @id AND pd.sequence > @after
@@ -722,7 +723,9 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
                     NullableInt64(reader, 5), NullableInt64(reader, 6), NullableString(reader, 7), NullableString(reader, 8),
                     NullableString(reader, 9), NullableString(reader, 10), NullableString(reader, 11),
                     reader.GetInt32(14), NullableString(reader, 15), reader.IsDBNull(16) ? null : reader.GetInt32(16),
-                    reader.IsDBNull(17) ? null : (DesignationSource)reader.GetInt16(17)));
+                    reader.IsDBNull(17) ? null : (DesignationSource)reader.GetInt16(17),
+                    reader.IsDBNull(18) ? null : reader.GetGuid(18), reader.IsDBNull(19) ? null : reader.GetGuid(19),
+                    NullableInt64(reader, 20), reader.IsDBNull(21) ? null : reader.GetInt32(21)));
             }
         }
 
@@ -811,7 +814,7 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
     public async Task<ProductionWriteResult> FinalizeAsync(
         Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
         IReadOnlyList<AuditEvent> audit, DesignationPlan designations, AuditEvent designationAudit, PrivilegeConflictOverrideWrite? conflictOverride = null,
-        CancellationToken cancellationToken = default)
+        Guid? redactionSetId = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(manifest);
         ArgumentNullException.ThrowIfNull(manifestSha256);
@@ -874,6 +877,12 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
         if (refusal is not null)
         {
             return new ProductionWriteResult(ProductionWriteStatus.DesignationRefused, current, Reason: refusal);
+        }
+
+        // E12-T05: the page set and redaction version every volume run of this production reads (Q-08).
+        if (await FreezeRedactionsAsync(tx, productionId, redactionSetId, cancellationToken).ConfigureAwait(false) is { } redactionRefusal)
+        {
+            return new ProductionWriteResult(ProductionWriteStatus.InvalidState, current, Reason: redactionRefusal);
         }
 
         await using (var update = tx.Command(

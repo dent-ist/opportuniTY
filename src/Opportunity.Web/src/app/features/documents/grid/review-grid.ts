@@ -33,6 +33,7 @@ import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { SessionService } from '../../../core/session/session';
+import { DocumentAccess } from '../review/document-access';
 import {
   Announcer,
   Button,
@@ -245,6 +246,8 @@ interface ResultInfo {
  *   Headers: Enter or click sorts; Shift+Enter or Shift+click adds a sort level (up to 3, Control Number breaks
  *   ties); Shift+Arrow Left/Right resizes, Ctrl+Shift+Arrow Left/Right moves the column. Columns that cannot be
  *   sorted or filtered say why (field capabilities).
+ * - A row loaded before its document stopped being available (E16-T08, familiarity guide §3.5) becomes "No longer
+ *   available" with no metadata, and leaves the selection; the API drops such documents from later searches (Q-12).
  */
 @Component({
   selector: 'opp-review-grid',
@@ -304,6 +307,7 @@ export class ReviewGrid implements CursorSource {
   private readonly viewsApi = inject(GridViewApi);
   private readonly dialogs = inject(DialogService);
   private readonly session = inject(SessionService, { optional: true });
+  private readonly access = inject(DocumentAccess, { optional: true });
   protected readonly canManageShared = this.context.can(PERMISSIONS.manageSharedViews);
   /** Saved Views the user can see. */
   readonly views = signal<readonly GridView[]>([]);
@@ -666,6 +670,18 @@ export class ReviewGrid implements CursorSource {
     effect(() => {
       const served = this.result()?.served;
       if (served) untracked(() => this.freshness?.observe(served));
+    });
+
+    // A document that is no longer available leaves the selection (Mass Actions never act on it from here).
+    effect(() => {
+      const gone = this.access?.unavailable();
+      if (!gone?.size) return;
+      untracked(() => {
+        const selected = this.selection();
+        if ([...selected].some((id) => gone.has(id))) {
+          this.setSelection(new Set([...selected].filter((id) => !gone.has(id))));
+        }
+      });
     });
 
     effect(() => {
@@ -1834,6 +1850,11 @@ export class ReviewGrid implements CursorSource {
 
   private anchor = -1;
 
+  /** The row's document is no longer available: shown as "No longer available", without metadata (E16-T08). */
+  protected isGone(hit: SearchHit): boolean {
+    return this.access?.isUnavailable(hit.documentId) ?? false;
+  }
+
   protected isSelected(hit: SearchHit): boolean {
     return this._allResults() !== null || this.selection().has(hit.documentId);
   }
@@ -1841,12 +1862,12 @@ export class ReviewGrid implements CursorSource {
   /** Space or a checkbox click; Shift+click checks the rows between the last toggled row and this one. */
   protected toggleRow(index: number, range = false): void {
     const hit = this.hitAt(index);
-    if (!hit) return;
+    if (!hit || this.isGone(hit)) return;
     const next = new Set(this.rowSelection());
     if (range && this.anchor >= 0 && this.anchor !== index) {
       for (const i of rangeBetween(this.anchor, index)) {
         const row = this.hitAt(i);
-        if (row) next.add(row.documentId);
+        if (row && !this.isGone(row)) next.add(row.documentId);
       }
     } else if (next.has(hit.documentId)) next.delete(hit.documentId);
     else next.add(hit.documentId);
@@ -1859,7 +1880,7 @@ export class ReviewGrid implements CursorSource {
     const next = new Set(this.selection());
     for (const i of [from, to]) {
       const hit = this.hitAt(i);
-      if (hit) next.add(hit.documentId);
+      if (hit && !this.isGone(hit)) next.add(hit.documentId);
     }
     this.anchor = to;
     this.setSelection(next);
@@ -1869,7 +1890,7 @@ export class ReviewGrid implements CursorSource {
   protected selectPage(select: boolean): void {
     const next = new Set(this.rowSelection());
     for (const hit of this.pageRows(this.currentPage())) {
-      if (select) next.add(hit.documentId);
+      if (select && !this.isGone(hit)) next.add(hit.documentId);
       else next.delete(hit.documentId);
     }
     this.setSelection(next);

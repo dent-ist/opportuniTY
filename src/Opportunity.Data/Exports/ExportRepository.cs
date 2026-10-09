@@ -40,7 +40,7 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         """
         e.workspace_id, e.export_id, e.job_id, e.snapshot_id, e.name, e.settings::text, e.status, e.status_reason, e.created_by,
         e.created_by_display, e.created_by_groups, e.created_at, e.completed_at, e.documents_exported, e.documents_excluded,
-        e.natives, e.texts, e.images, e.pages, e.file_count, e.total_bytes, e.manifest_sha256
+        e.natives, e.texts, e.images, e.pages, e.file_count, e.total_bytes, e.manifest_sha256, e.production_id
         """;
 
     private const string FileColumns =
@@ -57,7 +57,7 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         {
             WorkspaceId = request.WorkspaceId,
             JobId = request.JobId,
-            JobType = JobType.Export,
+            JobType = request.ProductionId is null ? JobType.Export : JobType.Production,
             InitiatedBy = request.InitiatedBy,
             TargetSnapshotId = request.SnapshotId,
             Parameters = request.Parameters ?? new JsonObject { ["exportId"] = request.ExportId.ToString() },
@@ -76,10 +76,11 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         await using (var insert = tx.Command(
             """
             INSERT INTO opportunity.export
-                (workspace_id, export_id, job_id, snapshot_id, name, settings, created_by, created_by_display, created_by_groups)
-            VALUES (@ws, @id, @job, @snapshot, @name, @settings::jsonb, @by, @display, @groups)
+                (workspace_id, export_id, job_id, snapshot_id, name, settings, created_by, created_by_display, created_by_groups, production_id)
+            VALUES (@ws, @id, @job, @snapshot, @name, @settings::jsonb, @by, @display, @groups, @production)
             """))
         {
+            insert.Parameters.Add(Nullable("production", NpgsqlDbType.Uuid, request.ProductionId));
             insert.Parameters.AddWithValue("ws", request.WorkspaceId);
             insert.Parameters.AddWithValue("id", request.ExportId);
             insert.Parameters.AddWithValue("job", request.JobId);
@@ -92,7 +93,16 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await AuditSql.InsertAsync(tx, request.AuditTemplate with
+        // A production volume run (E12-T05) is audited as the production's event the caller built (Production.Run/Rerun).
+        await AuditSql.InsertAsync(tx, request.ProductionId is { } productionId ? request.AuditTemplate with
+        {
+            EventId = Guid.CreateVersion7(),
+            WorkspaceId = request.WorkspaceId,
+            ResourceType = AuditTaxonomy.Production.ResourceType,
+            ResourceId = productionId.ToString(),
+            JobId = request.JobId,
+            SnapshotId = request.SnapshotId,
+        } : request.AuditTemplate with
         {
             EventId = Guid.CreateVersion7(),
             WorkspaceId = request.WorkspaceId,
@@ -127,7 +137,7 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         await using var command = tx.Command(
             $"""
             SELECT {Columns} FROM opportunity.export e
-            WHERE e.workspace_id = @ws AND (@by::uuid IS NULL OR e.created_by = @by)
+            WHERE e.workspace_id = @ws AND e.production_id IS NULL AND (@by::uuid IS NULL OR e.created_by = @by)
               AND (@after_at::timestamptz IS NULL OR (e.created_at, e.export_id) < (@after_at, @after_id))
             ORDER BY e.created_at DESC, e.export_id DESC
             LIMIT @limit
@@ -150,7 +160,44 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         return records;
     }
 
-    public async Task<IReadOnlyList<ActiveExport>> GetActiveAsync(Guid workspaceId, int limit, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<ActiveExport>> GetActiveAsync(Guid workspaceId, int limit, CancellationToken cancellationToken = default) =>
+        ReadActiveAsync(workspaceId, volumes: false, limit, cancellationToken);
+
+    public Task<IReadOnlyList<ActiveExport>> GetActiveVolumesAsync(Guid workspaceId, int limit, CancellationToken cancellationToken = default) =>
+        ReadActiveAsync(workspaceId, volumes: true, limit, cancellationToken);
+
+    public async Task<IReadOnlyList<ExportRecord>> ListVolumesAsync(
+        Guid workspaceId, Guid productionId, ExportListCursor? after, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            $"""
+            SELECT {Columns} FROM opportunity.export e
+            WHERE e.workspace_id = @ws AND e.production_id = @production
+              AND (@after_at::timestamptz IS NULL OR (e.created_at, e.export_id) < (@after_at, @after_id))
+            ORDER BY e.created_at DESC, e.export_id DESC
+            LIMIT @limit
+            """);
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("production", productionId);
+        command.Parameters.Add(Nullable("after_at", NpgsqlDbType.TimestampTz, after?.CreatedAt));
+        command.Parameters.Add(Nullable("after_id", NpgsqlDbType.Uuid, after?.ExportId));
+        command.Parameters.AddWithValue("limit", limit);
+        var records = new List<ExportRecord>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                records.Add(Read(reader));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return records;
+    }
+
+    private async Task<IReadOnlyList<ActiveExport>> ReadActiveAsync(Guid workspaceId, bool volumes, int limit, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
@@ -159,18 +206,19 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
             SELECT {Columns}, j.status, j.chunks_failed
             FROM opportunity.export e
             JOIN opportunity.job j ON j.workspace_id = e.workspace_id AND j.job_id = e.job_id
-            WHERE e.workspace_id = @ws AND e.status = 1
+            WHERE e.workspace_id = @ws AND e.status = 1 AND (e.production_id IS NOT NULL) = @volumes
             ORDER BY e.created_at, e.export_id
             LIMIT @limit
             """);
         command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("volumes", volumes);
         command.Parameters.AddWithValue("limit", limit);
         var active = new List<ActiveExport>();
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                active.Add(new ActiveExport(Read(reader), Enum.Parse<JobStatus>(reader.GetString(22)), reader.GetInt32(23)));
+                active.Add(new ActiveExport(Read(reader), Enum.Parse<JobStatus>(reader.GetString(23)), reader.GetInt32(24)));
             }
         }
 
@@ -218,7 +266,7 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         ArgumentNullException.ThrowIfNull(completion);
         var lease = chunk.Lease;
         var membership = chunk.Membership;
-        if (chunk.JobType != JobType.Export || membership.Kind != ChunkMembershipKind.SnapshotRange
+        if (chunk.JobType is not (JobType.Export or JobType.Production) || membership.Kind != ChunkMembershipKind.SnapshotRange
             || write.Documents.Any(d => d.Ordinal < membership.RangeFrom || d.Ordinal > membership.RangeTo)
             || write.Documents.Select(d => d.Ordinal).Distinct().Count() != write.Documents.Count)
         {
@@ -229,7 +277,7 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         await using (var tx = await WorkspaceTransaction.BeginAsync(dataSource, lease.WorkspaceId, cancellationToken).ConfigureAwait(false))
         {
             var export = await ReadOneAsync(tx, "e.export_id = @id", write.ExportId, cancellationToken).ConfigureAwait(false);
-            if (export is null || export.JobId != lease.JobId)
+            if (export is null || export.JobId != lease.JobId || (chunk.JobType == JobType.Production) != export.ProductionId.HasValue)
             {
                 throw new ArgumentException("The chunk's export does not exist or belongs to another job.", nameof(write));
             }
@@ -794,6 +842,7 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
                     r.GetInt64(13), r.GetInt64(14), r.GetInt64(15), r.GetInt64(16), r.GetInt64(17), r.GetInt64(18), r.GetInt64(19),
                     r.GetInt64(20), r.GetFieldValue<byte[]>(21))
                 : null,
+            ProductionId = r.IsDBNull(22) ? null : r.GetGuid(22),
         };
     }
 

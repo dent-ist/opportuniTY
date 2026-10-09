@@ -1,8 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 
 using Opportunity.Application.Bootstrap;
+using Opportunity.Application.Keys;
 using Opportunity.Application.Storage;
 using Opportunity.Storage.AzureBlob;
+using Opportunity.Storage.Encryption;
 using Opportunity.Storage.FileSystem;
 using Opportunity.Storage.S3;
 
@@ -11,7 +13,8 @@ namespace Opportunity.Storage;
 public static class ObjectStorageServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the configured provider as <see cref="IObjectStore"/> and <see cref="IObjectUrlSigner"/>, plus a
+    /// Registers the configured provider as <see cref="IObjectStore"/> and <see cref="IObjectUrlSigner"/> (behind
+    /// <see cref="EnvelopeObjectStore"/> when <c>Encryption:Mode</c> is <c>Envelope</c>), plus a
     /// migrator bootstrap step that creates the bucket/container. Hosts bind <see cref="ObjectStorageOptions"/> from the
     /// <c>ObjectStorage</c> section.
     /// </summary>
@@ -22,8 +25,21 @@ public static class ObjectStorageServiceCollectionExtensions
 
         services.AddSingleton(options);
         services.AddSingleton<ObjectStoreBase>(_ => CreateStore(options));
-        services.AddSingleton<IObjectStore>(sp => sp.GetRequiredService<ObjectStoreBase>());
-        services.AddSingleton(sp => (IObjectUrlSigner)sp.GetRequiredService<ObjectStoreBase>());
+        if (options.Encryption.Mode == ObjectEncryptionMode.Envelope)
+        {
+            // Needs IWorkspaceDataKeyRing (registered by the host's key management); resolved on first use only, so the
+            // migrator, which bootstraps the bucket through ObjectStoreBase, does not need keys.
+            services.AddSingleton(sp => new EnvelopeObjectStore(
+                sp.GetRequiredService<ObjectStoreBase>(), sp.GetRequiredService<IWorkspaceDataKeyRing>(), options.Encryption.ChunkSizeLog2));
+            services.AddSingleton<IObjectStore>(sp => sp.GetRequiredService<EnvelopeObjectStore>());
+            services.AddSingleton<IObjectUrlSigner>(sp => sp.GetRequiredService<EnvelopeObjectStore>());
+        }
+        else
+        {
+            services.AddSingleton<IObjectStore>(sp => sp.GetRequiredService<ObjectStoreBase>());
+            services.AddSingleton(sp => (IObjectUrlSigner)sp.GetRequiredService<ObjectStoreBase>());
+        }
+
         services.AddSingleton<IInfrastructureBootstrapStep, ObjectStoreBootstrapStep>();
         return services;
     }

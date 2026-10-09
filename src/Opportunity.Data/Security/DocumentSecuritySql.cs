@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 
+using Opportunity.Application.Authorization;
 using Opportunity.Application.Coding;
 using Opportunity.Core.Fields;
 using Opportunity.Core.SearchWork;
@@ -73,6 +74,31 @@ internal static class DocumentSecuritySql
         }
 
         return changed;
+    }
+
+    /// <summary>
+    /// The restriction classes and wall coverage of <paramref name="documentId"/> as this transaction sees them (the PDP's
+    /// document attributes, <c>PostgresSecurityStateReader</c>); null when the document does not exist or is deleted.
+    /// </summary>
+    public static async Task<DocumentSecurityAttributes?> AttributesAsync(WorkspaceTransaction tx, Guid documentId, CancellationToken cancellationToken)
+    {
+        await using var command = tx.Command(
+            """
+            SELECT ARRAY(SELECT r.class_key FROM opportunity.document_restriction r
+                         WHERE r.workspace_id = d.workspace_id AND r.document_id = d.document_id),
+                   ARRAY(SELECT dw.wall_id FROM opportunity.document_wall dw
+                         WHERE dw.workspace_id = d.workspace_id AND dw.document_id = d.document_id)
+            FROM opportunity.document d
+            LEFT JOIN opportunity.document_projection_state s
+                   ON s.workspace_id = d.workspace_id AND s.document_id = d.document_id
+            WHERE d.workspace_id = @ws AND d.document_id = @doc AND s.is_deleted IS NOT TRUE
+            """);
+        command.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        command.Parameters.AddWithValue("doc", documentId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? new DocumentSecurityAttributes(reader.GetFieldValue<string[]>(0), reader.GetFieldValue<Guid[]>(1))
+            : null;
     }
 
     /// <summary>The metadata fields whose values are custodians: the custodian field(s) and All Custodians.</summary>

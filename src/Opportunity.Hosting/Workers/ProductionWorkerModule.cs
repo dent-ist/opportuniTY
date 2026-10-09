@@ -26,8 +26,8 @@ namespace Opportunity.Hosting.Workers;
 /// <see cref="JobChunkConsumer"/> with <see cref="BatesChunkExecutor"/>, which re-checks the initiator's
 /// <c>Production.Create</c> through the PDP per chunk (ADR-015 D9.4). Needs PostgreSQL (<c>ConnectionStrings:App</c>);
 /// without it the module registers nothing beyond its placeholder. With RabbitMQ configured the consumer is bound to
-/// <c>production.chunks</c>, where the job dispatcher publishes production chunks. Volume generation (E12-T05) adds
-/// object storage here.
+/// <c>production.chunks</c>, where the job dispatcher publishes production chunks. Volume generation (E12-T05) runs in
+/// the rendering worker (<see cref="RenderingWorkerModule"/>), which owns the render sandbox the pages are imaged in.
 /// </summary>
 public static class ProductionWorkerModule
 {

@@ -41,7 +41,8 @@
 .coding__message,
 .coding__label,
 .coding__access,
-.coding__option {
+.coding__option,
+.coding__access-note {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -55,6 +56,7 @@
 }
 
 .coding__muted,
+.coding__no-access,
 .coding__hint {
   margin: 0;
   color: var(--opp-color-text-muted);
@@ -200,4 +202,14 @@
   padding: var(--opp-space-2) var(--opp-space-3);
   border-block-start: var(--opp-border-width) solid var(--opp-color-border);
   background: var(--opp-color-surface);
+}
+
+// E16-T08: unsaved changes that affect who may see the document.
+.coding__access-note {
+  margin-inline: var(--opp-space-3);
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-privileged-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-privileged-bg);
+  color: var(--opp-color-privileged-text);
 }

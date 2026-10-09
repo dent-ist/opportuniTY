@@ -25,4 +25,5 @@ public enum JobChunkOperation
     ExportChunk,
     ProductionChunk,
     RenderChunk,
+    ProductionVolumeChunk,
 }

@@ -1,7 +1,7 @@
 {
   "uid": "opportunity-overview",
   "title": "opportuniTY overview",
-  "description": "Starter dashboard (E19-T04). Pipeline, consistency and SLO dashboards arrive with E19-T05.",
+  "description": "Services, API, workers, data stores, runtime, traces and logs (E19-T04). Search consistency and the job pipeline are on the 'opportuniTY search consistency and pipeline' dashboard (E19-T05).",
   "tags": [
     "opportunity"
   ],
@@ -20,7 +20,18 @@
   "annotations": {
     "list": []
   },
-  "links": [],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "opportuniTY dashboards",
+      "tags": [
+        "opportunity"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
   "panels": [
     {
       "type": "row",
@@ -106,7 +117,7 @@
     {
       "type": "stat",
       "title": "Worker heartbeat age",
-      "description": "opportunity.worker.heartbeat.age per worker type; > 2 heartbeat intervals means a stuck module.",
+      "description": "opportunity.worker.heartbeat.age per worker type; > 2 heartbeat intervals means a stuck module (alert WorkerHeartbeatStale).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -231,7 +242,7 @@
     {
       "type": "timeseries",
       "title": "Latency p95 by route",
-      "description": "Baseline \u00a717: simple search p95 < 1 s, complex < 3 s.",
+      "description": "Baseline §17: simple search p95 < 1 s, complex < 3 s.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -281,7 +292,7 @@
     {
       "type": "timeseries",
       "title": "Error ratio (5xx)",
-      "description": "\u00a717 API availability target 99.9%.",
+      "description": "§17 API availability target 99.9% (alert ApiErrorBudgetBurn).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -344,7 +355,7 @@
     {
       "type": "timeseries",
       "title": "Messages processed per second",
-      "description": "messaging.client.consumed.messages; populated once the E06/E07 consumers use WorkerTelemetry.",
+      "description": "messaging.client.consumed.messages.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -444,7 +455,7 @@
     {
       "type": "timeseries",
       "title": "RabbitMQ messages (ready / unacked)",
-      "description": "From the rabbitmq_prometheus plugin. Per-queue depth and DLQ alerts arrive with E19-T05.",
+      "description": "From the rabbitmq_prometheus plugin (aggregated). Per-queue depth, DLQ and consumers are on the pipeline dashboard.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -876,7 +887,7 @@
     {
       "type": "logs",
       "title": "Logs (Loki)",
-      "description": "OTLP logs of every opportuniTY service; each line links to its trace. No document content or query text (ADR-013 \u00a77).",
+      "description": "OTLP logs of every opportuniTY service; each line links to its trace. No document content or query text (ADR-013 §7).",
       "datasource": {
         "type": "loki",
         "uid": "loki"

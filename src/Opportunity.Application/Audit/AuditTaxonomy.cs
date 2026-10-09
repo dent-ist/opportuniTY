@@ -229,6 +229,18 @@ public static class AuditTaxonomy
         /// <summary>A re-designation overlay load file was downloaded.</summary>
         public const string RedesignationExported = "RedesignationExported";
 
+        /// <summary>A volume run of a finalized production started (E12-T05): the first one.</summary>
+        public const string Run = "Run";
+
+        /// <summary>A further volume run of a production that already has one (it writes the same bytes).</summary>
+        public const string Rerun = "Rerun";
+
+        /// <summary>A volume run wrote every file, the load files and the manifest (E12-T05).</summary>
+        public const string VolumeCompleted = "VolumeCompleted";
+
+        /// <summary>A file or the package of a production volume was downloaded through the gateway.</summary>
+        public const string Downloaded = "Downloaded";
+
         /// <summary>The audit resource type of production events.</summary>
         public const string ResourceType = "Production";
     }
@@ -319,6 +331,19 @@ public static class AuditTaxonomy
         public const string BatesConflict = "BatesConflict";
     }
 
+    /// <summary>Key management (E05-T09): data keys and KEKs created, rotated or rewrapped, and destroyed. Key ids only.</summary>
+    public static class Admin
+    {
+        public const string Category = "Admin";
+        public const string KeyCreated = "KeyCreated";
+
+        /// <summary>A data key or KEK got a new version, or a data key was rewrapped under another KEK version.</summary>
+        public const string KeyRotated = "KeyRotated";
+
+        /// <summary>Key material was destroyed: a pruned KEK version, or a workspace's keys (crypto-shredding).</summary>
+        public const string KeyDestroyed = "KeyDestroyed";
+    }
+
     public static class Audit
     {
         public const string Category = "Audit";
@@ -343,7 +368,7 @@ public static class AuditTaxonomy
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
-            "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported"),
+            "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted"),
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",

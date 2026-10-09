@@ -248,10 +248,14 @@ export type { ProductionImageSettings } from './models/production-image-settings
 export type { ProductionIntegrityResource } from './models/production-integrity-resource';
 export type { ProductionLoadFileSettings } from './models/production-load-file-settings';
 export type { ProductionOutputResource } from './models/production-output-resource';
+export type { ProductionPlaceholderSettings } from './models/production-placeholder-settings';
 export type { ProductionResource } from './models/production-resource';
 export type { ProductionSpecification } from './models/production-specification';
 export type { ProductionStatusResource } from './models/production-status-resource';
 export type { ProductionVerificationResource } from './models/production-verification-resource';
+export type { ProductionVolumeReportResource } from './models/production-volume-report-resource';
+export type { ProductionVolumeResource } from './models/production-volume-resource';
+export type { ProductionVolumeStatusResource } from './models/production-volume-status-resource';
 export type { QueryHistoryEntryResource } from './models/query-history-entry-resource';
 export type { QueryHistoryRequest } from './models/query-history-request';
 export type { QueryHistoryResource } from './models/query-history-resource';

@@ -117,7 +117,7 @@ public sealed class ExportChunkExecutor(
 
         var layout = new ExportLayout(settings);
         var values = new ExportValues(source.Catalog, settings.Profile.MultiValue, restricted);
-        var writer = new ChunkFiles(store, ws, export.ExportId, chunk.Lease.JobId, chunk.Sequence, chunk.Lease.LeaseToken);
+        var writer = new ExportChunkFiles(store, ws, export.ExportId, chunk.Lease.JobId, chunk.Sequence, chunk.Lease.LeaseToken);
 
         // Fence F2 before the object-store writes of this chunk.
         await context.CheckFenceAsync(cancellationToken).ConfigureAwait(false);
@@ -178,7 +178,7 @@ public sealed class ExportChunkExecutor(
     }
 
     private static async Task<DocumentResult> WriteDocumentAsync(
-        ChunkFiles writer, ExportLayout layout, ExportSettings settings, ExportValues values, long ordinal, ExportSourceDocument document,
+        ExportChunkFiles writer, ExportLayout layout, ExportSettings settings, ExportValues values, long ordinal, ExportSourceDocument document,
         CancellationToken cancellationToken)
     {
         var cn = document.Document.ControlNumber;
@@ -304,70 +304,6 @@ public sealed class ExportChunkExecutor(
     };
 
     private sealed record DocumentResult(ExportDocumentOutcome Outcome, List<NewExportFile> Files, string DatRow, string OptRows);
-
-    /// <summary>Writes the objects of one chunk attempt under its lease-token prefix.</summary>
-    private sealed class ChunkFiles(IObjectStore store, Guid ws, Guid exportId, Guid runId, int sequence, long leaseToken)
-    {
-        public async Task<NewExportFile> CopyAsync(
-            ExportSourceObject source, string name, ExportFileKind kind, string path, long ordinal, string? transcodeTo,
-            CancellationToken cancellationToken)
-        {
-            var sourceKey = ObjectKey.Parse(source.ObjectKey);
-            var expected = Sha256Digest.FromBytes(source.Sha256);
-            var key = ExportLayout.ChunkObjectKey(ws, exportId, runId, sequence, leaseToken, name);
-            var input = await store.OpenReadAsync(sourceKey, cancellationToken: cancellationToken).ConfigureAwait(false);
-            await using (input.ConfigureAwait(false))
-            {
-                // Chain of custody (ADR-011 §2.5): the bytes must still hash to the registered SHA-256.
-                Stream content = new VerifyingReadStream(input, sourceKey, expected, source.SizeBytes);
-                PutObjectResult result;
-                if (transcodeTo is null)
-                {
-                    result = await store.PutAsync(key, content, new PutObjectOptions
-                    {
-                        ContentType = "application/octet-stream",
-                        ExpectedSha256 = expected,
-                        ExpectedLength = source.SizeBytes,
-                    }, cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    // Stored text is UTF-8; a UTF-16LE text file starts with its byte-order mark.
-                    var transcoded = Encoding.CreateTranscodingStream(content, Encoding.UTF8, new UnicodeEncoding(false, false), leaveOpen: true);
-                    await using (transcoded.ConfigureAwait(false))
-                    {
-                        var withBom = new PrefixedStream([0xFF, 0xFE], transcoded);
-                        result = await store.PutAsync(key, withBom, new PutObjectOptions { ContentType = "application/octet-stream" }, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                }
-
-                return File(result, kind, path, ordinal);
-            }
-        }
-
-        public async Task<NewExportFile> WriteTextAsync(string name, byte[] bytes, ExportFileKind kind, string path, CancellationToken cancellationToken)
-        {
-            var key = ExportLayout.ChunkObjectKey(ws, exportId, runId, sequence, leaseToken, name);
-            var result = await store.PutAsync(key, new MemoryStream(bytes, writable: false), new PutObjectOptions
-            {
-                ContentType = "application/octet-stream",
-                ExpectedLength = bytes.Length,
-            }, cancellationToken).ConfigureAwait(false);
-            return File(result, kind, path, null);
-        }
-
-        private static NewExportFile File(PutObjectResult result, ExportFileKind kind, string path, long? ordinal) => new(
-            path,
-            kind,
-            result.Key.Value,
-            result.Sha256.ToBytes(),
-            result.Length,
-            "application/octet-stream",
-            result.KeyId,
-            result.EncryptionScheme == EncryptionScheme.Envelope ? CoreScheme.Envelope : CoreScheme.ProviderSse,
-            ordinal);
-    }
 }
 
 /// <summary>Builds the principal a worker acts as for an export's initiator (ADR-015 D9.4: from PostgreSQL, never a message).</summary>
@@ -383,4 +319,71 @@ internal static class ExportPrincipal
             Groups = current?.Groups ?? export.CreatedByGroups,
         };
     }
+}
+
+/// <summary>Writes the objects of one chunk attempt under its lease-token prefix.</summary>
+internal sealed class ExportChunkFiles(IObjectStore store, Guid ws, Guid exportId, Guid runId, int sequence, long leaseToken)
+{
+    public async Task<NewExportFile> CopyAsync(
+        ExportSourceObject source, string name, ExportFileKind kind, string path, long ordinal, string? transcodeTo,
+        CancellationToken cancellationToken)
+    {
+        var sourceKey = ObjectKey.Parse(source.ObjectKey);
+        var expected = Sha256Digest.FromBytes(source.Sha256);
+        var key = ExportLayout.ChunkObjectKey(ws, exportId, runId, sequence, leaseToken, name);
+        var input = await store.OpenReadAsync(sourceKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+        await using (input.ConfigureAwait(false))
+        {
+            // Chain of custody (ADR-011 §2.5): the bytes must still hash to the registered SHA-256.
+            Stream content = new VerifyingReadStream(input, sourceKey, expected, source.SizeBytes);
+            PutObjectResult result;
+            if (transcodeTo is null)
+            {
+                result = await store.PutAsync(key, content, new PutObjectOptions
+                {
+                    ContentType = "application/octet-stream",
+                    ExpectedSha256 = expected,
+                    ExpectedLength = source.SizeBytes,
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                // Stored text is UTF-8; a UTF-16LE text file starts with its byte-order mark.
+                var transcoded = Encoding.CreateTranscodingStream(content, Encoding.UTF8, new UnicodeEncoding(false, false), leaveOpen: true);
+                await using (transcoded.ConfigureAwait(false))
+                {
+                    var withBom = new PrefixedStream([0xFF, 0xFE], transcoded);
+                    result = await store.PutAsync(key, withBom, new PutObjectOptions { ContentType = "application/octet-stream" }, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+
+            return File(result, kind, path, ordinal);
+        }
+    }
+
+    public Task<NewExportFile> WriteTextAsync(string name, byte[] bytes, ExportFileKind kind, string path, CancellationToken cancellationToken) =>
+        WriteBytesAsync(name, bytes, kind, path, null, cancellationToken);
+
+    public async Task<NewExportFile> WriteBytesAsync(string name, byte[] bytes, ExportFileKind kind, string path, long? ordinal, CancellationToken cancellationToken)
+    {
+        var key = ExportLayout.ChunkObjectKey(ws, exportId, runId, sequence, leaseToken, name);
+        var result = await store.PutAsync(key, new MemoryStream(bytes, writable: false), new PutObjectOptions
+        {
+            ContentType = "application/octet-stream",
+            ExpectedLength = bytes.Length,
+        }, cancellationToken).ConfigureAwait(false);
+        return File(result, kind, path, ordinal);
+    }
+
+    private static NewExportFile File(PutObjectResult result, ExportFileKind kind, string path, long? ordinal) => new(
+        path,
+        kind,
+        result.Key.Value,
+        result.Sha256.ToBytes(),
+        result.Length,
+        "application/octet-stream",
+        result.KeyId,
+        result.EncryptionScheme == EncryptionScheme.Envelope ? CoreScheme.Envelope : CoreScheme.ProviderSse,
+        ordinal);
 }

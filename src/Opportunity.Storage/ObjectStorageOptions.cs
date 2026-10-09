@@ -38,6 +38,9 @@ public sealed class ObjectStorageOptions
 
     public AzureBlobObjectStoreOptions AzureBlob { get; set; } = new();
 
+    /// <summary>Envelope encryption of workspace objects (E05-T09); off by default (provider SSE only).</summary>
+    public ObjectEncryptionOptions Encryption { get; set; } = new();
+
     public PresignPolicy CreatePresignPolicy() => new(PresignGetDefaultTtl, PresignGetMaxTtl, PresignPutDefaultTtl);
 
     /// <summary>Start-up check of the settings the selected provider needs; throws <see cref="InvalidOperationException"/>.</summary>
@@ -55,7 +58,29 @@ public sealed class ObjectStorageOptions
         {
             throw new InvalidOperationException($"{SectionName}:{missing} is required for provider {Provider}.");
         }
+
+        if (Encryption.ChunkSizeLog2 is < Opportunity.Storage.Encryption.EnvelopeFormat.MinChunkSizeLog2 or > Opportunity.Storage.Encryption.EnvelopeFormat.MaxChunkSizeLog2)
+        {
+            throw new InvalidOperationException($"{SectionName}:Encryption:ChunkSizeLog2 must be 12 (4 KiB) to 24 (16 MiB).");
+        }
     }
+}
+
+public enum ObjectEncryptionMode
+{
+    /// <summary>The provider's server-side encryption (S3 SSE, Azure SSE) or none (Lite filesystem); KeyId installation-default.</summary>
+    ProviderSse,
+
+    /// <summary>Client-side envelope encryption with per-workspace data keys (ADR-011 §6, E05-T09); objects are streamed, never presigned.</summary>
+    Envelope,
+}
+
+public sealed class ObjectEncryptionOptions
+{
+    public ObjectEncryptionMode Mode { get; set; } = ObjectEncryptionMode.ProviderSse;
+
+    /// <summary>log2 of the plaintext chunk size for new objects (default 16 = 64 KiB); recorded per object.</summary>
+    public int ChunkSizeLog2 { get; set; } = 16;
 }
 
 public sealed class FileSystemObjectStoreOptions

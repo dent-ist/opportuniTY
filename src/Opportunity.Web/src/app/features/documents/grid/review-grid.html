@@ -256,6 +256,8 @@
             <ng-container
               *ngTemplateOutlet="placeholder; context: { $implicit: row, index: index }"
             />
+          } @else if (isGone(row.hit)) {
+            <ng-container *ngTemplateOutlet="goneRow; context: { $implicit: row, index: index }" />
           } @else {
             @let hit = row.hit;
             @let selected = isSelected(hit);
@@ -497,6 +499,52 @@
         "
       />
     </div>
+    @for (column of columns().view; track column.queryName; let c = $index) {
+      <div
+        class="grid__cell"
+        role="gridcell"
+        [class.grid__cell--pinned]="column.pinned"
+        [style.--pin-left]="pinnedLeft()[c]"
+        [id]="cellId(index, FIXED_COLUMNS + c)"
+        [class.is-active]="focusRow() === index && focusCol() === FIXED_COLUMNS + c"
+      ></div>
+    }
+  </div>
+</ng-template>
+
+<!-- E16-T08: a row whose document is no longer available keeps its place but shows nothing of it. -->
+<ng-template #goneRow let-row let-index="index">
+  <div
+    class="grid__row grid__row--gone"
+    role="row"
+    [attr.aria-rowindex]="rowIndex(index)"
+    [attr.aria-level]="grouped() ? row.level : null"
+    [class.is-focused]="focusRow() === index"
+    [class.grid__row--child]="grouped() && row.level === 2"
+    (click)="onRowClick(index, focusCol())"
+    (dblclick)="openRow(index)"
+  >
+    <div
+      class="grid__cell grid__cell--select"
+      role="gridcell"
+      [id]="cellId(index, COL_SELECT)"
+      [class.is-active]="focusRow() === index && focusCol() === COL_SELECT"
+    ></div>
+    <div
+      class="grid__cell grid__cell--control grid__gone"
+      role="gridcell"
+      title="You don’t have access to this document, or it no longer exists."
+      [id]="cellId(index, COL_CONTROL)"
+      [class.is-active]="focusRow() === index && focusCol() === COL_CONTROL"
+    >
+      <opp-icon name="eye-off" />No longer available
+    </div>
+    <div
+      class="grid__cell grid__cell--family"
+      role="gridcell"
+      [id]="cellId(index, COL_FAMILY)"
+      [class.is-active]="focusRow() === index && focusCol() === COL_FAMILY"
+    ></div>
     @for (column of columns().view; track column.queryName; let c = $index) {
       <div
         class="grid__cell"

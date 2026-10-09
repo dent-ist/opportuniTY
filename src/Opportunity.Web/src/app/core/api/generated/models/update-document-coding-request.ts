@@ -4,5 +4,6 @@
 import { CodingChangeRequest } from '../models/coding-change-request';
 export interface UpdateDocumentCodingRequest {
   changes: Array<CodingChangeRequest>;
+  confirmAccessLoss?: boolean;
   layoutId?: string | null;
 }

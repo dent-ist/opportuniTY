@@ -393,7 +393,7 @@ public sealed partial class RenderChunkExecutor(
             }
         }
 
-        return new RenditionObject(documentId, key.Value, sha.Value.ToBytes(), info.Length, contentType, info.KeyId ?? "installation-default", CoreScheme.ProviderSse);
+        return new RenditionObject(documentId, key.Value, sha.Value.ToBytes(), info.Length, contentType, info.KeyId ?? "installation-default", Scheme(info.EncryptionScheme));
     }
 
     /// <summary>

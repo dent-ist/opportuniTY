@@ -212,3 +212,26 @@ public sealed record SearchWorkPartition(string Table, string Partition, DateTim
 /// commit among the rows not yet dispatched (Pending, Claimed or Failed) — the <c>opportunity.outbox.*</c> gauges.
 /// </summary>
 public sealed record OutboxLaneBacklog(MessageLane Lane, long Unapplied, DateTimeOffset? OldestUndispatchedCommittedAt);
+
+/// <summary>
+/// IndexChunkTasks of one status and lane: <paramref name="OldestSince"/> is the earliest <c>started_at</c> of Running
+/// tasks (how long the oldest has been running) and the earliest <c>committed_at</c> otherwise (how long its change has
+/// waited to become searchable).
+/// </summary>
+public sealed record IndexTaskBacklog(IndexChunkTaskStatus Status, MessageLane Lane, long Count, DateTimeOffset? OldestSince);
+
+/// <summary>
+/// Open job chunks (Pending, Dispatched, Running, RetryWait) of one job type and status: <paramref name="OldestSince"/> is
+/// the earliest claim of Running chunks and the earliest last status change otherwise.
+/// </summary>
+public sealed record JobChunkBacklog(JobType JobType, JobChunkStatus Status, long Count, DateTimeOffset? OldestSince);
+
+/// <summary>Jobs of one type in a non-terminal status.</summary>
+public sealed record ActiveJobCount(JobType JobType, long Count);
+
+/// <summary>The pipeline backlog of one workspace (<see cref="ISearchWorkMaintenance.GetPipelineBacklogAsync"/>).</summary>
+public sealed record PipelineBacklog(
+    IReadOnlyList<IndexTaskBacklog> IndexTasks, IReadOnlyList<JobChunkBacklog> JobChunks, IReadOnlyList<ActiveJobCount> ActiveJobs)
+{
+    public static PipelineBacklog Empty { get; } = new([], [], []);
+}

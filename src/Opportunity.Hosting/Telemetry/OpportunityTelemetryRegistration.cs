@@ -107,7 +107,7 @@ public static class OpportunityTelemetryRegistration
                 .AddMeter(OpportunityTelemetry.MeterName, WorkerStatus.MeterName, "Npgsql", "System.Runtime")
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation())
-            .WithLogging(static _ => { }, o =>
+            .WithLogging(static logging => logging.AddProcessor(new SecretScrubbingLogProcessor()), o =>
             {
                 o.IncludeScopes = true;
                 o.IncludeFormattedMessage = true;

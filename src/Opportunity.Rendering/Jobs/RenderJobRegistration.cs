@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Jobs;
+using Opportunity.Application.Productions;
+using Opportunity.Rendering.Endorsing;
 using Opportunity.Rendering.Renderers;
 using Opportunity.Rendering.Sandboxing;
 
@@ -32,6 +34,8 @@ public static class RenderJobRegistration
             services.TryAddSingleton<IRenderer>(_ => new RasterRenderer(settings));
         }
 
+        // Production volume pages (E12-T05) are imaged in the same render sessions (the sandbox when it is enabled).
+        services.TryAddSingleton<IProducedPageImager>(sp => new RenderSessionPageImager(sp.GetRequiredService<IRenderer>()));
         services.TryAddScoped<RenderCoordinator>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IJobChunkExecutor, RenderChunkExecutor>());
         if (runCoordinator)

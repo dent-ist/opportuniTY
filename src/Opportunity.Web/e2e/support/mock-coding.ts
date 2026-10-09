@@ -3,7 +3,9 @@ import type { Route } from '@playwright/test';
 // The mock API's coding "server" (E10-T01 coding API, E04-T03 coding layouts) for the coding pane (E16-T05): one
 // coding field of every type, the familiar default template's fields (familiarity guide §3.4), three layouts, and a
 // per-document coding store with DocumentVersion, If-Match / 412 conflicts, Idempotency-Key replays and an indexing
-// delay, so "Saved · indexing" turns searchable on its own.
+// delay, so "Saved · indexing" turns searchable on its own. Like the API (E13-T01, E16-T08) it refuses Withhold or
+// Redact without a Privilege Basis (400 `privilege-basis-required`) and, once `loseAccessWhen` names a value, refuses
+// a save that sets it until `confirmAccessLoss` (409), then hides the document from the reviewer.
 
 const CAPABILITIES = {
   sortable: false,
@@ -227,6 +229,7 @@ export interface CodingSave {
   idempotencyKey: string | null;
   changes: { fieldId: string | number; operation: string; value: unknown }[];
   layoutId: string | null;
+  confirmAccessLoss: boolean;
 }
 
 export interface CodingMockOptions {
@@ -238,6 +241,8 @@ export interface CodingMockOptions {
   indexDelayMs: number;
   /** Delay of `PUT …/coding`, to measure the acknowledgement. */
   saveDelayMs: number;
+  /** A confirmed save hid document `n` from the reviewer (the mock API then answers 404 for it). */
+  onHidden?: (n: number) => void;
 }
 
 /** The coding store of the mock and the scenario switches tests use. */
@@ -245,8 +250,14 @@ export class CodingMock {
   readonly saves: CodingSave[] = [];
   private readonly store = new Map<number, StoredCoding>();
   private readonly replays = new Map<string, unknown>();
+  private accessLoss: { fieldId: number; value: number } | null = null;
 
   constructor(private readonly options: CodingMockOptions) {}
+
+  /** From now on, a save setting `fieldId` to choice `value` hides the document from the reviewer (E16-T08). */
+  loseAccessWhen(fieldId: number, value: number): void {
+    this.accessLoss = { fieldId, value };
+  }
 
   /** Someone else codes document `n` (a conflict for a reviewer who read it before). */
   codeAsOtherUser(n: number, fieldId: number, value: Value, displayName = 'J. Smith'): void {
@@ -323,13 +334,16 @@ export class CodingMock {
     const request = route.request();
     const ifMatch = (await request.headerValue('if-match')) ?? null;
     const key = (await request.headerValue('idempotency-key')) ?? null;
-    const body = request.postDataJSON() as Pick<CodingSave, 'changes' | 'layoutId'>;
+    const body = request.postDataJSON() as Pick<CodingSave, 'changes' | 'layoutId'> & {
+      confirmAccessLoss?: boolean;
+    };
     this.saves.push({
       documentId: `doc-${n}`,
       ifMatch,
       idempotencyKey: key,
       changes: body.changes,
       layoutId: body.layoutId ?? null,
+      confirmAccessLoss: body.confirmAccessLoss === true,
     });
     if (this.options.saveDelayMs > 0) {
       await new Promise((r) => setTimeout(r, this.options.saveDelayMs));
@@ -372,6 +386,47 @@ export class CodingMock {
     if (invalid) {
       return problem(route, 400, 'validation', `Expected choice ids for field ${invalid.fieldId}.`);
     }
+    // E13-T01: Withhold (22) or Redact (23) needs a Privilege Basis (1003) afterwards.
+    const after = (id: number) => {
+      const change = body.changes.find((c) => Number(c.fieldId) === id);
+      return change ? change.value : (doc.values.get(id) ?? null);
+    };
+    const basis = after(1003);
+    if ([22, 23].includes(Number(after(1002))) && (!Array.isArray(basis) || basis.length === 0)) {
+      const message = 'Privilege Basis is required when Privilege is Withhold or Redact.';
+      return route.fulfill({
+        status: 400,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          type: 'urn:opportunity:problem:validation',
+          title: 'One or more validation errors occurred.',
+          status: 400,
+          code: 'validation',
+          detail: 'The coding was not saved.',
+          errors: { f1003: [message] },
+          fieldErrors: [{ field: 'f1003', code: 'privilege-basis-required', message }],
+        }),
+      });
+    }
+    const loss = this.accessLoss;
+    const losesAccess =
+      !!loss &&
+      body.changes.some((c) => Number(c.fieldId) === loss.fieldId && c.value === loss.value);
+    if (losesAccess && body.confirmAccessLoss !== true) {
+      return route.fulfill({
+        status: 409,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          type: 'urn:opportunity:problem:confirmation-required',
+          title: 'Conflict',
+          status: 409,
+          code: 'confirmation-required',
+          reason: 'removes-own-access',
+          detail:
+            'This change would remove your own access to the document. Confirm it with confirmAccessLoss.',
+        }),
+      });
+    }
     const at = new Date().toISOString();
     doc.version++;
     for (const change of body.changes) {
@@ -382,8 +437,11 @@ export class CodingMock {
     }
     doc.editor = { userId: 'user-1', displayName: 'Alex Reviewer', changedAt: at };
     doc.indexedAt = Date.now() + this.options.indexDelayMs;
-    const resource = this.resource(n);
+    const resource = losesAccess
+      ? { ...this.resource(n), fields: [], lastEditor: null, accessRetained: false }
+      : this.resource(n);
     if (key) this.replays.set(key, resource);
+    if (losesAccess) this.options.onHidden?.(n);
     return route.fulfill({ json: resource, headers: { ETag: `"${doc.version}"` } });
   }
 

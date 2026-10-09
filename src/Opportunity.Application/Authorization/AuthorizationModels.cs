@@ -69,6 +69,13 @@ public sealed record VisibilityFilter(IReadOnlyList<string> DeniedClasses, IRead
 /// <summary><see cref="Filter"/> is set only when <see cref="Decision"/> allows <c>Search.Execute</c>.</summary>
 public sealed record VisibilityResult(AuthorizationDecision Decision, VisibilityFilter? Filter);
 
+/// <summary>
+/// Would the principal be allowed <c>permission</c> on a document carrying these security attributes (the PDP's document
+/// step, evaluated against principal-side state read once)? Pure and audit-free: the coding store asks it inside its
+/// transaction about the attributes a write is about to commit (E16-T08: a save that hides the document from its author).
+/// </summary>
+public delegate bool DocumentAccessCheck(DocumentSecurityAttributes document);
+
 /// <summary>Membership decision plus the permissions held (break-glass ones only while an activation is live).</summary>
 public sealed record EffectivePermissions(AuthorizationDecision Decision, IReadOnlyList<Permission> Permissions, bool BreakGlass);
 
@@ -141,4 +148,11 @@ public interface IAuthorizationService
     /// <summary>The filter search and document lists apply in their queries (requires <c>Search.Execute</c>).</summary>
     Task<VisibilityResult> GetVisibilityAsync(
         SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The document step of the policy for <paramref name="permission"/> as a check over security attributes, for
+    /// "would the caller still see it after this change" questions. Writes no audit event; never grants anything itself.
+    /// </summary>
+    Task<DocumentAccessCheck> GetDocumentAccessCheckAsync(
+        SecurityPrincipal principal, Guid workspaceId, Permission permission, CancellationToken cancellationToken = default);
 }

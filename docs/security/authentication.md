@@ -152,10 +152,12 @@ plain HTTP only for `localhost`). Never use this realm or its credentials outsid
 
 ## Not done here / follow-ups
 
-- `private_key_jwt` client authentication (preferred by D3.2) needs key material from the secret provider (`E05-T09`);
-  only `client_secret_post` is implemented.
+- `private_key_jwt` client authentication (preferred by D3.2) can now take its key from `ISecretProvider` (E05-T09) but
+  is not implemented; only `client_secret_post` is. The client secret comes from `Authentication__Oidc__ClientSecret_FILE`
+  (or `.env` in the developer profile, where `./opportunity.sh init` generates it and the dev realm imports it).
 - Data Protection keys are stored in PostgreSQL (`opportunity.data_protection_key`) but not yet encrypted with a KEK
-  (`E05-T09`); until then they are protected by database access control.
+  (ADR-015 D10.4). E05-T09 delivered the KEK provider but left sealing the key ring out of its scope; until a follow-up
+  does it they are protected by database access control.
 - Session ID rotation at break-glass activation (D4.2) lands with break-glass (`E05-T06`).
 - Per-workspace *tightening* of session timeouts (D4.2) is not implemented; the installation values apply.
 - Audit events are not yet persisted (`E14-T01`).

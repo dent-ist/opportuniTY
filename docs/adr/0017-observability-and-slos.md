@@ -137,27 +137,31 @@ file name into a third-party backend.
 | `opportunity.search.commit_to_searchable` | histogram | s | `opportunity.lane` | `E07-T06` |
 | `opportunity.search.security_projection_lag` | histogram | s | `opportunity.lane` | `E05-T06` (ADR-001 §5.4 `security_projection_lag_seconds`) |
 | `opportunity.search.stale_version_rejections` | counter | {document} | `opportunity.lane` | `E07-T06` |
-| `opportunity.index.chunk_tasks` | gauge | {task} | `opportunity.status`, `opportunity.lane` | `E07-T06` |
-| `opportunity.index.chunk_task.oldest_age` | gauge | s | `opportunity.status`, `opportunity.lane` | `E07-T06` |
+| `opportunity.index.chunk_tasks` | gauge | {task} | `opportunity.status`, `opportunity.lane` | `E19-T05` dispatcher (sampled from PostgreSQL) |
+| `opportunity.index.chunk_task.oldest_age` | gauge | s | `opportunity.status`, `opportunity.lane` | `E19-T05` dispatcher (Running: since lease; else since commit) |
 | `opportunity.index.chunk_task.attempts` | counter | {task} | `opportunity.lane`, `opportunity.outcome`, `error.type` | `E07-T04` chunk index worker |
 | `opportunity.index.chunk_task.duration` | histogram | s | `opportunity.lane`, `opportunity.outcome` | `E07-T04` chunk index worker |
 | `opportunity.index.bulk.items` | counter | {document} | `opportunity.lane`, `opportunity.outcome` (applied, stale, transient, permanent) | `E07-T04` |
 | `opportunity.search.request.duration` | histogram | s | `opportunity.search.class` (simple, complex), `opportunity.outcome` | `E07-T07` |
 | `opportunity.search.post_filter.dropped` | counter | {document} | `opportunity.search.drop_reason` (PDP reason, `integrity`) | `E07-T05` (Q-12 page post-filter) |
 | `opportunity.jobs` | counter | {job} | `opportunity.job.type`, `opportunity.status` | `E06-T05` |
-| `opportunity.jobs.active` | up-down counter | {job} | `opportunity.job.type` | `E06-T05` |
+| `opportunity.jobs.active` | gauge | {job} | `opportunity.job.type` | `E19-T05` dispatcher (sampled from PostgreSQL) |
 | `opportunity.job.chunks` | counter | {chunk} | `opportunity.job.type`, `opportunity.outcome`, `error.type` | `E06-T05` |
 | `opportunity.job.chunk.duration` | histogram | s | `opportunity.job.type`, `opportunity.outcome` | `E06-T05` |
+| `opportunity.job.chunk.backlog` | gauge | {chunk} | `opportunity.job.type`, `opportunity.status` | `E19-T05` dispatcher (open chunks) |
+| `opportunity.job.chunk.oldest_age` | gauge | s | `opportunity.job.type`, `opportunity.status` | `E19-T05` dispatcher (Running: since claim) |
 | `opportunity.audit.write.duration` | histogram | s | `opportunity.outcome` | `E14-T01` |
 
 Infrastructure metrics come from their own exporters, not the application: RabbitMQ (`rabbitmq_prometheus` plugin),
 PostgreSQL (`postgres_exporter`), OpenSearch (`elasticsearch_exporter`, which also reads OpenSearch). The PostgreSQL
 replication and WAL-archive lag (RPO ≤ 5 min) come from `postgres_exporter` once `E19-T08` configures archiving.
 
-### 6. SLIs, SLOs and first alerts (proposed; accepted with `E19-T05`)
+### 6. SLIs, SLOs and alerts
 
 The targets below are §17 targets, not product guarantees, until benchmarked (Q-44: absolute latency gates on
-developer hardware are comparative). The SLIs use the catalog metrics.
+developer hardware are comparative). The SLIs use the catalog metrics. `E19-T05` (#161) implements the alerts as
+code in `deploy/docker-compose/observability/alerts.yaml` (rule unit tests in `alerts.test.yaml`); the full list,
+thresholds and runbooks are in [docs/operations/metrics.md](../operations/metrics.md).
 
 | SLI | Metric | Objective | Alert (initial, `E19-T05` tunes) |
 |---|---|---|---|

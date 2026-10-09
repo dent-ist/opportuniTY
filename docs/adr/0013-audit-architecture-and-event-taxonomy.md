@@ -70,6 +70,11 @@ envelope must be fixed now.
    `Signature`). Created every 10 minutes when the chain advanced, at matter close, before a deletion run and before an
    audit purge. Signed with an Ed25519 key from `IKeyProvider` (`E05-T09`). Checkpoints are exportable for declaration
    exhibits; `opportunity audit verify` detects modification, deletion and reordering.
+   *Amendment 2026-10-09 (E05-T09, #54):* the signing port is `ISigningKeyProvider` (purpose `audit-checkpoint`), and
+   signatures are **ECDSA P-256 / SHA-256 (`ES256`)** instead of Ed25519: .NET has no built-in Ed25519, ES256 needs no
+   extra dependency, and Vault Transit, AWS KMS and Azure Key Vault all sign ES256 natively. `KeyId` is
+   `audit-checkpoint-v<n>`; rotation adds a version and old versions keep verifying; public keys are exported as DER
+   SubjectPublicKeyInfo / PEM (`keys public-key`) for exhibits.
 5. **WORM archival** (`E14-T07`, post-MVP) ships sealed partitions and checkpoints to a separate Object Lock/immutable
    container under `sys/audit/` (ADR-011). Lite documents the reduced guarantee.
 
@@ -133,7 +138,7 @@ M1 events ship with `E14-T01`/`E05-T04`; the rest with the owning feature, and `
 | **Redaction** | `Added`, `Modified`, `Removed` | Redaction | `documentId`, `redactionSetId`, `redactionVersion`, page set and page, normalized rectangle, type, reason code and category; never the note text (ADR-012, E11-T04) |
 | | `RedactionSet.Created/Modified`, `Reason.Created/Modified` | RedactionSet / RedactionReason | Redaction Sets (renamed, retired) and the reason picklist (category, active) (E11-T04) |
 | **Export** | `Created`, `Completed`, `DocumentsExcluded`, `Downloaded` | Export | `SnapshotId`; excluded DocumentIds with reasons per chunk (Q-15); manifest hash |
-| **Production** | `Created`, `SpecFrozen`, `Run`, `VerificationFailed`, `QcOverride`, `Finalized`, `Voided`, `Downloaded`, `Rerun`, `Modified`, `Discarded`, `BatesAllocated`, `Verified`, `DesignationOverridden`, `DesignationOverrideRemoved`, `DesignationsFrozen`, `RedesignationExported` | Production | spec version, Bates range, manifest hash, V1–V5 results (ADR-012); designation rule, counts by source, override reason (E12-T04) |
+| **Production** | `Created`, `SpecFrozen`, `Run`, `VerificationFailed`, `QcOverride`, `Finalized`, `Voided`, `Downloaded`, `Rerun`, `Modified`, `Discarded`, `BatesAllocated`, `Verified`, `DesignationOverridden`, `DesignationOverrideRemoved`, `DesignationsFrozen`, `RedesignationExported`, `VolumeCompleted` | Production | spec version, Bates range, manifest hash, V1–V5 results (ADR-012); designation rule, counts by source, override reason (E12-T04); volume run, volume manifest hash, counts (E12-T05) |
 | **Import** | `Started`, `Completed`, `MalwareDetected`, `HashMismatch` | Import | counts (Completed: the frozen import report figures, E08-T06); quarantined `ObjectId`s |
 | | `PreflightRun`, `ReportDownloaded` | Import | pre-flight counts; downloaded report, error file or pre-flight issue list (E08-T06) |
 | | `Overlaid` | Job | one per overlay chunk (E08-T07): import, rows, document count and the changed column/field keys; old and new values live in `document_overlay_event` (like `CodingEvent`, §6.2), never in audit (§7) |

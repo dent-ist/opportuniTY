@@ -1,6 +1,8 @@
 using Npgsql;
 
 using Opportunity.Application.SearchWork;
+using Opportunity.Core.Jobs;
+using Opportunity.Core.SearchWork;
 using Opportunity.Core.Workspaces;
 
 namespace Opportunity.Data.SearchWork;
@@ -89,6 +91,72 @@ public sealed class SearchWorkMaintenance(NpgsqlDataSource dataSource) : ISearch
 
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return lanes;
+    }
+
+    public async Task<PipelineBacklog> GetPipelineBacklogAsync(Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        // Each query is served by a partial index over open rows only (index_chunk_task_unapplied_ix, job_chunk_open_ix
+        // and job_chunk_lease_ix, job_active_ix), so the cost follows the backlog, not the history.
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        await using var batch = new NpgsqlBatch(tx.Connection, tx.Transaction);
+        batch.BatchCommands.Add(Command(
+            """
+            SELECT status, lane, count(*), min(CASE WHEN status = 3 THEN coalesce(started_at, updated_at) ELSE committed_at END)
+            FROM opportunity.index_chunk_task
+            WHERE workspace_id = @ws AND status <> 5
+            GROUP BY status, lane
+            """, workspaceId, TimeSpan.Zero, TimeSpan.Zero));
+        batch.BatchCommands.Add(Command(
+            """
+            SELECT j.job_type, c.status, count(*), min(CASE WHEN c.status = 3 THEN coalesce(c.claimed_at, c.updated_at) ELSE c.updated_at END)
+            FROM opportunity.job_chunk c
+            JOIN opportunity.job j ON j.workspace_id = c.workspace_id AND j.job_id = c.job_id
+            WHERE c.workspace_id = @ws AND c.status IN (1, 2, 3, 4)
+            GROUP BY j.job_type, c.status
+            """, workspaceId, TimeSpan.Zero, TimeSpan.Zero));
+        batch.BatchCommands.Add(Command(
+            """
+            SELECT job_type, count(*)
+            FROM opportunity.job
+            WHERE workspace_id = @ws AND status NOT IN ('Completed', 'CompletedWithErrors', 'Cancelled', 'Failed')
+            GROUP BY job_type
+            """, workspaceId, TimeSpan.Zero, TimeSpan.Zero));
+
+        var tasks = new List<IndexTaskBacklog>();
+        var chunks = new List<JobChunkBacklog>();
+        var jobs = new List<ActiveJobCount>();
+        await using (var reader = await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                tasks.Add(new IndexTaskBacklog(
+                    (IndexChunkTaskStatus)reader.GetInt16(0), SearchWorkSql.Lane(reader.GetInt16(1)), reader.GetInt64(2),
+                    reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3)));
+            }
+
+            await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (Enum.TryParse<JobType>(reader.GetString(0), out var type))
+                {
+                    chunks.Add(new JobChunkBacklog(
+                        type, (JobChunkStatus)reader.GetInt16(1), reader.GetInt64(2),
+                        reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3)));
+                }
+            }
+
+            await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (Enum.TryParse<JobType>(reader.GetString(0), out var type))
+                {
+                    jobs.Add(new ActiveJobCount(type, reader.GetInt64(1)));
+                }
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new PipelineBacklog(tasks, chunks, jobs);
     }
 
     public async Task<IReadOnlyList<Guid>> GetWorkspacesAsync(CancellationToken cancellationToken = default)

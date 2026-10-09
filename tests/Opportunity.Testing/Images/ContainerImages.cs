@@ -26,6 +26,9 @@ public static class ContainerImages
     /// <summary>Keycloak (Apache-2.0), the developer OIDC provider (E05-T01).</summary>
     public static string Keycloak => Resolve("KEYCLOAK", "keycloak/keycloak");
 
+    /// <summary>Prometheus (Apache-2.0) of the observability profile; its <c>promtool</c> checks the alert rules (E19-T05).</summary>
+    public static string Prometheus => Resolve("PROMETHEUS", "prom/prometheus");
+
     public static string Resolve(string key, string repository) => Resolve(VersionsFile.Repository, key, repository);
 
     public static string Resolve(VersionsFile versions, string key, string repository)

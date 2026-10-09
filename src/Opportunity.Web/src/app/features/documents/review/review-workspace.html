@@ -24,7 +24,12 @@
       <opp-icon name="chevron-right" />
     </button>
   </div>
-  @if (current) {
+  @if (noAccess()) {
+    <!-- Nothing of a document that is no longer available stays on screen, its Control Number included. -->
+    <p class="review__identity review__identity--gone">
+      <opp-icon name="eye-off" /><span>No longer available</span>
+    </p>
+  } @else if (current) {
     <p class="review__identity">
       <strong class="review__control">{{ current.controlNumber }}</strong>
       @if (current.fileName) {
@@ -72,7 +77,10 @@
   @if (cursor().left()) {
     <div class="review__notice review__notice--warning">
       <opp-icon name="warning" />
-      <span>{{ current?.controlNumber }} is no longer in the results. The list was refreshed.</span>
+      <span
+        >{{ noAccess() ? 'This document' : current?.controlNumber }} is no longer in the results.
+        The list was refreshed.</span
+      >
       <button type="button" oppButton="secondary" (click)="continueFromNext()">
         Continue from next
       </button>
@@ -148,7 +156,11 @@
             <opp-icon name="chevron-down" />
           </button>
         </header>
-        @if (current) {
+        @if (noAccess()) {
+          <p class="pane__content review__gone">
+            No related items: this document is not available.
+          </p>
+        } @else if (current) {
           <opp-related-items
             [hit]="current"
             [fields]="fields()"
@@ -178,10 +190,11 @@
       <opp-review-coding
         [documentId]="current.documentId"
         [canCode]="canCode"
-        [controlNumber]="current.controlNumber"
+        [controlNumber]="noAccess() ? null : current.controlNumber"
         [relations]="relations()"
         (move)="saveAndMove($event)"
         (propagated)="onPropagated()"
+        (accessLost)="onAccessLost()"
       />
     }
   </section>

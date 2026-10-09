@@ -85,6 +85,13 @@ export interface MockControl {
   expireSearches(): void;
   /** Documents (1-based numbers) that no longer match any search, e.g. after a recode. */
   removeDocuments(...numbers: number[]): void;
+  /**
+   * Another user's change or a new wall hides documents from the reviewer (E16-T08): searches leave them out (Q-12)
+   * and every route of theirs answers the document 404, exactly like a document that does not exist.
+   */
+  revokeAccess(...numbers: number[]): void;
+  /** Every request naming document `n` (`GET /api/v1/…/documents/doc-n/…`), in order, also the refused ones. */
+  documentRequests(n: number): readonly string[];
   /** The coding store: saves received, and another user's changes (`coding.codeAsOtherUser`). */
   readonly coding: CodingMock;
   /** `POST …/snapshots` requests (frozen sets). */
@@ -401,12 +408,14 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   let pageSize = 100;
   let total = documents;
   const removed = new Set<number>();
+  const hidden = new Set<number>();
+  const documentRequests: { n: number; request: string }[] = [];
   let expired = false;
   let lastQuery = '';
   let retrievals = 0;
   const audit: MockAuditEvent[] = [];
   const matching = () =>
-    Array.from({ length: total }, (_, i) => i + 1).filter((n) => !removed.has(n));
+    Array.from({ length: total }, (_, i) => i + 1).filter((n) => !removed.has(n) && !hidden.has(n));
   // The "server" copy of the preferences outlives reloads of the page, like the real profile.
   const preferences: Record<string, unknown> = { ...options.preferences };
   // Likewise the user's query history per workspace (newest first, distinct, at most 50).
@@ -418,6 +427,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     writePrivilege: permissions.includes('Coding.WritePrivilege'),
     indexDelayMs: options.indexDelayMs ?? 600,
     saveDelayMs: options.codingSaveDelayMs ?? 0,
+    onHidden: (n) => hidden.add(n),
   });
   const snapshots: MockRequest[] = [];
   const bulkCoding: MockRequest[] = [];
@@ -485,6 +495,8 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     coding,
     expireSearches: () => (expired = true),
     removeDocuments: (...numbers) => numbers.forEach((n) => removed.add(n)),
+    revokeAccess: (...numbers) => numbers.forEach((n) => hidden.add(n)),
+    documentRequests: (n) => documentRequests.filter((r) => r.n === n).map((r) => r.request),
     snapshots,
     bulkCoding,
   };
@@ -503,6 +515,25 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         : route.fulfill(problem(401, 'Unauthorized'));
     }
     const method = route.request().method();
+    // E16-T08: a document hidden from the reviewer answers every route like a missing one (the gateway's 404).
+    const named = /^\/api\/v1\/workspaces\/[^/]+\/documents\/doc-(\d+)(?:\/|$)/.exec(path);
+    if (named) {
+      const n = Number(named[1]);
+      documentRequests.push({ n, request: `${method} ${path}` });
+      if (signedIn && hidden.has(n)) {
+        return route.fulfill({
+          status: 404,
+          contentType: 'application/problem+json',
+          body: JSON.stringify({
+            type: 'urn:opportunity:problem:not-found',
+            title: 'Not Found',
+            status: 404,
+            code: 'not-found',
+            detail: 'The document does not exist.',
+          }),
+        });
+      }
+    }
     // A workspace created in the test is empty: answered before the shared import/field/layout mocks.
     const fresh = /^\/api\/v1\/workspaces\/([^/]+)\/(imports|fields|coding-layouts|members)$/.exec(
       path,
