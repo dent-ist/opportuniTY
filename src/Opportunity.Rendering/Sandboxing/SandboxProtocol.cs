@@ -15,6 +15,8 @@ namespace Opportunity.Rendering.Sandboxing;
 /// page and waits for <see cref="SandboxProtocol.Next"/> before rendering the next one (the parent uploads and deletes
 /// the page's files in between, so disk stays at about one page), then <c>end</c>, or <c>failed</c> with a
 /// <see cref="RenderErrorCodes"/> code.</item>
+/// <item>Parent → child: a <see cref="SandboxRenderRequest"/> with <c>endorse</c> set per page to endorse (E12-T04). The
+/// child writes the endorsed page and answers <c>endorsed</c>, or <c>failed</c> with a <see cref="RenderErrorCodes"/> code.</item>
 /// <item>The parent closes the child's stdin to end the session; the child exits.</item>
 /// </list>
 /// Everything the child sends is untrusted: lines are bounded, codes are checked against the known list and every file
@@ -45,7 +47,15 @@ internal sealed record SandboxStart(
 /// <param name="OpenFiles">RLIMIT_NOFILE.</param>
 internal sealed record SandboxLimits(long CpuSeconds, long DataBytes, long FileBytes, int OpenFiles);
 
-internal sealed record SandboxRenderRequest(string InputPath, string OutputDirectory, IReadOnlyList<int>? Pages, bool Review);
+/// <param name="InputPath">The source; null only for an endorsement of a blank (generated) page.</param>
+/// <param name="Endorse">Set for an endorsement (E12-T04): the child endorses one page and answers <c>endorsed</c> (or <c>failed</c>).</param>
+internal sealed record SandboxRenderRequest(string? InputPath, string OutputDirectory, IReadOnlyList<int>? Pages, bool Review, SandboxEndorseRequest? Endorse = null);
+
+internal sealed record SandboxEndorseRequest(
+    int Frame, PageImageFormat Format, Endorsing.EndorsementLayout Layout, int? Dpi, int BlankWidthPx, int BlankHeightPx);
+
+/// <param name="FileName">A plain file name inside the request's output directory.</param>
+internal sealed record SandboxEndorsed(string FileName, int WidthPx, int HeightPx, int Dpi, PageImageFormat Format, PageColorMode ColorMode);
 
 internal static class SandboxMessageTypes
 {
@@ -55,6 +65,7 @@ internal static class SandboxMessageTypes
     public const string Failed = "failed";
     public const string Fatal = "fatal";
     public const string Probe = "probe";
+    public const string Endorsed = "endorsed";
 }
 
 internal sealed record SandboxMessage(
@@ -63,7 +74,8 @@ internal sealed record SandboxMessage(
     SandboxPage? Page = null,
     string? Code = null,
     string? Message = null,
-    SandboxProbeReport? Probe = null);
+    SandboxProbeReport? Probe = null,
+    SandboxEndorsed? Endorsed = null);
 
 internal sealed record SandboxPage(
     int Index,

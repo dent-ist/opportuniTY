@@ -141,7 +141,7 @@ public sealed class ProductionLifecycleTests(MigrationPostgresFixture postgres)
         verification!.Consistent.Should().BeFalse();
         verification.Differences.Select(d => d.Item).Should().Contain(["assignmentsSha256 (stored rows)", "integrity"]).And.Contain(i => i.StartsWith("document 4", StringComparison.Ordinal));
         (await h.Db.ColumnAsync($"SELECT action FROM audit.audit_event WHERE workspace_id = '{ws}' AND category = 'Production' ORDER BY occurred_at, action"))
-            .Should().BeEquivalentTo("Created", "BatesAllocated", "SpecFrozen", "Finalized", "Verified", "VerificationFailed");
+            .Should().BeEquivalentTo("Created", "BatesAllocated", "SpecFrozen", "Finalized", "DesignationsFrozen", "Verified", "VerificationFailed");
 
         // A change is a new version: same lineage and frozen set, numbering continues after the version it supersedes.
         var next = await service.CreateAsync(principal, ws, new CreateProductionRequest(PreviousVersionId: draft.ProductionId), null, Ct);

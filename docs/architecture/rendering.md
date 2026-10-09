@@ -158,6 +158,33 @@ hardening and Docker's default seccomp profile was checked by hand (the probe re
 every attempt blocked), not in CI. Rasters are validated but not re-encoded by the worker (threat model T-42 asks for
 re-encoding).
 
+## Endorsing produced pages (E12-T04)
+
+Producing a page means decoding the document's image, so it happens where every other decode happens: in the
+document's sandboxed render process. `IRenderSession.EndorseAsync(EndorseRequest)` takes one page (a frame of a TIFF,
+JPEG or PNG under the session's work directory, or a blank page for a slip sheet or placeholder with centred body
+lines), the stamps (text per position: top or bottom, left, centre or right), the font size and margin in points and the
+canvas option, and returns the encoded page (TIFF CCITT Group 4, JPEG or PNG) with its size, resolution and colour mode.
+In the sandbox the child writes `endorsed.{tif,jpg,png}` into the request's output directory and answers `endorsed`;
+the worker stops the child, checks the file (exact name, regular file, size limit, requested format, image header whose
+dimensions match the report: PNG IHDR, JPEG SOF, TIFF IFD with compression 4), reads it, deletes it and resumes the
+child. The production volume writer (E12-T05) calls it per page with the stamps `EndorsementPlanner` derives from the
+frozen specification and each member's frozen designation.
+
+Layout: font size and margin are converted to pixels at the page's resolution. With `expandCanvas` (the default) a band
+is added above and/or below the page for the top and bottom stamps, so the image is never overwritten; otherwise each
+stamp is drawn over the page on a white box. A row of stamps too wide for the page is drawn in a smaller font until it
+fits. The page's pixels are copied, never resampled (non-square pixels are made square by repeating rows); producing at
+another resolution than the page's own is E12-T05's decision.
+
+Deterministic (Q-08, same inputs give the same bytes): the text uses an embedded font (Liberation Sans 2.1.5, SIL OFL
+1.1, `src/Opportunity.Rendering/Fonts`, never a host font), aliased, into a coverage mask copied onto the page as pure
+black on pure white, so no blending or SIMD-dependent arithmetic touches the result; TIFF G4 is thresholded at
+mid-gray and written by LibTiff.NET (no timestamps), JPEG at quality 90 and PNG by Skia, the JFIF density set to the
+page's resolution. `PageEndorser.Version` (pipeline version, Skia, LibTiff.NET, font name and hash) is recorded with
+produced images; a unit test pins the SHA-256 of a generated page, so a library or font upgrade that changes the output
+fails it until the pipeline version is bumped. The sandbox and in-process results are tested to be byte-identical.
+
 ## Viewer delivery (E11-T03)
 
 The protected-content gateway serves only derived renditions inline, and only as `image/png`, `image/jpeg` or
@@ -175,7 +202,8 @@ Chromium against the production build.
 |---|---|---|
 | PDFium (via `bblanchon.PDFium.Linux` / `.macOS` / `.Win32` 157.0.8086) | PDF rasterization | PDFium: BSD-3-Clause (with Apache-2.0 third-party parts); package and build scripts: Apache-2.0 (NuGet metadata) |
 | SkiaSharp 4.153.1 and `SkiaSharp.NativeAssets.Linux.NoDependencies` | JPEG/PNG decoding, scaling, PNG encoding | SkiaSharp: MIT; Skia: BSD-3-Clause |
-| BitMiracle.LibTiff.NET 2.4.660 | TIFF decoding (CCITT G3/G4, LZW, JPEG, …) | BSD-3-Clause (license exception in `tools/ci/security/license-policy.json`: the package has only a license URL) |
+| BitMiracle.LibTiff.NET 2.4.660 | TIFF decoding (CCITT G3/G4, LZW, JPEG, …); TIFF G4 encoding of endorsed pages | BSD-3-Clause (license exception in `tools/ci/security/license-policy.json`: the package has only a license URL) |
+| Liberation Sans 2.1.5 (`LiberationSans-Regular.ttf`, embedded resource) | Endorsement text (E12-T04) | SIL OFL 1.1; the license text ships with it (`Fonts/LICENSE-LiberationSans.txt`, also embedded) |
 
 All are OSI-approved permissive licenses on the policy's allow-list; none is copyleft. Only Linux natives are
 referenced (`bblanchon.PDFium.Linux`, `SkiaSharp.NativeAssets.Linux.NoDependencies`), and only by the projects that

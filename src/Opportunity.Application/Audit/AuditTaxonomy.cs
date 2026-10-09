@@ -190,6 +190,18 @@ public static class AuditTaxonomy
         /// <summary>A re-verification found differences from the manifest.</summary>
         public const string VerificationFailed = "VerificationFailed";
 
+        /// <summary>A draft's designation of one member was set by a person, with a reason (E12-T04).</summary>
+        public const string DesignationOverridden = "DesignationOverridden";
+
+        /// <summary>A draft's designation override was removed; the family rule applies again.</summary>
+        public const string DesignationOverrideRemoved = "DesignationOverrideRemoved";
+
+        /// <summary>Every member's designation was frozen at finalization (rule and counts by source).</summary>
+        public const string DesignationsFrozen = "DesignationsFrozen";
+
+        /// <summary>A re-designation overlay load file was downloaded.</summary>
+        public const string RedesignationExported = "RedesignationExported";
+
         /// <summary>The audit resource type of production events.</summary>
         public const string ResourceType = "Production";
     }
@@ -286,7 +298,8 @@ public static class AuditTaxonomy
         .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
-            "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified"),
+            "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
+            "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported"),
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",

@@ -153,6 +153,9 @@ public enum ProductionWriteStatus
 
     /// <summary>E13-T01: members are coded Privilege Status = Withhold, so the production cannot be finalized.</summary>
     PrivilegeWithheld,
+
+    /// <summary>E12-T04: a member's designation cannot be produced (unlisted level, or no endorsement stamps it).</summary>
+    DesignationRefused,
 }
 
 public sealed record ProductionWriteResult(
@@ -219,6 +222,9 @@ public sealed record BatesIntegrityReport(
 }
 
 /// <summary>A stored member row with its numbers, for hashing, listing and lookup.</summary>
+/// <param name="PageCount">Pages of the member's active page set at the freeze.</param>
+/// <param name="Designation">The designation legend frozen at finalization (E12-T04); empty when nothing is stamped.</param>
+/// <param name="DesignationSource">Null until the production is finalized (and for productions finalized before E12-T04).</param>
 public sealed record ProductionDocumentRow(
     long Sequence,
     Guid DocumentId,
@@ -233,7 +239,66 @@ public sealed record ProductionDocumentRow(
     string? ProdEndBates,
     string? ProdBegAttach,
     string? ProdEndAttach,
-    string? ControlNumber);
+    string? ControlNumber,
+    int PageCount = 0,
+    string? Designation = null,
+    int? DesignationChoiceId = null,
+    DesignationSource? DesignationSource = null);
+
+/// <summary>
+/// What decides a production's designations (E12-T04, from its specification): the designation field, its levels
+/// (lowest first) and the family rule; <see cref="StampsDesignation"/> tells whether an endorsement carries the legend.
+/// </summary>
+public sealed record DesignationPlan(int? FieldId, IReadOnlyList<DesignationLevel> Levels, DesignationFamilyRule Rule, bool StampsDesignation)
+{
+    public static DesignationPlan None { get; } = new(null, [], DesignationFamilyRule.HighestInFamily, false);
+}
+
+/// <summary>A member's designation, computed from coding (draft, or now) or as frozen at finalization.</summary>
+public sealed record DesignationRow(
+    long Sequence,
+    Guid DocumentId,
+    string? ControlNumber,
+    string? ProdBegBates,
+    string? ProdEndBates,
+    int? OwnChoiceId,
+    int? ChoiceId,
+    string Legend,
+    DesignationSource Source,
+    string? OverrideReason);
+
+/// <summary>A produced member whose designation would differ now from the one frozen at finalization.</summary>
+public sealed record RedesignationRow(
+    long Sequence,
+    Guid DocumentId,
+    string? ControlNumber,
+    string ProdBegBates,
+    string ProdEndBates,
+    int? ProducedChoiceId,
+    string ProducedLegend,
+    int? CurrentChoiceId,
+    string CurrentLegend);
+
+/// <param name="LastScanned">The last member scanned (null when none was left), where the next scan starts.</param>
+public sealed record RedesignationPage(IReadOnlyList<RedesignationRow> Rows, long? LastScanned);
+
+/// <summary>A production's designation override of one member.</summary>
+public sealed record DesignationOverrideRow(Guid DocumentId, int FieldId, int? ChoiceId, string Reason, Guid CreatedBy, DateTimeOffset CreatedAt);
+
+public enum DesignationOverrideStatus
+{
+    Applied,
+    NotFound,
+
+    /// <summary>The production is not a draft (its designations are frozen).</summary>
+    Frozen,
+
+    /// <summary>The document is not in the production's frozen set.</summary>
+    NotMember,
+}
+
+/// <summary>Counts of the designations frozen at finalization, by source (audited).</summary>
+public sealed record DesignationFreezeSummary(long Designated, long ByDocument, long ByFamily, long ByOverride);
 
 /// <summary>A cross-reference hit: a document's numbers in a production.</summary>
 public sealed record BatesLookupRow(
@@ -325,10 +390,37 @@ public interface IProductionStore
     Task<bool> FailAllocationAsync(
         Guid workspaceId, Guid productionId, Guid jobId, string reason, IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default);
 
-    /// <summary>Draft (Allocated) → Finalized: stores the manifest, marks the range Produced, writes the audit events.</summary>
+    /// <summary>
+    /// Draft (Allocated) → Finalized: freezes every member's designation under <paramref name="designations"/> (read from
+    /// the coding store under the privilege gate), stores the manifest, marks the range Produced and writes the audit
+    /// events (<paramref name="designationAudit"/> gets the counts by source). Refused (<see cref="ProductionWriteStatus.DesignationRefused"/>)
+    /// when a member carries a designation the levels do not list, or a designated member would get no stamp.
+    /// </summary>
     Task<ProductionWriteResult> FinalizeAsync(
         Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
-        IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default);
+        IReadOnlyList<AuditEvent> audit, DesignationPlan designations, AuditEvent designationAudit, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A page of the members' designations in production order: frozen values once finalized (or voided), else
+    /// computed from the current coding with the production's overrides.
+    /// </summary>
+    Task<IReadOnlyList<DesignationRow>> ReadDesignationsAsync(
+        Guid workspaceId, Guid productionId, DesignationPlan plan, long afterSequence, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Scans up to <paramref name="limit"/> members of a finalized (or voided) production after
+    /// <paramref name="afterSequence"/> and returns those whose designation under its plan and overrides, computed from
+    /// the current coding, differs from the frozen one.
+    /// </summary>
+    Task<RedesignationPage> ReadRedesignationsAsync(
+        Guid workspaceId, Guid productionId, DesignationPlan plan, long afterSequence, int limit, CancellationToken cancellationToken = default);
+
+    Task<DesignationOverrideRow?> GetDesignationOverrideAsync(Guid workspaceId, Guid productionId, Guid documentId, CancellationToken cancellationToken = default);
+
+    /// <summary>Sets (or with <paramref name="remove"/> removes) a draft's override of one member, with its audit event.</summary>
+    Task<DesignationOverrideStatus> SetDesignationOverrideAsync(
+        Guid workspaceId, Guid productionId, Guid documentId, int fieldId, int? choiceId, string reason, Guid userId, bool remove, AuditEvent audit,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Finalized → Voided: the range becomes Voided (never reissued).</summary>
     Task<ProductionWriteResult> VoidAsync(

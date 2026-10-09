@@ -303,8 +303,18 @@ export type { DiscardProduction$Params as DiscardProduction$Params } from './fn/
 export { discardProduction as discardProduction } from './fn/productions/discard-production';
 export type { ListProductionDocuments$Params as ListProductionDocuments$Params } from './fn/productions/list-production-documents';
 export { listProductionDocuments as listProductionDocuments } from './fn/productions/list-production-documents';
+export type { ListProductionDesignations$Params as ListProductionDesignations$Params } from './fn/productions/list-production-designations';
+export { listProductionDesignations as listProductionDesignations } from './fn/productions/list-production-designations';
+export type { OverrideProductionDesignation$Params as OverrideProductionDesignation$Params } from './fn/productions/override-production-designation';
+export { overrideProductionDesignation as overrideProductionDesignation } from './fn/productions/override-production-designation';
+export type { RemoveProductionDesignationOverride$Params as RemoveProductionDesignationOverride$Params } from './fn/productions/remove-production-designation-override';
+export { removeProductionDesignationOverride as removeProductionDesignationOverride } from './fn/productions/remove-production-designation-override';
+export type { GetProductionRedesignationReport$Params as GetProductionRedesignationReport$Params } from './fn/productions/get-production-redesignation-report';
+export { getProductionRedesignationReport as getProductionRedesignationReport } from './fn/productions/get-production-redesignation-report';
 export type { VerifyProduction$Params as VerifyProduction$Params } from './fn/productions/verify-production';
 export { verifyProduction as verifyProduction } from './fn/productions/verify-production';
+export type { DownloadProductionRedesignationOverlay$Params as DownloadProductionRedesignationOverlay$Params } from './fn/productions/download-production-redesignation-overlay';
+export { downloadProductionRedesignationOverlay as downloadProductionRedesignationOverlay } from './fn/productions/download-production-redesignation-overlay';
 export type { ListSearchTermReports$Params as ListSearchTermReports$Params } from './fn/search-term-reports/list-search-term-reports';
 export { listSearchTermReports as listSearchTermReports } from './fn/search-term-reports/list-search-term-reports';
 export type { CreateSearchTermReport$Params as CreateSearchTermReport$Params } from './fn/search-term-reports/create-search-term-report';

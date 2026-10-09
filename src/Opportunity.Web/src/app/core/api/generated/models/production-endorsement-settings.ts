@@ -6,4 +6,5 @@ export interface ProductionEndorsementSettings {
   expandCanvas?: boolean | null;
   fontSize?: number | string | null;
   items?: Array<ProductionEndorsement> | null;
+  margin?: number | string | null;
 }

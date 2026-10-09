@@ -617,10 +617,12 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         //    transaction, so neither the change nor its audit can commit alone (ADR-013 §2.1), and a security-affecting
         //    change is enforced by the PDP from its commit on (§24 rule 1). A job chunk's audit also shares the
         //    transaction with its IndexChunkTask and fence F3 (ApplyChunkAsync), so a refused chunk leaves no audit.
-        if (plan.Events.Any(e => e.FieldId == PrivilegeFields.Status && e.Kind == CodingEventKind.ValueChanged)
-            && catalog.Find(PrivilegeFields.Status) is { IsSystem: true })
+        if (plan.Events.Any(e => e.Kind == CodingEventKind.ValueChanged
+                && ((e.FieldId == PrivilegeFields.Status && catalog.Find(PrivilegeFields.Status) is { IsSystem: true })
+                    || catalog.Find(e.FieldId)?.SecurityClass == SecurityClass.ConfidentialityDesignation)))
         {
-            // E13-T01 AC 3: a production finalizes only after every Privilege Status change before it has committed.
+            // E13-T01 AC 3: a production finalizes only after every Privilege Status change before it has committed;
+            // E12-T04: likewise every confidentiality designation change, so the designations it freezes are current.
             await PrivilegeGateSql.EnterSharedAsync(tx, cancellationToken).ConfigureAwait(false);
         }
 
@@ -729,6 +731,18 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
     /// with the built-in Withhold choice of Privilege Status (V0047). The caller holds the privilege gate
     /// (<see cref="PrivilegeGateSql"/>).
     /// </summary>
+    /// <summary>
+    /// E12-T04: a production member's coded designation, for the production store's designation SQL (the coding tables
+    /// are named only here). Used as <c>LEFT JOIN LATERAL (…) own ON true</c> with <c>pd</c> the member row and
+    /// <c>@field</c> the designation field: one choice id (single-choice field) or none.
+    /// </summary>
+    internal const string MemberDesignationChoiceSql =
+        """
+        SELECT c.choice_id FROM opportunity.document_coding_choice c
+         WHERE c.workspace_id = pd.workspace_id AND c.document_id = pd.document_id AND c.field_id = @field
+         ORDER BY c.choice_id LIMIT 1
+        """;
+
     internal static async Task<bool> AnyProductionMemberWithheldAsync(WorkspaceTransaction tx, Guid productionId, CancellationToken cancellationToken)
     {
         await using var command = tx.Command(

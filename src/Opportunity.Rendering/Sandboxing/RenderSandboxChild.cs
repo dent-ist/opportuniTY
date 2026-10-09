@@ -85,7 +85,18 @@ public static class RenderSandboxChild
                     return 2;
                 }
 
-                if (!Render(renderer, request, reader, writer))
+                if (request.Endorse is { } endorse)
+                {
+                    Endorse(request, endorse, start.Settings, writer);
+                    continue;
+                }
+
+                if (request.InputPath is not { } source)
+                {
+                    return 2;
+                }
+
+                if (!Render(renderer, request, source, reader, writer))
                 {
                     return 0;
                 }
@@ -107,11 +118,11 @@ public static class RenderSandboxChild
     }
 
     /// <summary>Renders one request; false when the parent went away (stdin closed) in the middle.</summary>
-    private static bool Render(RasterRenderer renderer, SandboxRenderRequest request, StreamReader reader, StreamWriter writer)
+    private static bool Render(RasterRenderer renderer, SandboxRenderRequest request, string inputPath, StreamReader reader, StreamWriter writer)
     {
         try
         {
-            foreach (var page in renderer.Render(new RenderRequest(request.InputPath, request.OutputDirectory, request.Pages, request.Review), CancellationToken.None))
+            foreach (var page in renderer.Render(new RenderRequest(inputPath, request.OutputDirectory, request.Pages, request.Review), CancellationToken.None))
             {
                 Send(writer, new SandboxMessage(SandboxMessageTypes.Page, Page: new SandboxPage(
                     page.Index, page.WidthPt, page.HeightPt, page.ColorMode, ToRaster(page.Review), ToRaster(page.Thumbnail), page.Error)));
@@ -131,6 +142,23 @@ public static class RenderSandboxChild
 
         Send(writer, new SandboxMessage(SandboxMessageTypes.End));
         return true;
+    }
+
+    /// <summary>Endorses one page (E12-T04) and answers <c>endorsed</c>, or <c>failed</c> with the page's error code.</summary>
+    private static void Endorse(SandboxRenderRequest request, SandboxEndorseRequest endorse, RenderSettings settings, StreamWriter writer)
+    {
+        try
+        {
+            var file = Endorsing.PageEndorser.EndorseToFile(new Endorsing.EndorseRequest(
+                request.InputPath, endorse.Frame, request.OutputDirectory, endorse.Format, endorse.Layout, endorse.Dpi, endorse.BlankWidthPx,
+                endorse.BlankHeightPx), settings);
+            Send(writer, new SandboxMessage(SandboxMessageTypes.Endorsed, Endorsed: new SandboxEndorsed(
+                Path.GetFileName(file.Path), file.WidthPx, file.HeightPx, file.Dpi, file.Format, file.ColorMode)));
+        }
+        catch (RenderException ex)
+        {
+            Send(writer, new SandboxMessage(SandboxMessageTypes.Failed, Code: ex.Code, Message: ex.Message));
+        }
     }
 
     private static SandboxRaster? ToRaster(RasterFile? file) =>
@@ -236,6 +264,7 @@ public static class RenderSandboxChild
     private static void LoadNativeLibraries()
     {
         PdfiumNative.EnsureInitialized();
+        Endorsing.PageEndorser.EnsureInitialized();
         using var bitmap = new SKBitmap(1, 1);
         using var image = SKImage.FromBitmap(bitmap);
         using var png = image.Encode(SKEncodedImageFormat.Png, 100);

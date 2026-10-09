@@ -31,6 +31,11 @@ public static partial class ProductionSpecificationRules
     public const int MaxEndorsements = 6;
     public const int MaxTemplateLength = 200;
     public const int DefaultDpi = 300;
+    public const int DefaultMargin = 18;
+    public const int MaxLegendLength = 100;
+
+    /// <summary>The choice whose default legend is empty (nothing is stamped), compared without case.</summary>
+    public const string NoDesignationChoiceName = "None";
 
     /// <summary>Spreadsheets and audio/video are produced natively with a slip sheet unless a rule says otherwise (E12-T05).</summary>
     public static IReadOnlyList<ProductionFileTypeRule> DefaultRules { get; } =
@@ -255,6 +260,12 @@ public static partial class ProductionSpecificationRules
             Add("endorsements.items", string.Create(CultureInfo.InvariantCulture, $"At most {MaxEndorsements} endorsements, one per position."));
         }
 
+        var margin = endorsements.Margin ?? DefaultMargin;
+        if (margin is < 0 or > 72)
+        {
+            Add("endorsements.margin", "The margin is 0 to 72 points.");
+        }
+
         var stamps = new List<ProductionEndorsement>();
         for (var i = 0; i < items.Count && items.Count <= MaxEndorsements; i++)
         {
@@ -283,7 +294,9 @@ public static partial class ProductionSpecificationRules
             }
         }
 
-        if (problems.Count > 0 || settings is null)
+        var designations = NormalizeDesignations(input.Designations, catalog, restricted, Add);
+
+        if (problems.Count > 0 || settings is null || designations is null)
         {
             errors = Collect(problems);
             return null;
@@ -307,9 +320,130 @@ public static partial class ProductionSpecificationRules
                 new ExportVolumeRequest(settings.VolumePrefix, settings.VolumeStart, settings.VolumePadding, settings.MaxFilesPerFolder),
                 dateFormat,
                 timeZone),
-            new ProductionEndorsementSettings([.. stamps.OrderBy(s => s.Position)], fontSize, endorsements.ExpandCanvas ?? true));
+            new ProductionEndorsementSettings([.. stamps.OrderBy(s => s.Position)], fontSize, endorsements.ExpandCanvas ?? true, margin),
+            designations);
         var json = Serialize(normalized);
         return new NormalizedSpecification(normalized, json, Hash(json));
+    }
+
+    /// <summary>The designation levels of a normalized specification, lowest first.</summary>
+    public static IReadOnlyList<DesignationLevel> LevelsOf(ProductionSpecification specification)
+    {
+        ArgumentNullException.ThrowIfNull(specification);
+        return [.. (specification.Designations?.Levels ?? []).Select((l, i) => new DesignationLevel(l.ChoiceId, i, l.Legend ?? string.Empty))];
+    }
+
+    public static DesignationFamilyRule RuleOf(ProductionSpecification specification) =>
+        specification?.Designations?.FamilyRule == DesignationFamilyRuleResource.Document ? DesignationFamilyRule.Document : DesignationFamilyRule.HighestInFamily;
+
+    /// <summary>True when an endorsement of the specification stamps the designation (<c>{confidentiality}</c>).</summary>
+    public static bool StampsDesignation(ProductionSpecification specification) =>
+        (specification?.Endorsements?.Items ?? []).Any(e => e.Template.Contains("{confidentiality}", StringComparison.Ordinal));
+
+    /// <summary>The default legend of a choice: its name, except "None" (nothing is stamped).</summary>
+    public static string DefaultLegend(string choiceName) =>
+        string.Equals(choiceName?.Trim(), NoDesignationChoiceName, StringComparison.OrdinalIgnoreCase) ? string.Empty : choiceName?.Trim() ?? string.Empty;
+
+    /// <summary>The workspace's designation fields: single-choice, security-affecting confidentiality coding fields.</summary>
+    public static IEnumerable<FieldDefinition> DesignationFields(FieldCatalog catalog, IReadOnlySet<int> restricted)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(restricted);
+        return catalog.Fields
+            .Where(f => !f.IsDeleted && f.Type == FieldType.SingleChoice && f.SecurityClass == SecurityClass.ConfidentialityDesignation
+                && f.Storage == FieldStorage.Coding && !restricted.Contains(f.FieldId))
+            .OrderBy(f => f.FieldId);
+    }
+
+    private static ProductionDesignationSettings? NormalizeDesignations(
+        ProductionDesignationSettings? input, FieldCatalog catalog, IReadOnlySet<int> restricted, Action<string, string> add)
+    {
+        input ??= new ProductionDesignationSettings();
+        var rule = input.FamilyRule ?? DesignationFamilyRuleResource.HighestInFamily;
+        if (!Enum.IsDefined(rule))
+        {
+            add("designations.familyRule", "Use highestInFamily or document.");
+            return null;
+        }
+
+        var candidates = DesignationFields(catalog, restricted).ToList();
+        FieldDefinition? field;
+        if (input.FieldId is { } fieldId)
+        {
+            field = candidates.FirstOrDefault(f => f.FieldId == fieldId);
+            if (field is null)
+            {
+                add("designations.fieldId", "Use a single-choice confidentiality designation field.");
+                return null;
+            }
+        }
+        else if (candidates.Count > 1)
+        {
+            add("designations.fieldId", "The workspace has several confidentiality designation fields; give the one to produce.");
+            return null;
+        }
+        else
+        {
+            field = candidates.SingleOrDefault();
+        }
+
+        if (field is null)
+        {
+            if (input.Levels is { Count: > 0 })
+            {
+                add("designations.levels", "Levels need a designation field.");
+                return null;
+            }
+
+            return new ProductionDesignationSettings(null, rule, []);
+        }
+
+        var choices = catalog.ChoicesOf(field.FieldId);
+        if (input.Levels is null)
+        {
+            return new ProductionDesignationSettings(field.FieldId, rule, [.. choices.Select(c => new ProductionDesignationLevel(c.ChoiceId, DefaultLegend(c.Name)))]);
+        }
+
+        var byId = choices.ToDictionary(c => c.ChoiceId);
+        var levels = new List<ProductionDesignationLevel>();
+        var seen = new HashSet<int>();
+        var valid = true;
+        for (var i = 0; i < input.Levels.Count; i++)
+        {
+            var key = string.Create(CultureInfo.InvariantCulture, $"designations.levels[{i}]");
+            var level = input.Levels[i];
+            if (level is null || !byId.TryGetValue(level.ChoiceId, out var choice))
+            {
+                add(key, "Use a choice of the designation field.");
+                valid = false;
+                continue;
+            }
+
+            if (!seen.Add(choice.ChoiceId))
+            {
+                add(key, $"The choice '{choice.Name}' is listed twice.");
+                valid = false;
+                continue;
+            }
+
+            var legend = level.Legend is null ? DefaultLegend(choice.Name) : level.Legend.Trim();
+            if (legend.Length > MaxLegendLength || legend.Any(char.IsControl))
+            {
+                add(key, string.Create(CultureInfo.InvariantCulture, $"A legend has at most {MaxLegendLength} characters and no control characters."));
+                valid = false;
+                continue;
+            }
+
+            levels.Add(new ProductionDesignationLevel(choice.ChoiceId, legend));
+        }
+
+        if (valid && choices.Where(c => !seen.Contains(c.ChoiceId)).Select(c => c.Name).ToList() is { Count: > 0 } missing)
+        {
+            add("designations.levels", "List every choice of the designation field, lowest first; missing: " + string.Join(", ", missing) + ".");
+            valid = false;
+        }
+
+        return valid ? new ProductionDesignationSettings(field.FieldId, rule, levels) : null;
     }
 
     public static string? NormalizeExtension(string? extension) =>

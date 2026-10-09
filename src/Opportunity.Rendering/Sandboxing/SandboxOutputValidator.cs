@@ -80,6 +80,138 @@ internal static class SandboxOutputValidator
     }
 }
 
+/// <summary>
+/// Checks an endorsed page (E12-T04) the sandboxed endorser reports and reads it while the child is stopped: exactly the
+/// expected file name in the request's output directory, a regular file within the size limit, the requested format,
+/// and an image header (PNG IHDR, JPEG SOF, TIFF IFD with CCITT Group 4) whose dimensions match the report.
+/// </summary>
+internal static class EndorsedOutputValidator
+{
+    private const int MaxDimension = 100_000;
+
+    public static Endorsing.EndorsedImage? Read(SandboxEndorsed reported, string outputDirectory, PageImageFormat format, long maxFileBytes)
+    {
+        ArgumentNullException.ThrowIfNull(reported);
+        if (reported.FileName != Endorsing.PageEndorser.FileName(format) || reported.Format != format
+            || reported.WidthPx is < 1 or > MaxDimension || reported.HeightPx is < 1 or > MaxDimension || reported.Dpi is < 1 or > 10_000
+            || !Enum.IsDefined(reported.ColorMode))
+        {
+            return null;
+        }
+
+        var path = Path.Combine(outputDirectory, reported.FileName);
+        var info = new FileInfo(path);
+        if (!info.Exists || info.LinkTarget is not null || (info.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint | FileAttributes.Device)) != 0
+            || info.Length > maxFileBytes || info.Length < 16)
+        {
+            return null;
+        }
+
+        var bytes = File.ReadAllBytes(path);
+        var size = format switch
+        {
+            PageImageFormat.Png => PngSize(bytes),
+            PageImageFormat.Jpeg => JpegSize(bytes),
+            PageImageFormat.TiffG4 => TiffG4Size(bytes),
+            _ => null,
+        };
+        return size == (reported.WidthPx, reported.HeightPx)
+            ? new Endorsing.EndorsedImage(bytes, reported.WidthPx, reported.HeightPx, reported.Dpi, format, reported.ColorMode)
+            : null;
+    }
+
+    private static (int, int)? PngSize(ReadOnlySpan<byte> b) =>
+        b.Length >= 24 && b[..8].SequenceEqual((ReadOnlySpan<byte>)[0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A])
+            && BinaryPrimitives.ReadUInt32BigEndian(b[8..]) == 13 && b[12..16].SequenceEqual("IHDR"u8)
+            ? ((int)Math.Min(int.MaxValue, BinaryPrimitives.ReadUInt32BigEndian(b[16..])), (int)Math.Min(int.MaxValue, BinaryPrimitives.ReadUInt32BigEndian(b[20..])))
+            : null;
+
+    /// <summary>The frame size from the first SOFn marker (bounded walk over the marker segments).</summary>
+    private static (int, int)? JpegSize(ReadOnlySpan<byte> b)
+    {
+        if (b.Length < 4 || b[0] != 0xFF || b[1] != 0xD8)
+        {
+            return null;
+        }
+
+        var i = 2;
+        for (var segments = 0; segments < 256 && i + 4 <= b.Length; segments++)
+        {
+            if (b[i] != 0xFF)
+            {
+                return null;
+            }
+
+            var marker = b[i + 1];
+            var length = BinaryPrimitives.ReadUInt16BigEndian(b[(i + 2)..]);
+            if (length < 2 || i + 2 + length > b.Length)
+            {
+                return null;
+            }
+
+            if (marker is >= 0xC0 and <= 0xCF and not 0xC4 and not 0xC8 and not 0xCC)
+            {
+                return length >= 7 ? (BinaryPrimitives.ReadUInt16BigEndian(b[(i + 7)..]), BinaryPrimitives.ReadUInt16BigEndian(b[(i + 5)..])) : null;
+            }
+
+            i += 2 + length;
+        }
+
+        return null;
+    }
+
+    /// <summary>Width and length of the first IFD, which must be CCITT Group 4 (compression 4).</summary>
+    private static (int, int)? TiffG4Size(ReadOnlySpan<byte> b)
+    {
+        if (b.Length < 8)
+        {
+            return null;
+        }
+
+        var little = b[0] == 'I' && b[1] == 'I';
+        if (!little && !(b[0] == 'M' && b[1] == 'M'))
+        {
+            return null;
+        }
+
+        ushort U16(ReadOnlySpan<byte> s) => little ? BinaryPrimitives.ReadUInt16LittleEndian(s) : BinaryPrimitives.ReadUInt16BigEndian(s);
+        uint U32(ReadOnlySpan<byte> s) => little ? BinaryPrimitives.ReadUInt32LittleEndian(s) : BinaryPrimitives.ReadUInt32BigEndian(s);
+        var ifd = U32(b[4..]);
+        if (U16(b[2..]) != 42 || ifd < 8 || ifd > b.Length - 2)
+        {
+            return null;
+        }
+
+        var count = U16(b[(int)ifd..]);
+        if (count > 512 || ifd + 2 + count * 12L > b.Length)
+        {
+            return null;
+        }
+
+        long width = -1, height = -1, compression = -1;
+        for (var e = 0; e < count; e++)
+        {
+            var entry = b.Slice((int)ifd + 2 + e * 12, 12);
+            var tag = U16(entry);
+            var type = U16(entry[2..]);
+            long value = type switch
+            {
+                3 => U16(entry[8..]),
+                4 => U32(entry[8..]),
+                _ => -1,
+            };
+            switch (tag)
+            {
+                case 256: width = value; break;
+                case 257: height = value; break;
+                case 259: compression = value; break;
+            }
+        }
+
+        return compression == 4 && width is >= 1 and <= MaxDimension && height is >= 1 and <= MaxDimension ? ((int)width, (int)height) : null;
+    }
+}
+
 /// <summary>The codes a sandbox may report; anything else from the child is a protocol violation.</summary>
 internal static class RenderErrorCodesSet
 {

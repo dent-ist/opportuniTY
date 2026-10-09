@@ -4,6 +4,7 @@
 import { ProductionOutputResource } from '../models/production-output-resource';
 export interface ProductionDocumentResource {
   controlNumber: string | null;
+  designation?: string | null;
   documentId: string;
   numbers: number | string;
   output: ProductionOutputResource;

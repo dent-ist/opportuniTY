@@ -40,12 +40,25 @@ public interface IRenderSession : IAsyncDisposable
     /// <summary>As <see cref="IRenderer.RenderAsync"/>.</summary>
     /// <exception cref="RenderLimitException">The document exceeded a sandbox limit or crashed its render process.</exception>
     IAsyncEnumerable<RenderedPage> RenderAsync(RenderRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stamps a produced page's endorsements and encodes it (E12-T04, <see cref="Endorsing.PageEndorser"/>); the request's
+    /// paths must lie under the session's work directory. Deterministic: the same page and layout give the same bytes,
+    /// in the sandbox or in process. The default endorses in this process.
+    /// </summary>
+    /// <exception cref="RenderException">The page cannot be read or is too large (a stable code).</exception>
+    /// <exception cref="RenderLimitException">The document exceeded a sandbox limit or crashed its render process.</exception>
+    Task<Endorsing.EndorsedImage> EndorseAsync(Endorsing.EndorseRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Endorsing.PageEndorser.Endorse(request));
 }
 
 internal sealed class InProcessRenderSession(IRenderer renderer) : IRenderSession
 {
     public IAsyncEnumerable<RenderedPage> RenderAsync(RenderRequest request, CancellationToken cancellationToken = default) =>
         renderer.RenderAsync(request, cancellationToken);
+
+    public Task<Endorsing.EndorsedImage> EndorseAsync(Endorsing.EndorseRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Endorsing.PageEndorser.Endorse(request, (renderer as RasterRenderer)?.Settings));
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

@@ -32,6 +32,10 @@ public sealed record VoidProductionRequest(string Reason);
 /// <param name="DefaultOutput">How documents whose file type no rule names are produced (default <c>image</c>).</param>
 /// <param name="FileTypeRules">Per file extension: produce as images, natively (with a slip sheet) or as a placeholder.</param>
 /// <param name="IncludeText">Deliver extracted text files (regenerated from redacted output for redacted documents).</param>
+/// <param name="Designations">
+/// Confidentiality designations (E12-T04): the designation field, its levels with the legend stamped for each, and the
+/// family rule. Frozen per document when the production is finalized.
+/// </param>
 public sealed record ProductionSpecification(
     ProductionBatesSettings Bates,
     ProductionImageSettings? Images = null,
@@ -39,7 +43,8 @@ public sealed record ProductionSpecification(
     IReadOnlyList<ProductionFileTypeRule>? FileTypeRules = null,
     bool IncludeText = true,
     ProductionLoadFileSettings? LoadFile = null,
-    ProductionEndorsementSettings? Endorsements = null);
+    ProductionEndorsementSettings? Endorsements = null,
+    ProductionDesignationSettings? Designations = null);
 
 /// <summary>
 /// Bates numbering: <c>prefix + start padded to padding digits + suffix</c>, e.g. <c>ABC0000001</c>. Numbers are unique
@@ -124,13 +129,115 @@ public enum EndorsementPositionResource
 /// <c>{confidentiality}</c> (the document's designation) and <c>{production}</c> (the production name).
 /// </summary>
 /// <param name="FontSize">Points (6–24, default 10).</param>
-/// <param name="ExpandCanvas">Add a margin to the page instead of stamping over its content (default true).</param>
+/// <param name="ExpandCanvas">
+/// Add a band above and below the page for the endorsements instead of stamping over its content (default true), so
+/// the image is never overwritten.
+/// </param>
+/// <param name="Margin">Distance of the endorsements from the page edge, in points (0–72, default 18 = a quarter inch).</param>
 public sealed record ProductionEndorsementSettings(
     IReadOnlyList<ProductionEndorsement>? Items = null,
     int? FontSize = null,
-    bool? ExpandCanvas = null);
+    bool? ExpandCanvas = null,
+    int? Margin = null);
 
 public sealed record ProductionEndorsement(EndorsementPositionResource Position, string Template);
+
+/// <summary>How a production member's designation is decided.</summary>
+public enum DesignationFamilyRuleResource
+{
+    /// <summary>Every member of a family is produced with the highest designation in the family (default).</summary>
+    HighestInFamily,
+
+    /// <summary>Each document keeps its own designation.</summary>
+    Document,
+}
+
+/// <summary>
+/// Confidentiality designations of a production (E12-T04). The designation field is a single-choice, security-affecting
+/// confidentiality field (default: the workspace's only one, e.g. Confidentiality Designation). Levels list every
+/// choice of the field from lowest to highest with the legend stamped as <c>{confidentiality}</c> and written to the
+/// load file; the default is the field's choice order with each choice's name as its legend, except "None", whose
+/// legend is empty (nothing is stamped).
+/// </summary>
+/// <param name="FieldId">The designation field; null when the workspace has none (no document is designated).</param>
+public sealed record ProductionDesignationSettings(
+    int? FieldId = null,
+    DesignationFamilyRuleResource? FamilyRule = null,
+    IReadOnlyList<ProductionDesignationLevel>? Levels = null);
+
+/// <summary>A designation level: a choice of the designation field and its legend (empty: nothing is stamped).</summary>
+public sealed record ProductionDesignationLevel(int ChoiceId, string? Legend = null);
+
+/// <summary>Why a member carries its designation.</summary>
+public enum DesignationSourceResource
+{
+    /// <summary>Nothing is stamped (no value, or a level with an empty legend).</summary>
+    None,
+
+    /// <summary>The document's own designation.</summary>
+    Document,
+
+    /// <summary>The highest designation in its family.</summary>
+    Family,
+
+    /// <summary>Overridden for this production with a reason.</summary>
+    Override,
+}
+
+/// <summary>
+/// A member's designation in a production: its own coded value, what it is (or was, once finalized) produced with, and
+/// why. For a draft the values are computed from the current coding; a finalized production shows the values frozen at
+/// finalization.
+/// </summary>
+/// <param name="OwnChoiceId">The document's coded designation now (null when not coded).</param>
+/// <param name="ChoiceId">The designation produced.</param>
+/// <param name="Legend">The legend stamped on every page and written to the load file.</param>
+/// <param name="OverrideReason">The reason given for an override.</param>
+public sealed record ProductionDesignationResource(
+    long Sequence,
+    Guid DocumentId,
+    string? ControlNumber,
+    string? ProdBegBates,
+    string? ProdEndBates,
+    int? OwnChoiceId,
+    string? OwnDesignation,
+    int? ChoiceId,
+    string Legend,
+    DesignationSourceResource Source,
+    string? OverrideReason);
+
+/// <summary>Body of <c>PUT …/productions/{productionId}/designation-overrides/{documentId}</c> (draft only).</summary>
+/// <param name="ChoiceId">The designation to produce the document with (a choice of the designation field); null: none.</param>
+/// <param name="Reason">Why the family rule is overridden (1–2000 characters; audited).</param>
+public sealed record DesignationOverrideRequest(int? ChoiceId, string Reason);
+
+/// <summary>A production's designation override for one document.</summary>
+public sealed record DesignationOverrideResource(Guid DocumentId, int? ChoiceId, string Legend, string Reason, Guid CreatedBy, DateTimeOffset CreatedAt);
+
+/// <summary>
+/// A finalized production's re-designation report (E12-T04): the produced documents whose designation under the
+/// production's rule would now differ from the one they were produced with, in production order, with their Bates
+/// ranges. The overlay load file (<c>…/redesignation-overlay</c>) carries the same rows.
+/// </summary>
+/// <param name="RestrictedCount">Changed documents you may not view: counted, never listed (Q-52).</param>
+public sealed record RedesignationReportResource(
+    Guid ProductionId,
+    IReadOnlyList<RedesignationResource> Items,
+    string? Next,
+    long RestrictedCount);
+
+/// <param name="ProducedLegend">The legend the document was produced with.</param>
+/// <param name="CurrentLegend">The legend it would carry now.</param>
+public sealed record RedesignationResource(
+    long Sequence,
+    Guid DocumentId,
+    string? ControlNumber,
+    string ProdBegBates,
+    string ProdEndBates,
+    int? ProducedChoiceId,
+    string ProducedLegend,
+    int? CurrentChoiceId,
+    string CurrentLegend);
 
 /// <summary>Lifecycle of a production.</summary>
 public enum ProductionStatusResource
@@ -211,6 +318,7 @@ public sealed record ProductionIntegrityResource(
     IReadOnlyList<string> Problems);
 
 /// <summary>One document's Bates numbers in a production (ProdBegBates … ProdEndAttach), in production order.</summary>
+/// <param name="Designation">The legend frozen at finalization (null before; empty when nothing is stamped).</param>
 public sealed record ProductionDocumentResource(
     long Sequence,
     Guid DocumentId,
@@ -220,7 +328,8 @@ public sealed record ProductionDocumentResource(
     string? ProdBegBates,
     string? ProdEndBates,
     string? ProdBegAttach,
-    string? ProdEndAttach);
+    string? ProdEndAttach,
+    string? Designation = null);
 
 /// <summary>The productions holding a Bates number (or a document), oldest first.</summary>
 /// <param name="RestrictedCount">Matches on documents you may not view: counted, never listed (Q-52).</param>
