@@ -28,7 +28,7 @@ namespace Opportunity.Search.Workers;
 /// from the security-bulk (L2) and bulk (L3) lanes. Per delivery:
 /// <list type="number">
 /// <item>Lease the task under RLS with the hinted workspace — the lease is the inbox (ADR-010 §5.3). An invisible task,
-/// or one whose job or idempotency key disagrees with the envelope, is rejected (<c>Integrity.EnvelopeMismatch</c>
+/// or one whose job or idempotency key disagrees with the envelope, is rejected (<c>Integrity.MessageRejected</c>, reason <c>EnvelopeMismatch</c>
 /// audit event, dead-lettered). Every other unleasable outcome (duplicate delivery, settled, lease held, not due,
 /// workspace not Active, attempts exhausted) is acked and dropped.</item>
 /// <item>Resolve the membership from authoritative state in keyset pages (<see cref="IIndexTaskMembershipReader"/>):
@@ -49,7 +49,7 @@ namespace Opportunity.Search.Workers;
 /// </summary>
 public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkTaskMessage>
 {
-    public const string RejectionReason = "EnvelopeMismatch";
+    public const string RejectionReason = MessageRejectionReasons.EnvelopeMismatch;
 
     private readonly IIndexChunkTaskRepository _tasks;
     private readonly IIndexTaskMembershipReader _membership;
@@ -534,30 +534,17 @@ public sealed partial class ChunkIndexTaskConsumer : IMessageHandler<IndexChunkT
     {
         var envelope = message.Envelope;
         LogRejected(_logger, payload.TaskId, envelope.WorkspaceId, field);
-        await _audit.WriteAsync(new AuditEvent
-        {
-            WorkspaceId = null,
-            OccurredAt = _time.GetUtcNow(),
-            Category = AuditTaxonomy.Integrity.Category,
-            Action = AuditTaxonomy.Integrity.EnvelopeMismatch,
-            ActorType = AuditActorType.Service,
-            ActorId = _options.WorkerId,
-            ActorDisplay = message.Queue.WorkerType,
-            ResourceType = "IndexChunkTask",
-            ResourceId = payload.TaskId.ToString(),
-            Outcome = AuditOutcome.Denied,
-            ReasonCode = RejectionReason,
-            CorrelationId = envelope.CorrelationId,
-            Details = new Dictionary<string, string?>(StringComparer.Ordinal)
-            {
-                ["claimedWorkspaceId"] = envelope.WorkspaceId?.ToString(),
-                ["claimedJobId"] = envelope.JobId?.ToString(),
-                ["messageType"] = envelope.MessageType,
-                ["messageId"] = envelope.MessageId.ToString(),
-                ["queue"] = message.Queue.Name,
-                ["mismatch"] = field,
-            },
-        }, CancellationToken.None).ConfigureAwait(false);
+        await _audit.WriteAsync(
+            MessageRejection.AuditEvent(
+                envelope,
+                message.Queue,
+                MessageRejectionReasons.EnvelopeMismatch,
+                _options.WorkerId,
+                "IndexChunkTask",
+                payload.TaskId.ToString(),
+                _time.GetUtcNow(),
+                new Dictionary<string, string?>(StringComparer.Ordinal) { ["mismatch"] = field }),
+            CancellationToken.None).ConfigureAwait(false);
 
         if (release is not null)
         {

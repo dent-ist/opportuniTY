@@ -154,10 +154,13 @@ cmd_up() {
   lite_warning
   local build=(--build)
   [[ "$images" == ghcr ]] && build=(--no-build --pull missing)
-  # Group roles added by newer migrations must exist before the migrator runs (it cannot create roles).
-  compose up -d --wait --wait-timeout "${OPPORTUNITY_WAIT_TIMEOUT:-600}" postgres
+  # Group roles added by newer migrations must exist before the migrator runs (it cannot create roles); the
+  # per-component database logins and broker users (E05-T07) are created or updated before anything connects.
+  compose up -d --wait --wait-timeout "${OPPORTUNITY_WAIT_TIMEOUT:-600}" postgres rabbitmq
   compose exec -T postgres psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
     -f /docker-entrypoint-initdb.d/20-group-roles.sql
+  compose exec -T postgres sh /docker-entrypoint-initdb.d/30-component-logins.sh
+  compose exec -T rabbitmq sh /etc/opportunity/rabbitmq-users.sh
   compose up -d "${build[@]}" --wait --wait-timeout "${OPPORTUNITY_WAIT_TIMEOUT:-600}" "$@"
   compose ps
   local web api

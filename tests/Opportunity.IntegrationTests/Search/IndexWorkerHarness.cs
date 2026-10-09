@@ -16,6 +16,7 @@ using Opportunity.Application.Workspaces;
 using Opportunity.Contracts.Messaging;
 using Opportunity.Contracts.Messaging.Indexing;
 using Opportunity.Core.SearchWork;
+using Opportunity.Data.Audit;
 using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
 using Opportunity.Data.Workspaces;
@@ -108,6 +109,7 @@ internal sealed class IndexWorkerHarness : IAsyncDisposable
         services.AddSingleton(db.Core.AppDataSource);
         services.AddSingleton(meters.Metrics);
         services.AddSingleton<IObjectStore, NoTextObjects>();
+        services.AddPostgresAuditStore();
     }
 
     /// <summary>One relay pass: claims due outbox rows, marks them Dispatched and returns the messages it "published".</summary>

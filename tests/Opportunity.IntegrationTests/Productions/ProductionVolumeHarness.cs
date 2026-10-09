@@ -71,10 +71,10 @@ internal sealed class ProductionVolumeHarness : IAsyncDisposable
     public Application.Faults.IFaultInjector? Faults { get; set; }
 
     public ProductionVolumeChunkExecutor Executor(IObjectStore? store = null) =>
-        new(Exports.Exports, ProductionStore, Exports.Import.Jobs, Exports.Pdp(), new UnrestrictedFieldAccess(), store ?? Store, Imager, Options, Faults);
+        new(Exports.Exports, ProductionStore, Exports.Import.Jobs, Exports.Pdp(), new UnrestrictedFieldAccess(), store ?? Store, Imager, Options, Exports.Audit, Faults);
 #else
     public ProductionVolumeChunkExecutor Executor(IObjectStore? store = null) =>
-        new(Exports.Exports, ProductionStore, Exports.Import.Jobs, Exports.Pdp(), new UnrestrictedFieldAccess(), store ?? Store, Imager, Options);
+        new(Exports.Exports, ProductionStore, Exports.Import.Jobs, Exports.Pdp(), new UnrestrictedFieldAccess(), store ?? Store, Imager, Options, Exports.Audit);
 #endif
 
     public JobChunkConsumer Consumer(IObjectStore? store = null) => new(

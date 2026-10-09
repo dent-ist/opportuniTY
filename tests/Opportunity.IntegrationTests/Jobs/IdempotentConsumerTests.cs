@@ -223,7 +223,7 @@ public sealed class IdempotentConsumerTests(MigrationPostgresFixture postgres)
         untouched.LeaseToken.Should().Be(0);
         var rejected = audit.Events.Should().ContainSingle().Subject;
         rejected.Category.Should().Be(AuditTaxonomy.Integrity.Category);
-        rejected.Action.Should().Be(AuditTaxonomy.Integrity.EnvelopeMismatch);
+        rejected.Action.Should().Be(AuditTaxonomy.Integrity.MessageRejected);
         rejected.WorkspaceId.Should().BeNull();
         rejected.ReasonCode.Should().Be("EnvelopeMismatch");
         rejected.Details["claimedWorkspaceId"].Should().Be(otherWorkspace.ToString());

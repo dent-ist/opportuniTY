@@ -404,17 +404,41 @@ public sealed class InteractiveIndexWorkerTests(OpenSearchFixture openSearch, Mi
         (await h.GetAsync(w.Id, w.Documents[0])).Should().BeNull();
     }
 
+    /// <summary>
+    /// E05-T07 / ADR-015 D9.2-D9.3: a message naming another workspace's outbox row (a forged WorkspaceId) or a row that
+    /// does not exist is rejected — <c>Integrity.MessageRejected</c>, dead-lettered by the transport, nothing indexed or
+    /// marked; the genuine message still runs. Work of a workspace being deleted is fenced and dropped without an alarm.
+    /// </summary>
     [Fact]
-    public async Task Unknown_rows_are_dropped_and_messages_without_a_workspace_are_dead_lettered()
+    public async Task Forged_or_unknown_rows_are_rejected_and_audited_and_messages_without_a_workspace_are_dead_lettered()
     {
         await using var h = await IndexWorkerHarness.CreateAsync(openSearch, postgres);
         var w = await h.Db.WorkspaceAsync(documents: 1);
+        var other = await h.Db.WorkspaceAsync(documents: 1);
+        await CodeAsync(h, w, w.Documents[0], true);
+        var genuine = (await h.DispatchAsync(w.Id)).Single();
+        var outboxId = ((SearchOutboxMessage)genuine.Payload).OutboxId;
 
-        await h.HandleAsync(IndexWorkerHarness.Message(w.Id, 987_654, w.Documents[0], 1));
+        var forged = () => h.HandleAsync(IndexWorkerHarness.Message(other.Id, outboxId, w.Documents[0], 1));
+        var unknown = () => h.HandleAsync(IndexWorkerHarness.Message(w.Id, 987_654, w.Documents[0], 1));
         var orphan = () => h.HandleAsync(IndexWorkerHarness.Message(null, 1, w.Documents[0], 1));
 
+        (await forged.Should().ThrowAsync<PermanentMessageException>()).Which.Message.Should().StartWith(MessageRejectionReasons.EnvelopeMismatch);
+        await unknown.Should().ThrowAsync<PermanentMessageException>();
         await orphan.Should().ThrowAsync<PermanentMessageException>();
-        (await h.GetAsync(w.Id, w.Documents[0])).Should().BeNull();
+        (await h.GetAsync(w.Id, w.Documents[0])).Should().BeNull("a rejected message writes nothing");
+        (await h.Db.Outbox.GetAsync(w.Id, outboxId, Ct))!.Status.Should().Be(SearchOutboxStatus.Dispatched);
+        var rejections = await h.Db.Core.ColumnAsync(
+            "SELECT reason_code || '|' || (details->>'claimedWorkspaceId') || '|' || coalesce(workspace_id::text, 'installation') FROM audit.audit_event "
+            + "WHERE category = 'Integrity' AND action = 'MessageRejected' AND resource_type = 'SearchOutbox' ORDER BY occurred_at");
+        rejections.Should().Equal($"EnvelopeMismatch|{other.Id}|installation", $"EnvelopeMismatch|{w.Id}|installation");
+
+        await h.HandleAsync(genuine);
+        (await h.GetAsync(w.Id, w.Documents[0])).Should().NotBeNull();
+
+        await h.Db.Core.ExecuteAsync("UPDATE opportunity.workspace SET status = 'Deleting', closed_at = now() WHERE workspace_id = @ws", ("ws", other.Id));
+        await h.HandleAsync(IndexWorkerHarness.Message(other.Id, 987_655, other.Documents[0], 1));
+        (await h.Db.Core.ColumnAsync("SELECT event_id::text FROM audit.audit_event WHERE action = 'MessageRejected'")).Should().HaveCount(2);
     }
 
     internal static Task CodeAsync(IndexWorkerHarness h, TestWorkspace w, Guid doc, bool value) =>

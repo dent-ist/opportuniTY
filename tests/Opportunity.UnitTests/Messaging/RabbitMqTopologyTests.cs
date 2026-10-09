@@ -2,6 +2,8 @@ using System.Text.RegularExpressions;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.Configuration;
+
 using Opportunity.Application.Messaging;
 using Opportunity.Messaging;
 
@@ -110,6 +112,32 @@ public sealed class RabbitMqTopologyTests
     }
 
     [Fact]
+    public void Area_credentials_and_signing_bind_from_configuration_and_are_validated()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:RabbitMq"] = "amqp://dispatcher@broker/",
+            ["Messaging:RabbitMq:AreaConnectionStrings:render"] = "amqps://render@broker/",
+            ["Messaging:RabbitMq:Signing:Enabled"] = "true",
+            ["Messaging:RabbitMq:Signing:KeyId"] = "k2",
+            ["Messaging:RabbitMq:Signing:AcceptedKeyIds"] = "k1, k2",
+        }).Build();
+
+        var options = RabbitMqOptions.Bind(configuration);
+        options.Validate();
+
+        options.CredentialFor("render").Should().Be("render");
+        options.CredentialFor("export").Should().BeNull("areas without their own user use the default");
+        options.ConnectionStringFor("render").Should().Be("amqps://render@broker/");
+        options.ConnectionStringFor(null).Should().Be("amqp://dispatcher@broker/");
+        options.Signing.Enabled.Should().BeTrue();
+        options.Signing.VerificationKeyIds().Should().Equal("k2", "k1");
+
+        options.AreaConnectionStrings["export"] = "http://not-amqp/";
+        options.Invoking(o => o.Validate()).Should().Throw<InvalidOperationException>().WithMessage("*AreaConnectionStrings:export*");
+    }
+
+    [Fact]
     public void Worker_permissions_cover_only_its_own_area()
     {
         var index = RabbitMqPermissions.Worker("index");
@@ -120,6 +148,8 @@ public sealed class RabbitMqTopologyTests
         Regex.IsMatch("index.security", index.Read).Should().BeTrue();
         Regex.IsMatch("import.chunks", index.Read).Should().BeFalse();
         Regex.IsMatch("index.bulk.dlq", index.Read).Should().BeFalse("workers never read DLQs");
+        Regex.IsMatch("index.parking", index.Read).Should().BeFalse("nor parking queues (E05-T07)");
+        Regex.IsMatch("index.bulkx", index.Read).Should().BeFalse();
         Regex.IsMatch("index.retry", index.Write).Should().BeTrue();
         Regex.IsMatch("index.dlx", index.Write).Should().BeTrue();
         Regex.IsMatch(RabbitMqTopology.WorkExchange, index.Write).Should().BeFalse("only the dispatcher publishes work");
