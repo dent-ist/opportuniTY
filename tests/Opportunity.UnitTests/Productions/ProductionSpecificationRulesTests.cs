@@ -32,10 +32,16 @@ public class ProductionSpecificationRulesTests
         a.Sha256.Should().Equal(b.Sha256);
         var spec = a.Specification;
         spec.Bates.Should().Be(new ProductionBatesSettings("ABC", 1, 7, string.Empty, BatesLevelResource.Page));
-        spec.Images.Should().Be(new ProductionImageSettings(ProductionImageFormatResource.TiffG4, ProductionImageFormatResource.Jpeg, 300));
+        spec.Images.Should().BeEquivalentTo(new ProductionImageSettings(ProductionImageFormatResource.TiffG4, ProductionImageFormatResource.Jpeg, 300,
+            ["bmp", "gif", "heic", "jpeg", "jpg", "png", "ppt", "pptx"]));
         spec.DefaultOutput.Should().Be(ProductionOutputResource.Image);
         spec.FileTypeRules.Should().HaveCount(2, "spreadsheets and audio/video are produced natively by default");
-        spec.LoadFile!.Fields!.Select(f => f.Header).Should().Equal("Control Number", "NativePath", "TextPath");
+        spec.LoadFile!.Fields!.Select(f => f.Header).Should().Equal(
+            ["ProdBegBates", "ProdEndBates", "ProdBegAttach", "ProdEndAttach", "Custodian", "Confidentiality", "Redacted", "PageCount", "NativeLink", "TextLink"],
+            "the default production field set, without the fields this workspace does not have");
+        spec.LoadFile.Volume.Should().Be(new ExportVolumeRequest("ABC_VOL", 1, 3, 1_000), "the volume defaults to <prefix>_VOL001 (E12-T05)");
+        spec.Placeholders.Should().Be(new ProductionPlaceholderSettings("Withheld – Privileged", "Technical Issue", "Document Produced in Native Format"));
+        spec.RedactionSetId.Should().BeNull("the workspace's Default Redaction Set is burned");
         spec.LoadFile.Should().BeEquivalentTo(new { Delimiters = "concordance", Encoding = "utf-8", DateFormat = "yyyy-MM-dd", TimeZone = "UTC" });
         spec.Endorsements!.Items!.Select(e => (e.Position, e.Template)).Should().Equal(
             (EndorsementPositionResource.BottomLeft, "{confidentiality}"), (EndorsementPositionResource.BottomRight, "{bates}"));

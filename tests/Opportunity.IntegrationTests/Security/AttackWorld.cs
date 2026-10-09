@@ -77,7 +77,9 @@ internal sealed record WorkspaceResources(
     Guid ReviewBatchSnapshotId,
     Guid FirstPassBatchSetId,
     Guid QcBatchSetId,
-    Guid ReviewBatchId)
+    Guid ReviewBatchId,
+    Guid ProductionVolumeId,
+    Guid ProductionVolumeFileId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -88,7 +90,8 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+        Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -100,7 +103,7 @@ internal sealed record WorkspaceResources(
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
             WallId, SpareWallId, BreakGlassActivationId, RedactionSetId, PreservationLockId, ReviewBatchSnapshotId, FirstPassBatchSetId,
-            QcBatchSetId, ReviewBatchId,
+            QcBatchSetId, ReviewBatchId, ProductionVolumeId, ProductionVolumeFileId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -308,6 +311,16 @@ internal sealed class AttackWorld : IAsyncDisposable
             finalize.StatusCode.Should().Be(HttpStatusCode.OK, await finalize.Content.ReadAsStringAsync(Ct));
         }
 
+        // Production volumes (E12-T05): a completed run of the finalized production, written by the rendering worker's volume writer.
+        var volume = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/productions/{finalized}/volumes", owner, HttpStatusCode.Accepted);
+        var volumeId = volume.GetProperty("volumeId").GetGuid();
+        var volumes = ProductionVolumeHarness.Over(Exports);
+        await volumes.CoordinateAsync(ws);
+        await volumes.DeliverOpenChunksAsync(ws, volume.GetProperty("job").GetProperty("jobId").GetGuid());
+        await volumes.CoordinateAsync(ws);
+        var volumeFiles = await JsonAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/productions/{finalized}/volumes/{volumeId}/files?limit=500", owner,
+            HttpStatusCode.OK);
+
         var draftProduction = await ProductionAsync(ws, owner, productionSnapshotId, name + "D");
         var spareProduction = await ProductionAsync(ws, owner, productionSnapshotId, name + "S");
 
@@ -446,7 +459,9 @@ internal sealed class AttackWorld : IAsyncDisposable
             reviewSnapshotId,
             firstPassId,
             qcSet.GetProperty("batchSetId").GetGuid(),
-            batches.GetProperty("items")[0].GetProperty("batchId").GetGuid());
+            batches.GetProperty("items")[0].GetProperty("batchId").GetGuid(),
+            volumeId,
+            volumeFiles.GetProperty("items")[0].GetProperty("fileId").GetGuid());
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>

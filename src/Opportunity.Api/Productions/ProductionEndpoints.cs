@@ -861,6 +861,9 @@ public static class ProductionEndpointRegistration
         services.TryAddSingleton<IFieldAccessFilter, UnrestrictedFieldAccess>();
         services.AddProductionService();
         services.AddSingleton<IApiEndpointModule, ProductionEndpoints>();
+
+        // E12-T05: volume runs of finalized productions.
+        services.AddProductionVolumeEndpoints();
         return services;
     }
 }

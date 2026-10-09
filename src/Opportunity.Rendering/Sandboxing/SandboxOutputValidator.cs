@@ -94,7 +94,8 @@ internal static class EndorsedOutputValidator
         ArgumentNullException.ThrowIfNull(reported);
         if (reported.FileName != Endorsing.PageEndorser.FileName(format) || reported.Format != format
             || reported.WidthPx is < 1 or > MaxDimension || reported.HeightPx is < 1 or > MaxDimension || reported.Dpi is < 1 or > 10_000
-            || !Enum.IsDefined(reported.ColorMode))
+            || !Enum.IsDefined(reported.ColorMode) || reported.PageTopPx < 0 || reported.PageHeightPx < 0
+            || (long)reported.PageTopPx + reported.PageHeightPx > reported.HeightPx)
         {
             return null;
         }
@@ -116,7 +117,8 @@ internal static class EndorsedOutputValidator
             _ => null,
         };
         return size == (reported.WidthPx, reported.HeightPx)
-            ? new Endorsing.EndorsedImage(bytes, reported.WidthPx, reported.HeightPx, reported.Dpi, format, reported.ColorMode)
+            ? new Endorsing.EndorsedImage(bytes, reported.WidthPx, reported.HeightPx, reported.Dpi, format, reported.ColorMode, reported.PageTopPx,
+                reported.PageHeightPx)
             : null;
     }
 

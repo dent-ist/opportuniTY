@@ -342,7 +342,8 @@ public sealed partial class ProductionService(
         [
             Resource(UserEvent(principal, AuditTaxonomy.Production.SpecFrozen, details), current),
             Resource(UserEvent(principal, AuditTaxonomy.Production.Finalized, details), current),
-        ], plan, designationAudit, conflictOverride, cancellationToken).ConfigureAwait(false);
+        ], plan, designationAudit, conflictOverride, ProductionSpecificationRules.Deserialize(current.SpecificationJson).RedactionSetId, cancellationToken)
+            .ConfigureAwait(false);
         return Outcome(result, format);
     }
 

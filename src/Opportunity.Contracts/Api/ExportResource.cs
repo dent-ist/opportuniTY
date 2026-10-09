@@ -48,6 +48,27 @@ public enum ExportColumnResource
 
     /// <summary>Relative path of the exported extracted text (default header <c>TextPath</c>).</summary>
     TextPath,
+
+    /// <summary>Productions only (E12-T05): the document's first Bates number (default header <c>ProdBegBates</c>).</summary>
+    ProdBegBates,
+
+    /// <summary>Productions only: the document's last Bates number (default header <c>ProdEndBates</c>).</summary>
+    ProdEndBates,
+
+    /// <summary>Productions only: the first Bates number of the document's family (default header <c>ProdBegAttach</c>).</summary>
+    ProdBegAttach,
+
+    /// <summary>Productions only: the last Bates number of the document's family (default header <c>ProdEndAttach</c>).</summary>
+    ProdEndAttach,
+
+    /// <summary>Productions only: the designation legend stamped on the pages (default header <c>Confidentiality</c>).</summary>
+    Confidentiality,
+
+    /// <summary>Productions only: <c>Yes</c> when redactions were burned into the produced images (default header <c>Redacted</c>).</summary>
+    Redacted,
+
+    /// <summary>Productions only: the number of produced images (default header <c>PageCount</c>).</summary>
+    ProducedPages,
 }
 
 /// <summary>An export of a frozen set and its job (ADR-002, ADR-015 Q-15).</summary>

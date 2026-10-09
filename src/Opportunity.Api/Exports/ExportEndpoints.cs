@@ -267,8 +267,9 @@ public sealed class ExportEndpoints : IApiEndpointModule
     internal static async Task<ExportRecord?> ReadableAsync(
         HttpContext context, string exportId, IExportStore exports, IAuthorizationService authorization, CancellationToken cancellationToken)
     {
+        // A production volume run (E12-T05) is a production's, never an export (its routes are under /productions).
         if (context.GetWorkspaceAccess() is not { } access || !Guid.TryParse(exportId, out var id)
-            || await exports.GetAsync(access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { } export)
+            || await exports.GetAsync(access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { ProductionId: null } export)
         {
             return null;
         }
@@ -285,8 +286,9 @@ public sealed class ExportEndpoints : IApiEndpointModule
     /// </summary>
     internal static async Task<ExportRecord?> DownloadableAsync(HttpContext context, string exportId, IExportStore exports, CancellationToken cancellationToken)
     {
+        // A production volume run (E12-T05) is a production's, never an export (its routes are under /productions).
         if (context.GetWorkspaceAccess() is not { } access || !Guid.TryParse(exportId, out var id)
-            || await exports.GetAsync(access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { } export)
+            || await exports.GetAsync(access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { ProductionId: null } export)
         {
             return null;
         }

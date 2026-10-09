@@ -35,6 +35,18 @@ public enum ExportFileKind : short
 
     /// <summary>The OPT rows one chunk wrote; assembled into the OPT by the finalization, never delivered.</summary>
     OptPart = 9,
+
+    /// <summary>
+    /// Production volumes (E12-T05): the produced-page records one chunk wrote (page Bates, file, source page, burned
+    /// redaction boxes in image pixels); assembled into the volume's verification file, never delivered.
+    /// </summary>
+    PagePart = 10,
+
+    /// <summary>
+    /// Production volumes: what the burn-in verification (E12-T06) reads back (every produced page with its file, its
+    /// SHA-256 and the pixel boxes burned into it). Kept with the volume, never delivered to the recipient.
+    /// </summary>
+    Verification = 11,
 }
 
 /// <summary>An export to create with its Export job (Created) and its <c>Export.Created</c> audit event.</summary>
@@ -68,6 +80,12 @@ public sealed record NewExport
 
     /// <summary>Job parameters (identifiers and settings only).</summary>
     public JsonObject? Parameters { get; init; }
+
+    /// <summary>
+    /// Set for a production volume run (E12-T05): the finalized production whose volume this writes. Its job is a
+    /// Production job, its audit events are <c>Production.*</c>, and export listings never show it.
+    /// </summary>
+    public Guid? ProductionId { get; init; }
 }
 
 /// <param name="Created">False for a retried request with the same Idempotency-Key.</param>
@@ -104,6 +122,9 @@ public sealed record ExportRecord
 
     /// <summary>Set once the export completed.</summary>
     public ExportReport? Report { get; init; }
+
+    /// <summary>The production whose volume this run writes (E12-T05); null for an export.</summary>
+    public Guid? ProductionId { get; init; }
 }
 
 /// <summary>Counts of a completed export and the SHA-256 of its manifest.</summary>
@@ -222,6 +243,13 @@ public interface IExportStore
 
     /// <summary>Running exports, oldest first, with their job's status: the ones to plan or finalize.</summary>
     Task<IReadOnlyList<ActiveExport>> GetActiveAsync(Guid workspaceId, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>Running production volume runs (E12-T05), oldest first, with their job's status.</summary>
+    Task<IReadOnlyList<ActiveExport>> GetActiveVolumesAsync(Guid workspaceId, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>The volume runs of a production, newest first.</summary>
+    Task<IReadOnlyList<ExportRecord>> ListVolumesAsync(
+        Guid workspaceId, Guid productionId, ExportListCursor? after, int limit, CancellationToken cancellationToken = default);
 
     /// <summary>Takes (or renews) the planning/finalization claim of a Running export unless another live claim holds it.</summary>
     Task<bool> TryClaimAsync(Guid workspaceId, Guid exportId, string owner, TimeSpan lease, CancellationToken cancellationToken = default);

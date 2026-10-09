@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -12,14 +13,17 @@ namespace Opportunity.Production.Exports;
 /// ISO 8601 dates and UTC instants, invariant numbers, <c>Yes</c>/<c>No</c>, choice names and multi-values joined by the
 /// profile's multi-value separator. Begin/End Attachment are computed from the family (control numbers of its first
 /// and last member) whenever the document belongs to a family of more than one document.
+/// A production (E12-T05) writes dates in its date format and time zone and fills the production columns.
 /// </summary>
-public sealed class ExportValues(FieldCatalog catalog, char multiValueSeparator, IReadOnlySet<int> restrictedFields)
+public sealed class ExportValues(
+    FieldCatalog catalog, char multiValueSeparator, IReadOnlySet<int> restrictedFields, string? dateFormat = null, TimeZoneInfo? timeZone = null)
 {
     private readonly string _separator = multiValueSeparator.ToString();
 
     /// <summary>The DAT values of one document in column order, and which of them are text to neutralize.</summary>
+    /// <param name="produced">A production member's own values (Bates, designation, redacted, produced pages).</param>
     public (string[] Values, bool[] Neutralize) Row(
-        IReadOnlyList<ExportColumn> columns, ExportSourceDocument document, string? nativePath, string? textPath)
+        IReadOnlyList<ExportColumn> columns, ExportSourceDocument document, string? nativePath, string? textPath, ProducedValues? produced = null)
     {
         ArgumentNullException.ThrowIfNull(columns);
         ArgumentNullException.ThrowIfNull(document);
@@ -44,6 +48,28 @@ public sealed class ExportValues(FieldCatalog catalog, char multiValueSeparator,
                     break;
                 case ExportColumnKind.TextPath:
                     values[i] = textPath ?? string.Empty;
+                    break;
+                case ExportColumnKind.ProdBegBates:
+                    values[i] = produced?.ProdBegBates ?? string.Empty;
+                    break;
+                case ExportColumnKind.ProdEndBates:
+                    values[i] = produced?.ProdEndBates ?? string.Empty;
+                    break;
+                case ExportColumnKind.ProdBegAttach:
+                    values[i] = produced?.ProdBegAttach ?? string.Empty;
+                    break;
+                case ExportColumnKind.ProdEndAttach:
+                    values[i] = produced?.ProdEndAttach ?? string.Empty;
+                    break;
+                case ExportColumnKind.Confidentiality:
+                    values[i] = produced?.Confidentiality ?? string.Empty;
+                    neutralize[i] = true;
+                    break;
+                case ExportColumnKind.Redacted:
+                    values[i] = produced is null ? string.Empty : produced.Redacted ? "Yes" : "No";
+                    break;
+                case ExportColumnKind.ProducedPages:
+                    values[i] = produced?.Pages.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
                     break;
                 default:
                     var field = catalog.Find(column.FieldId!.Value);
@@ -92,6 +118,11 @@ public sealed class ExportValues(FieldCatalog catalog, char multiValueSeparator,
             return null;
         }
 
+        if (dateFormat is not null && field.Type == FieldType.Date && value is JsonValue date && date.GetValueKind() == JsonValueKind.String)
+        {
+            return FormatDate(date.GetValue<string>());
+        }
+
         if (field.IsChoice)
         {
             var ids = FieldValues.ChoiceIds(value).ToHashSet();
@@ -106,6 +137,23 @@ public sealed class ExportValues(FieldCatalog catalog, char multiValueSeparator,
         }
 
         return Scalar(value);
+    }
+
+    /// <summary>A stored ISO 8601 date or instant in the production's date format (instants in its time zone).</summary>
+    private string FormatDate(string stored)
+    {
+        if (stored.Length == 10 && DateOnly.TryParseExact(stored, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+        {
+            return day.ToDateTime(TimeOnly.MinValue).ToString(dateFormat, CultureInfo.InvariantCulture);
+        }
+
+        if (DateTimeOffset.TryParse(stored, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var instant))
+        {
+            var local = TimeZoneInfo.ConvertTime(instant, timeZone ?? TimeZoneInfo.Utc);
+            return local.DateTime.ToString(dateFormat, CultureInfo.InvariantCulture);
+        }
+
+        return stored;
     }
 
     private static string? Scalar(JsonNode node)
@@ -142,3 +190,9 @@ public sealed class ExportValues(FieldCatalog catalog, char multiValueSeparator,
         }
     }
 }
+
+/// <summary>A production member's own DAT values (E12-T05).</summary>
+/// <param name="Confidentiality">The frozen designation legend stamped on the member's pages (empty: none).</param>
+/// <param name="Pages">Produced image files of the member.</param>
+public sealed record ProducedValues(
+    string ProdBegBates, string ProdEndBates, string ProdBegAttach, string ProdEndAttach, string Confidentiality, bool Redacted, int Pages);

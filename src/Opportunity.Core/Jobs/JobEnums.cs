@@ -58,6 +58,12 @@ public enum ChunkOperationKind
 
     /// <summary>Search term report chunks run in the API host (they need the search service), never through a queue.</summary>
     SearchTermReportChunk,
+
+    /// <summary>
+    /// A range of a finalized production's members written to its volume (E12-T05). Runs in the rendering worker, which
+    /// owns the render sandbox where produced pages are decoded, redacted and endorsed.
+    /// </summary>
+    ProductionVolumeChunk,
 }
 
 /// <summary>How a chunk names its members (ADR-010 §4). Stored as smallint; values are fixed forever.</summary>

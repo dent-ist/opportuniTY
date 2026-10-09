@@ -49,6 +49,11 @@ public sealed record PrivilegeConflictOverrideRequest(string Reason);
 /// Confidentiality designations (E12-T04): the designation field, its levels with the legend stamped for each, and the
 /// family rule. Frozen per document when the production is finalized.
 /// </param>
+/// <param name="Placeholders">The texts of generated pages: withheld placeholders, technical issues and native slip sheets (E12-T05).</param>
+/// <param name="RedactionSetId">
+/// The Redaction Set burned into the produced images (E12-T05); null burns the workspace's Default set. Each member's
+/// redactions are frozen with the production at finalization.
+/// </param>
 public sealed record ProductionSpecification(
     ProductionBatesSettings Bates,
     ProductionImageSettings? Images = null,
@@ -57,7 +62,18 @@ public sealed record ProductionSpecification(
     bool IncludeText = true,
     ProductionLoadFileSettings? LoadFile = null,
     ProductionEndorsementSettings? Endorsements = null,
-    ProductionDesignationSettings? Designations = null);
+    ProductionDesignationSettings? Designations = null,
+    ProductionPlaceholderSettings? Placeholders = null,
+    Guid? RedactionSetId = null);
+
+/// <summary>
+/// The centred text of generated pages (E12-T05). Each may use <c>{bates}</c>, <c>{confidentiality}</c> and
+/// <c>{production}</c>; endorsements are stamped on generated pages as on every other page.
+/// </summary>
+/// <param name="Withheld">A member produced as a placeholder (default "Withheld – Privileged").</param>
+/// <param name="TechnicalIssue">A page that cannot be imaged (default "Technical Issue").</param>
+/// <param name="NativeSlipSheet">The slip sheet of a member produced natively (default "Document Produced in Native Format").</param>
+public sealed record ProductionPlaceholderSettings(string? Withheld = null, string? TechnicalIssue = null, string? NativeSlipSheet = null);
 
 /// <summary>
 /// Bates numbering: <c>prefix + start padded to padding digits + suffix</c>, e.g. <c>ABC0000001</c>. Numbers are unique
@@ -102,10 +118,16 @@ public enum ProductionImageFormatResource
 }
 
 /// <summary>Image output: format for black-and-white pages, format for colour pages, resolution (default TIFF G4 / JPEG, 300 DPI, Q-21).</summary>
+/// <param name="Dpi">Resolution of generated pages (slip sheets, placeholders); produced pages keep their source image's resolution.</param>
+/// <param name="ColorFileTypes">
+/// Extensions (without the dot) whose pages are produced in <see cref="ColorFormat"/>; every other page in
+/// <see cref="Format"/>. Chosen by file type, not by detection (Q-21). Default: common photo and presentation types.
+/// </param>
 public sealed record ProductionImageSettings(
     ProductionImageFormatResource? Format = null,
     ProductionImageFormatResource? ColorFormat = null,
-    int? Dpi = null);
+    int? Dpi = null,
+    IReadOnlyList<string>? ColorFileTypes = null);
 
 /// <summary>A per-file-type rule: extensions without the dot, compared without case.</summary>
 public sealed record ProductionFileTypeRule(IReadOnlyList<string> Extensions, ProductionOutputResource Output);

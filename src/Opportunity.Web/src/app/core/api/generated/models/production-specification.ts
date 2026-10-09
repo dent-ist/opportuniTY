@@ -8,6 +8,7 @@ import { ProductionFileTypeRule } from '../models/production-file-type-rule';
 import { ProductionImageSettings } from '../models/production-image-settings';
 import { ProductionLoadFileSettings } from '../models/production-load-file-settings';
 import { ProductionOutputResource } from '../models/production-output-resource';
+import { ProductionPlaceholderSettings } from '../models/production-placeholder-settings';
 export interface ProductionSpecification {
   bates: ProductionBatesSettings;
   defaultOutput?: null | ProductionOutputResource;
@@ -17,4 +18,6 @@ export interface ProductionSpecification {
   images?: null | ProductionImageSettings;
   includeText?: boolean;
   loadFile?: null | ProductionLoadFileSettings;
+  placeholders?: null | ProductionPlaceholderSettings;
+  redactionSetId?: string | null;
 }

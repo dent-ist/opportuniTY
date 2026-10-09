@@ -6,6 +6,7 @@ using BitMiracle.LibTiff.Classic;
 
 using Opportunity.Core.Pages;
 using Opportunity.Core.Productions;
+using Opportunity.Core.Redactions;
 using Opportunity.Import.Images;
 using Opportunity.Rendering.Renderers;
 
@@ -42,6 +43,7 @@ public static class PageEndorser
     public const int MaxBodyLines = 10;
     public const int MaxBlankSide = 20_000;
     public const int MinFontPx = 4;
+    public const int MaxRedactions = 100;
 
     private const string FontResource = "Opportunity.Rendering.Fonts.LiberationSans-Regular.ttf";
     private const string FontName = "LiberationSans-Regular 2.1.5";
@@ -81,7 +83,8 @@ public static class PageEndorser
         var file = EndorseToFile(request, settings ?? new RenderSettings());
         try
         {
-            return new EndorsedImage(File.ReadAllBytes(file.Path), file.WidthPx, file.HeightPx, file.Dpi, file.Format, file.ColorMode);
+            return new EndorsedImage(File.ReadAllBytes(file.Path), file.WidthPx, file.HeightPx, file.Dpi, file.Format, file.ColorMode, file.PageTopPx,
+                file.PageHeightPx);
         }
         finally
         {
@@ -117,6 +120,13 @@ public static class PageEndorser
         {
             throw new ArgumentException($"A blank page is 1–{MaxBlankSide} pixels on each side.", nameof(request));
         }
+
+        if (request.Redactions is { } redactions
+            && (redactions.Count > MaxRedactions
+                || redactions.Any(r => r is null || !r.Rect.IsWithinPage || !Enum.IsDefined(r.Type) || (r.Label is not null && !ValidText(r.Label)))))
+        {
+            throw new ArgumentException($"At most {MaxRedactions} redactions per page, each inside the page, with a valid label.", nameof(request));
+        }
     }
 
     /// <summary>Endorses into <c>OutputDirectory/</c><see cref="FileName"/> (what the sandbox child runs).</summary>
@@ -127,11 +137,19 @@ public static class PageEndorser
         var (page, dpi, color) = Load(request, settings);
         try
         {
-            using var composed = Compose(page, dpi, request.Layout, generated: request.InputPath is null);
-            var path = Path.Combine(request.OutputDirectory, FileName(request.Format));
-            Encode(composed, dpi, request.Format, path);
-            return new EndorsedFile(path, composed.Width, composed.Height, dpi, request.Format,
-                request.Format == PageImageFormat.TiffG4 ? PageColorMode.Bitonal : color);
+            if (request.InputPath is not null && request.Redactions is { Count: > 0 } redactions)
+            {
+                Burn(page, dpi, redactions);
+            }
+
+            var (composed, top) = Compose(page, dpi, request.Layout, generated: request.InputPath is null);
+            using (composed)
+            {
+                var path = Path.Combine(request.OutputDirectory, FileName(request.Format));
+                Encode(composed, dpi, request.Format, path);
+                return new EndorsedFile(path, composed.Width, composed.Height, dpi, request.Format,
+                    request.Format == PageImageFormat.TiffG4 ? PageColorMode.Bitonal : color, top, page.Height);
+            }
         }
         finally
         {
@@ -258,7 +276,86 @@ public static class PageEndorser
         return target;
     }
 
-    private static SKBitmap Compose(SKBitmap page, int dpi, EndorsementLayout layout, bool generated)
+    /// <summary>
+    /// Burns redactions into the page's pixels (E12-T05, ADR-012 §5.2): a black box is filled black; a labelled box is
+    /// filled white, framed in black just outside the rectangle (so every pixel inside is fill or glyph) and its label is
+    /// printed centred in black when it fits. Integer arithmetic only, so the result is deterministic.
+    /// </summary>
+    private static void Burn(SKBitmap page, int dpi, IReadOnlyList<BurnedRedaction> redactions)
+    {
+        var border = Math.Max(1, (dpi + 75) / 150);
+        foreach (var redaction in redactions.Where(r => r.Type == RedactionType.Labelled))
+        {
+            var box = RedactionGeometry.BurnedPixels(redaction.Rect, page.Width, page.Height);
+            Fill(page, box.X - border, box.Y - border, box.Width + 2 * border, box.Height + 2 * border, Black);
+        }
+
+        foreach (var redaction in redactions)
+        {
+            var box = RedactionGeometry.BurnedPixels(redaction.Rect, page.Width, page.Height);
+            if (redaction.Type == RedactionType.Black)
+            {
+                Fill(page, box.X, box.Y, box.Width, box.Height, Black);
+                continue;
+            }
+
+            Fill(page, box.X, box.Y, box.Width, box.Height, White);
+            if (redaction.Label is { Length: > 0 } label)
+            {
+                var pad = 2;
+                var size = Math.Min((int)Math.Round(10d * dpi / 72d, MidpointRounding.AwayFromZero), box.Height - 2 * pad);
+                while (size >= MinFontPx)
+                {
+                    var mask = RenderText(label, size);
+                    if (mask.Width <= box.Width - 2 * pad && mask.Height <= box.Height - 2 * pad)
+                    {
+                        Blit(page, mask, box.X + (box.Width - mask.Width) / 2, box.Y + (box.Height - mask.Height) / 2, box: false, 0);
+                        break;
+                    }
+
+                    size = Math.Min(size - 1, (int)((long)size * Math.Max(1, box.Width - 2 * pad) / Math.Max(1, mask.Width)));
+                }
+            }
+        }
+
+        // Black boxes win over any label or frame that overlaps them.
+        foreach (var redaction in redactions.Where(r => r.Type == RedactionType.Black))
+        {
+            var box = RedactionGeometry.BurnedPixels(redaction.Rect, page.Width, page.Height);
+            Fill(page, box.X, box.Y, box.Width, box.Height, Black);
+        }
+    }
+
+    private static void Fill(SKBitmap bitmap, int x, int y, int width, int height, byte value)
+    {
+        int left = Math.Max(0, x), top = Math.Max(0, y), right = Math.Min(bitmap.Width, x + width), bottom = Math.Min(bitmap.Height, y + height);
+        if (right <= left || bottom <= top)
+        {
+            return;
+        }
+
+        var pixels = bitmap.GetPixelSpan();
+        var bpp = bitmap.BytesPerPixel;
+        for (var row = top; row < bottom; row++)
+        {
+            var span = pixels.Slice(row * bitmap.RowBytes + left * bpp, (right - left) * bpp);
+            if (bpp == 1)
+            {
+                span.Fill(value);
+                continue;
+            }
+
+            for (var i = 0; i < span.Length; i += 4)
+            {
+                span[i] = value;
+                span[i + 1] = value;
+                span[i + 2] = value;
+                span[i + 3] = 0xFF;
+            }
+        }
+    }
+
+    private static (SKBitmap Canvas, int PageTop) Compose(SKBitmap page, int dpi, EndorsementLayout layout, bool generated)
     {
         int Px(double points) => (int)Math.Round(points * dpi / 72d, MidpointRounding.AwayFromZero);
         var fontPx = Math.Max(MinFontPx, Px(layout.FontSizePt));
@@ -303,7 +400,7 @@ public static class PageEndorser
             Stamp(canvas, stamp, margin, height - margin - stamp.Mask.Height - 2 * pad, pad);
         }
 
-        return canvas;
+        return (canvas, topBand);
     }
 
     private static bool IsTop(EndorsementPosition position) => position is EndorsementPosition.TopLeft or EndorsementPosition.TopCenter or EndorsementPosition.TopRight;
@@ -532,4 +629,5 @@ public static class PageEndorser
 }
 
 /// <summary>An endorsed page written to <see cref="Path"/>.</summary>
-internal sealed record EndorsedFile(string Path, int WidthPx, int HeightPx, int Dpi, PageImageFormat Format, PageColorMode ColorMode);
+internal sealed record EndorsedFile(
+    string Path, int WidthPx, int HeightPx, int Dpi, PageImageFormat Format, PageColorMode ColorMode, int PageTopPx = 0, int PageHeightPx = 0);

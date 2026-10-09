@@ -97,6 +97,18 @@ public static class RedactionGeometry
     public const int MinimumDevicePixels = 2;
 
     /// <summary>
+    /// The device pixels a redaction is burned into on a page raster (E12-T05): <see cref="NormalizedRect.ToPixels"/>
+    /// (rounded outward) clipped to the raster. The burner and the burn-in verification (E12-T06) both use it.
+    /// </summary>
+    public static PixelRect BurnedPixels(NormalizedRect rect, int widthPx, int heightPx)
+    {
+        var px = rect.ToPixels(widthPx, heightPx);
+        var left = Math.Clamp(px.X, 0, widthPx);
+        var top = Math.Clamp(px.Y, 0, heightPx);
+        return new PixelRect(left, top, Math.Clamp(px.X + px.Width, left, widthPx) - left, Math.Clamp(px.Y + px.Height, top, heightPx) - top);
+    }
+
+    /// <summary>
     /// The smallest width and height (normalized units) a redaction may have on a page of the given size in points:
     /// 2 × 2 device pixels at 300 DPI.
     /// </summary>
