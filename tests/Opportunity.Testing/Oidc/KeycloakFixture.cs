@@ -19,8 +19,8 @@ public sealed class KeycloakFixture : IAsyncLifetime
     public const string Realm = "opportunity";
     public const string ClientId = "opportunity-web";
 
-    /// <summary>The dev realm's client credential (public, development only).</summary>
-    public const string ClientSecret = "opportunity-dev-client";
+    /// <summary>The client credential the fixture hands the dev realm (the realm file holds a placeholder). Test only.</summary>
+    public const string ClientSecret = "test-only-oidc-client";
 
     /// <summary>Password of every demo user in the dev realm.</summary>
     public const string DemoPassword = "opportunity";
@@ -37,6 +37,7 @@ public sealed class KeycloakFixture : IAsyncLifetime
         _container = new ContainerBuilder(ContainerImages.Keycloak)
             .WithCommand("start-dev", "--import-realm")
             .WithEnvironment("KC_DB", "dev-mem")
+            .WithEnvironment("OPPORTUNITY_OIDC_CLIENT_SECRET", ClientSecret)
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_USERNAME", AdminUser)
             .WithEnvironment("KC_BOOTSTRAP_ADMIN_PASSWORD", AdminPassword)
             .WithResourceMapping(new FileInfo(realmFile), "/opt/keycloak/data/import/")

@@ -78,7 +78,8 @@ public sealed class TelemetryCapture
                 data.TraceId,
                 data.FormattedMessage ?? data.Body ?? string.Empty,
                 [.. data.Attributes ?? []],
-                scopes));
+                scopes,
+                data.Exception?.ToString()));
         }
     }
 }
@@ -88,12 +89,13 @@ public sealed record CapturedLog(
     ActivityTraceId TraceId,
     string Message,
     IReadOnlyList<KeyValuePair<string, object?>> Attributes,
-    IReadOnlyList<KeyValuePair<string, object?>> Scopes)
+    IReadOnlyList<KeyValuePair<string, object?>> Scopes,
+    string? Exception = null)
 {
     public object? Scope(string key) => Scopes.LastOrDefault(s => s.Key == key).Value;
 
     public IEnumerable<string> Text() =>
-        new[] { Message }
+        new[] { Message, Exception ?? string.Empty }
             .Concat(Attributes.Concat(Scopes).Select(a => Convert.ToString(a.Value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty));
 }
 

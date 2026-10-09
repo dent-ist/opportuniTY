@@ -11,6 +11,7 @@ recorder copies every dead-lettered or parked message into PostgreSQL (`jobs dlq
 | [Replay failed work](replay-failed-work.md) | chunks, index tasks or SearchOutbox rows are `Failed`; a job ended *completed with errors*; DLQ depth > 0 |
 | [Alias reindex](alias-reindex.md) | the search projection must be rebuilt into a new index generation (mapping change, corruption) |
 | [Deletion verification](deletion-verification.md) | proving that a workspace's data is gone from PostgreSQL, OpenSearch and object storage |
+| [Secrets, keys and envelope encryption](keys-and-secrets.md) | supplying secrets, rotating KEKs and data keys (rewrap job), backing up keys, giving a workspace its own key, crypto-shredding (`keys …` CLI) |
 
 ## Tools
 

@@ -95,7 +95,7 @@ public sealed class SessionOptions
 
     /// <summary>
     /// Base64 key (≥ 32 bytes) for the audit <c>SessionIdHash</c> HMAC (ADR-013 §4). Without it audit events carry no
-    /// session hash. Managed through the secret provider once E05-T09 lands.
+    /// session hash. Supply it as a secret file (<c>Authentication__AuditHashKey_FILE</c>, ADR-015 D10.1).
     /// </summary>
     public string? AuditHashKey { get; set; }
 

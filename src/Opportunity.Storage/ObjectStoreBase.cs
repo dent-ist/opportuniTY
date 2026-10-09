@@ -40,11 +40,29 @@ public abstract class ObjectStoreBase : IObjectStore
 
     protected abstract Task<DeletePrefixResult> DeletePrefixCoreAsync(ObjectPrefix prefix, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Set by <see cref="Encryption.EnvelopeObjectStore"/> for the duration of one put: the bytes are ciphertext, so a
+    /// content-addressed key names the hash of the plaintext, which the envelope layer verifies itself.
+    /// </summary>
+    private static readonly AsyncLocal<bool> CiphertextWrite = new();
+
+    /// <summary>Puts ciphertext: the provider skips the content-address check (the caller verified the plaintext hash).</summary>
+    internal async Task<PutObjectResult> PutCiphertextAsync(ObjectKey key, Stream content, PutObjectOptions options, CancellationToken cancellationToken)
+    {
+        CiphertextWrite.Value = true; // Flows into the provider's put only; restored when this method returns.
+        return await PutAsync(key, content, options, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>The SHA-256 the bytes must have: from the options, the content-addressed key, or both (which must agree).</summary>
     protected static Sha256Digest? ResolveExpectedSha256(ObjectKey key, PutObjectOptions options)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(options);
+        if (CiphertextWrite.Value)
+        {
+            return options.ExpectedSha256;
+        }
+
         if (key.ContentSha256 is { } fromKey && options.ExpectedSha256 is { } fromOptions && fromKey != fromOptions)
         {
             throw new ArgumentException("ExpectedSha256 contradicts the content-addressed key.", nameof(options));

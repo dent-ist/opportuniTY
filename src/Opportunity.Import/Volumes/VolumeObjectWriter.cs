@@ -162,7 +162,7 @@ public sealed class VolumeObjectWriter(IObjectStore store)
     {
         if (await store.HeadAsync(key, cancellationToken).ConfigureAwait(false) is { KeyId: { } existingKeyId } existing && existing.Length == length)
         {
-            return ((existingKeyId, CoreScheme.ProviderSse), false);
+            return ((existingKeyId, existing.EncryptionScheme == EncryptionScheme.Envelope ? CoreScheme.Envelope : CoreScheme.ProviderSse), false);
         }
 
         var content = open();

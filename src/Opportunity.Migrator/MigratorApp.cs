@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 
 using Opportunity.Application.Bootstrap;
+using Opportunity.Application.Keys;
 using Opportunity.Data.Migrations;
 using Opportunity.Messaging;
 using Opportunity.Search;
@@ -32,6 +33,8 @@ public static partial class MigratorApp
         string[] args, Action<IServiceCollection>? configureServices = null, CancellationToken cancellationToken = default)
     {
         var builder = Host.CreateApplicationBuilder(args);
+        // Docker/Compose secrets through the *_FILE convention (ADR-015 D10.1), e.g. ConnectionStrings__Migrator_FILE.
+        builder.Configuration.AddInMemoryCollection(SecretFileConvention.Resolve(Environment.GetEnvironmentVariables()));
         var connectionString = builder.Configuration.GetConnectionString(ConnectionStringName);
 
         var options = new MigratorOptions();
