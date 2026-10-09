@@ -52,6 +52,7 @@ public sealed class PreservationLockEnforcementTests(MigrationPostgresFixture po
         ["duplicate_group"] = CurrentState,
         ["email_thread"] = CurrentState,
         ["production_document"] = "a draft production's plan, replaced when the draft is re-planned; frozen with the production (production_document_frozen_guard)",
+        ["production_designation_override"] = "a draft production's per-document designation override; every change is audited and a trigger locks it once the production is finalized (E12-T04)",
         ["search_term_report_term"] = "results of a report, replaced by a rerun over the same frozen set; the report itself is guarded",
         ["search_term_report_document"] = "results of a report, replaced by a rerun over the same frozen set; the report itself is guarded",
         ["search_term_report_hit"] = "results of a report, replaced by a rerun over the same frozen set; the report itself is guarded",
