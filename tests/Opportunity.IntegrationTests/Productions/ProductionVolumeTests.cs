@@ -321,9 +321,9 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
         (await v.Exports.Exports.ListVolumesAsync(ws, draft.ProductionId, null, 10, Ct)).Should().ContainSingle();
     }
 
-    private sealed record Source(Guid DocumentId, string? Extension, int Pages, Guid PageSetId, short? FirstImageFormat, bool HasNative);
+    internal sealed record Source(Guid DocumentId, string? Extension, int Pages, Guid PageSetId, short? FirstImageFormat, bool HasNative);
 
-    private static async Task<List<Source>> SourcesAsync(ProductionVolumeHarness v, Guid ws) =>
+    internal static async Task<List<Source>> SourcesAsync(ProductionVolumeHarness v, Guid ws) =>
         [.. (await v.Db.ColumnAsync(
             $"""
             SELECT d.document_id::text || '|' || coalesce(lower(d.file_extension), '') || '|' || coalesce(ps.page_count, 0) || '|'
@@ -338,7 +338,7 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
                 Guid.Parse(p[0]), p[1].Length > 0 ? p[1] : null, int.Parse(p[2], CultureInfo.InvariantCulture), Guid.Parse(p[3]),
                 p[4].Length > 0 ? short.Parse(p[4], CultureInfo.InvariantCulture) : null, p[5] == "true"))];
 
-    private static async Task<byte[]> StoredImageAsync(ProductionVolumeHarness v, Guid ws, Guid pageSetId)
+    internal static async Task<byte[]> StoredImageAsync(ProductionVolumeHarness v, Guid ws, Guid pageSetId)
     {
         var key = await v.Db.ScalarAsync<string>(
             """
@@ -392,7 +392,7 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
     private static Dictionary<string, string> Hashes(Dictionary<string, (ExportFileRecord File, byte[] Bytes)> files) =>
         files.ToDictionary(f => f.Key, f => Convert.ToHexStringLower(SHA256.HashData(f.Value.Bytes)), StringComparer.Ordinal);
 
-    private static List<string[]> ParseCsv(byte[] bytes) =>
+    internal static List<string[]> ParseCsv(byte[] bytes) =>
         [.. Encoding.UTF8.GetString(bytes).Split("\r\n", StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(l => l.Split(','))];
 
     /// <summary>A single-page TIFF G4 as one bool per pixel (true: black).</summary>

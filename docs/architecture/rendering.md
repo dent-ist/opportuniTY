@@ -194,6 +194,30 @@ arithmetic only, so the output stays deterministic; the endorsed page reports wh
 (`PageTopPx`, `PageHeightPx`). The production volume writer (docs/architecture/production-volumes.md) calls it through
 `IProducedPageImager`, implemented here over the render session.
 
+### Verifying the burn-in (E12-T06)
+
+`IRenderSession.VerifyAsync(BurnInRequest)` checks a produced page in the same sandboxed process: the request names the
+produced image (as read back from storage), the source page (file and frame), where the imager reported the page
+(`PageTopPx`) and the redactions that had to be burned (normalized rectangles). The child answers `verified` with its
+findings; the worker accepts only known codes, boxes of the request and bounded counts. `BurnInVerifier` decodes both
+images exactly as the endorser does, maps each redaction to pixels of the decoded source with
+`RedactionGeometry.BurnedPixels` (so it does not trust the imager's reported size) and finds:
+
+- `HiddenData`: the file is not one plain image of its format (`ProducedImageContainer`: a TIFF with one IFD, only the
+  tags the endorser writes, one strip and no unreferenced bytes; a JPEG with JFIF without thumbnail, tables and scans
+  only and nothing after EOI; a PNG with critical and resolution chunks only and nothing after IEND);
+- `ProducedUnreadable`, `SourceUnreadable`, `PageGeometry`: an image cannot be decoded, or the produced width or the
+  reported row does not fit the source page;
+- `PageMisaligned`: fewer than half of the source's ink pixels outside the boxes (and their frames) are found at the
+  reported place, so the boxes would be checked in the wrong place;
+- `BoxNotOpaque`: a pixel of a black box is not black, or a pixel of a labelled box is neither white fill nor black
+  label (or the box is less than half white);
+- `BoxShowsSource`: half or more of the box's source pixels that differ from the burned colour are found unchanged.
+
+TIFF G4 and PNG are compared exactly (a TIFF G4 page against its source thresholded as the endorser thresholds it); JPEG
+by luminance within 48 levels, because JPEG subsamples colour and bleeds it a pixel or two into a box's edge.
+`BurnInVerifier.Version` is recorded in the volume manifest.
+
 ## Viewer delivery (E11-T03)
 
 The protected-content gateway serves only derived renditions inline, and only as `image/png`, `image/jpeg` or

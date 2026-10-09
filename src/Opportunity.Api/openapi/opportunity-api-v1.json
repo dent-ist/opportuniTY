@@ -13032,7 +13032,7 @@
         "tags": [
           "Productions"
         ],
-        "summary": "One volume run with its status, report (counts, manifest SHA-256) and job progress.",
+        "summary": "One volume run with its status, report (counts, manifest SHA-256), burn-in verification and job progress.",
         "operationId": "GetProductionVolume",
         "parameters": [
           {
@@ -14209,6 +14209,84 @@
           },
           "416": {
             "description": "Range Not Satisfiable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/volumes/{volumeId}/verification-report": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Download a volume run's burn-in verification report (CSV, the run's initiator only). Audited.",
+        "description": "One row per check of a redacted or withheld member: each produced page with redactions (Image), its text file (Text) and its native (Native), with the outcome and the failed checks. Available once the run was verified, also when the verification failed and the volume was therefore not delivered. Always an attachment of type application/octet-stream.",
+        "operationId": "DownloadProductionVolumeVerificationReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "volumeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -23011,6 +23089,16 @@
           },
           "completedAt": {
             "format": "date-time"
+          },
+          "verification": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProductionVolumeVerificationResource"
+              }
+            ]
           }
         }
       },
@@ -23020,6 +23108,63 @@
           "completed",
           "failed",
           "cancelled"
+        ]
+      },
+      "ProductionVolumeVerificationResource": {
+        "required": [
+          "status",
+          "documents",
+          "pages",
+          "boxes",
+          "failures",
+          "reportSha256"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ProductionVolumeVerificationStatusResource"
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pages": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "boxes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "failures": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "reportSha256": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductionVolumeVerificationStatusResource": {
+        "enum": [
+          "passed",
+          "failed"
         ]
       },
       "QueryHistoryEntryResource": {

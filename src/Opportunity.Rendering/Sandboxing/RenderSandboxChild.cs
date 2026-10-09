@@ -85,6 +85,12 @@ public static class RenderSandboxChild
                     return 2;
                 }
 
+                if (request.Verify is { } verify)
+                {
+                    Verify(request, verify, start.Settings, writer);
+                    continue;
+                }
+
                 if (request.Endorse is { } endorse)
                 {
                     Endorse(request, endorse, start.Settings, writer);
@@ -158,6 +164,21 @@ public static class RenderSandboxChild
         catch (RenderException ex)
         {
             Send(writer, new SandboxMessage(SandboxMessageTypes.Failed, Code: ex.Code, Message: ex.Message));
+        }
+    }
+
+    /// <summary>Verifies one produced page's burn-in (E12-T06) and answers <c>verified</c>, or <c>failed</c> when the request is invalid.</summary>
+    private static void Verify(SandboxRenderRequest request, SandboxVerifyRequest verify, RenderSettings settings, StreamWriter writer)
+    {
+        try
+        {
+            var result = Endorsing.BurnInVerifier.Verify(new Endorsing.BurnInRequest(
+                verify.ProducedPath, verify.Format, request.InputPath ?? string.Empty, verify.Frame, verify.PageTopPx, verify.Redactions), settings);
+            Send(writer, new SandboxMessage(SandboxMessageTypes.Verified, Verified: result));
+        }
+        catch (ArgumentException)
+        {
+            Send(writer, new SandboxMessage(SandboxMessageTypes.Failed, Code: RenderErrorCodes.PageFailed, Message: "The verification request is invalid."));
         }
     }
 

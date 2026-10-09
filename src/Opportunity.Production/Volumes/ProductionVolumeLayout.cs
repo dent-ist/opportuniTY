@@ -44,6 +44,9 @@ public sealed class ProductionVolumeLayout(ExportSettings settings)
     /// <summary>What the burn-in verification (E12-T06) reads: every produced page and the boxes burned into it. Never delivered.</summary>
     public const string VerificationPath = "_verification/pages.csv";
 
+    /// <summary>The burn-in verification's QC report (E12-T06): one row per check of a redacted or withheld member; never delivered.</summary>
+    public const string BurnInReportPath = "_verification/burn-in-report.csv";
+
     private readonly ExportSettings _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
     public string Volume => _settings.VolumeName;

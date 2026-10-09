@@ -704,6 +704,12 @@ internal static class RouteAttackCatalog
         Case("GET", Ws + "/productions/{productionId}/volumes/{volumeId}/package", ProtectedOperation.ProductionInclusion,
             new RouteProbe("production and run", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/volumes/{t.ProductionVolumeId}/package",
                 HttpStatusCode.OK)),
+        // Burn-in verification report (E12-T06): same identifiers as the run's files.
+        Case("GET", Ws + "/productions/{productionId}/volumes/{volumeId}/verification-report", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production and run", HttpMethod.Get,
+                (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/volumes/{t.ProductionVolumeId}/verification-report", HttpStatusCode.OK),
+            new RouteProbe("own production, another workspace's run", HttpMethod.Get,
+                (o, t) => $"{W(o)}/productions/{o.FinalizedProductionId}/volumes/{t.ProductionVolumeId}/verification-report", HttpStatusCode.OK)),
 
         // Routes without a workspace-scoped identifier.
         Exempt("GET", V1 + "/me", "the caller's own session; no identifier"),

@@ -47,6 +47,12 @@ public enum ExportFileKind : short
     /// SHA-256 and the pixel boxes burned into it). Kept with the volume, never delivered to the recipient.
     /// </summary>
     Verification = 11,
+
+    /// <summary>
+    /// Production volumes (E12-T06): the burn-in verification rows one chunk wrote; assembled into the burn-in QC report,
+    /// never delivered.
+    /// </summary>
+    VerificationPart = 12,
 }
 
 /// <summary>An export to create with its Export job (Created) and its <c>Export.Created</c> audit event.</summary>
@@ -125,6 +131,9 @@ public sealed record ExportRecord
 
     /// <summary>The production whose volume this run writes (E12-T05); null for an export.</summary>
     public Guid? ProductionId { get; init; }
+
+    /// <summary>The burn-in verification of a volume run (E12-T06), once it ran; null for an export.</summary>
+    public ExportVerification? Verification { get; init; }
 }
 
 /// <summary>Counts of a completed export and the SHA-256 of its manifest.</summary>
@@ -137,7 +146,14 @@ public sealed record ExportReport(
     long Pages,
     long Files,
     long TotalBytes,
-    byte[] ManifestSha256);
+    byte[] ManifestSha256,
+    ExportVerification? Verification = null);
+
+/// <summary>
+/// The burn-in verification of a production volume run (E12-T06): members checked, pages and redaction boxes inspected,
+/// failed checks and the SHA-256 of its QC report. A run completes only when it passed.
+/// </summary>
+public sealed record ExportVerification(bool Passed, long Documents, long Pages, long Boxes, long Failures, byte[] ReportSha256);
 
 /// <summary>Keyset position of the export list (newest first).</summary>
 public sealed record ExportListCursor(DateTimeOffset CreatedAt, Guid ExportId);
@@ -282,6 +298,15 @@ public interface IExportStore
     /// </summary>
     Task<bool> CompleteAsync(
         Guid workspaceId, Guid exportId, IReadOnlyList<NewExportFile> files, ExportReport report, AuditEvent audit,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Running → Failed for a production volume run whose burn-in verification found a leak (E12-T06): registers the
+    /// verification files (kept, never delivered), records the verification and <paramref name="audit"/> in one
+    /// transaction. False when the run is no longer Running.
+    /// </summary>
+    Task<bool> RejectAsync(
+        Guid workspaceId, Guid exportId, IReadOnlyList<NewExportFile> files, ExportVerification verification, string reason, AuditEvent audit,
         CancellationToken cancellationToken = default);
 
     /// <summary>Running → Failed or Cancelled with a reason. False when the export is no longer Running.</summary>

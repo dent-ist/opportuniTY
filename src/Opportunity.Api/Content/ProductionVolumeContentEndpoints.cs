@@ -9,6 +9,7 @@ using Opportunity.Application.Exports;
 using Opportunity.Application.Storage;
 using Opportunity.Contracts.Api;
 using Opportunity.Core.Security;
+using Opportunity.Production.Volumes;
 using Opportunity.Security.Authorization;
 using Opportunity.Security.Http;
 
@@ -41,6 +42,19 @@ public sealed class ProductionVolumeContentEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status416RangeNotSatisfiable);
+
+        volumes.MapGet("/verification-report", DownloadVerificationReportAsync)
+            .RequirePermission(Permission.ProductionCreate)
+            .WithName("DownloadProductionVolumeVerificationReport")
+            .WithSummary("Download a volume run's burn-in verification report (CSV, the run's initiator only). Audited.")
+            .WithDescription(
+                "One row per check of a redacted or withheld member: each produced page with redactions (Image), its text file (Text) and " +
+                "its native (Native), with the outcome and the failed checks. Available once the run was verified, also when the verification " +
+                "failed and the volume was therefore not delivered. Always an attachment of type application/octet-stream.")
+            .Produces<Stream>(StatusCodes.Status200OK, "application/octet-stream")
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         volumes.MapGet("/package", DownloadPackageAsync)
             .RequirePermission(Permission.ProductionCreate)
@@ -107,6 +121,52 @@ public sealed class ProductionVolumeContentEndpoints : IApiEndpointModule
             ObjectDeliveryMode.Stream,
             range,
             file.Path[(file.Path.LastIndexOf('/') + 1)..],
+            BreakGlass: false);
+        return ProtectedContentGateway.StreamAttachment(store, grant, logger);
+    }
+
+    internal static async Task<IResult> DownloadVerificationReportAsync(
+        string workspaceId, string productionId, string volumeId, HttpContext context, IExportStore exports, IAuditEventWriter audit,
+        IServiceProvider services, ILogger<ProductionVolumeContentEndpoints> logger, CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (services.GetService<IObjectStore>() is not { } store)
+        {
+            return Problems.Create(StatusCodes.Status503ServiceUnavailable, ProblemCodes.ServiceUnavailable, "Object storage is not configured.");
+        }
+
+        if (await ProductionVolumeEndpoints.DownloadableAsync(context, productionId, volumeId, exports, cancellationToken).ConfigureAwait(false) is not { } volume)
+        {
+            return Problems.NotFound("No such production volume.");
+        }
+
+        var report = volume.Verification is null
+            ? null
+            : (await exports.GetFilesAsync(volume.WorkspaceId, volume.ExportId, [ExportFileKind.Verification], null, 10, cancellationToken).ConfigureAwait(false))
+                .FirstOrDefault(f => f.Path == ProductionVolumeLayout.BurnInReportPath);
+        if (report is null)
+        {
+            return Problems.Create(StatusCodes.Status409Conflict, ProblemCodes.Conflict, "The volume run has not been verified yet.");
+        }
+
+        var eventId = await AuditAsync(audit, context.GetWorkspaceAccess()!, volume, new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["ProductionId"] = volume.ProductionId!.Value.ToString(),
+            ["VolumeId"] = volume.ExportId.ToString(),
+            ["FileId"] = report.FileId.ToString(),
+            ["Kind"] = "BurnInReport",
+            ["Sha256"] = Convert.ToHexStringLower(report.Sha256),
+        }, cancellationToken).ConfigureAwait(false);
+
+        var grant = new ContentGrant(
+            eventId,
+            ObjectKey.Parse(report.ObjectKey),
+            Sha256Digest.FromBytes(report.Sha256),
+            report.SizeBytes,
+            ContentDispositionHeader.OctetStream,
+            ObjectDeliveryMode.Stream,
+            null,
+            "burn-in-report.csv",
             BreakGlass: false);
         return ProtectedContentGateway.StreamAttachment(store, grant, logger);
     }

@@ -262,6 +262,8 @@ export type { ProductionVerificationResource } from './models/production-verific
 export type { ProductionVolumeReportResource } from './models/production-volume-report-resource';
 export type { ProductionVolumeResource } from './models/production-volume-resource';
 export type { ProductionVolumeStatusResource } from './models/production-volume-status-resource';
+export type { ProductionVolumeVerificationResource } from './models/production-volume-verification-resource';
+export type { ProductionVolumeVerificationStatusResource } from './models/production-volume-verification-status-resource';
 export type { QueryHistoryEntryResource } from './models/query-history-entry-resource';
 export type { QueryHistoryRequest } from './models/query-history-request';
 export type { QueryHistoryResource } from './models/query-history-resource';
@@ -763,6 +765,8 @@ export type { DownloadProductionRedesignationOverlay$Params as DownloadProductio
 export { downloadProductionRedesignationOverlay as downloadProductionRedesignationOverlay } from './fn/productions/download-production-redesignation-overlay';
 export type { DownloadProductionVolumeFile$Params as DownloadProductionVolumeFile$Params } from './fn/productions/download-production-volume-file';
 export { downloadProductionVolumeFile as downloadProductionVolumeFile } from './fn/productions/download-production-volume-file';
+export type { DownloadProductionVolumeVerificationReport$Params as DownloadProductionVolumeVerificationReport$Params } from './fn/productions/download-production-volume-verification-report';
+export { downloadProductionVolumeVerificationReport as downloadProductionVolumeVerificationReport } from './fn/productions/download-production-volume-verification-report';
 export type { DownloadProductionVolumePackage$Params as DownloadProductionVolumePackage$Params } from './fn/productions/download-production-volume-package';
 export { downloadProductionVolumePackage as downloadProductionVolumePackage } from './fn/productions/download-production-volume-package';
 export type { ListSearchTermReports$Params as ListSearchTermReports$Params } from './fn/search-term-reports/list-search-term-reports';

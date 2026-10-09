@@ -3,6 +3,9 @@ using System.Security.Cryptography;
 using System.Text;
 
 using Opportunity.Application.Authorization;
+#if OPPORTUNITY_FAILPOINTS
+using Opportunity.Application.Faults;
+#endif
 using Opportunity.Application.Exports;
 using Opportunity.Application.Fields;
 using Opportunity.Application.Jobs;
@@ -36,6 +39,10 @@ namespace Opportunity.Production.Volumes;
 /// <item>Copies natives (never of a redacted document, ADR-012 §5.1) and text (for a redacted document a fixed text,
 /// never the original, §5.4), writes the DAT, OPT and produced-page rows as parts, runs the designation QC
 /// (<see cref="DesignationQc"/>) and checks that images = OPT rows = the Bates span of every member.</item>
+/// <item>Verifies the burn-in of every redacted and withheld member (E12-T06, <see cref="BurnInVerification"/>): each
+/// page that carries redactions is read back from storage and checked pixel by pixel in the render session; text and
+/// native are compared with what may be shipped. The rows go to the chunk's verification part; the coordinator turns
+/// them into the QC report and refuses to complete a run with a finding.</item>
 /// <item>Commits outcome rows, file registrations and the chunk (fence F3) in one transaction. Object keys carry the
 /// lease token, so a crashed attempt's objects are never registered; the committed attempt's bytes are the same.</item>
 /// </list>
@@ -48,7 +55,11 @@ public sealed class ProductionVolumeChunkExecutor(
     IFieldAccessFilter fieldAccess,
     IObjectStore store,
     IProducedPageImager imager,
-    ProductionVolumeOptions options) : IJobChunkExecutor
+    ProductionVolumeOptions options
+#if OPPORTUNITY_FAILPOINTS
+    , IFaultInjector? faults = null
+#endif
+    ) : IJobChunkExecutor
 {
     public const string PageKindSource = "Page";
     public const string PageKindTechnicalIssue = "TechnicalIssue";
@@ -182,14 +193,15 @@ public sealed class ProductionVolumeChunkExecutor(
             Directory.Delete(root, recursive: true);
         }
 
-        var files = new List<NewExportFile>(results.Sum(r => r.Files.Count) + 3);
-        StringBuilder dat = new(), opt = new(), pageRecords = new();
+        var files = new List<NewExportFile>(results.Sum(r => r.Files.Count) + 4);
+        StringBuilder dat = new(), opt = new(), pageRecords = new(), checks = new();
         foreach (var result in results)
         {
             files.AddRange(result.Files);
             dat.Append(result.DatRow);
             opt.Append(result.OptRows);
             pageRecords.Append(result.PageRecords);
+            checks.Append(result.Checks);
         }
 
         files.Add(await writer.WriteTextAsync("part.dat", LoadFileText.Encode(settings.DatEncoding, dat.ToString()), ExportFileKind.DatPart,
@@ -198,6 +210,8 @@ public sealed class ProductionVolumeChunkExecutor(
             ExportLayout.PartPath(chunk.Sequence, "opt"), cancellationToken).ConfigureAwait(false));
         files.Add(await writer.WriteTextAsync("part.pages", Encoding.UTF8.GetBytes(pageRecords.ToString()), ExportFileKind.PagePart,
             ExportLayout.PartPath(chunk.Sequence, "pages"), cancellationToken).ConfigureAwait(false));
+        files.Add(await writer.WriteTextAsync("part.burnin", Encoding.UTF8.GetBytes(checks.ToString()), ExportFileKind.VerificationPart,
+            ExportLayout.PartPath(chunk.Sequence, "burnin"), cancellationToken).ConfigureAwait(false));
 
         // Fence F2 again before the PostgreSQL batch; F3 runs inside the store's transaction.
         await context.CheckFenceAsync(cancellationToken).ConfigureAwait(false);
@@ -231,6 +245,9 @@ public sealed class ProductionVolumeChunkExecutor(
         var opt = new StringBuilder();
         var records = new StringBuilder();
         var stamped = new List<IReadOnlyList<PageStamp>>(labels.Count);
+        var checks = new StringBuilder();
+        var producedPages = new List<ProducedPage>(labels.Count);
+        NewExportFile? textFile = null, nativeFile = null;
         string? nativePath = null, textPath = null;
         int natives = 0, texts = 0;
         var nativeMissing = member.Output == ProductionOutputKind.Native && document.Native is null;
@@ -257,8 +274,8 @@ public sealed class ProductionVolumeChunkExecutor(
                         {
                             page = candidate;
                             burned = [.. redactions.Where(r => r.Ordinal == candidate.Ordinal)];
-                            (image, kind) = await SourcePageAsync(context, plan, session, directory, output, downloads, document, candidate, burned, stamps, label,
-                                member, cancellationToken).ConfigureAwait(false);
+                            (image, kind) = await SourcePageAsync(context, plan, session, directory, output, downloads, document, candidate,
+                                Armed(FaultFlagSkipBurn) ? [] : burned, stamps, label, member, cancellationToken).ConfigureAwait(false);
                         }
                         else
                         {
@@ -279,15 +296,23 @@ public sealed class ProductionVolumeChunkExecutor(
 
                     var offset = member.FirstOffset + (plan.Format.Level == BatesNumberingLevel.Page ? i : 0);
                     var path = plan.Layout.ImagePath(offset, label, image.Format);
-                    files.Add(await writer.WriteBytesAsync(
+                    var imageFile = await writer.WriteBytesAsync(
                         string.Create(CultureInfo.InvariantCulture, $"{sequence:D10}-p{i + 1:D6}.{ExportLayout.ImageExtension(image.Format)}"),
-                        image.Content, ExportFileKind.Image, path, sequence, cancellationToken).ConfigureAwait(false));
+                        image.Content, ExportFileKind.Image, path, sequence, cancellationToken).ConfigureAwait(false);
+                    files.Add(imageFile);
+                    producedPages.Add(new ProducedPage(i, label, kind, imageFile, image, page));
                     opt.Append(LoadFileText.OptRow(label, plan.Layout.Volume, plan.Layout.LoadFilePath(path), i == 0, i == 0 ? labels.Count : null));
                     records.Append(LoadFileText.CsvRow(
                         label, prodBeg, path, Convert.ToHexStringLower(SHA256.HashData(image.Content)), Invariant(image.WidthPx), Invariant(image.HeightPx),
                         Invariant(image.PageTopPx), Invariant(image.PageHeightPx), kind, page?.PageSetId.ToString("D") ?? string.Empty,
                         page is null ? string.Empty : Invariant(page.Ordinal), Boxes(burned, image)));
                     stamped.Add(stamps);
+                }
+
+                if (redacted)
+                {
+                    await VerifyPagesAsync(context, session, directory, downloads, member, labels, producedPages, redactions, checks, cancellationToken)
+                        .ConfigureAwait(false);
                 }
             }
         }
@@ -304,11 +329,12 @@ public sealed class ProductionVolumeChunkExecutor(
                 $"{prodBeg}: {stamped.Count} images for a Bates span of {span}."));
         }
 
-        if (member.Output == ProductionOutputKind.Native && document.Native is { } native)
+        if ((member.Output == ProductionOutputKind.Native || (redacted && Armed(FaultFlagShipNative))) && document.Native is { } native)
         {
             var path = plan.Layout.NativePath(sequence, prodBeg, ExportLayout.NativeExtension(document.Document.FileExtension, native.ContentType));
-            files.Add(await writer.CopyAsync(native, Invariant(sequence, "D10") + "-native", ExportFileKind.Native, path, sequence, null, cancellationToken)
-                .ConfigureAwait(false));
+            nativeFile = await writer.CopyAsync(native, Invariant(sequence, "D10") + "-native", ExportFileKind.Native, path, sequence, null, cancellationToken)
+                .ConfigureAwait(false);
+            files.Add(nativeFile);
             nativePath = plan.Layout.LoadFilePath(path);
             natives = 1;
         }
@@ -321,21 +347,36 @@ public sealed class ProductionVolumeChunkExecutor(
                 ? ProductionVolumeSettings.Fill(plan.Specification.Placeholders?.Withheld ?? ProductionSpecificationRules.DefaultWithheldText, prodBeg,
                     member.Designation, plan.Production.Name)
                 : redacted ? ProductionVolumeSettings.RedactedText : null;
-            if (generated is not null)
+            byte[]? bytes = generated is null ? null : utf16 ? [0xFF, 0xFE, .. Encoding.Unicode.GetBytes(generated)] : Encoding.UTF8.GetBytes(generated);
+            if (bytes is not null && !(redacted && document.Text is not null && Armed(FaultFlagShipText)))
             {
-                byte[] bytes = utf16 ? [0xFF, 0xFE, .. Encoding.Unicode.GetBytes(generated)] : Encoding.UTF8.GetBytes(generated);
-                files.Add(await writer.WriteBytesAsync(Invariant(sequence, "D10") + "-text", bytes, ExportFileKind.Text, path, sequence, cancellationToken)
-                    .ConfigureAwait(false));
-                textPath = plan.Layout.LoadFilePath(path);
-                texts = 1;
+                textFile = await writer.WriteBytesAsync(Invariant(sequence, "D10") + "-text", bytes, ExportFileKind.Text, path, sequence, cancellationToken)
+                    .ConfigureAwait(false);
             }
             else if (document.Text is { } text)
             {
-                files.Add(await writer.CopyAsync(text, Invariant(sequence, "D10") + "-text", ExportFileKind.Text, path, sequence, utf16 ? "utf-16le" : null,
-                    cancellationToken).ConfigureAwait(false));
+                textFile = await writer.CopyAsync(text, Invariant(sequence, "D10") + "-text", ExportFileKind.Text, path, sequence, utf16 ? "utf-16le" : null,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            if (textFile is not null)
+            {
+                files.Add(textFile);
                 textPath = plan.Layout.LoadFilePath(path);
                 texts = 1;
             }
+
+            if (bytes is not null)
+            {
+                // E12-T06: a redacted or withheld member ships the replacement text, never its own.
+                checks.Append(BurnInVerification.Row(prodBeg, null, BurnInVerification.CheckText, 0, BurnInVerification.Text(textFile, bytes, document.Text)));
+            }
+        }
+
+        if (redacted || member.Output == ProductionOutputKind.Placeholder)
+        {
+            // E12-T06 / Q-22: no native of a redacted or withheld member (no native-redaction method can be recorded yet).
+            checks.Append(BurnInVerification.Row(prodBeg, null, BurnInVerification.CheckNative, 0, BurnInVerification.Native(nativeFile)));
         }
 
         var designation = member.Designation ?? string.Empty;
@@ -355,8 +396,101 @@ public sealed class ProductionVolumeChunkExecutor(
             files,
             LoadFileText.DatRow(plan.Settings.Profile, row, neutralize),
             opt.ToString(),
-            records.ToString());
+            records.ToString(),
+            checks.ToString());
     }
+
+    /// <summary>
+    /// E12-T06: every page of a redacted member that carries redactions is read back from storage (its bytes must still
+    /// hash to the registered SHA-256) and verified in the member's render session against its source page and its frozen
+    /// redactions; one report row per page. A redacted page that became a "Technical Issue" page ships nothing of the page
+    /// and passes; a redaction on a page the member does not have is a finding.
+    /// </summary>
+    private async Task VerifyPagesAsync(
+        ChunkExecutionContext context, IProducedPageSession session, string directory, Dictionary<string, string> downloads, ProductionDocumentRow member,
+        IReadOnlyList<string> labels, List<ProducedPage> produced, IReadOnlyList<FrozenRedaction> redactions, StringBuilder checks,
+        CancellationToken cancellationToken)
+    {
+        var prodBeg = member.ProdBegBates!;
+        foreach (var ordinal in redactions.Select(r => r.Ordinal).Distinct().Order())
+        {
+            var expected = redactions.Where(r => r.Ordinal == ordinal).ToList();
+            var page = produced.FirstOrDefault(p => p.Index == ordinal - 1);
+            if (page is null)
+            {
+                checks.Append(BurnInVerification.Row(prodBeg, ordinal - 1 < labels.Count ? labels[ordinal - 1] : null, BurnInVerification.CheckImage,
+                    expected.Count, [new BurnInFinding(BurnInCodes.PageMissing)]));
+                continue;
+            }
+
+            if (page.Kind == PageKindTechnicalIssue)
+            {
+                checks.Append(BurnInVerification.Row(prodBeg, page.Label, BurnInVerification.CheckImage, 0, []));
+                continue;
+            }
+
+            if (page.Source is not { Image: { } sourceImage } source || page.Kind != PageKindSource
+                || !downloads.TryGetValue(sourceImage.ObjectKey, out var input) || source.Ordinal != ordinal)
+            {
+                checks.Append(BurnInVerification.Row(prodBeg, page.Label, BurnInVerification.CheckImage, expected.Count,
+                    [new BurnInFinding(BurnInCodes.PageMissing)]));
+                continue;
+            }
+
+            var local = Path.Combine(directory, "verify-" + Invariant(page.Index) + "." + ExportLayout.ImageExtension(page.Image.Format));
+            IReadOnlyList<BurnInFinding> findings;
+            var boxes = 0;
+            try
+            {
+                var key = ObjectKey.Parse(page.File.ObjectKey);
+                var stream = await store.OpenReadAsync(key, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await using (stream.ConfigureAwait(false))
+                {
+                    var verified = new VerifyingReadStream(stream, key, Sha256Digest.FromBytes(page.File.Sha256), page.File.SizeBytes);
+                    var file = File.Create(local);
+                    await using (file.ConfigureAwait(false))
+                    {
+                        await verified.CopyToAsync(file, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
+                var verdict = await session.VerifyAsync(new ProducedPageVerification(local, page.Image.Format, input, source.Frame, page.Image.PageTopPx,
+                    [.. expected.Select(r => new VerifiedRedaction(r.Rect, r.Type))]), cancellationToken).ConfigureAwait(false);
+                boxes = verdict.BoxesChecked;
+                findings = verdict.Passed && (verdict.WidthPx != page.Image.WidthPx || verdict.PageHeightPx != page.Image.PageHeightPx)
+                    ? [new BurnInFinding(BurnInCodes.PageGeometry)]
+                    : verdict.Findings;
+            }
+            catch (ProducedPageException ex) when (ex.Transient)
+            {
+                throw Retry(context, ex);
+            }
+            catch (ProducedPageException)
+            {
+                findings = [new BurnInFinding(BurnInCodes.NotVerifiable)];
+            }
+            finally
+            {
+                File.Delete(local);
+            }
+
+            checks.Append(BurnInVerification.Row(prodBeg, page.Label, BurnInVerification.CheckImage, boxes, findings));
+        }
+    }
+
+#if OPPORTUNITY_FAILPOINTS
+    private bool Armed(string flag) => faults?.IsArmed(flag) == true;
+
+    private const string FaultFlagSkipBurn = FaultFlags.VolumeSkipsBurn;
+    private const string FaultFlagShipText = FaultFlags.VolumeShipsOriginalText;
+    private const string FaultFlagShipNative = FaultFlags.VolumeShipsRedactedNative;
+#else
+    private static bool Armed(string flag) => flag.Length < 0;
+
+    private const string FaultFlagSkipBurn = "";
+    private const string FaultFlagShipText = "";
+    private const string FaultFlagShipNative = "";
+#endif
 
     private async Task<(ProducedPageImage Image, string Kind)> SourcePageAsync(
         ChunkExecutionContext context, VolumePlan plan, IProducedPageSession session, string directory, string output, Dictionary<string, string> downloads,
@@ -482,5 +616,8 @@ public sealed class ProductionVolumeChunkExecutor(
         public HashSet<string> ColorTypes { get; } = [.. Specification.Images?.ColorFileTypes ?? []];
     }
 
-    private sealed record MemberResult(ExportDocumentOutcome Outcome, List<NewExportFile> Files, string DatRow, string OptRows, string PageRecords);
+    private sealed record MemberResult(ExportDocumentOutcome Outcome, List<NewExportFile> Files, string DatRow, string OptRows, string PageRecords, string Checks);
+
+    /// <summary>A produced image of a member: its index, Bates label, kind, registered file, imager report and source page.</summary>
+    private sealed record ProducedPage(int Index, string Label, string Kind, NewExportFile File, ProducedPageImage Image, ProducedSourcePage? Source);
 }

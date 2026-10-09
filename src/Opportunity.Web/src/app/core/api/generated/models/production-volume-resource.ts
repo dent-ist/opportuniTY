@@ -4,6 +4,7 @@
 import { JobResource } from '../models/job-resource';
 import { ProductionVolumeReportResource } from '../models/production-volume-report-resource';
 import { ProductionVolumeStatusResource } from '../models/production-volume-status-resource';
+import { ProductionVolumeVerificationResource } from '../models/production-volume-verification-resource';
 export interface ProductionVolumeResource {
   completedAt: any;
   createdAt: any;
@@ -13,6 +14,7 @@ export interface ProductionVolumeResource {
   report: null | ProductionVolumeReportResource;
   status: ProductionVolumeStatusResource;
   statusReason: string | null;
+  verification?: null | ProductionVolumeVerificationResource;
   volume: string;
   volumeId: string;
   workspaceId: string;

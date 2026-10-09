@@ -105,6 +105,19 @@ public static class FaultFlags
     /// projection can overwrite a newer one. Exists only to prove the shadow-ledger oracle detects it (E17-T07).
     /// </summary>
     public const string UnversionedProjectionWrite = "projection-writer.unversioned";
+
+    /// <summary>
+    /// Seeded leaks of the production volume writer: a redacted document's original text instead of the replacement
+    /// text, its native next to its images, its pages without their redactions burned in. They exist only to prove that
+    /// the burn-in verification (E12-T06) detects each and blocks the volume.
+    /// </summary>
+    public const string VolumeShipsOriginalText = "production-volume.ship-original-text";
+
+    /// <inheritdoc cref="VolumeShipsOriginalText"/>
+    public const string VolumeShipsRedactedNative = "production-volume.ship-redacted-native";
+
+    /// <inheritdoc cref="VolumeShipsOriginalText"/>
+    public const string VolumeSkipsBurn = "production-volume.skip-burn";
 }
 
 /// <summary>

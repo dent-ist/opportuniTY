@@ -65,7 +65,7 @@ public sealed class ProductionVolumeEndpoints : IApiEndpointModule
             .RequirePermission(Permission.ProductionCreate)
             .WithName("GetProductionVolume")
             .WithTags(Tag)
-            .WithSummary("One volume run with its status, report (counts, manifest SHA-256) and job progress.")
+            .WithSummary("One volume run with its status, report (counts, manifest SHA-256), burn-in verification and job progress.")
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -241,7 +241,12 @@ public sealed class ProductionVolumeEndpoints : IApiEndpointModule
         JobEndpoints.ToResource(job),
         volume.CreatedBy,
         volume.CreatedAt,
-        volume.CompletedAt);
+        volume.CompletedAt,
+        volume.Verification is { } v
+            ? new ProductionVolumeVerificationResource(
+                v.Passed ? ProductionVolumeVerificationStatusResource.Passed : ProductionVolumeVerificationStatusResource.Failed,
+                v.Documents, v.Pages, v.Boxes, v.Failures, Convert.ToHexStringLower(v.ReportSha256))
+            : null);
 }
 
 public static class ProductionVolumeEndpointRegistration

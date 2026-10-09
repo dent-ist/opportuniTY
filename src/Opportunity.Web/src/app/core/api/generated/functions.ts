@@ -365,6 +365,8 @@ export type { DownloadProductionRedesignationOverlay$Params as DownloadProductio
 export { downloadProductionRedesignationOverlay as downloadProductionRedesignationOverlay } from './fn/productions/download-production-redesignation-overlay';
 export type { DownloadProductionVolumeFile$Params as DownloadProductionVolumeFile$Params } from './fn/productions/download-production-volume-file';
 export { downloadProductionVolumeFile as downloadProductionVolumeFile } from './fn/productions/download-production-volume-file';
+export type { DownloadProductionVolumeVerificationReport$Params as DownloadProductionVolumeVerificationReport$Params } from './fn/productions/download-production-volume-verification-report';
+export { downloadProductionVolumeVerificationReport as downloadProductionVolumeVerificationReport } from './fn/productions/download-production-volume-verification-report';
 export type { DownloadProductionVolumePackage$Params as DownloadProductionVolumePackage$Params } from './fn/productions/download-production-volume-package';
 export { downloadProductionVolumePackage as downloadProductionVolumePackage } from './fn/productions/download-production-volume-package';
 export type { ListSearchTermReports$Params as ListSearchTermReports$Params } from './fn/search-term-reports/list-search-term-reports';

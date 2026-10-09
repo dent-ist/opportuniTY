@@ -256,6 +256,8 @@ export type { ProductionVerificationResource } from './models/production-verific
 export type { ProductionVolumeReportResource } from './models/production-volume-report-resource';
 export type { ProductionVolumeResource } from './models/production-volume-resource';
 export type { ProductionVolumeStatusResource } from './models/production-volume-status-resource';
+export type { ProductionVolumeVerificationResource } from './models/production-volume-verification-resource';
+export type { ProductionVolumeVerificationStatusResource } from './models/production-volume-verification-status-resource';
 export type { QueryHistoryEntryResource } from './models/query-history-entry-resource';
 export type { QueryHistoryRequest } from './models/query-history-request';
 export type { QueryHistoryResource } from './models/query-history-resource';

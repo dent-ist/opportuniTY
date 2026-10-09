@@ -29,6 +29,9 @@ public enum ProductionVolumeStep
     /// <summary>The DAT, OPT, verification file and manifest were written and the run completed.</summary>
     Completed,
 
+    /// <summary>The burn-in verification found a leak (E12-T06): the run failed with its QC report and is never delivered.</summary>
+    Rejected,
+
     /// <summary>The run ended as Failed or Cancelled with its job.</summary>
     Ended,
 }
@@ -40,7 +43,10 @@ public enum ProductionVolumeStep
 /// assembles the DAT (byte-order mark per the encoding and header, then every chunk's rows in order), the OPT, the
 /// produced-page verification file (kept with the run for E12-T06, never delivered) and MANIFEST.json/.csv (every
 /// delivered file with its size and SHA-256; no run identifiers or times), then completes the run with
-/// <c>Production.VolumeCompleted</c>. Both steps are restartable under a claim and depend only on frozen state and
+/// <c>Production.VolumeCompleted</c>. Before any of that it assembles the chunks' burn-in verification rows into the QC
+/// report (E12-T06, <see cref="BurnInVerification"/>): a run with a failed check ends as Failed with the report and
+/// <c>Production.VerificationFailed</c>, without load files or manifest, so it can never be delivered; a passed
+/// verification is recorded in the manifest. Both steps are restartable under a claim and depend only on frozen state and
 /// committed parts, so any worker, and any later run of the same production, writes the same bytes. A run with a
 /// failed chunk fails as a whole: a production volume is never delivered incomplete.
 /// </summary>
@@ -172,6 +178,22 @@ public sealed partial class ProductionVolumeCoordinator(
         var runId = volume.JobId;
         var finals = new List<NewExportFile>();
 
+        var pageParts = await ExportCoordinator.AllFilesAsync(exports, ws, volume.ExportId, [ExportFileKind.PagePart], cancellationToken).ConfigureAwait(false);
+        var verification = await ExportCoordinator.PutPartsAsync(store, ws, volume.ExportId, runId, "verification.csv", ExportFileKind.Verification,
+            ProductionVolumeLayout.VerificationPath, Encoding.UTF8.GetBytes(LoadFileText.CsvRow(ProductionVolumeChunkExecutor.PageRecordHeader)), pageParts,
+            cancellationToken).ConfigureAwait(false);
+        var checkParts = await ExportCoordinator.AllFilesAsync(exports, ws, volume.ExportId, [ExportFileKind.VerificationPart], cancellationToken)
+            .ConfigureAwait(false);
+        var burnIn = await ExportCoordinator.PutPartsAsync(store, ws, volume.ExportId, runId, "burn-in-report.csv", ExportFileKind.Verification,
+            ProductionVolumeLayout.BurnInReportPath, Encoding.UTF8.GetBytes(LoadFileText.CsvRow(BurnInVerification.ReportHeader)), checkParts,
+            cancellationToken).ConfigureAwait(false);
+        var summary = await SummarizeAsync(burnIn, cancellationToken).ConfigureAwait(false);
+        var checkedRun = new ExportVerification(summary.Passed, summary.Documents, summary.Pages, summary.Boxes, summary.Failures, burnIn.Sha256);
+        if (!summary.Passed)
+        {
+            return await RejectAsync(volume, productionId, settings, [verification, burnIn], summary, checkedRun, cancellationToken).ConfigureAwait(false);
+        }
+
         var header = new List<byte>(LoadFileEncodings.Preamble(settings.DatEncoding).ToArray());
         header.AddRange(LoadFileText.Encode(settings.DatEncoding, LoadFileText.DatRow(settings.Profile, [.. settings.Columns.Select(c => c.Header)])));
         var datParts = await ExportCoordinator.AllFilesAsync(exports, ws, volume.ExportId, [ExportFileKind.DatPart], cancellationToken).ConfigureAwait(false);
@@ -180,21 +202,17 @@ public sealed partial class ProductionVolumeCoordinator(
         var optParts = await ExportCoordinator.AllFilesAsync(exports, ws, volume.ExportId, [ExportFileKind.OptPart], cancellationToken).ConfigureAwait(false);
         finals.Add(await ExportCoordinator.PutPartsAsync(store, ws, volume.ExportId, runId, "volume.opt", ExportFileKind.Opt, layout.OptPath, [],
             optParts, cancellationToken).ConfigureAwait(false));
-        var pageParts = await ExportCoordinator.AllFilesAsync(exports, ws, volume.ExportId, [ExportFileKind.PagePart], cancellationToken).ConfigureAwait(false);
-        var verification = await ExportCoordinator.PutPartsAsync(store, ws, volume.ExportId, runId, "verification.csv", ExportFileKind.Verification,
-            ProductionVolumeLayout.VerificationPath, Encoding.UTF8.GetBytes(LoadFileText.CsvRow(ProductionVolumeChunkExecutor.PageRecordHeader)), pageParts,
-            cancellationToken).ConfigureAwait(false);
-
         var totals = await exports.GetDocumentTotalsAsync(ws, volume.ExportId, cancellationToken).ConfigureAwait(false);
-        var (manifestJson, manifestCsv, files, bytes) = await WriteManifestsAsync(volume, production, settings, totals, finals, verification, cancellationToken)
-            .ConfigureAwait(false);
+        var (manifestJson, manifestCsv, files, bytes) = await WriteManifestsAsync(volume, production, settings, totals, finals, verification, checkedRun,
+            cancellationToken).ConfigureAwait(false);
         finals.Add(manifestJson);
         finals.Add(manifestCsv);
         finals.Add(verification);
+        finals.Add(burnIn);
 
         var report = new ExportReport(
             totals.Exported, totals.Excluded, totals.Natives, totals.Texts, totals.Images, totals.Pages,
-            files + 2, bytes + manifestJson.SizeBytes + manifestCsv.SizeBytes, manifestJson.Sha256);
+            files + 2, bytes + manifestJson.SizeBytes + manifestCsv.SizeBytes, manifestJson.Sha256, checkedRun);
         var completed = new AuditEvent
         {
             WorkspaceId = ws,
@@ -220,6 +238,11 @@ public sealed partial class ProductionVolumeCoordinator(
                 ["Images"] = Invariant(report.Images),
                 ["Files"] = Invariant(report.Files),
                 ["TotalBytes"] = Invariant(report.TotalBytes),
+                ["BurnInVerification"] = BurnInVerification.Passed,
+                ["BurnInDocuments"] = Invariant(summary.Documents),
+                ["BurnInPages"] = Invariant(summary.Pages),
+                ["BurnInBoxes"] = Invariant(summary.Boxes),
+                ["BurnInReportSha256"] = Convert.ToHexStringLower(burnIn.Sha256),
             },
         };
         if (!await exports.CompleteAsync(ws, volume.ExportId, finals, report, completed, cancellationToken).ConfigureAwait(false))
@@ -231,6 +254,75 @@ public sealed partial class ProductionVolumeCoordinator(
         return ProductionVolumeStep.Completed;
     }
 
+    /// <summary>Totals of the assembled burn-in report (read back; its bytes must still hash to what was registered).</summary>
+    private async Task<BurnInSummary> SummarizeAsync(NewExportFile report, CancellationToken cancellationToken)
+    {
+        var key = ObjectKey.Parse(report.ObjectKey);
+        var stream = await store.OpenReadAsync(key, cancellationToken: cancellationToken).ConfigureAwait(false);
+        await using (stream.ConfigureAwait(false))
+        {
+            using var reader = new StreamReader(new VerifyingReadStream(stream, key, Sha256Digest.FromBytes(report.Sha256), report.SizeBytes), Encoding.UTF8);
+            var rows = new List<string>();
+            _ = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+            {
+                rows.Add(line);
+            }
+
+            return BurnInVerification.Summarize(rows);
+        }
+    }
+
+    /// <summary>
+    /// A failed burn-in verification (E12-T06): the run ends as Failed with its verification files and the totals, and
+    /// <c>Production.VerificationFailed</c> is audited in the same transaction. No load file or manifest is written, and
+    /// a failed run's files are never listed or downloaded, so the volume cannot be delivered.
+    /// </summary>
+    private async Task<ProductionVolumeStep> RejectAsync(
+        ExportRecord volume, Guid productionId, ExportSettings settings, IReadOnlyList<NewExportFile> files, BurnInSummary summary,
+        ExportVerification verification, CancellationToken cancellationToken)
+    {
+        var reason = string.Create(CultureInfo.InvariantCulture,
+            $"Burn-in verification failed: {summary.Failures} check(s) failed for {summary.FailedDocuments} document(s). The volume is not delivered; see the burn-in report.");
+        var rejected = new AuditEvent
+        {
+            WorkspaceId = volume.WorkspaceId,
+            OccurredAt = DateTimeOffset.UtcNow,
+            Category = AuditTaxonomy.Production.Category,
+            Action = AuditTaxonomy.Production.VerificationFailed,
+            ActorType = AuditActorType.Service,
+            ActorId = WorkerActor,
+            ActorDisplay = "Production volume writer",
+            OnBehalfOf = volume.CreatedBy,
+            ResourceType = AuditTaxonomy.Production.ResourceType,
+            ResourceId = productionId.ToString(),
+            Outcome = AuditOutcome.Failure,
+            ReasonCode = "BurnInVerificationFailed",
+            JobId = volume.JobId,
+            SnapshotId = volume.SnapshotId,
+            Details = new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["Check"] = "BurnIn",
+                ["ProductionId"] = productionId.ToString(),
+                ["VolumeId"] = volume.ExportId.ToString(),
+                ["Volume"] = settings.VolumeName,
+                ["Documents"] = Invariant(summary.Documents),
+                ["Pages"] = Invariant(summary.Pages),
+                ["Boxes"] = Invariant(summary.Boxes),
+                ["Failures"] = Invariant(summary.Failures),
+                ["FailedDocuments"] = Invariant(summary.FailedDocuments),
+                ["BurnInReportSha256"] = Convert.ToHexStringLower(verification.ReportSha256),
+            },
+        };
+        if (!await exports.RejectAsync(volume.WorkspaceId, volume.ExportId, files, verification, reason, rejected, cancellationToken).ConfigureAwait(false))
+        {
+            return ProductionVolumeStep.None;
+        }
+
+        LogRejected(logger, productionId, volume.ExportId, summary.Failures, summary.FailedDocuments);
+        return ProductionVolumeStep.Rejected;
+    }
+
     /// <summary>
     /// MANIFEST.json (the production's identity, frozen hashes and Bates range, the software that wrote the volume,
     /// counts and every delivered file in path order with size and SHA-256) and MANIFEST.csv (Path, Bytes, SHA256). They
@@ -238,7 +330,7 @@ public sealed partial class ProductionVolumeCoordinator(
     /// </summary>
     private async Task<(NewExportFile Json, NewExportFile Csv, long Files, long Bytes)> WriteManifestsAsync(
         ExportRecord volume, ProductionRecord production, ExportSettings settings, ExportDocumentTotals totals, List<NewExportFile> finals,
-        NewExportFile verification, CancellationToken cancellationToken)
+        NewExportFile verification, ExportVerification burnIn, CancellationToken cancellationToken)
     {
         var directory = options.TempDirectory ?? Path.GetTempPath();
         var jsonPath = Path.Combine(directory, "opp-volume-" + Guid.NewGuid().ToString("N") + ".json");
@@ -278,6 +370,15 @@ public sealed partial class ProductionVolumeCoordinator(
                 json.WriteNumber("images", totals.Images);
                 json.WriteEndObject();
                 json.WriteString("verificationSha256", Convert.ToHexStringLower(verification.Sha256));
+                json.WriteStartObject("burnInVerification");
+                json.WriteString("status", burnIn.Passed ? "passed" : "failed");
+                json.WriteString("verifier", imager.VerifierVersion);
+                json.WriteNumber("documents", burnIn.Documents);
+                json.WriteNumber("pages", burnIn.Pages);
+                json.WriteNumber("boxes", burnIn.Boxes);
+                json.WriteNumber("failures", burnIn.Failures);
+                json.WriteString("reportSha256", Convert.ToHexStringLower(burnIn.ReportSha256));
+                json.WriteEndObject();
                 json.WriteStartArray("files");
 
                 var pending = new Queue<NewExportFile>(finals.OrderBy(x => x.Path, StringComparer.Ordinal));
@@ -348,6 +449,10 @@ public sealed partial class ProductionVolumeCoordinator(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Production {ProductionId}: volume run {VolumeId} started with {Chunks} chunk(s)")]
     private static partial void LogStarted(ILogger logger, Guid productionId, Guid volumeId, int chunks);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Production {ProductionId}: volume run {VolumeId} failed its burn-in verification: {Failures} check(s) for {Documents} document(s)")]
+    private static partial void LogRejected(ILogger logger, Guid productionId, Guid volumeId, long failures, long documents);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Production {ProductionId}: volume run {VolumeId} completed: {Documents} document(s), {Images} image(s)")]
     private static partial void LogCompleted(ILogger logger, Guid productionId, Guid volumeId, long documents, long images);
