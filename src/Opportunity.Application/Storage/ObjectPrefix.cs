@@ -24,6 +24,9 @@ public sealed class ObjectPrefix : IEquatable<ObjectPrefix>
     /// </summary>
     public bool IsDeletable { get; }
 
+    /// <summary>The areas under <c>ws/{workspaceId}/</c> (ADR-011 §1.5).</summary>
+    public static IReadOnlySet<string> WorkspaceAreas => ObjectKeyGrammar.WorkspaceAreas;
+
     public static ObjectPrefix Workspace(Guid workspaceId) => Parse($"ws/{ObjectKeyGrammar.Id(workspaceId)}/");
 
     public static ObjectPrefix WorkspaceArea(Guid workspaceId, string area) =>

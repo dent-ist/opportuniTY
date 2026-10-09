@@ -76,10 +76,10 @@ test('creates a workspace, lands on its setup checklist and edits its settings w
   expect(put.ifMatch).toBe('"1"');
   expect(put.body).toMatchObject({ name: 'Gamma Matter', matterNumber: '2026-08' });
 
-  // Deletion is not available in this version: the entry point is disabled and says why.
+  // Deletion is a request for a second person (E20-T02; see workspace-deletions.spec.ts).
   const remove = page.getByRole('button', { name: 'Delete workspace…' });
-  await expect(remove).toBeDisabled();
-  await expect(remove).toHaveAccessibleDescription(/not available in this version/);
+  await expect(remove).toBeEnabled();
+  await expect(remove).toHaveAccessibleDescription(/second person approves/);
 });
 
 test.describe('without an MFA session', () => {

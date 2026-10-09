@@ -140,6 +140,307 @@
         }
       }
     },
+    "/api/v1/workspace-deletions": {
+      "get": {
+        "tags": [
+          "Workspace deletion"
+        ],
+        "summary": "Workspace deletions: every one for Retention Approvers, the caller's own requests for anyone else.",
+        "operationId": "ListWorkspaceDeletions",
+        "parameters": [
+          {
+            "name": "openOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDeletionList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspace-deletions/{deletionId}": {
+      "get": {
+        "tags": [
+          "Workspace deletion"
+        ],
+        "summary": "A deletion with its progress; the version is the ETag. Visible to its requester and to Retention Approvers.",
+        "operationId": "GetWorkspaceDeletion",
+        "parameters": [
+          {
+            "name": "deletionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDeletionResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspace-deletions/{deletionId}/approve": {
+      "post": {
+        "tags": [
+          "Workspace deletion"
+        ],
+        "summary": "Approve a requested deletion (If-Match): the run starts once the waiting period has passed.",
+        "description": "Needs Installation.ApproveDeletion and an MFA session; the requester cannot approve their own request (403 second-person-required). Refused with 423 while a legal hold applies.",
+        "operationId": "ApproveWorkspaceDeletion",
+        "parameters": [
+          {
+            "name": "deletionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkspaceDeletionApprovalWrite"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDeletionResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Locked",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspace-deletions/{deletionId}/cancel": {
+      "post": {
+        "tags": [
+          "Workspace deletion"
+        ],
+        "summary": "Withdraw a requested or approved deletion before its run starts (If-Match); its requester or a Retention Approver.",
+        "operationId": "CancelWorkspaceDeletion",
+        "parameters": [
+          {
+            "name": "deletionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDeletionResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspace-deletions/{deletionId}/certificate": {
+      "get": {
+        "tags": [
+          "Workspace deletion"
+        ],
+        "summary": "The destruction certificate of a finished deletion, with its SHA-256 and signature, as a JSON download.",
+        "operationId": "GetDestructionCertificate",
+        "parameters": [
+          {
+            "name": "deletionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DestructionCertificateDocument"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/query-validations": {
       "post": {
         "tags": [
@@ -5282,6 +5583,153 @@
           },
           "428": {
             "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/deletions": {
+      "get": {
+        "tags": [
+          "Workspace deletion"
+        ],
+        "summary": "The workspace's deletion requests and runs, newest first.",
+        "operationId": "ListWorkspaceDeletionRequests",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDeletionList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Workspace deletion"
+        ],
+        "summary": "Request the deletion of the workspace: a reason, the retention profile and the workspace name typed to confirm.",
+        "description": "Nothing is removed until a different person with Installation.ApproveDeletion approves and the waiting period has passed. Refused with 423 while a legal hold applies; 409 while another request is open.",
+        "operationId": "RequestWorkspaceDeletion",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkspaceDeletionWrite"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDeletionResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Locked",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16907,6 +17355,45 @@
           "custodial"
         ]
       },
+      "DeletionActor": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "DeletionRetentionProfileResource": {
+        "enum": [
+          "retainRecords",
+          "purgeAll"
+        ]
+      },
+      "DeletionStepResource": {
+        "enum": [
+          "fence",
+          "drain",
+          "inventory",
+          "searchPurge",
+          "databasePurge",
+          "storagePurge",
+          "keyDestruction",
+          "verification",
+          "certification",
+          null
+        ]
+      },
       "DelimiterInfo": {
         "required": [
           "char",
@@ -17005,6 +17492,59 @@
           "family",
           "override"
         ]
+      },
+      "DestructionCertificateDocument": {
+        "required": [
+          "certificate",
+          "canonical",
+          "sha256",
+          "issuedAt",
+          "signature"
+        ],
+        "type": "object",
+        "properties": {
+          "certificate": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "canonical": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "issuedAt": {
+            "format": "date-time"
+          },
+          "signature": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DestructionCertificateSignature"
+              }
+            ]
+          }
+        }
+      },
+      "DestructionCertificateSignature": {
+        "required": [
+          "keyId",
+          "algorithm",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "keyId": {
+            "type": "string"
+          },
+          "algorithm": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
       },
       "DocumentCodingResource": {
         "required": [
@@ -21023,6 +21563,9 @@
       },
       "JsonElement": { },
       "JsonNode": { },
+      "JsonObject": {
+        "type": "object"
+      },
       "LoadFilePreviewInfo": {
         "required": [
           "encoding",
@@ -27184,6 +27727,285 @@
           }
         }
       },
+      "WorkspaceDeletionApprovalWrite": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "WorkspaceDeletionList": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceDeletionResource"
+            }
+          }
+        }
+      },
+      "WorkspaceDeletionResource": {
+        "required": [
+          "deletionId",
+          "workspaceId",
+          "workspaceName",
+          "matterNumber",
+          "retentionProfile",
+          "reason",
+          "externalReference",
+          "status",
+          "currentStep",
+          "requestedBy",
+          "requestedAt",
+          "expiresAt",
+          "approvedBy",
+          "approvedAt",
+          "approvalNote",
+          "runNotBefore",
+          "cancelledBy",
+          "cancelledAt",
+          "startedAt",
+          "finishedAt",
+          "haltedAt",
+          "error",
+          "steps",
+          "certificateAvailable",
+          "canApprove",
+          "canCancel",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "deletionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "matterNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "retentionProfile": {
+            "$ref": "#/components/schemas/DeletionRetentionProfileResource"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "externalReference": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkspaceDeletionStatusResource"
+          },
+          "currentStep": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeletionStepResource"
+              }
+            ]
+          },
+          "requestedBy": {
+            "$ref": "#/components/schemas/DeletionActor"
+          },
+          "requestedAt": {
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "format": "date-time"
+          },
+          "approvedBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeletionActor"
+              }
+            ]
+          },
+          "approvedAt": {
+            "format": "date-time"
+          },
+          "approvalNote": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "runNotBefore": {
+            "format": "date-time"
+          },
+          "cancelledBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeletionActor"
+              }
+            ]
+          },
+          "cancelledAt": {
+            "format": "date-time"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          },
+          "haltedAt": {
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceDeletionStepProgress"
+            }
+          },
+          "certificateAvailable": {
+            "type": "boolean"
+          },
+          "canApprove": {
+            "type": "boolean"
+          },
+          "canCancel": {
+            "type": "boolean"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "WorkspaceDeletionStatusResource": {
+        "enum": [
+          "requested",
+          "approved",
+          "running",
+          "halted",
+          "completed",
+          "completedWithResiduals",
+          "cancelled",
+          "expired"
+        ]
+      },
+      "WorkspaceDeletionStepProgress": {
+        "required": [
+          "step",
+          "attempt",
+          "startedAt",
+          "finishedAt",
+          "outcome",
+          "totals"
+        ],
+        "type": "object",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/DeletionStepResource"
+          },
+          "attempt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "totals": {
+            "type": "object",
+            "additionalProperties": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int64"
+            }
+          }
+        }
+      },
+      "WorkspaceDeletionWrite": {
+        "required": [
+          "retentionProfile",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "retentionProfile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeletionRetentionProfileResource"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "externalReference": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "confirmName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "WorkspaceMemberKind": {
         "enum": [
           "user",
@@ -27431,6 +28253,9 @@
     },
     {
       "name": "Workspaces"
+    },
+    {
+      "name": "Workspace deletion"
     },
     {
       "name": "Opportunity.Api"

@@ -132,16 +132,27 @@
   <section class="wsa__card wsa__card--danger" aria-labelledby="settings-delete">
     <h2 id="settings-delete" class="wsa__card-title">Delete workspace</h2>
     <p id="delete-explanation">{{ deletionText() }}</p>
-    <div>
-      <button
-        type="button"
-        oppButton="danger"
-        aria-describedby="delete-explanation"
-        [disabled]="!canOpenDeletion()"
-        (click)="openDeletion()"
-      >
-        Delete workspace…
-      </button>
-    </div>
+    @if (deletionState(); as state) {
+      @if (state.kind === 'pending') {
+        <p>
+          <a [routerLink]="['/workspace-deletions', state.deletion.deletionId]">
+            View the deletion request and its progress
+          </a>
+        </p>
+      }
+    }
+    @if (deletionState()?.kind !== 'pending') {
+      <div>
+        <button
+          type="button"
+          oppButton="danger"
+          aria-describedby="delete-explanation"
+          [disabled]="!canOpenDeletion()"
+          (click)="openDeletion()"
+        >
+          Delete workspace…
+        </button>
+      </div>
+    }
   </section>
 }

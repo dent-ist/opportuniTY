@@ -1,11 +1,19 @@
 <div class="workspaces__header">
   <h1 class="workspaces__title">Workspaces</h1>
-  @if (canCreate()) {
-    <button type="button" oppButton="primary" (click)="create()">
-      <opp-icon name="plus" />
-      New workspace
-    </button>
-  }
+  <div class="workspaces__header-actions">
+    @if (canApproveDeletions()) {
+      <a oppButton="secondary" routerLink="/workspace-deletions">
+        <opp-icon name="trash" />
+        Workspace deletions
+      </a>
+    }
+    @if (canCreate()) {
+      <button type="button" oppButton="primary" (click)="create()">
+        <opp-icon name="plus" />
+        New workspace
+      </button>
+    }
+  </div>
 </div>
 
 @if (loading()) {
@@ -105,4 +113,11 @@
       </div>
     }
   </section>
+}
+
+@if (!canApproveDeletions() && !loading()) {
+  <p class="workspaces__muted">
+    Requested the deletion of a workspace? Follow it in
+    <a routerLink="/workspace-deletions">Workspace deletions</a>.
+  </p>
 }

@@ -109,6 +109,18 @@ internal sealed partial class ApiExceptionHandler(IProblemDetailsService problem
             }).ConfigureAwait(false);
         }
 
+        if (WorkspaceFenceViolation.TryGet(exception, out _))
+        {
+            // A write that raced the deletion fence (E20-T02): the workspace answers like one that does not exist.
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return await problemDetails.TryWriteAsync(new ProblemDetailsContext
+            {
+                HttpContext = httpContext,
+                Exception = exception,
+                ProblemDetails = new ProblemDetails { Status = StatusCodes.Status404NotFound },
+            }).ConfigureAwait(false);
+        }
+
         var (status, detail) = exception switch
         {
             BadHttpRequestException bad => (bad.StatusCode, "The request could not be read."),

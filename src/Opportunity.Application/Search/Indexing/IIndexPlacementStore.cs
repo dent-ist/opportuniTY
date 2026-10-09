@@ -29,4 +29,10 @@ public interface IIndexPlacementStore
     /// </summary>
     Task AdjustSharedPoolAsync(
         int poolNumber, int workspaceDelta, long bytesDelta, long closeAtBytes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// False once the workspace is being deleted (E20-T02): placing it again would recreate an index after the deletion
+    /// purged it. Stores without a workspace registry accept every placement.
+    /// </summary>
+    Task<bool> AcceptsPlacementAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult(true);
 }

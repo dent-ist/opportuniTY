@@ -26,6 +26,8 @@ export const PERMISSIONS = {
   manageSecurity: 'Workspace.ManageSecurity',
   /** Place and release legal holds (preservation locks, E20-T01). */
   manageHolds: 'Workspace.ManageHolds',
+  /** Request the deletion of the workspace (E20-T02, Q-23); a Retention Approver approves it. */
+  requestDeletion: 'Workspace.RequestDeletion',
   auditRead: 'Audit.Read',
   /** Create, change and delete shared document-list views (E16-T09, "manage views"). */
   manageSharedViews: 'View.ManageShared',
@@ -39,6 +41,8 @@ export const PERMISSIONS = {
 /** Installation-level permissions (`GET /api/v1/me` → `installationPermissions`), not tied to a workspace. */
 export const INSTALLATION_PERMISSIONS = {
   manageWorkspaces: 'Installation.ManageWorkspaces',
+  /** The Retention Approver role: approve workspace deletions (E20-T02, ADR-014 §3.2). */
+  approveDeletion: 'Installation.ApproveDeletion',
 } as const;
 
 export interface WorkspaceSection {

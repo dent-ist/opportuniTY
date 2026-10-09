@@ -170,6 +170,39 @@ Every object records `KeyId` from day one (ADR-011 §6). Per-workspace keys are 
 step 7 makes residual copies in backups unreadable and the certificate can say so. Without them, residual backups
 are readable until they expire, and the certificate states that expiry date instead.
 
+### 10. Implementation notes (E20-T02, #167, V0054)
+
+1. Requests, runs, step records and certificates live in installation-level tables (`workspace_deletion`,
+   `workspace_deletion_step`, `destruction_certificate`; the application role cannot delete them), so they outlive the
+   workspace. *Deviation from §4:* the run is not an ADR-010 job row — job rows are workspace data the run purges — but
+   a lease-driven coordinator in the indexing worker (it reaches PostgreSQL, OpenSearch, object storage and the key
+   provider) whose every step is idempotent and recorded with counts.
+2. *Deviation from §3.2/ADR-015 D5.7:* `Installation.ApproveDeletion` belongs to the Retention Approver role (IdP groups
+   in `Authorization:RetentionApproverGroups`), not to Installation Admin; approving needs MFA. Notifications (§3.3) are
+   not sent yet: the request, approval, start, halt and completion are audited and shown on the Workspace deletions page.
+3. Fence (step 1): besides the workers' existing checks, PostgreSQL refuses new rows in `job`, `document`,
+   `stored_object`, `search_outbox`, `index_chunk_task`, `workspace_index_placement` and `dead_letter` of a workspace in
+   `Deleting` or `Purged` (SQLSTATE `O0410`; the trigger takes FOR KEY SHARE on the workspace row, which the fence's
+   FOR UPDATE waits for), and index management refuses to place it again. *Deviation:* fenced workspace routes answer
+   404 (as for a non-member), not 410; the deletion's own routes are installation-level.
+4. Purge (step 5): `workspace_purge_batch` (owner-run) deletes by primary key in batches, leaf-first for
+   self-referencing tables, documents together with their page sets and stored objects, in an order derived from the
+   live foreign keys (`WorkspacePurgePlan`); the immutability guards of choices, snapshot membership and production
+   members let it through only for a workspace in `Deleting`. RetainRecords keeps productions with their members, Bates
+   ledger and volume runs (export rows with `production_id`, their files and `ws/{ws}/productions/` objects), their
+   snapshots (with source chain), the jobs they reference and the Redaction Sets their members name. *Deviation from
+   §5.2:* retained records are kept but not yet served through the API for a `Purged` workspace.
+5. Keys (step 7): PurgeAll destroys every data key (and a dedicated KEK) through #54's crypto-shredder. RetainRecords
+   keeps the data keys (retained outputs are encrypted with them; rewrapping retained objects to an installation records
+   key is not built), and the certificate says backups stay readable until `BackupRetention` after the run.
+6. Verification (step 8) re-runs every purge (not only the failing one) up to three times before `CompletedWithResiduals`.
+   A hold placed during the run halts it (`Halted`) before the next destructive step; it resumes on its own once every
+   hold is released.
+7. Certificate (§8): canonical JSON (fixed property order, no whitespace) in PostgreSQL and under
+   `sys/certificates/{deletionId}/{sha256}`, signed with the audit checkpoint key (ES256) when the key provider has one,
+   its SHA-256 in `Workspace.Deleted` events of the workspace's and the installation's audit chain. Messaging residuals
+   are reported, not counted.
+
 ### Interim position (binding until this ADR is Accepted)
 
 1. No API, job or admin tool deletes a workspace, document, artifact, production, privilege log or audit event. Data

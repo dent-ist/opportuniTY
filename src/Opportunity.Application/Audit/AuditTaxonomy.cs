@@ -289,7 +289,29 @@ public static class AuditTaxonomy
         /// <summary>A delete or purge was refused because the workspace is under a preservation lock (423).</summary>
         public const string DeletionBlocked = "DeletionBlocked";
 
+        /// <summary>A deletion was requested (E20-T02, ADR-014 §3); resource = the deletion id.</summary>
+        public const string DeletionRequested = "DeletionRequested";
+
+        /// <summary>A second person approved the deletion; the run may start after the waiting period.</summary>
+        public const string DeletionApproved = "DeletionApproved";
+
+        /// <summary>The request was withdrawn before its run started, or expired unapproved (reason code <c>Expired</c>).</summary>
+        public const string DeletionCancelled = "DeletionCancelled";
+
+        /// <summary>The run fenced the workspace (status Deleting), or resumed after a halt (detail <c>resumed</c>).</summary>
+        public const string DeletionStarted = "DeletionStarted";
+
+        public const string DeletionStepCompleted = "DeletionStepCompleted";
+
+        /// <summary>A legal hold placed during the run stopped it before its next destructive step.</summary>
+        public const string DeletionHalted = "DeletionHalted";
+
+        /// <summary>The run finished and certified the destruction; carries the certificate id and SHA-256.</summary>
+        public const string Deleted = "Deleted";
+
         public const string PreservationLockResourceType = "PreservationLock";
+
+        public const string DeletionResourceType = "WorkspaceDeletion";
     }
 
     /// <summary>

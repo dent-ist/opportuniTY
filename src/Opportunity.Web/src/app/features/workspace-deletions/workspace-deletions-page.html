@@ -1,0 +1,81 @@
+<div class="wdl__header">
+  <div class="wdl__heading-group">
+    <h1 class="wdl__title">Workspace deletions</h1>
+    <p class="wdl__lead">
+      @if (approver()) {
+        Deletion requests from Workspace Admins. Approve a request to start its waiting period,
+        follow each deletion and download its destruction certificate.
+      } @else {
+        Your requests to delete workspaces: their approval, progress and destruction certificate.
+      }
+    </p>
+  </div>
+</div>
+
+@if (loading()) {
+  <opp-loading-state label="Loading workspace deletions…" />
+} @else if (error()) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else if (items().length === 0) {
+  <opp-empty-state
+    icon="trash"
+    title="No workspace deletions"
+    [message]="
+      approver()
+        ? 'Requests appear here when a Workspace Admin asks to delete a workspace.'
+        : 'Request a deletion from Admin › Workspace Settings of the workspace.'
+    "
+  />
+} @else {
+  <div class="wdl__toolbar">
+    <opp-checkbox [(checked)]="openOnly">Only requests in progress</opp-checkbox>
+    @if (approver() && waiting()) {
+      <p class="wdl__muted" role="status">{{ waiting() }} waiting for your approval</p>
+    }
+  </div>
+  @if (shown().length) {
+    <div class="wdl__table-wrap" tabindex="0" role="region" aria-label="Workspace deletion table">
+      <table class="wdl__table">
+        <thead>
+          <tr>
+            <th scope="col">Workspace</th>
+            <th scope="col">Matter number</th>
+            <th scope="col">Status</th>
+            <th scope="col">What is kept</th>
+            <th scope="col">Requested</th>
+            <th scope="col">Next</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (d of shown(); track d.deletionId) {
+            <tr>
+              <td>
+                <a [routerLink]="['/workspace-deletions', d.deletionId]">{{ d.workspaceName }}</a>
+              </td>
+              <td>{{ d.matterNumber ?? '' }}</td>
+              <td>
+                <opp-badge
+                  [tone]="statusLabels[d.status].tone"
+                  [icon]="statusLabels[d.status].icon"
+                >
+                  {{ statusLabels[d.status].label }}
+                </opp-badge>
+              </td>
+              <td>{{ profileLabels[d.retentionProfile] }}</td>
+              <td class="wdl__nowrap">
+                {{ date(d.requestedAt) }}
+                <span class="wdl__muted">by {{ d.requestedBy.displayName || 'unknown user' }}</span>
+              </td>
+              <td class="wdl__nowrap">{{ next(d) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <opp-empty-state
+      title="No deletion in progress"
+      message="Clear “Only requests in progress” to see finished, cancelled and expired deletions."
+    />
+  }
+}

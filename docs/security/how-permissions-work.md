@@ -48,7 +48,8 @@ within the 15-minute refresh, with no change in opportuniTY.
 
 | Level | Role | What it allows | How it is assigned today |
 |---|---|---|---|
-| Installation | **Installation Admin** | Create workspaces (`Installation.ManageWorkspaces`) and assign the Break-glass workspace role (`Installation.AssignBreakGlass`, together with `Workspace.ManageUsers`). Later: manage identity settings, approve deletion, legal holds. **Grants no document access by itself.** | Members of the IdP groups listed in the setting `Authorization:InstallationAdminGroups`. Empty means nobody (default deny). A screen to manage installation roles is still to come. |
+| Installation | **Installation Admin** | Create workspaces (`Installation.ManageWorkspaces`) and assign the Break-glass workspace role (`Installation.AssignBreakGlass`, together with `Workspace.ManageUsers`). Later: manage identity settings. **Grants no document access by itself.** | Members of the IdP groups listed in the setting `Authorization:InstallationAdminGroups`. Empty means nobody (default deny). A screen to manage installation roles is still to come. |
+| Installation | **Retention Approver** | Approve (or cancel) workspace deletion requests (`Installation.ApproveDeletion`, ADR-014 §3.2, Q-23): the second person of the two-person rule, never the requester; approving needs MFA. Sees every deletion's status and certificate. **Grants no document access.** | Members of the IdP groups listed in `Authorization:RetentionApproverGroups`. Empty means nobody (default deny). |
 | Workspace | One of the seven built-in roles (§2.3) | Everything inside one workspace | Role assignments per workspace, to users or groups |
 
 An Installation Admin who needs to read documents must also hold a workspace role, and is then subject to walls

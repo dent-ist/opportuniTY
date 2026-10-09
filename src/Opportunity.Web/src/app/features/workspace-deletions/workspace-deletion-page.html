@@ -1,0 +1,247 @@
+<p class="wdl__back">
+  <a routerLink="/workspace-deletions"><opp-icon name="chevron-left" />All workspace deletions</a>
+</p>
+
+@if (loading() && !deletion()) {
+  <opp-loading-state label="Loading the deletion…" />
+} @else if (loadError(); as error) {
+  <opp-error-state [error]="error" (retry)="load()" />
+} @else if (deletion(); as d) {
+  <div class="wdl__header">
+    <div class="wdl__heading-group">
+      <h1 class="wdl__title">Delete {{ d.workspaceName }}</h1>
+      <div class="wdl__status">
+        <opp-badge [tone]="statusLabels[d.status].tone" [icon]="statusLabels[d.status].icon">
+          {{ statusLabels[d.status].label }}
+        </opp-badge>
+        <span class="wdl__muted">{{ profileLabels[d.retentionProfile] }}</span>
+      </div>
+    </div>
+    @if (d.certificateAvailable) {
+      <a oppButton="primary" [href]="certificateUrl(d)" download>
+        <opp-icon name="download" />
+        Download destruction certificate
+      </a>
+    }
+  </div>
+
+  @if (d.status === 'halted') {
+    <div class="wdl__notice wdl__notice--warning" role="status">
+      <opp-icon name="lock" />
+      <div>
+        <p class="wdl__notice-title">Paused by a legal hold</p>
+        <p>
+          A legal hold was placed on the workspace while it was being deleted. Nothing more is
+          removed until every hold is released; then the deletion continues where it stopped. Steps
+          already done cannot be undone.
+        </p>
+      </div>
+    </div>
+  } @else if (d.status === 'completedWithResiduals') {
+    <div class="wdl__notice wdl__notice--danger" role="status">
+      <opp-icon name="warning" />
+      <div>
+        <p class="wdl__notice-title">Some data could not be removed</p>
+        <p>
+          The final check still found data of the workspace. The certificate lists what was found;
+          an installation operator must investigate.
+        </p>
+      </div>
+    </div>
+  } @else if (d.error && (d.status === 'running' || d.status === 'approved')) {
+    <div class="wdl__notice wdl__notice--warning" role="status">
+      <opp-icon name="warning" />
+      <div>
+        <p class="wdl__notice-title">Waiting</p>
+        <p>{{ d.error }}</p>
+      </div>
+    </div>
+  }
+
+  <section class="wdl__card" aria-labelledby="deletion-request">
+    <h2 id="deletion-request" class="wdl__card-title">Request</h2>
+    <dl class="wdl__facts">
+      <div>
+        <dt>Workspace</dt>
+        <dd>{{ d.workspaceName }}</dd>
+      </div>
+      @if (d.matterNumber) {
+        <div>
+          <dt>Matter number</dt>
+          <dd>{{ d.matterNumber }}</dd>
+        </div>
+      }
+      <div>
+        <dt>What is kept</dt>
+        <dd>
+          {{ profileLabels[d.retentionProfile] }}
+          <span class="wdl__muted">
+            {{
+              d.retentionProfile === 'retainRecords'
+                ? '(productions, the audit trail and the certificate)'
+                : '(only the audit trail and the certificate)'
+            }}
+          </span>
+        </dd>
+      </div>
+      <div>
+        <dt>Requested</dt>
+        <dd>{{ date(d.requestedAt) }} by {{ d.requestedBy.displayName || 'unknown user' }}</dd>
+      </div>
+      <div class="wdl__wide">
+        <dt>Reason</dt>
+        <dd class="wdl__text">{{ d.reason }}</dd>
+      </div>
+      @if (d.externalReference) {
+        <div>
+          <dt>Order or agreement reference</dt>
+          <dd>{{ d.externalReference }}</dd>
+        </div>
+      }
+      @if (d.approvedAt) {
+        <div>
+          <dt>Approved</dt>
+          <dd>{{ date(d.approvedAt) }} by {{ d.approvedBy?.displayName || 'unknown user' }}</dd>
+        </div>
+        @if (d.approvalNote) {
+          <div class="wdl__wide">
+            <dt>Approval note</dt>
+            <dd class="wdl__text">{{ d.approvalNote }}</dd>
+          </div>
+        }
+      }
+      @if (d.status === 'requested') {
+        <div>
+          <dt>Expires if not approved</dt>
+          <dd>{{ date(d.expiresAt, false) }}</dd>
+        </div>
+      }
+      @if (d.status === 'approved') {
+        <div>
+          <dt>Starts</dt>
+          <dd>{{ date(d.runNotBefore) }}</dd>
+        </div>
+      }
+      @if (d.startedAt) {
+        <div>
+          <dt>Started</dt>
+          <dd>{{ date(d.startedAt) }}</dd>
+        </div>
+      }
+      @if (d.finishedAt && d.status !== 'cancelled') {
+        <div>
+          <dt>Finished</dt>
+          <dd>{{ date(d.finishedAt) }}</dd>
+        </div>
+      }
+      @if (d.cancelledAt) {
+        <div>
+          <dt>Cancelled</dt>
+          <dd>{{ date(d.cancelledAt) }} by {{ d.cancelledBy?.displayName || 'unknown user' }}</dd>
+        </div>
+      }
+    </dl>
+
+    @if (d.canApprove || d.canCancel) {
+      @if (d.canApprove) {
+        <div class="wdl__textarea-field">
+          <label class="wdl__label" for="approval-note">Approval note</label>
+          <textarea
+            id="approval-note"
+            class="wdl__textarea"
+            rows="2"
+            aria-describedby="approval-note-hint"
+            [attr.maxlength]="maxNote"
+            [value]="note()"
+            [disabled]="acting()"
+            (input)="onNote($event)"
+          ></textarea>
+          <p id="approval-note-hint" class="wdl__hint">
+            Optional. Shown on the destruction certificate.
+          </p>
+        </div>
+      }
+      <div class="wdl__actions">
+        @if (d.canApprove) {
+          <button type="button" oppButton="danger" [busy]="acting()" (click)="approve(d)">
+            Approve deletion…
+          </button>
+        }
+        @if (d.canCancel) {
+          <button type="button" oppButton="secondary" [disabled]="acting()" (click)="cancel(d)">
+            Cancel request…
+          </button>
+        }
+      </div>
+    } @else if (d.status === 'requested') {
+      <p class="wdl__muted">
+        Waiting for a second person with the approval role. The person who requested a deletion
+        cannot approve it.
+      </p>
+    }
+
+    @if (failure(); as f) {
+      <div class="wdl__notice wdl__notice--danger" role="alert">
+        <opp-icon name="error" />
+        <div>
+          <p class="wdl__notice-title">{{ f.title }}</p>
+          <p>{{ f.detail }}</p>
+          @if (stepUpUrl() !== null) {
+            <button type="button" oppButton="secondary" (click)="stepUp()">
+              Verify your identity
+            </button>
+          }
+          @if (f.reference) {
+            <p class="wdl__fine">
+              Reference: <code>{{ f.reference }}</code>
+            </p>
+          }
+        </div>
+      </div>
+    }
+  </section>
+
+  @if (started()) {
+    <section class="wdl__card" aria-labelledby="deletion-progress">
+      <h2 id="deletion-progress" class="wdl__card-title">Progress</h2>
+      <ol class="wdl__steps">
+        @for (s of steps(); track s.step) {
+          <li class="wdl__step" [class]="'is-' + s.state">
+            <span class="wdl__step-marker" aria-hidden="true">
+              @switch (s.state) {
+                @case ('done') {
+                  <opp-icon name="check" />
+                }
+                @case ('halted') {
+                  <opp-icon name="lock" />
+                }
+                @default {
+                  {{ s.number }}
+                }
+              }
+            </span>
+            <span class="wdl__step-body">
+              <span class="wdl__step-label">{{ s.label }}</span>
+              <span class="wdl__muted">
+                @switch (s.state) {
+                  @case ('done') {
+                    Done. {{ s.summary }}
+                  }
+                  @case ('current') {
+                    In progress
+                  }
+                  @case ('halted') {
+                    Paused by a legal hold
+                  }
+                  @default {
+                    Not started
+                  }
+                }
+              </span>
+            </span>
+          </li>
+        }
+      </ol>
+    </section>
+  }
+}

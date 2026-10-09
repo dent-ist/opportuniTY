@@ -10,6 +10,7 @@ recorder copies every dead-lettered or parked message into PostgreSQL (`jobs dlq
 | [Re-dispatch stuck work](re-dispatch-stuck-work.md) | work sits in Pending/Dispatched/Running without progress; outbox or index backlog grows |
 | [Replay failed work](replay-failed-work.md) | chunks, index tasks or SearchOutbox rows are `Failed`; a job ended *completed with errors*; DLQ depth > 0 |
 | [Alias reindex](alias-reindex.md) | the search projection must be rebuilt into a new index generation (mapping change, corruption) |
+| [Workspace deletion](workspace-deletion.md) | requesting, approving and following a workspace deletion; a run that waits, halts or ends with residuals; the destruction certificate |
 | [Deletion verification](deletion-verification.md) | proving that a workspace's data is gone from PostgreSQL, OpenSearch and object storage |
 | [Alert runbooks](alerts.md) | a Prometheus alert fired (one section per alert) |
 | [Metrics, dashboards and alerts](metrics.md) | finding the metric, dashboard panel or alert threshold for a pipeline signal |
