@@ -19,6 +19,18 @@ public sealed class RabbitMqOptions
     /// <summary>AMQP URI incl. credentials and virtual host. Each component uses its own user (ADR-015 D9.5).</summary>
     public string? ConnectionString { get; set; }
 
+    /// <summary>
+    /// Broker credentials per queue area (E05-T07, ADR-015 D9.5/D9.6), e.g. <c>AreaConnectionStrings:render</c>: a worker
+    /// consumes the area's queues and publishes its retries and dead-letters with that user, whose permissions
+    /// (<see cref="RabbitMqPermissions.ForArea"/>) cover only them. Areas without an entry use <see cref="ConnectionString"/>,
+    /// which also publishes new work (the dispatcher's user). A combined worker holding several areas thus keeps each
+    /// area's traffic on its own least-privilege connection.
+    /// </summary>
+    public Dictionary<string, string> AreaConnectionStrings { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Optional HMAC envelope signing (E05-T07), <c>Messaging:RabbitMq:Signing</c>.</summary>
+    public MessageSigningOptions Signing { get; } = new();
+
     /// <summary>Shown in the management UI as the connection name (suffixed with the connection's purpose).</summary>
     public string ClientName { get; set; } = "opportunity";
 
@@ -59,6 +71,14 @@ public sealed class RabbitMqOptions
     /// <summary>How often queue depths and consumer counts are sampled for metrics.</summary>
     public TimeSpan QueueMetricsInterval { get; set; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>The credential key of <paramref name="area"/>: the area when it has its own user, else null (the default).</summary>
+    public string? CredentialFor(string? area) =>
+        area is not null && AreaConnectionStrings.TryGetValue(area, out var uri) && !string.IsNullOrWhiteSpace(uri) ? area : null;
+
+    /// <summary>The AMQP URI of a credential key (<see cref="CredentialFor"/>).</summary>
+    public string ConnectionStringFor(string? credential) =>
+        credential is null ? ConnectionString! : AreaConnectionStrings[credential];
+
     public ushort PrefetchFor(WorkQueue queue)
     {
         ArgumentNullException.ThrowIfNull(queue);
@@ -90,12 +110,21 @@ public sealed class RabbitMqOptions
 
     public void Validate()
     {
-        if (string.IsNullOrWhiteSpace(ConnectionString) || !Uri.TryCreate(ConnectionString, UriKind.Absolute, out var uri)
-            || (uri.Scheme != "amqp" && uri.Scheme != "amqps"))
+        if (!IsAmqpUri(ConnectionString))
         {
             throw new InvalidOperationException(
                 $"ConnectionStrings:{ConnectionStringName} must be an amqp:// or amqps:// URI.");
         }
+
+        foreach (var (area, uri) in AreaConnectionStrings)
+        {
+            if (!string.IsNullOrWhiteSpace(uri) && !IsAmqpUri(uri))
+            {
+                throw new InvalidOperationException($"{SectionName}:AreaConnectionStrings:{area} must be an amqp:// or amqps:// URI.");
+            }
+        }
+
+        Signing.Validate();
 
         if (MaxTransportRetries < 0 || RetryBaseDelay <= TimeSpan.Zero || MaxRetryDelay < RetryBaseDelay
             || DeliveryLimit < 1 || PublishTimeout <= TimeSpan.Zero)
@@ -103,4 +132,7 @@ public sealed class RabbitMqOptions
             throw new InvalidOperationException($"{SectionName} has invalid retry, delivery-limit or timeout settings.");
         }
     }
+
+    private static bool IsAmqpUri(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == "amqp" || uri.Scheme == "amqps");
 }

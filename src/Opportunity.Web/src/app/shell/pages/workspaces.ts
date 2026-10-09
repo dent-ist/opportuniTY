@@ -51,6 +51,9 @@ export class WorkspacesPage {
   protected readonly canCreate = computed(() =>
     this.session.hasInstallationPermission(INSTALLATION_PERMISSIONS.manageWorkspaces),
   );
+  protected readonly canApproveDeletions = computed(() =>
+    this.session.hasInstallationPermission(INSTALLATION_PERMISSIONS.approveDeletion),
+  );
 
   protected readonly query = signal('');
   protected readonly items = signal<readonly WorkspaceSummary[]>([]);

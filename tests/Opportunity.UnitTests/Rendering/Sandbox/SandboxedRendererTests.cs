@@ -97,6 +97,21 @@ public sealed class SandboxedRendererTests : IDisposable
                 Directory.EnumerateFiles(output).Should().BeEmpty("the worker removes the endorsed file once read");
             }
 
+            // E12-T06: the burn-in of the redacted page is verified in the same process, with the same verdict as in process;
+            // the same page without its burn fails there too.
+            var redacted = requests[3];
+            var burned = Path.Combine(work, "burned.tif");
+            await File.WriteAllBytesAsync(burned, (await session.EndorseAsync(redacted, Ct)).Content, Ct);
+            var plain = Path.Combine(work, "plain.tif");
+            await File.WriteAllBytesAsync(plain, (await session.EndorseAsync(redacted with { Redactions = null }, Ct)).Content, Ct);
+            var check = new Opportunity.Rendering.Endorsing.BurnInRequest(burned, redacted.Format, tiff, 0, 0, redacted.Redactions!);
+            var verdict = await session.VerifyAsync(check, Ct);
+            verdict.Should().BeEquivalentTo(Opportunity.Rendering.Endorsing.BurnInVerifier.Verify(check));
+            verdict.Should().BeEquivalentTo(new { BoxesChecked = 2, Issues = Array.Empty<Opportunity.Rendering.Endorsing.BurnInIssue>() });
+            (await session.VerifyAsync(check with { ProducedPath = plain }, Ct)).Issues.Should().Contain(i => i.Code == "BoxNotOpaque" && i.Box == 1);
+            var escape = async () => await session.VerifyAsync(check with { SourcePath = "/etc/passwd" }, Ct);
+            await escape.Should().ThrowAsync<ArgumentException>("only files of the session's work directory are verified");
+
             var garbage = Path.Combine(work, "garbage");
             await File.WriteAllBytesAsync(garbage, [1, 2, 3, 4, 5], Ct);
             var failed = async () => await session.EndorseAsync(requests[0] with { InputPath = garbage, Frame = 0 }, Ct);

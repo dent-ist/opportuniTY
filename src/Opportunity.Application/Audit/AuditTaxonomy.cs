@@ -289,7 +289,29 @@ public static class AuditTaxonomy
         /// <summary>A delete or purge was refused because the workspace is under a preservation lock (423).</summary>
         public const string DeletionBlocked = "DeletionBlocked";
 
+        /// <summary>A deletion was requested (E20-T02, ADR-014 §3); resource = the deletion id.</summary>
+        public const string DeletionRequested = "DeletionRequested";
+
+        /// <summary>A second person approved the deletion; the run may start after the waiting period.</summary>
+        public const string DeletionApproved = "DeletionApproved";
+
+        /// <summary>The request was withdrawn before its run started, or expired unapproved (reason code <c>Expired</c>).</summary>
+        public const string DeletionCancelled = "DeletionCancelled";
+
+        /// <summary>The run fenced the workspace (status Deleting), or resumed after a halt (detail <c>resumed</c>).</summary>
+        public const string DeletionStarted = "DeletionStarted";
+
+        public const string DeletionStepCompleted = "DeletionStepCompleted";
+
+        /// <summary>A legal hold placed during the run stopped it before its next destructive step.</summary>
+        public const string DeletionHalted = "DeletionHalted";
+
+        /// <summary>The run finished and certified the destruction; carries the certificate id and SHA-256.</summary>
+        public const string Deleted = "Deleted";
+
         public const string PreservationLockResourceType = "PreservationLock";
+
+        public const string DeletionResourceType = "WorkspaceDeletion";
     }
 
     /// <summary>
@@ -327,8 +349,18 @@ public static class AuditTaxonomy
         /// <summary>A worker rejected a message whose envelope disagrees with PostgreSQL (ADR-013 §5, ADR-015 D9.3).</summary>
         public const string EnvelopeMismatch = "EnvelopeMismatch";
 
+        /// <summary>
+        /// A message was refused and dead-lettered (E05-T07, ADR-015 D9.3/D9.5): its envelope disagrees with PostgreSQL
+        /// (reason <c>EnvelopeMismatch</c>), or its HMAC signature is missing, invalid or under an unknown key. Replaces
+        /// <see cref="EnvelopeMismatch"/> for new events.
+        /// </summary>
+        public const string MessageRejected = "MessageRejected";
+
         /// <summary>A Bates allocation overlapped another production's range or failed its integrity check (E12-T03).</summary>
         public const string BatesConflict = "BatesConflict";
+
+        /// <summary><c>audit verify</c> found a modified, missing or reordered event or a bad checkpoint (E14-T03).</summary>
+        public const string ChainBroken = "ChainBroken";
     }
 
     /// <summary>Key management (E05-T09): data keys and KEKs created, rotated or rewrapped, and destroyed. Key ids only.</summary>
@@ -349,6 +381,12 @@ public static class AuditTaxonomy
         public const string Category = "Audit";
         public const string Queried = "Queried";
         public const string Purged = "Purged";
+
+        /// <summary>A signed hash-chain checkpoint taken on request (manual, before a purge or deletion run; E14-T03).</summary>
+        public const string CheckpointCreated = "CheckpointCreated";
+
+        /// <summary><c>audit verify</c> checked the chain (Outcome Failure when it found tampering; E14-T03).</summary>
+        public const string Verified = "Verified";
     }
 
     /// <summary>Every allowed (Category, Action) pair.</summary>
@@ -382,7 +420,8 @@ public static class AuditTaxonomy
             "SecretRotated"),
         .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged"),
         .. Expand("Job", "Created", "Cancelled", "Failed", "CompletedWithErrors", "Replayed"),
-        .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict"),
+        .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict",
+            "MessageRejected"),
     ];
 
     /// <summary>The category that may carry <see cref="AuditEvent.RestrictedDetails"/> (Q-16 search text).</summary>

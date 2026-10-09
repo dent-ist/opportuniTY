@@ -1,15 +1,17 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-
+using Npgsql;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Messaging;
+using Opportunity.Application.Workspaces.Deletion;
 using Opportunity.Contracts.Messaging.Indexing;
 using Opportunity.Data.Audit;
 using Opportunity.Data.Jobs;
 using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
 using Opportunity.Data.Workspaces;
+using Opportunity.Jobs.Lifecycle;
 using Opportunity.Messaging;
 using Opportunity.Search;
 using Opportunity.Search.Projection;
@@ -26,7 +28,8 @@ namespace Opportunity.Hosting.Workers;
 /// worker host registers from the <c>ObjectStorage</c> section (this assembly never reaches storage, ADR-015 D12.1);
 /// without either the module registers nothing beyond its placeholder. The interactive half (E07-T03) registers its
 /// own consumer next to this one and shares the projection writer. The reindex coordinator (E07-T11) runs here too: it
-/// drives reindex jobs (target, backfill tasks for this worker, validation, alias switch, retention).
+/// drives reindex jobs (target, backfill tasks for this worker, validation, alias switch, retention). So does the workspace
+/// deletion coordinator (E20-T02), which needs PostgreSQL, OpenSearch, object storage and the key provider.
 /// </summary>
 public static class ChunkIndexWorkerModule
 {
@@ -60,6 +63,20 @@ public static class ChunkIndexWorkerModule
         services.AddPostgresSearchWatermarkStore();
         services.AddPostgresPreservationLocks();
         services.AddReindexCoordinator(configuration);
+
+        // Defensible workspace deletion (E20-T02): this host reaches every store a deletion purges.
+        var deletion = new WorkspaceDeletionOptions();
+        configuration.GetSection(WorkspaceDeletionOptions.SectionName).Bind(deletion);
+        services.AddPostgresWorkspaceDeletions();
+        services.AddWorkspaceDeletionCoordinator(deletion);
+
+        // Before a purge the workspace's audit chain gets a signed checkpoint (E14-T03, ADR-013 §3.4), with the sealer
+        // login (ConnectionStrings:AuditSealer). Without it the dispatcher's 10-minute checkpoints are the evidence.
+        if (configuration.GetConnectionString(AuditChainDataSource.ConnectionStringName) is { Length: > 0 } sealer)
+        {
+            services.AddAuditChain(_ => NpgsqlDataSource.Create(sealer));
+            services.TryAddSingleton<IBeforeWorkspaceDeletion, AuditCheckpointBeforeDeletion>();
+        }
 
         if (!string.IsNullOrWhiteSpace(configuration.GetConnectionString(RabbitMqOptions.ConnectionStringName)))
         {

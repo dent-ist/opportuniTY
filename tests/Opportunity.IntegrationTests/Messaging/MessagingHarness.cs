@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Opportunity.Application.Audit;
 using Opportunity.Application.Messaging;
 using Opportunity.Application.Telemetry;
 using Opportunity.Contracts.Messaging;
@@ -20,14 +21,15 @@ internal sealed class MessagingHarness : IAsyncDisposable
 
     private readonly List<IAsyncDisposable> _owned = [];
 
-    private MessagingHarness(RabbitMqOptions options, IConnection admin)
+    private MessagingHarness(RabbitMqOptions options, IConnection admin, EnvelopeSigner? signer, IAuditEventWriter? audit)
     {
         Options = options;
         Admin = admin;
         Connections = new RabbitMqConnections(options, NullLogger<RabbitMqConnections>.Instance);
         Serializer = new MessageSerializer(MessageContracts.CreateRegistry());
-        Publisher = new RabbitMqMessagePublisher(Connections, options, Serializer, TimeProvider.System);
-        Consumer = new RabbitMqMessageConsumer(Connections, options, Serializer, TimeProvider.System, NullLogger<RabbitMqMessageConsumer>.Instance);
+        Publisher = new RabbitMqMessagePublisher(Connections, options, Serializer, TimeProvider.System, signer);
+        Consumer = new RabbitMqMessageConsumer(
+            Connections, options, Serializer, TimeProvider.System, NullLogger<RabbitMqMessageConsumer>.Instance, signer, audit);
     }
 
     public RabbitMqOptions Options { get; }
@@ -56,8 +58,11 @@ internal sealed class MessagingHarness : IAsyncDisposable
 
     /// <param name="uri">Where the transport connects (possibly a fault proxy or a restricted user).</param>
     /// <param name="adminUri">Direct full-permission URI used to declare the topology and inspect queues.</param>
+    /// <param name="signer">E05-T07 envelope signing for publisher and consumer (null: off).</param>
+    /// <param name="audit">Receives the consumer's signature rejections.</param>
     public static async Task<MessagingHarness> StartAsync(
-        Uri uri, Uri adminUri, Action<RabbitMqOptions>? configure = null, IReadOnlyList<WorkQueue>? queues = null)
+        Uri uri, Uri adminUri, Action<RabbitMqOptions>? configure = null, IReadOnlyList<WorkQueue>? queues = null,
+        EnvelopeSigner? signer = null, IAuditEventWriter? audit = null)
     {
         var options = FastOptions(uri);
         configure?.Invoke(options);
@@ -72,7 +77,7 @@ internal sealed class MessagingHarness : IAsyncDisposable
         }
 
         var admin = await new ConnectionFactory { Uri = adminUri, AutomaticRecoveryEnabled = false }.CreateConnectionAsync(Ct);
-        return new MessagingHarness(options, admin);
+        return new MessagingHarness(options, admin, signer, audit);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

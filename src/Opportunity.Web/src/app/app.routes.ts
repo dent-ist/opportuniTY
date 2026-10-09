@@ -226,6 +226,23 @@ export function appRoutes(workspace: Route = workspaceRoute()): Routes {
           loadComponent: () => import('./shell/pages/workspaces').then((m) => m.WorkspacesPage),
         },
         {
+          // Workspace deletions (E20-T02): installation level, so they outlive the deleted workspace.
+          path: 'workspace-deletions',
+          title: 'Workspace deletions',
+          loadComponent: () =>
+            import('./features/workspace-deletions/workspace-deletions-page').then(
+              (m) => m.WorkspaceDeletionsPage,
+            ),
+        },
+        {
+          path: 'workspace-deletions/:deletionId',
+          title: 'Workspace deletion',
+          loadComponent: () =>
+            import('./features/workspace-deletions/workspace-deletion-page').then(
+              (m) => m.WorkspaceDeletionPage,
+            ),
+        },
+        {
           path: 'about',
           title: 'About',
           loadComponent: () => import('./shell/pages/about').then((m) => m.AboutPage),

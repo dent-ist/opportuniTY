@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 
@@ -6,6 +7,7 @@ using Microsoft.Extensions.Logging;
 #if OPPORTUNITY_FAILPOINTS
 using Opportunity.Application.Faults;
 #endif
+using Opportunity.Application.Audit;
 using Opportunity.Application.Messaging;
 using Opportunity.Application.Telemetry;
 using Opportunity.Contracts.Messaging;
@@ -21,6 +23,12 @@ namespace Opportunity.Messaging;
 /// documented on the port. Retries, dead-letters and parking are confirmed publishes made before the original
 /// delivery is acked, so a crash in between yields a duplicate, never a loss; if such a publish fails the delivery is
 /// requeued and the queue's <c>x-delivery-limit</c> bounds the loop. Consumers declare nothing.
+/// <para>
+/// E05-T07: each queue is consumed, and its retries and dead-letters published, with its area's own broker user when
+/// one is configured (<see cref="RabbitMqOptions.AreaConnectionStrings"/>). With envelope signing on, a delivery whose
+/// HMAC is missing, invalid or under an unknown key never reaches the handler: it is audited as
+/// <c>Integrity.MessageRejected</c> and dead-lettered.
+/// </para>
 /// </summary>
 public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDisposable, IDisposable
 {
@@ -29,23 +37,32 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
     private readonly MessageSerializer _serializer;
     private readonly TimeProvider _time;
     private readonly ILogger<RabbitMqMessageConsumer> _logger;
-    private readonly ConfirmedChannel _republish;
+    private readonly ConcurrentDictionary<string, ConfirmedChannel> _republish = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<TimeSpan> _retryDelays;
+    private readonly EnvelopeSigner _signer;
+    private readonly IAuditEventWriter? _audit;
 
+    /// <param name="signer">Verifies envelope signatures; required when <see cref="MessageSigningOptions.Enabled"/>.</param>
+    /// <param name="audit">Records signature rejections (<c>Integrity.MessageRejected</c>); without it they are only logged.</param>
     public RabbitMqMessageConsumer(
         RabbitMqConnections connections,
         RabbitMqOptions options,
         MessageSerializer serializer,
         TimeProvider time,
-        ILogger<RabbitMqMessageConsumer> logger)
+        ILogger<RabbitMqMessageConsumer> logger,
+        EnvelopeSigner? signer = null,
+        IAuditEventWriter? audit = null)
     {
         _connections = connections ?? throw new ArgumentNullException(nameof(connections));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _republish = new ConfirmedChannel(connections, options);
         _retryDelays = options.RetryDelays();
+        _signer = signer ?? (options.Signing.Enabled
+            ? throw new ArgumentException("Envelope signing is enabled; pass the EnvelopeSigner.", nameof(signer))
+            : EnvelopeSigner.Disabled);
+        _audit = audit;
     }
 
     public async Task<IAsyncDisposable> SubscribeAsync(
@@ -55,7 +72,8 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
         ArgumentNullException.ThrowIfNull(handler);
 
         var prefetch = _options.PrefetchFor(queue);
-        var connection = await _connections.GetAsync(ConnectionPurpose.Consume, cancellationToken).ConfigureAwait(false);
+        var connection = await _connections.GetAsync(ConnectionPurpose.Consume, _options.CredentialFor(queue.Area), cancellationToken)
+            .ConfigureAwait(false);
         var channel = await connection.CreateChannelAsync(
             new CreateChannelOptions(
                 publisherConfirmationsEnabled: false,
@@ -79,7 +97,15 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
         return subscription;
     }
 
-    public ValueTask DisposeAsync() => _republish.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var channel in _republish.Values)
+        {
+            await channel.DisposeAsync().ConfigureAwait(false);
+        }
+
+        _republish.Clear();
+    }
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
@@ -90,6 +116,11 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
         var headers = delivery.BasicProperties.Headers;
         var transportRetry = TransportHeaders.ReadInt(headers, TransportHeaders.TransportRetry);
         var deliveryCount = TransportHeaders.ReadInt(headers, TransportHeaders.DeliveryCount);
+
+        if (_signer.Enabled && !await VerifySignatureAsync(subscription, delivery, transportRetry, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
 
         var read = _serializer.Read(delivery.Body);
         switch (read.Status)
@@ -148,26 +179,113 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
 #pragma warning restore CA1031
         {
             MarkFailed(activity, ex);
-            if (transportRetry < _retryDelays.Count)
-            {
-                var delay = _retryDelays[transportRetry];
-                LogRetrying(_logger, queue.Name, envelope.MessageType, transportRetry + 1, delay, ex);
-                var target = new Target(
-                    RabbitMqTopology.RetryExchange(queue.Area), RabbitMqTopology.RetryTier(delay));
-                await FailAsync(subscription, delivery, target, reason: null, ex.GetType().FullName, ex.Message, transportRetry + 1)
-                    .ConfigureAwait(false);
-            }
-            else
-            {
-                LogRetriesExhausted(_logger, queue.Name, envelope.MessageType, transportRetry, ex);
-                await FailAsync(subscription, delivery, DeadLetter(queue), FailureReasons.RetriesExhausted, ex.GetType().FullName, ex.Message, transportRetry)
-                    .ConfigureAwait(false);
-            }
-
+            await RetryOrDeadLetterAsync(subscription, delivery, envelope.MessageType, ex, transportRetry).ConfigureAwait(false);
             return;
         }
 
         await subscription.SettleAsync(delivery, ack: true, requeue: false).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// E05-T07: true when the delivery's envelope signature is valid. Otherwise the rejection is audited and the delivery
+    /// dead-lettered (false); if the audit cannot be written the delivery takes the transport retry path, so the evidence
+    /// is never dropped.
+    /// </summary>
+    private async Task<bool> VerifySignatureAsync(
+        Subscription subscription, BasicDeliverEventArgs delivery, int transportRetry, CancellationToken cancellationToken)
+    {
+        var queue = subscription.Queue;
+        SignatureCheck check;
+        try
+        {
+            check = await _signer.VerifyAsync(queue.Name, delivery.Body, delivery.BasicProperties.Headers, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+#pragma warning disable CA1031 // A key that cannot be loaded is a configuration error: retry, then dead-letter.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            await RetryOrDeadLetterAsync(subscription, delivery, "signature", ex, transportRetry).ConfigureAwait(false);
+            return false;
+        }
+
+        if (check == SignatureCheck.Valid)
+        {
+            return true;
+        }
+
+        var (reason, failure) = check switch
+        {
+            SignatureCheck.Missing => (MessageRejectionReasons.SignatureMissing, FailureReasons.SignatureMissing),
+            SignatureCheck.UnknownKey => (MessageRejectionReasons.SignatureKeyUnknown, FailureReasons.SignatureKeyUnknown),
+            _ => (MessageRejectionReasons.SignatureInvalid, FailureReasons.SignatureInvalid),
+        };
+
+        // The claims are read for the audit details only; nothing in an unauthenticated envelope is acted on.
+        var claimed = _serializer.Read(delivery.Body).Envelope;
+        LogSignatureRejected(_logger, queue.Name, reason, claimed?.MessageType);
+        if (_audit is not null)
+        {
+            try
+            {
+                await _audit.WriteAsync(
+                    MessageRejection.AuditEvent(
+                        claimed,
+                        queue,
+                        reason,
+                        _options.ClientName,
+                        "Message",
+                        claimed?.MessageId.ToString() ?? delivery.BasicProperties.MessageId,
+                        _time.GetUtcNow(),
+                        new Dictionary<string, string?>(StringComparer.Ordinal)
+                        {
+                            ["keyId"] = TransportHeaders.ReadString(delivery.BasicProperties.Headers, TransportHeaders.SignatureKeyId),
+                        }),
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // Retried through the transport: the rejection must be recorded before the message goes.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                await RetryOrDeadLetterAsync(subscription, delivery, claimed?.MessageType ?? "unknown", ex, transportRetry).ConfigureAwait(false);
+                return false;
+            }
+        }
+        else
+        {
+            LogRejectionNotAudited(_logger, queue.Name, reason);
+        }
+
+        await FailAsync(subscription, delivery, DeadLetter(queue), failure, "Signature", reason, transportRetry).ConfigureAwait(false);
+        return false;
+    }
+
+    private async Task RetryOrDeadLetterAsync(
+        Subscription subscription, BasicDeliverEventArgs delivery, string messageType, Exception ex, int transportRetry)
+    {
+        var queue = subscription.Queue;
+        if (transportRetry < _retryDelays.Count)
+        {
+            var delay = _retryDelays[transportRetry];
+            LogRetrying(_logger, queue.Name, messageType, transportRetry + 1, delay, ex);
+            var target = new Target(RabbitMqTopology.RetryExchange(queue.Area), RabbitMqTopology.RetryTier(delay));
+            await FailAsync(subscription, delivery, target, reason: null, ex.GetType().FullName, ex.Message, transportRetry + 1).ConfigureAwait(false);
+        }
+        else
+        {
+            LogRetriesExhausted(_logger, queue.Name, messageType, transportRetry, ex);
+            await FailAsync(subscription, delivery, DeadLetter(queue), FailureReasons.RetriesExhausted, ex.GetType().FullName, ex.Message, transportRetry)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private ConfirmedChannel Republish(WorkQueue queue)
+    {
+        var credential = _options.CredentialFor(queue.Area);
+        return _republish.GetOrAdd(credential ?? string.Empty, _ => new ConfirmedChannel(_connections, _options, credential));
     }
 
     /// <summary>Re-publishes the delivery unchanged (plus failure headers) to <paramref name="target"/>, then acks it.</summary>
@@ -208,7 +326,7 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
         try
         {
             // Not the delivery's token: once handling is over, a shutdown must not abandon a half-done hand-off.
-            await _republish.PublishAsync(target.Exchange, target.RoutingKey, properties, delivery.Body, CancellationToken.None)
+            await Republish(subscription.Queue).PublishAsync(target.Exchange, target.RoutingKey, properties, delivery.Body, CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch (MessagePublishException ex)
@@ -371,6 +489,12 @@ public sealed partial class RabbitMqMessageConsumer : IMessageConsumer, IAsyncDi
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Rejecting a message from {Queue}: {Reason} ({MessageType}); dead-lettering")]
+    private static partial void LogSignatureRejected(ILogger logger, string queue, string reason, string? messageType);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No audit writer in this process: the {Reason} rejection on {Queue} is not audited")]
+    private static partial void LogRejectionNotAudited(ILogger logger, string queue, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Consuming {Queue} with prefetch {Prefetch}")]
     private static partial void LogSubscribed(ILogger logger, string queue, ushort prefetch);

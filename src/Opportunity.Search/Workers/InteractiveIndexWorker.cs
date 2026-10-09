@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 #if OPPORTUNITY_FAILPOINTS
 using Opportunity.Application.Faults;
 #endif
+using Opportunity.Application.Audit;
 using Opportunity.Application.Messaging;
 using Opportunity.Application.SearchWork;
 using Opportunity.Application.Telemetry;
@@ -43,8 +44,10 @@ public sealed class InteractiveIndexWorkerOptions
 /// (L0) and interactive (L1) lanes — each lane is its own queue with its own consumers, so security work never waits
 /// behind coding — and makes the index reflect the document's <em>current</em> PostgreSQL state:
 /// <list type="number">
-/// <item>The PostgreSQL row is the authority (the envelope's workspace is a hint, ADR-015 D9): an unknown row is acked
-/// and dropped, an Applied row is a duplicate (acked, nothing written).</item>
+/// <item>The PostgreSQL row is the authority (the envelope's workspace is a hint, ADR-015 D9): a row invisible under RLS
+/// with the hinted workspace, or one of another document, is rejected (E05-T07: <c>Integrity.MessageRejected</c> audit
+/// event, dead-lettered, nothing written) unless the hinted workspace is being closed or deleted (fenced, dropped); an
+/// Applied row is a duplicate (acked, nothing written).</item>
 /// <item>A workspace that is not Active is fenced (ADR-001 §4 R5): the work is dropped.</item>
 /// <item>Current state and DocumentVersion are read in one snapshot (<see cref="IProjectionService"/>) and written with
 /// external versioning through the shared <see cref="IProjectionIndexWriter"/>; a missing row becomes an unconditional
@@ -67,12 +70,16 @@ public sealed partial class InteractiveIndexWorker(
     InteractiveIndexWorkerOptions options,
     TimeProvider time,
     ILogger<InteractiveIndexWorker> logger,
+    IAuditEventWriter audit,
     OpportunityMetrics? metrics = null
 #if OPPORTUNITY_FAILPOINTS
     , IFaultInjector? faults = null
 #endif
     ) : IMessageHandler<SearchOutboxMessage>
 {
+    private static readonly string WorkerId = string.Create(
+        System.Globalization.CultureInfo.InvariantCulture, $"{Environment.MachineName}:{Environment.ProcessId}");
+
     private readonly Counter<long>? _staleRejections = metrics?.Counter(OpportunityMetricCatalog.SearchStaleVersionRejections);
 
     public async Task HandleAsync(SearchOutboxMessage payload, ReceivedMessage message, CancellationToken cancellationToken)
@@ -85,13 +92,20 @@ public sealed partial class InteractiveIndexWorker(
         var row = await outbox.GetAsync(workspaceId, payload.OutboxId, cancellationToken).ConfigureAwait(false);
         if (row is null)
         {
+            if (await workspaces.GetAsync(workspaceId, cancellationToken).ConfigureAwait(false) is { Status: not WorkspaceStatus.Active })
+            {
+                // Work of a workspace being closed or deleted: fenced like below, not a forgery.
+                LogFenced(logger, payload.OutboxId, workspaceId);
+                return;
+            }
+
             LogUnknownRow(logger, payload.OutboxId, workspaceId);
-            return;
+            throw await RejectAsync(payload, message, "workspaceId", "No such SearchOutbox row in the hinted workspace.").ConfigureAwait(false);
         }
 
         if (row.DocumentId != payload.DocumentId)
         {
-            throw new PermanentMessageException($"SearchOutbox row {payload.OutboxId} does not belong to the message's document.");
+            throw await RejectAsync(payload, message, "documentId", "The SearchOutbox row belongs to another document.").ConfigureAwait(false);
         }
 
         if (row.Status == SearchOutboxStatus.Applied)
@@ -158,6 +172,23 @@ public sealed partial class InteractiveIndexWorker(
         }
     }
 
+    /// <summary>ADR-015 D9.3: installation-level audit event; the returned exception dead-letters the message.</summary>
+    private async Task<PermanentMessageException> RejectAsync(SearchOutboxMessage payload, ReceivedMessage message, string field, string detail)
+    {
+        await audit.WriteAsync(
+            MessageRejection.AuditEvent(
+                message.Envelope,
+                message.Queue,
+                MessageRejectionReasons.EnvelopeMismatch,
+                WorkerId,
+                "SearchOutbox",
+                payload.OutboxId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                time.GetUtcNow(),
+                new Dictionary<string, string?>(StringComparer.Ordinal) { ["mismatch"] = field, ["claimedDocumentId"] = payload.DocumentId.ToString() }),
+            CancellationToken.None).ConfigureAwait(false);
+        return new PermanentMessageException($"{MessageRejectionReasons.EnvelopeMismatch} ({field}): {detail}");
+    }
+
 #if OPPORTUNITY_FAILPOINTS
     private ValueTask HitAsync(string failpoint, ReceivedMessage message, Guid workspaceId, long outboxId, int sequence, CancellationToken cancellationToken) =>
         faults?.HitAsync(failpoint, new FailpointContext(message, null)
@@ -168,7 +199,7 @@ public sealed partial class InteractiveIndexWorker(
         }, cancellationToken) ?? ValueTask.CompletedTask;
 #endif
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "SearchOutbox row {OutboxId} of workspace {WorkspaceId} does not exist; message dropped")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "SearchOutbox row {OutboxId} does not exist in workspace {WorkspaceId}; rejecting the message")]
     private static partial void LogUnknownRow(ILogger logger, long outboxId, Guid workspaceId);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "SearchOutbox row {OutboxId} of workspace {WorkspaceId} is already applied; duplicate dropped")]

@@ -11,8 +11,9 @@ using Opportunity.Application.Authorization;
 namespace Opportunity.Security.Authorization;
 
 /// <summary>
-/// Installation-level permissions of the Installation Admin role (ADR-015 D5.7). They grant no document access: an
-/// installation admin who needs content must hold a workspace role. Only the ones with an endpoint are listed.
+/// Installation-level permissions (ADR-015 D5.7) of the Installation Admin role and of the Retention Approver role
+/// (ADR-014 §3.2, Q-23). They grant no document access: an installation admin who needs content must hold a workspace
+/// role. Only the ones with an endpoint are listed.
 /// </summary>
 public static class InstallationPermissions
 {
@@ -21,6 +22,12 @@ public static class InstallationPermissions
 
     /// <summary>Assign the Break-glass workspace role (ADR-015 D6.4; E05-T08), together with <c>Workspace.ManageUsers</c>.</summary>
     public const string AssignBreakGlass = "Installation.AssignBreakGlass";
+
+    /// <summary>
+    /// Approve (and cancel) workspace deletion requests (E20-T02). Held by the Retention Approver role, not by Installation
+    /// Admin: ADR-014 §3.2 makes the approver a designated installation role outside every workspace role.
+    /// </summary>
+    public const string ApproveDeletion = "Installation.ApproveDeletion";
 
     /// <summary>All installation permissions of the Installation Admin role.</summary>
     public static IReadOnlyList<string> All { get; } = [ManageWorkspaces, AssignBreakGlass];
@@ -35,21 +42,38 @@ public static class InstallationPermissions
                 .Any(g => g.Value.Length > 0 && options.InstallationAdminGroups.Contains(g.Value, StringComparer.Ordinal));
     }
 
+    /// <summary>True when <paramref name="user"/> holds the Retention Approver role (a member of one of its configured groups).</summary>
+    public static bool IsRetentionApprover(ClaimsPrincipal user, InstallationAuthorizationOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(options);
+        return user.Identity?.IsAuthenticated == true
+            && user.FindAll(Authentication.OpportunityClaimTypes.Group)
+                .Any(g => g.Value.Length > 0 && options.RetentionApproverGroups.Contains(g.Value, StringComparer.Ordinal));
+    }
+
+    /// <summary>True when <paramref name="user"/> holds <paramref name="permission"/>.</summary>
+    public static bool Holds(ClaimsPrincipal user, string permission, InstallationAuthorizationOptions options) =>
+        permission == ApproveDeletion ? IsRetentionApprover(user, options) : All.Contains(permission) && IsInstallationAdmin(user, options);
+
     /// <summary>The installation permissions <paramref name="user"/> holds, for display (<c>GET /api/v1/me</c>).</summary>
     public static IReadOnlyList<string> Granted(ClaimsPrincipal user, InstallationAuthorizationOptions options) =>
-        IsInstallationAdmin(user, options) ? All : [];
+        [.. IsInstallationAdmin(user, options) ? All : [], .. IsRetentionApprover(user, options) ? [ApproveDeletion] : Array.Empty<string>()];
 }
 
 /// <summary>
 /// Configuration section <c>Authorization</c>. Until installation role assignments get their own store and API, the
-/// Installation Admin role is held by members of these IdP groups (ADR-015 D3.4: groups come from the IdP snapshot of
-/// the session). Empty means nobody holds it (default deny).
+/// Installation Admin and Retention Approver roles are held by members of these IdP groups (ADR-015 D3.4: groups come
+/// from the IdP snapshot of the session). Empty means nobody holds the role (default deny).
 /// </summary>
 public sealed class InstallationAuthorizationOptions
 {
     public const string SectionName = "Authorization";
 
     public IList<string> InstallationAdminGroups { get; } = [];
+
+    /// <summary>Members approve workspace deletions (<c>Installation.ApproveDeletion</c>, ADR-014 §3.2).</summary>
+    public IList<string> RetentionApproverGroups { get; } = [];
 }
 
 /// <summary>Requires an installation permission; declare with <see cref="InstallationAuthorizationConventions.RequireInstallationPermission{TBuilder}"/>.</summary>
@@ -86,7 +110,7 @@ internal sealed class InstallationPermissionHandler(
             return;
         }
 
-        if (InstallationPermissions.IsInstallationAdmin(context.User, options.CurrentValue))
+        if (InstallationPermissions.Holds(context.User, requirement.Permission, options.CurrentValue))
         {
             context.Succeed(requirement);
             return;

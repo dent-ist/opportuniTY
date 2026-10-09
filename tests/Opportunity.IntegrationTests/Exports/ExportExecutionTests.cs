@@ -145,6 +145,48 @@ public sealed class ExportExecutionTests(MigrationPostgresFixture postgres)
             .And.Contain(docs[6].ToString("N") + ":EthicalWall");
     }
 
+    /// <summary>
+    /// E05-T07 / Q-15: access lost after the export was submitted (not just after the freeze). The policy for exports is
+    /// to exclude: the chunk re-authorizes the initiator against current PostgreSQL state, leaves the walled document
+    /// out, reports it with the generic reason and audits the delta with the precise one.
+    /// </summary>
+    [Fact]
+    public async Task Access_lost_after_submission_excludes_the_documents_and_records_the_delta()
+    {
+        await using var h = await ExportHarness.CreateAsync(postgres, documentsPerChunk: 2);
+        var ws = await h.Import.WorkspaceAsync();
+        var user = await h.UserAsync(ws, WorkspaceRole.ProductionManager);
+        var docs = new List<Guid>();
+        for (var i = 1; i <= 4; i++)
+        {
+            docs.Add((await h.Db.InsertDocumentAsync(ws, $"SUB{i:D4}")).DocumentId);
+        }
+
+        var snapshot = await h.SnapshotAsync(ws, user, docs);
+        var creation = await h.CreateAsync(ws, user, new CreateExportRequest(snapshot.SnapshotId, [new(FieldId: SystemFields.ControlNumber)]));
+
+        var wall = Guid.CreateVersion7();
+        await h.Db.ExecuteAsync("INSERT INTO opportunity.ethical_wall (workspace_id, wall_id, name) VALUES (@ws, @wall, 'Late wall')", ("ws", ws), ("wall", wall));
+        await h.Db.ExecuteAsync(
+            "INSERT INTO opportunity.ethical_wall_member (workspace_id, wall_id, member_id, user_id) VALUES (@ws, @wall, @id, @user)",
+            ("ws", ws), ("wall", wall), ("id", Guid.CreateVersion7()), ("user", user));
+        await h.Db.ExecuteAsync("INSERT INTO opportunity.document_wall (workspace_id, document_id, wall_id) VALUES (@ws, @doc, @wall)",
+            ("ws", ws), ("doc", docs[2]), ("wall", wall));
+
+        var export = await h.RunAsync(creation);
+
+        export.Status.Should().Be(ExportStatus.Completed);
+        export.Report!.DocumentsExported.Should().Be(3);
+        export.Report.DocumentsExcluded.Should().Be(1);
+        (await h.Exports.GetExclusionsAsync(ws, export.ExportId, 0, 10, Ct)).Select(e => (e.ControlNumber, e.Reason))
+            .Should().Equal(("SUB0003", ExportChunkExecutor.AccessChanged));
+        var dat = await ExportRoundTripTests.ParseDatAsync((await h.FilesAsync(export))["VOL001/DATA/VOL001.dat"].Bytes);
+        dat.Rows.Select(r => r[0]).Should().Equal("SUB0001", "SUB0002", "SUB0004");
+        var delta = await h.Db.ColumnAsync(
+            $"SELECT details->>'Documents' FROM audit.audit_event WHERE workspace_id = '{ws}' AND category = 'Export' AND action = 'DocumentsExcluded'");
+        delta.Should().ContainSingle().Which.Should().Be($"{docs[2]:N}:EthicalWall");
+    }
+
     [Fact]
     public async Task An_initiator_who_loses_Export_Create_has_the_remaining_chunks_cancelled()
     {

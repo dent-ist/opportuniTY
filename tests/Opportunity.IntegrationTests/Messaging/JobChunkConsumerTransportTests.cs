@@ -125,7 +125,7 @@ public sealed class JobChunkConsumerTransportTests(RabbitMqFixture fixture, Migr
         var dead = await harness.GetAsync(RabbitMqTopology.DeadLetterQueue(Queue));
         Header(dead, TransportHeaders.FailureReason).Should().Be(FailureReasons.Permanent);
         Header(dead, TransportHeaders.Error).Should().StartWith(JobChunkConsumer.RejectionReason);
-        audit.Events.Should().ContainSingle().Which.Action.Should().Be(AuditTaxonomy.Integrity.EnvelopeMismatch);
+        audit.Events.Should().ContainSingle().Which.Action.Should().Be(AuditTaxonomy.Integrity.MessageRejected);
         executor.Executions.Should().BeEmpty();
         var untouched = (await db.ChunksAsync(ws, job))[0];
         untouched.AttemptCount.Should().Be(0);

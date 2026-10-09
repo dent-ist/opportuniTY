@@ -57,7 +57,7 @@ AllCustodians, FileName, FileExtension, DateSent, DateCreated, DateLastModified,
 Confidentiality, Redacted, PageCount, NativeLink and TextLink (metadata fields the workspace does not have are left
 out). The OPT has one row per image: the page Bates as image key, `Y` and the page count on each document's first row.
 
-## For the burn-in verification (E12-T06)
+## Produced-page records
 
 Each run keeps, with its files but never delivered, `_verification/pages.csv`: one row per produced image with its page
 Bates, member, path, SHA-256, size, where the source page sits in the image (`PageTopPx`, `PageHeightPx`), the kind
@@ -65,3 +65,35 @@ Bates, member, path, SHA-256, size, where the source page sits in the image (`Pa
 pixels (`x y w h type`, from `RedactionGeometry.BurnedPixels`, the function the burner uses). The manifest records its
 SHA-256. Burning (rendering.md) fills a black box black to the last device pixel (rounded outward) and a labelled box
 white with its label in black, framed just outside the box, so every pixel inside a box is fill or glyph.
+
+## Burn-in verification (E12-T06)
+
+Every run verifies, before it may complete, each member that must not reveal its content: redacted members (frozen
+redactions on the frozen page set) and withheld (placeholder) members. The checks run inside the chunk that wrote the
+member, on what was **stored**, not on what the writer meant to write (`BurnInVerification`):
+
+| Check | Members | Passes when |
+|---|---|---|
+| `Image`, one row per page with redactions | redacted | the produced page, read back from storage (its bytes must still hash to the registered SHA-256), is verified in the member's render sandbox against its source page and frozen redactions (rendering.md, "Verifying the burn-in"): every box opaque in its burned colour, none reproducing the source, the page where the imager reported it, the file one plain image. A redacted page that became a Technical Issue page passes (nothing of it is produced); a redaction on a page the member did not produce is `PageMissing`. |
+| `Text` | redacted, withheld | the text file is byte for byte the replacement text in the volume's encoding (ADR-012 §5.4), or there is no text file. The document's own text is `OriginalTextShipped`, anything else `TextNotReplaced`. |
+| `Native` | redacted, withheld | no native is in the volume. A native-redaction method cannot be recorded yet (Q-22: native redaction is post-MVP), so every such native is `NativeShipped`. |
+
+The chunks write their rows as parts; the coordinator assembles them, in production order, into
+`_verification/burn-in-report.csv` (`ProdBegBates, PageBates, Check, Outcome, Boxes, Findings`, findings as
+`code[#box][:pixels]`; content-free) and records the totals on the run (documents, pages, boxes, failed checks, report
+SHA-256; V0054). Like everything in a run it holds no times or run identifiers, so re-runs write the same report.
+
+- **Passed:** the DAT, OPT and manifest are written as before; `MANIFEST.json` gains `burnInVerification` (status,
+  verifier version, counts, report SHA-256) and `Production.VolumeCompleted` carries the totals.
+- **Any failed check:** the run ends as **Failed** ("Burn-in verification failed: …") with its verification files and
+  `Production.VerificationFailed` (`Check = BurnIn`, totals, report SHA-256). No DAT, OPT or manifest is written, and a
+  run that is not Completed is never listed or downloaded, so the volume cannot be delivered. Fix the cause and run
+  the volume again.
+
+Volumes are written from finalized productions only (Q-79), so the verification gates the volume's completion and
+delivery rather than the production's finalization; E12-T07's QC gate checks the same rules before finalization.
+
+The run resource has `verification` (status, counts, report SHA-256), and its initiator downloads the report through
+the gateway (`GET …/volumes/{volumeId}/verification-report`, `Production.Create`, audited `Production.Downloaded`) for a
+passed or a failed run. Tests seed each leak (original text, native, unburned pages) through test-only switches of the
+writer (`FaultFlags`, compiled out of release builds) and assert that the verification blocks the volume.

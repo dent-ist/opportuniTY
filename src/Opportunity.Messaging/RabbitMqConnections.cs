@@ -14,7 +14,8 @@ internal enum ConnectionPurpose
 
 /// <summary>
 /// The process's broker connections: one for publishing and one for consuming, so broker flow control on publishers
-/// cannot stall acknowledgements. Opened lazily; the first open retries with backoff until it succeeds or is
+/// cannot stall acknowledgements, per credential (the default user, plus one per queue area that has its own user,
+/// <see cref="RabbitMqOptions.AreaConnectionStrings"/>). Opened lazily; the first open retries with backoff until it succeeds or is
 /// cancelled. Afterwards the client's automatic recovery reconnects and restores channels and consumers.
 /// </summary>
 public sealed partial class RabbitMqConnections : IAsyncDisposable, IDisposable
@@ -22,7 +23,7 @@ public sealed partial class RabbitMqConnections : IAsyncDisposable, IDisposable
     private readonly RabbitMqOptions _options;
     private readonly ILogger<RabbitMqConnections> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Dictionary<ConnectionPurpose, IConnection> _connections = [];
+    private readonly Dictionary<(ConnectionPurpose Purpose, string? Credential), IConnection> _connections = [];
     private bool _disposed;
 
     public RabbitMqConnections(RabbitMqOptions options, ILogger<RabbitMqConnections> logger)
@@ -34,19 +35,23 @@ public sealed partial class RabbitMqConnections : IAsyncDisposable, IDisposable
         _logger = logger;
     }
 
-    internal async Task<IConnection> GetAsync(ConnectionPurpose purpose, CancellationToken cancellationToken)
+    internal Task<IConnection> GetAsync(ConnectionPurpose purpose, CancellationToken cancellationToken) =>
+        GetAsync(purpose, credential: null, cancellationToken);
+
+    /// <param name="credential">A credential key from <see cref="RabbitMqOptions.CredentialFor"/>; null is the default user.</param>
+    internal async Task<IConnection> GetAsync(ConnectionPurpose purpose, string? credential, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_connections.TryGetValue(purpose, out var existing))
+            if (_connections.TryGetValue((purpose, credential), out var existing))
             {
                 return existing;
             }
 
-            var connection = await ConnectWithRetryAsync(purpose, cancellationToken).ConfigureAwait(false);
-            _connections[purpose] = connection;
+            var connection = await ConnectWithRetryAsync(purpose, credential, cancellationToken).ConfigureAwait(false);
+            _connections[(purpose, credential)] = connection;
             return connection;
         }
         finally
@@ -93,12 +98,14 @@ public sealed partial class RabbitMqConnections : IAsyncDisposable, IDisposable
         _gate.Dispose();
     }
 
-    private async Task<IConnection> ConnectWithRetryAsync(ConnectionPurpose purpose, CancellationToken cancellationToken)
+    private async Task<IConnection> ConnectWithRetryAsync(ConnectionPurpose purpose, string? credential, CancellationToken cancellationToken)
     {
         var factory = new ConnectionFactory
         {
-            Uri = new Uri(_options.ConnectionString!),
-            ClientProvidedName = $"{_options.ClientName}:{purpose.ToString().ToLowerInvariant()}",
+            Uri = new Uri(_options.ConnectionStringFor(credential)),
+            ClientProvidedName = credential is null
+                ? $"{_options.ClientName}:{purpose.ToString().ToLowerInvariant()}"
+                : $"{_options.ClientName}:{credential}:{purpose.ToString().ToLowerInvariant()}",
             AutomaticRecoveryEnabled = true,
             TopologyRecoveryEnabled = true,
             NetworkRecoveryInterval = _options.NetworkRecoveryInterval,

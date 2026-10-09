@@ -169,18 +169,28 @@ public static class PageEndorser
             return (blank, request.Dpi ?? 300, PageColorMode.Bitonal);
         }
 
+        return LoadPage(request.InputPath, request.Frame, request.Dpi, settings);
+    }
+
+    /// <summary>
+    /// A frame of a page image as the endorser sees it (also the burn-in verifier, E12-T06): 8-bit gray or opaque 32-bit
+    /// pixels, non-square pixels made square, its resolution (<paramref name="dpi"/>, else the image's own) and colour mode.
+    /// </summary>
+    /// <exception cref="RenderException">The image cannot be read, has no such frame or is too large.</exception>
+    internal static (SKBitmap Page, int Dpi, PageColorMode Color) LoadPage(string path, int frameIndex, int? dpi, RenderSettings settings)
+    {
         ImageInfo info;
-        using (var probe = File.OpenRead(request.InputPath))
+        using (var probe = File.OpenRead(path))
         {
             info = ImageProbe.Probe(probe) ?? throw new RenderException(RenderErrorCodes.Unsupported, "The page is not a readable TIFF, JPEG or PNG.");
         }
 
-        if (request.Frame >= info.Frames.Count)
+        if (frameIndex >= info.Frames.Count)
         {
             throw new RenderException(RenderErrorCodes.PageFailed, "The image has no such page.");
         }
 
-        var frame = info.Frames[request.Frame];
+        var frame = info.Frames[frameIndex];
         if ((long)frame.WidthPx * frame.HeightPx > settings.MaxSourcePixels)
         {
             throw new RenderException(RenderErrorCodes.PageTooLarge, "The page is too large to endorse.");
@@ -191,13 +201,13 @@ public static class PageEndorser
         {
             if (info.Format == PageImageFormat.TiffG4)
             {
-                using var tiff = Tiff.Open(request.InputPath, "r") ?? throw new RenderException(RenderErrorCodes.Unreadable, "The TIFF cannot be opened.");
+                using var tiff = Tiff.Open(path, "r") ?? throw new RenderException(RenderErrorCodes.Unreadable, "The TIFF cannot be opened.");
                 var directories = ImageRenderer.PageDirectories(tiff);
-                bitmap = request.Frame < directories.Count && tiff.SetDirectory(directories[request.Frame]) ? ImageRenderer.DecodeTiffFrame(tiff, frame) : null;
+                bitmap = frameIndex < directories.Count && tiff.SetDirectory(directories[frameIndex]) ? ImageRenderer.DecodeTiffFrame(tiff, frame) : null;
             }
-            else if (request.Frame == 0)
+            else if (frameIndex == 0)
             {
-                using var codec = SKCodec.Create(request.InputPath);
+                using var codec = SKCodec.Create(path);
                 bitmap = codec is null ? null : SKBitmap.Decode(codec);
             }
         }
@@ -221,15 +231,15 @@ public static class PageEndorser
             color = normalized == PageColorMode.Color ? PageColorMode.Color : color == PageColorMode.Color ? PageColorMode.Gray : color;
         }
 
-        var dpi = request.Dpi ?? frame.DpiX;
-        if (request.Dpi is null && frame.DpiY != frame.DpiX && frame.DpiY > 0)
+        var resolution = dpi ?? frame.DpiX;
+        if (dpi is null && frame.DpiY != frame.DpiX && frame.DpiY > 0)
         {
             var square = RepeatRows(bitmap, (int)Math.Max(1, Math.Round(bitmap.Height * (double)frame.DpiX / frame.DpiY, MidpointRounding.AwayFromZero)));
             bitmap.Dispose();
             bitmap = square;
         }
 
-        return (bitmap, dpi, color);
+        return (bitmap, resolution, color);
     }
 
     /// <summary>8-bit gray stays; anything else becomes opaque 32-bit pixels in Skia's native order.</summary>
@@ -283,7 +293,7 @@ public static class PageEndorser
     /// </summary>
     private static void Burn(SKBitmap page, int dpi, IReadOnlyList<BurnedRedaction> redactions)
     {
-        var border = Math.Max(1, (dpi + 75) / 150);
+        var border = FrameWidth(dpi);
         foreach (var redaction in redactions.Where(r => r.Type == RedactionType.Labelled))
         {
             var box = RedactionGeometry.BurnedPixels(redaction.Rect, page.Width, page.Height);
@@ -325,6 +335,9 @@ public static class PageEndorser
             Fill(page, box.X, box.Y, box.Width, box.Height, Black);
         }
     }
+
+    /// <summary>Width in pixels of the black frame drawn just outside a labelled box.</summary>
+    internal static int FrameWidth(int dpi) => Math.Max(1, (dpi + 75) / 150);
 
     private static void Fill(SKBitmap bitmap, int x, int y, int width, int height, byte value)
     {

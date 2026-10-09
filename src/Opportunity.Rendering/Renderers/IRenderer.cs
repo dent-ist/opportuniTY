@@ -50,6 +50,15 @@ public interface IRenderSession : IAsyncDisposable
     /// <exception cref="RenderLimitException">The document exceeded a sandbox limit or crashed its render process.</exception>
     Task<Endorsing.EndorsedImage> EndorseAsync(Endorsing.EndorseRequest request, CancellationToken cancellationToken = default) =>
         Task.FromResult(Endorsing.PageEndorser.Endorse(request));
+
+    /// <summary>
+    /// Verifies a produced page's burn-in (E12-T06, <see cref="Endorsing.BurnInVerifier"/>) where its content is decoded:
+    /// in the document's sandboxed process for an isolating renderer. The request's paths must lie under the session's
+    /// work directory. The default verifies in this process.
+    /// </summary>
+    /// <exception cref="RenderLimitException">The document exceeded a sandbox limit or crashed its render process.</exception>
+    Task<Endorsing.BurnInResult> VerifyAsync(Endorsing.BurnInRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Endorsing.BurnInVerifier.Verify(request));
 }
 
 internal sealed class InProcessRenderSession(IRenderer renderer) : IRenderSession
@@ -59,6 +68,9 @@ internal sealed class InProcessRenderSession(IRenderer renderer) : IRenderSessio
 
     public Task<Endorsing.EndorsedImage> EndorseAsync(Endorsing.EndorseRequest request, CancellationToken cancellationToken = default) =>
         Task.FromResult(Endorsing.PageEndorser.Endorse(request, (renderer as RasterRenderer)?.Settings));
+
+    public Task<Endorsing.BurnInResult> VerifyAsync(Endorsing.BurnInRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Endorsing.BurnInVerifier.Verify(request, (renderer as RasterRenderer)?.Settings));
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

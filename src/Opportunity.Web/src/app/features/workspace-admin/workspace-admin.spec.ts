@@ -3,7 +3,6 @@ import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { firstValueFrom } from 'rxjs';
 import { provideAppRouting } from '../../app.config';
 import { FakeApi, FakeResponse, provideFakeApi } from '../../core/api/fake-api.testing';
 import { provideOpportunityHttp } from '../../core/api/http';
@@ -12,12 +11,7 @@ import { INSTALLATION_PERMISSIONS, PERMISSIONS } from '../../core/workspace/sect
 import { DialogService } from '../../ui';
 import { expectNoAxeViolations } from '../../ui/testing/axe.testing';
 import { DeleteWorkspaceDialog, type DeleteWorkspaceData } from './delete-workspace-dialog';
-import {
-  DEFAULT_DELETION_SUMMARY,
-  DELETION_BLOCKED_BY_HOLD,
-  DELETION_NOT_AVAILABLE,
-  NotYetAvailableDeletion,
-} from './workspace-deletion';
+import { DELETION_BLOCKED_BY_HOLD, DELETION_NEEDS_PERMISSION } from './workspace-deletion';
 import { timeZoneOptions, toWrite, validateDraft } from './workspace-form';
 
 const ALL = Object.values(PERMISSIONS);
@@ -60,6 +54,39 @@ function hold(id: string, extra: Record<string, unknown> = {}): Record<string, u
   };
 }
 
+function deletion(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    deletionId: 'del-1',
+    workspaceId: 'ws-1',
+    workspaceName: 'Acme v. Widget',
+    matterNumber: 'M-1',
+    retentionProfile: 'retainRecords',
+    reason: 'Matter closed',
+    externalReference: null,
+    status: 'requested',
+    currentStep: null,
+    requestedBy: { userId: 'user-1', displayName: 'Alex Admin' },
+    requestedAt: '2026-10-09T09:00:00Z',
+    expiresAt: '2026-11-08T09:00:00Z',
+    approvedBy: null,
+    approvedAt: null,
+    approvalNote: null,
+    runNotBefore: null,
+    cancelledBy: null,
+    cancelledAt: null,
+    startedAt: null,
+    finishedAt: null,
+    haltedAt: null,
+    error: null,
+    steps: [],
+    certificateAvailable: false,
+    canApprove: false,
+    canCancel: true,
+    version: 1,
+    ...extra,
+  };
+}
+
 const page = (items: unknown[], total = items.length) => ({
   body: { items, nextCursor: null, total: { value: total, relation: 'eq' } },
 });
@@ -77,9 +104,11 @@ describe('Workspace management (E04-T07)', () => {
       update?: (req: HttpRequest<unknown>) => FakeResponse;
       newWorkspace?: 'empty' | 'ready';
       holds?: Record<string, unknown>[];
+      deletions?: Record<string, unknown>[];
     } = {},
   ): Promise<void> {
     const holds = options.holds ?? [];
+    const deletions = options.deletions ?? [];
     const activeHolds = holds.filter((h) => h['status'] !== 'released').length;
     const ws1 = workspace('ws-1', 'Acme v. Widget', options.permissions ?? ALL, {
       searchPlacement: { kind: 'shared', projectionGeneration: 12, state: 'active' },
@@ -120,6 +149,12 @@ describe('Workspace management (E04-T07)', () => {
       .on('POST', '/api/v1/workspaces/ws-1/preservation-locks/h-1/release/approve', () => {
         holds[0] = { ...holds[0], status: 'released', releasedAt: '2026-10-08T12:00:00Z' };
         return { body: holds[0] };
+      })
+      .on('GET', '/api/v1/workspaces/ws-1/deletions', () => ({ body: { items: deletions } }))
+      .on('POST', '/api/v1/workspaces/ws-1/deletions', (req) => {
+        const requested = deletion({ ...(req.body as object) });
+        deletions.unshift(requested);
+        return { status: 201, body: requested };
       })
       .on('GET', '/api/v1/workspaces/ws-new', { body: created })
       .on('GET', '/api/v1/workspaces/ws-new/imports', page(ready ? [{ importId: 'imp-1' }] : []))
@@ -378,16 +413,94 @@ describe('Workspace management (E04-T07)', () => {
       expect(field(root(), 'Matter number').value).toBe('M-1');
     });
 
-    it('shows the deletion entry point disabled with the reason and calls no deletion API', async () => {
-      await setup();
+    it('explains that only a Workspace Admin can request deletion and calls no deletion API', async () => {
+      await setup({ permissions: [PERMISSIONS.manageSecurity, PERMISSIONS.documentView] });
       await go('/w/ws-1/admin/settings');
       const del = buttonIn(root(), 'Delete workspace…')!;
       expect(del.disabled).toBe(true);
       const reason = document.getElementById(del.getAttribute('aria-describedby')!)!;
-      expect(squash(reason)).toBe(DELETION_NOT_AVAILABLE);
-      expect(api.requests.some((r) => r.method === 'DELETE' || r.url.includes('delet'))).toBe(
-        false,
+      expect(squash(reason)).toBe(DELETION_NEEDS_PERMISSION);
+      expect(api.urls().some((u) => u.includes('deletions'))).toBe(false);
+    });
+  });
+
+  describe('Workspace deletion (E20-T02)', () => {
+    it('requests deletion with a reason and the typed name, keeping productions by default', async () => {
+      await setup();
+      await go('/w/ws-1/admin/settings');
+      const del = buttonIn(root(), 'Delete workspace…')!;
+      expect(del.disabled).toBe(false);
+      del.click();
+      await settle();
+      const d = dialog()!;
+      expect(squash(d.querySelector('h2'))).toBe('Delete Acme v. Widget');
+      const keep = d.querySelector<HTMLInputElement>('input[value="retainRecords"]')!;
+      expect(keep.checked).toBe(true);
+      expect(squash(d)).toContain('Productions');
+      await expectNoAxeViolations(d);
+
+      // The reason is required; the request stays disabled until the name matches exactly.
+      const submit = buttonIn(d, 'Request deletion')!;
+      expect(submit.disabled).toBe(true);
+      type(field(d, 'Type Acme v. Widget'), 'Acme v. Widget');
+      await settle();
+      submit.click();
+      await settle();
+      expect(squash(d)).toContain('Enter a reason.');
+      expect(api.urls('POST')).toEqual([]);
+
+      const reason = d.querySelector<HTMLTextAreaElement>('#deletion-reason')!;
+      reason.value = 'Matter closed; protective order requires destruction';
+      reason.dispatchEvent(new Event('input'));
+      type(field(d, 'Order or agreement reference'), 'PO ¶ 14');
+      await settle();
+      buttonIn(d, 'Request deletion')!.click();
+      await settle();
+
+      expect(api.requests.find((r) => r.method === 'POST')!.body).toEqual({
+        retentionProfile: 'retainRecords',
+        reason: 'Matter closed; protective order requires destruction',
+        externalReference: 'PO ¶ 14',
+        confirmName: 'Acme v. Widget',
+      });
+      expect(dialog()).toBeNull();
+      const card = root().querySelector<HTMLElement>('[aria-labelledby="settings-delete"]')!;
+      expect(squash(card)).toContain('waiting for approval by a second person');
+      expect(card.querySelector('a')!.getAttribute('href')).toBe('/workspace-deletions/del-1');
+      expect(buttonIn(card, 'Delete workspace…')).toBeUndefined();
+    });
+
+    it('shows what removing everything also removes', async () => {
+      await setup();
+      await go('/w/ws-1/admin/settings');
+      buttonIn(root(), 'Delete workspace…')!.click();
+      await settle();
+      const d = dialog()!;
+      const purge = d.querySelector<HTMLInputElement>('input[value="purgeAll"]')!;
+      purge.click();
+      await settle();
+      const kept = d.querySelector('[aria-labelledby="delete-kept"]')!;
+      expect(squash(kept)).not.toContain('Productions');
+      expect(squash(d.querySelector('[aria-labelledby="delete-removed"]'))).toContain(
+        'Encryption keys',
       );
+    });
+
+    it('shows the open request with a link to its progress instead of the entry point', async () => {
+      await setup({
+        deletions: [
+          deletion({
+            status: 'approved',
+            approvedAt: '2026-10-09T10:00:00Z',
+            approvedBy: { userId: 'user-9', displayName: 'Riley Approver' },
+            runNotBefore: '2026-10-16T10:00:00Z',
+          }),
+        ],
+      });
+      await go('/w/ws-1/admin/settings');
+      const card = root().querySelector<HTMLElement>('[aria-labelledby="settings-delete"]')!;
+      expect(squash(card)).toContain('approved. It starts on');
+      expect(card.querySelector('a')!.getAttribute('href')).toBe('/workspace-deletions/del-1');
     });
   });
 
@@ -498,30 +611,25 @@ describe('Workspace management (E04-T07)', () => {
     });
   });
 
-  describe('Delete workspace dialog (ready for #166/#167)', () => {
-    async function openDialog(data: DeleteWorkspaceData) {
+  describe('Delete workspace dialog', () => {
+    it('is blocked with an explanation under a preservation lock', async () => {
       await setup();
       await go('/workspaces');
-      const ref = TestBed.inject(DialogService).open<boolean, DeleteWorkspaceData>(
-        DeleteWorkspaceDialog,
-        { data, role: 'alertdialog' },
-      );
-      await settle();
-      return ref;
-    }
-
-    it('is blocked with an explanation under a preservation lock', async () => {
-      await openDialog({
-        workspaceName: 'Acme v. Widget',
-        availability: {
-          kind: 'locked',
-          lock: {
-            placedBy: 'Dana Counsel',
-            placedAt: '2026-09-01T00:00:00Z',
-            reason: 'Litigation hold',
+      TestBed.inject(DialogService).open<unknown, DeleteWorkspaceData>(DeleteWorkspaceDialog, {
+        data: {
+          workspaceName: 'Acme v. Widget',
+          availability: {
+            kind: 'locked',
+            lock: {
+              placedBy: 'Dana Counsel',
+              placedAt: '2026-09-01T00:00:00Z',
+              reason: 'Litigation hold',
+            },
           },
         },
+        role: 'alertdialog',
       });
+      await settle();
       const d = dialog()!;
       expect(squash(d.querySelector('h2'))).toBe('Deletion blocked');
       expect(squash(d)).toContain('is under a legal hold');
@@ -529,38 +637,6 @@ describe('Workspace management (E04-T07)', () => {
       expect(buttonIn(d, 'Request deletion')).toBeUndefined();
       expect(d.querySelector('input')).toBeNull();
       await expectNoAxeViolations(d);
-    });
-
-    it('needs the exact workspace name and lists what is removed and kept', async () => {
-      const ref = await openDialog({
-        workspaceName: 'Acme v. Widget',
-        availability: { kind: 'allowed', summary: DEFAULT_DELETION_SUMMARY },
-      });
-      const d = dialog()!;
-      expect(squash(d)).toContain('Will be removed');
-      expect(squash(d)).toContain('Search index data');
-      expect(squash(d)).toContain('Audit trail');
-      const confirm = buttonIn(d, 'Request deletion')!;
-      expect(confirm.disabled).toBe(true);
-      type(d.querySelector('input')!, 'acme v. widget');
-      await settle();
-      expect(confirm.disabled).toBe(true);
-      type(d.querySelector('input')!, 'Acme v. Widget');
-      await settle();
-      expect(confirm.disabled).toBe(false);
-      await expectNoAxeViolations(d);
-      const closed = firstValueFrom(ref.closed);
-      confirm.click();
-      expect(await closed).toBe(true);
-    });
-
-    it('is not available in this version and never calls an API', async () => {
-      const deletion = new NotYetAvailableDeletion();
-      expect(await deletion.availability()).toEqual({
-        kind: 'unavailable',
-        reason: DELETION_NOT_AVAILABLE,
-      });
-      await expect(deletion.request()).rejects.toThrow(DELETION_NOT_AVAILABLE);
     });
   });
 

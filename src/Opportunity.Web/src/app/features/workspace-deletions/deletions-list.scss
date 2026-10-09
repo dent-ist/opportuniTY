@@ -1,0 +1,46 @@
+// Workspace deletions list (E20-T02).
+
+.wdl__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.wdl__table-wrap {
+  overflow-x: auto;
+  background: var(--opp-color-surface);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.wdl__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.wdl__table th,
+.wdl__table td {
+  height: var(--opp-row-height);
+  padding: var(--opp-space-1) var(--opp-cell-padding-x);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+}
+
+.wdl__table th {
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.wdl__table tbody tr:hover {
+  background: var(--opp-color-hover);
+}
+
+.wdl__nowrap {
+  white-space: nowrap;
+}
+
+.wdl__nowrap .wdl__muted {
+  display: block;
+}

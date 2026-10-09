@@ -48,7 +48,8 @@ within the 15-minute refresh, with no change in opportuniTY.
 
 | Level | Role | What it allows | How it is assigned today |
 |---|---|---|---|
-| Installation | **Installation Admin** | Create workspaces (`Installation.ManageWorkspaces`) and assign the Break-glass workspace role (`Installation.AssignBreakGlass`, together with `Workspace.ManageUsers`). Later: manage identity settings, approve deletion, legal holds. **Grants no document access by itself.** | Members of the IdP groups listed in the setting `Authorization:InstallationAdminGroups`. Empty means nobody (default deny). A screen to manage installation roles is still to come. |
+| Installation | **Installation Admin** | Create workspaces (`Installation.ManageWorkspaces`) and assign the Break-glass workspace role (`Installation.AssignBreakGlass`, together with `Workspace.ManageUsers`). Later: manage identity settings. **Grants no document access by itself.** | Members of the IdP groups listed in the setting `Authorization:InstallationAdminGroups`. Empty means nobody (default deny). A screen to manage installation roles is still to come. |
+| Installation | **Retention Approver** | Approve (or cancel) workspace deletion requests (`Installation.ApproveDeletion`, ADR-014 §3.2, Q-23): the second person of the two-person rule, never the requester; approving needs MFA. Sees every deletion's status and certificate. **Grants no document access.** | Members of the IdP groups listed in `Authorization:RetentionApproverGroups`. Empty means nobody (default deny). |
 | Workspace | One of the seven built-in roles (§2.3) | Everything inside one workspace | Role assignments per workspace, to users or groups |
 
 An Installation Admin who needs to read documents must also hold a workspace role, and is then subject to walls
@@ -233,7 +234,7 @@ calls the PDP; none has its own rules.
 | PEP-2 | **Use cases on sets of documents** (bulk coding, imports, jobs) | Per-document classes and walls for the whole set, in one batched call | Built for the paths that exist (#47); grows with each feature |
 | PEP-3 | **Protected-content gateway**: natives, images, text, renditions | Every byte, every download link, prefetch included; audited before the first byte | Built (#49) |
 | PEP-4 | **Search** | Hidden classes and walls are filtered inside OpenSearch, **and** every page of hits is re-checked against PostgreSQL before it is returned (stale hits show nothing, Q-12) | Built (#64, #67) |
-| PEP-5 | **Background workers** | A job runs as the person who started it, and their access is re-checked **for every chunk**: if access is removed mid-job, the rest is skipped | Partly built; hardening in #52 |
+| PEP-5 | **Background workers** | A job runs as the person who started it, and their access is re-checked **for every chunk**: if they lose the job's permission the rest is cancelled; documents they can no longer see are left out of an export (and bulk coding) or fail a production run, and the difference is audited (Q-15). A worker also refuses any message whose workspace does not match the work it names, or (with signing on) whose signature is missing or wrong | Built (#100, #92, #104, #52; [runbook](../operations/message-trust.md)) |
 | PEP-6 | **PostgreSQL row-level security** | Workspace isolation only: a query can never read or write another workspace's rows, even if code has a bug | Built (#48) |
 | PEP-7 | **Audit viewer** | `Audit.Read`, `Audit.ReadSearchText`, walls on document details | Planned (#118) |
 

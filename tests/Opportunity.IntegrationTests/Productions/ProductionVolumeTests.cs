@@ -321,9 +321,55 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
         (await v.Exports.Exports.ListVolumesAsync(ws, draft.ProductionId, null, 10, Ct)).Should().ContainSingle();
     }
 
-    private sealed record Source(Guid DocumentId, string? Extension, int Pages, Guid PageSetId, short? FirstImageFormat, bool HasNative);
+    /// <summary>
+    /// E05-T07 / Q-15: the run's initiator is walled off a member after the run was submitted. A production cannot leave a
+    /// member out of its Bates numbering, so the policy for productions is to fail the run (exports exclude instead); the
+    /// delta — the denied member and its precise reason — is audited, and no volume is delivered.
+    /// </summary>
+    [Fact]
+    public async Task A_member_the_initiator_lost_access_to_after_submission_fails_the_run_and_the_delta_is_audited()
+    {
+        await using var v = await ProductionVolumeHarness.CreateAsync(postgres);
+        var ws = await v.Db.CreateWorkspaceAsync();
+        await v.Db.Fields.InitializeNewWorkspaceAsync(ws, Ct);
+        var user = await v.Exports.UserAsync(ws, WorkspaceRole.ProductionManager);
+        var docs = await v.Productions.FamiliesAsync(ws, "LOST", [(0, "pdf")], [(0, "pdf")]);
+        var snapshot = await v.Productions.SnapshotAsync(ws, user, docs);
+        var draft = await v.Productions.CreateOkAsync(ws, user, snapshot.SnapshotId, ProductionHarness.Spec("LOST"));
+        var allocated = await v.Productions.AllocateAsync(ws, user, draft.ProductionId);
+        (await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, Ct))
+            .Status.Should().Be(ProductionOutcomeStatus.Ok);
+        var creation = await v.StartAsync(ws, user, draft.ProductionId);
 
-    private static async Task<List<Source>> SourcesAsync(ProductionVolumeHarness v, Guid ws) =>
+        // After submission: an ethical wall puts the second member out of the initiator's reach.
+        var wall = Guid.CreateVersion7();
+        await v.Db.ExecuteAsync("INSERT INTO opportunity.ethical_wall (workspace_id, wall_id, name) VALUES (@ws, @wall, 'Late wall')", ("ws", ws), ("wall", wall));
+        await v.Db.ExecuteAsync(
+            "INSERT INTO opportunity.ethical_wall_member (workspace_id, wall_id, member_id, user_id) VALUES (@ws, @wall, @id, @user)",
+            ("ws", ws), ("wall", wall), ("id", Guid.CreateVersion7()), ("user", user));
+        await v.Db.ExecuteAsync("INSERT INTO opportunity.document_wall (workspace_id, document_id, wall_id) VALUES (@ws, @doc, @wall)",
+            ("ws", ws), ("doc", docs[1]), ("wall", wall));
+
+        var volume = await v.RunAsync(creation);
+
+        volume.Status.Should().Be(ExportStatus.Failed);
+        (await v.FilesAsync(volume)).Should().BeEmpty("nothing is delivered from a failed run");
+        var job = (await v.Exports.Import.Jobs.GetAsync(ws, creation.Job.JobId, Ct))!;
+        job.Status.Should().Be(JobStatus.CompletedWithErrors, "the chunk failed for good and the run was failed");
+        var failure = (await v.Exports.Import.Jobs.GetChunksAsync(ws, creation.Job.JobId, afterSequence: 0, limit: 10, cancellationToken: Ct))
+            .Single(c => c.Status == JobChunkStatus.Failed);
+        failure.ErrorCode.Should().Be(ProductionVolumeChunkExecutor.AccessChanged);
+        failure.LastError.Should().StartWith("1 document(s)").And.NotContain(docs[1].ToString(), "the requester sees only the count");
+
+        var delta = await v.Db.ColumnAsync(
+            $"SELECT reason_code || '|' || (details->>'Policy') || '|' || (details->>'Documents') FROM audit.audit_event WHERE workspace_id = '{ws}' AND category = 'Job' AND action = 'Failed'");
+        delta.Should().ContainSingle().Which.Should().Be($"AccessChanged|FailRun|{docs[1]:N}:EthicalWall");
+    }
+
+
+    internal sealed record Source(Guid DocumentId, string? Extension, int Pages, Guid PageSetId, short? FirstImageFormat, bool HasNative);
+
+    internal static async Task<List<Source>> SourcesAsync(ProductionVolumeHarness v, Guid ws) =>
         [.. (await v.Db.ColumnAsync(
             $"""
             SELECT d.document_id::text || '|' || coalesce(lower(d.file_extension), '') || '|' || coalesce(ps.page_count, 0) || '|'
@@ -338,7 +384,7 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
                 Guid.Parse(p[0]), p[1].Length > 0 ? p[1] : null, int.Parse(p[2], CultureInfo.InvariantCulture), Guid.Parse(p[3]),
                 p[4].Length > 0 ? short.Parse(p[4], CultureInfo.InvariantCulture) : null, p[5] == "true"))];
 
-    private static async Task<byte[]> StoredImageAsync(ProductionVolumeHarness v, Guid ws, Guid pageSetId)
+    internal static async Task<byte[]> StoredImageAsync(ProductionVolumeHarness v, Guid ws, Guid pageSetId)
     {
         var key = await v.Db.ScalarAsync<string>(
             """
@@ -392,7 +438,7 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
     private static Dictionary<string, string> Hashes(Dictionary<string, (ExportFileRecord File, byte[] Bytes)> files) =>
         files.ToDictionary(f => f.Key, f => Convert.ToHexStringLower(SHA256.HashData(f.Value.Bytes)), StringComparer.Ordinal);
 
-    private static List<string[]> ParseCsv(byte[] bytes) =>
+    internal static List<string[]> ParseCsv(byte[] bytes) =>
         [.. Encoding.UTF8.GetString(bytes).Split("\r\n", StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(l => l.Split(','))];
 
     /// <summary>A single-page TIFF G4 as one bool per pixel (true: black).</summary>

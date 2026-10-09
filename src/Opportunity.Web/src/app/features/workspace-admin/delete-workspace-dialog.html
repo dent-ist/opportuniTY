@@ -13,16 +13,39 @@
             <p>Deletion becomes possible once every legal hold is released.</p>
           </div>
         </div>
-      }
-      @if (summary; as s) {
+      } @else {
         <p class="wsa__lead">
-          This removes the workspace and its contents for everyone. It cannot be undone.
+          This removes the workspace and its contents for everyone. It cannot be undone once it
+          starts.
         </p>
+
+        <fieldset class="wsa__fieldset">
+          <legend class="wsa__label">What to keep</legend>
+          <div class="wsa__radios">
+            @for (p of profiles; track p.value) {
+              <label class="wsa__radio">
+                <input
+                  type="radio"
+                  name="deletion-profile"
+                  [value]="p.value"
+                  [checked]="profile() === p.value"
+                  [disabled]="saving()"
+                  (change)="setProfile(p.value)"
+                />
+                <span class="wsa__radio-text">
+                  <span>{{ p.label }}</span>
+                  <span class="wsa__hint">{{ p.hint }}</span>
+                </span>
+              </label>
+            }
+          </div>
+        </fieldset>
+
         <div class="wsa__columns">
           <section aria-labelledby="delete-removed">
             <h3 id="delete-removed" class="wsa__subheading">Will be removed</h3>
             <ul class="wsa__list">
-              @for (item of s.removed; track item.label) {
+              @for (item of summary().removed; track item.label) {
                 <li>
                   {{ item.label }}
                   @if (item.detail) {
@@ -35,7 +58,7 @@
           <section aria-labelledby="delete-kept">
             <h3 id="delete-kept" class="wsa__subheading">Kept</h3>
             <ul class="wsa__list">
-              @for (item of s.retained; track item.label) {
+              @for (item of summary().retained; track item.label) {
                 <li>
                   {{ item.label }}
                   @if (item.detail) {
@@ -46,25 +69,83 @@
             </ul>
           </section>
         </div>
-        @if (s.approvalRequired) {
-          <p class="wsa__fine">
-            A second person with the approval role must approve the request before anything is
-            removed. You receive a destruction certificate when the deletion completes.
+
+        <div class="wsa__textarea-field">
+          <label class="wsa__label" for="deletion-reason">
+            Reason for deleting
+            <span class="wsa__required" aria-hidden="true">*</span>
+          </label>
+          <textarea
+            id="deletion-reason"
+            class="wsa__textarea"
+            rows="3"
+            required
+            [attr.maxlength]="maxReason"
+            [attr.aria-invalid]="reasonError() ? true : null"
+            [attr.aria-describedby]="
+              reasonError() ? 'deletion-reason-hint deletion-reason-error' : 'deletion-reason-hint'
+            "
+            [value]="reason()"
+            [disabled]="saving()"
+            (input)="onReason($event)"
+          ></textarea>
+          <p id="deletion-reason-hint" class="wsa__hint">
+            For example: matter closed; the protective order requires return or destruction. Shown
+            to the approver and on the destruction certificate.
           </p>
-        }
+          @if (reasonError(); as message) {
+            <p id="deletion-reason-error" class="wsa__field-error">
+              <span class="opp-visually-hidden">Error:</span>
+              {{ message }}
+            </p>
+          }
+        </div>
+
+        <opp-text-field
+          label="Order or agreement reference"
+          hint="Optional. For example a protective-order paragraph or a court order number."
+          [error]="referenceError()"
+          [disabled]="saving()"
+          [(value)]="reference"
+        />
+
+        <p class="wsa__fine">
+          A second person with the approval role must approve the request. The deletion starts after
+          a waiting period from the approval, and you can follow it and download the destruction
+          certificate from Workspace deletions.
+        </p>
         <opp-text-field
           [label]="'Type ' + data.workspaceName + ' to confirm'"
           [required]="true"
+          [error]="nameError()"
+          [disabled]="saving()"
           [(value)]="typed"
         />
+
+        @if (failure(); as f) {
+          <div class="wsa__notice wsa__notice--danger" role="alert">
+            <opp-icon name="error" />
+            <div>
+              <p class="wsa__notice-title">{{ f.title }}</p>
+              <p>{{ f.detail }}</p>
+              @if (f.reference) {
+                <p class="wsa__fine">
+                  Reference: <code>{{ f.reference }}</code>
+                </p>
+              }
+            </div>
+          </div>
+        }
       }
     </div>
     <ng-container dialogActions>
-      <button type="button" oppButton="ghost" data-autofocus (click)="ref.close(false)">
+      <button type="button" oppButton="ghost" data-autofocus (click)="ref.close()">
         {{ lock ? 'Close' : 'Cancel' }}
       </button>
-      @if (summary) {
-        <button type="submit" oppButton="danger" [disabled]="!matches()">Request deletion</button>
+      @if (!lock) {
+        <button type="submit" oppButton="danger" [busy]="saving()" [disabled]="!matches()">
+          Request deletion
+        </button>
       }
     </ng-container>
   </opp-dialog-layout>

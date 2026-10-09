@@ -14,6 +14,7 @@ import { FieldAdminMock } from './mock-field-admin';
 import { RoleAdminMock } from './mock-role-admin';
 import { RelationshipsMock, hitRelations } from './mock-relationships';
 import { LegalHoldsMock } from './mock-legal-holds';
+import { DeletionsMock } from './mock-deletions';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -128,6 +129,8 @@ export interface MockControl {
   readonly relationships: RelationshipsMock;
   /** Legal holds (E20-T01): holds per workspace (ws-2 starts held) and writes received. */
   readonly legalHolds: LegalHoldsMock;
+  /** Workspace deletions (E20-T02): requests (del-7 waiting, del-5 completed) and writes received. */
+  readonly deletions: DeletionsMock;
 }
 
 /**
@@ -474,8 +477,14 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     options.propagationThreshold,
   );
   const legalHolds = new LegalHoldsMock();
+  const deletions = new DeletionsMock(() =>
+    (options.installationPermissions ?? principal.installationPermissions).includes(
+      'Installation.ApproveDeletion',
+    ),
+  );
   const control: MockControl = {
     legalHolds,
+    deletions,
     relationships,
     freshness,
     imports,
@@ -559,6 +568,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Legal holds (E20-T01): ./mock-legal-holds.ts.
     const held = signedIn ? legalHolds.handle(route, method, path) : undefined;
     if (held) return held;
+    // Workspace deletions (E20-T02): ./mock-deletions.ts.
+    const deleting = signedIn ? deletions.handle(route, method, path) : undefined;
+    if (deleting) return deleting;
     // Roles, permissions and user/group assignment (E05-T08): ./mock-role-admin.ts.
     const roles = signedIn ? roleAdmin.handle(route, method, path, url) : undefined;
     if (roles) return roles;

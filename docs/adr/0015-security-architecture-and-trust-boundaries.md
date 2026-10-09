@@ -435,6 +435,24 @@ and may relax it only through an amendment to this ADR.
    policies (S3 IAM / bucket policies), class scoping uses wildcard resources. The filesystem provider (Lite) cannot
    scope and is covered by AR-04.
 
+*Implementation note 2026-10-09 (E05-T07, #52):* D9.2–D9.5 are implemented for every consumer (job chunks, index
+   chunk tasks and SearchOutbox rows) and the Compose profile; runbook
+   [docs/operations/message-trust.md](../operations/message-trust.md). **Deviation (D9.3):** a refused message is
+   audited as `Integrity.MessageRejected` (the ticket's name) with reason code `EnvelopeMismatch`, `SignatureMissing`,
+   `SignatureInvalid` or `SignatureKeyUnknown`; `Integrity.EnvelopeMismatch` stays in the closed list for earlier
+   events. A SearchOutbox message whose row is invisible in the hinted workspace is now rejected too (it was dropped),
+   unless that workspace is being closed or deleted. HMAC (D9.5) covers the exact envelope body and the destination
+   queue, so a signed message replayed onto another queue is rejected; keys come from `ISecretProvider`
+   (`envelope-hmac-<keyId>`, two-key overlap via `AcceptedKeyIds`); on in the Compose profile. Broker: the worker
+   permission patterns now list the area's work queues explicitly, so no runtime user can read a parking queue either,
+   and a process holding several areas (Lite) opens one connection per area with that area's user
+   (`AreaConnectionStrings`). D9.4: exports and bulk coding exclude documents the initiator lost access to; a
+   production volume fails instead (a member cannot leave the Bates numbering) and audits the denied members with
+   their precise reasons as `Job.Failed`. D9.6 in the Compose profile: separate API, worker and monitor database
+   logins (none superuser, owner or `BYPASSRLS`) and a dispatcher user plus one user per queue area on the broker; the
+   API has none. **Not yet done:** per-table grants per worker type (every runtime login is still a member of
+   `opportunity_app`), per-worker-type storage credentials and AMQPS in a shipped profile — Full (E19-T06, #162).
+
 ### D10. Secrets and keys
 
 1. All secrets come through `ISecretProvider` (`E05-T09`): Docker/Compose secrets via the `*_FILE` convention

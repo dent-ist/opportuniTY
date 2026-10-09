@@ -2,6 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+using Npgsql;
+
 using Opportunity.Data.Audit;
 using Opportunity.Data.Messaging;
 using Opportunity.Data.Search;
@@ -76,6 +78,14 @@ public static class WorkerModuleCatalog
         // Audit (ADR-013 §1.1) and coding-event partitions are created ahead by the dispatcher (E14-T01), and so are the
         // search work day partitions, with their retention and lost-work recovery (E06-T03, ADR-001 §1 R4, §6.3).
         services.AddPartitionMaintenance();
+
+        // The audit hash chain (E14-T03, ADR-013 §3): sealed every second and checkpointed every 10 minutes with the sealer
+        // login (ConnectionStrings:AuditSealer, never the runtime login); without it the loop reports itself disabled.
+        services.AddAuditChainSealing(sp => NpgsqlDataSource.Create(
+            sp.GetRequiredService<IConfiguration>().GetConnectionString(AuditChainDataSource.ConnectionStringName) is { Length: > 0 } sealer
+                ? sealer
+                : throw new InvalidOperationException(
+                    $"Connection string '{AuditChainDataSource.ConnectionStringName}' is not configured (ConnectionStrings__{AuditChainDataSource.ConnectionStringName}, a login in opportunity_audit_sealer).")));
         services.AddPostgresSearchWorkStore();
         services.AddSearchWorkHousekeeping();
 

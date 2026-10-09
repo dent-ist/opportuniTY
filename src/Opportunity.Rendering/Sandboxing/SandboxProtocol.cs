@@ -17,6 +17,8 @@ namespace Opportunity.Rendering.Sandboxing;
 /// <see cref="RenderErrorCodes"/> code.</item>
 /// <item>Parent → child: a <see cref="SandboxRenderRequest"/> with <c>endorse</c> set per page to endorse (E12-T04). The
 /// child writes the endorsed page and answers <c>endorsed</c>, or <c>failed</c> with a <see cref="RenderErrorCodes"/> code.</item>
+/// <item>Parent → child: a <see cref="SandboxRenderRequest"/> with <c>verify</c> set per produced page to verify (E12-T06).
+/// The child answers <c>verified</c> with its findings, or <c>failed</c> with a <see cref="RenderErrorCodes"/> code.</item>
 /// <item>The parent closes the child's stdin to end the session; the child exits.</item>
 /// </list>
 /// Everything the child sends is untrusted: lines are bounded, codes are checked against the known list and every file
@@ -49,7 +51,12 @@ internal sealed record SandboxLimits(long CpuSeconds, long DataBytes, long FileB
 
 /// <param name="InputPath">The source; null only for an endorsement of a blank (generated) page.</param>
 /// <param name="Endorse">Set for an endorsement (E12-T04): the child endorses one page and answers <c>endorsed</c> (or <c>failed</c>).</param>
-internal sealed record SandboxRenderRequest(string? InputPath, string OutputDirectory, IReadOnlyList<int>? Pages, bool Review, SandboxEndorseRequest? Endorse = null);
+/// <param name="Verify">Set for a burn-in verification (E12-T06): the input is the source page, the child answers <c>verified</c>.</param>
+internal sealed record SandboxRenderRequest(
+    string? InputPath, string OutputDirectory, IReadOnlyList<int>? Pages, bool Review, SandboxEndorseRequest? Endorse = null,
+    SandboxVerifyRequest? Verify = null);
+
+internal sealed record SandboxVerifyRequest(string ProducedPath, PageImageFormat Format, int Frame, int PageTopPx, IReadOnlyList<Endorsing.BurnedRedaction> Redactions);
 
 internal sealed record SandboxEndorseRequest(
     int Frame, PageImageFormat Format, Endorsing.EndorsementLayout Layout, int? Dpi, int BlankWidthPx, int BlankHeightPx,
@@ -68,6 +75,7 @@ internal static class SandboxMessageTypes
     public const string Fatal = "fatal";
     public const string Probe = "probe";
     public const string Endorsed = "endorsed";
+    public const string Verified = "verified";
 }
 
 internal sealed record SandboxMessage(
@@ -77,7 +85,8 @@ internal sealed record SandboxMessage(
     string? Code = null,
     string? Message = null,
     SandboxProbeReport? Probe = null,
-    SandboxEndorsed? Endorsed = null);
+    SandboxEndorsed? Endorsed = null,
+    Endorsing.BurnInResult? Verified = null);
 
 internal sealed record SandboxPage(
     int Index,

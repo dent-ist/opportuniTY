@@ -40,7 +40,9 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         """
         e.workspace_id, e.export_id, e.job_id, e.snapshot_id, e.name, e.settings::text, e.status, e.status_reason, e.created_by,
         e.created_by_display, e.created_by_groups, e.created_at, e.completed_at, e.documents_exported, e.documents_excluded,
-        e.natives, e.texts, e.images, e.pages, e.file_count, e.total_bytes, e.manifest_sha256, e.production_id
+        e.natives, e.texts, e.images, e.pages, e.file_count, e.total_bytes, e.manifest_sha256, e.production_id,
+        e.verification_status, e.verification_documents, e.verification_pages, e.verification_boxes, e.verification_failures,
+        e.verification_report_sha256
         """;
 
     private const string FileColumns =
@@ -218,7 +220,7 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                active.Add(new ActiveExport(Read(reader), Enum.Parse<JobStatus>(reader.GetString(23)), reader.GetInt32(24)));
+                active.Add(new ActiveExport(Read(reader), Enum.Parse<JobStatus>(reader.GetString(29)), reader.GetInt32(30)));
             }
         }
 
@@ -421,7 +423,9 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
             UPDATE opportunity.export
             SET status = 2, completed_at = now(), claimed_by = NULL, claimed_until = NULL,
                 documents_exported = @exported, documents_excluded = @excluded, natives = @natives, texts = @texts,
-                images = @images, pages = @pages, file_count = @files, total_bytes = @bytes, manifest_sha256 = @manifest
+                images = @images, pages = @pages, file_count = @files, total_bytes = @bytes, manifest_sha256 = @manifest,
+                verification_status = @vstatus, verification_documents = @vdocuments, verification_pages = @vpages,
+                verification_boxes = @vboxes, verification_failures = @vfailures, verification_report_sha256 = @vreport
             WHERE workspace_id = @ws AND export_id = @id AND status = 1
             RETURNING job_id
             """))
@@ -437,6 +441,7 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
             update.Parameters.AddWithValue("files", report.Files);
             update.Parameters.AddWithValue("bytes", report.TotalBytes);
             update.Parameters.AddWithValue("manifest", report.ManifestSha256);
+            AddVerification(update, report.Verification);
             if (await update.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not Guid job)
             {
                 return false;
@@ -449,6 +454,59 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         await AuditSql.InsertAsync(tx, audit, cancellationToken).ConfigureAwait(false);
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
         return true;
+    }
+
+    public async Task<bool> RejectAsync(
+        Guid workspaceId, Guid exportId, IReadOnlyList<NewExportFile> files, ExportVerification verification, string reason, AuditEvent audit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(verification);
+        ArgumentNullException.ThrowIfNull(audit);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        if (verification.Passed)
+        {
+            throw new ArgumentException("Only a failed verification rejects a run.", nameof(verification));
+        }
+
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        Guid jobId;
+        await using (var update = tx.Command(
+            """
+            UPDATE opportunity.export
+            SET status = 3, status_reason = @reason, completed_at = now(), claimed_by = NULL, claimed_until = NULL,
+                verification_status = @vstatus, verification_documents = @vdocuments, verification_pages = @vpages,
+                verification_boxes = @vboxes, verification_failures = @vfailures, verification_report_sha256 = @vreport
+            WHERE workspace_id = @ws AND export_id = @id AND status = 1 AND production_id IS NOT NULL
+            RETURNING job_id
+            """))
+        {
+            update.Parameters.AddWithValue("ws", workspaceId);
+            update.Parameters.AddWithValue("id", exportId);
+            update.Parameters.AddWithValue("reason", Truncate(reason, 2000));
+            AddVerification(update, verification);
+            if (await update.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not Guid job)
+            {
+                return false;
+            }
+
+            jobId = job;
+        }
+
+        await InsertFilesAsync(tx, exportId, jobId, null, files, cancellationToken).ConfigureAwait(false);
+        await AuditSql.InsertAsync(tx, audit, cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    private static void AddVerification(NpgsqlCommand command, ExportVerification? verification)
+    {
+        command.Parameters.Add(Nullable("vstatus", NpgsqlDbType.Smallint, verification is null ? null : verification.Passed ? (short)1 : (short)2));
+        command.Parameters.Add(Nullable("vdocuments", NpgsqlDbType.Bigint, verification?.Documents));
+        command.Parameters.Add(Nullable("vpages", NpgsqlDbType.Bigint, verification?.Pages));
+        command.Parameters.Add(Nullable("vboxes", NpgsqlDbType.Bigint, verification?.Boxes));
+        command.Parameters.Add(Nullable("vfailures", NpgsqlDbType.Bigint, verification?.Failures));
+        command.Parameters.Add(Nullable("vreport", NpgsqlDbType.Bytea, verification?.ReportSha256));
     }
 
     public async Task<bool> EndAsync(Guid workspaceId, Guid exportId, ExportStatus status, string reason, CancellationToken cancellationToken = default)
@@ -822,6 +880,9 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
     private static ExportRecord Read(NpgsqlDataReader r)
     {
         var status = (ExportStatus)r.GetInt16(6);
+        var verification = r.IsDBNull(23)
+            ? null
+            : new ExportVerification(r.GetInt16(23) == 1, r.GetInt64(24), r.GetInt64(25), r.GetInt64(26), r.GetInt64(27), r.GetFieldValue<byte[]>(28));
         return new ExportRecord
         {
             WorkspaceId = r.GetGuid(0),
@@ -840,9 +901,10 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
             Report = status == ExportStatus.Completed
                 ? new ExportReport(
                     r.GetInt64(13), r.GetInt64(14), r.GetInt64(15), r.GetInt64(16), r.GetInt64(17), r.GetInt64(18), r.GetInt64(19),
-                    r.GetInt64(20), r.GetFieldValue<byte[]>(21))
+                    r.GetInt64(20), r.GetFieldValue<byte[]>(21), verification)
                 : null,
             ProductionId = r.IsDBNull(22) ? null : r.GetGuid(22),
+            Verification = verification,
         };
     }
 

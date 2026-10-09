@@ -1,0 +1,100 @@
+// Workspace deletions (E20-T02): the installation-level list and one deletion's request, approval and progress.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 64rem;
+  padding: var(--opp-space-5);
+}
+
+.wdl__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.wdl__heading-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+}
+
+.wdl__title {
+  font-size: var(--opp-font-size-2xl);
+  overflow-wrap: anywhere;
+}
+
+.wdl__lead {
+  margin: 0;
+  max-width: 44rem;
+  color: var(--opp-color-text-muted);
+}
+
+.wdl__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-2);
+}
+
+.wdl__muted,
+.wdl__fine,
+.wdl__hint {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.wdl__fine,
+.wdl__hint {
+  font-size: var(--opp-font-size-xs);
+}
+
+.wdl__back,
+.wdl__card p,
+.wdl__back a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+}
+
+// Notices: the state is carried by the title text and icon, not colour alone.
+
+.wdl__notice {
+  display: flex;
+  gap: var(--opp-space-2);
+  padding: var(--opp-space-3);
+  border: var(--opp-border-width) solid;
+  border-radius: var(--opp-radius-md);
+}
+
+.wdl__notice > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  align-items: flex-start;
+}
+
+.wdl__notice opp-icon {
+  flex: none;
+  margin-block-start: 0.125rem;
+}
+
+.wdl__notice--warning {
+  color: var(--opp-color-warning-text);
+  background: var(--opp-color-warning-bg);
+  border-color: var(--opp-color-warning-border);
+}
+
+.wdl__notice--danger {
+  color: var(--opp-color-danger-text);
+  background: var(--opp-color-danger-bg);
+  border-color: var(--opp-color-danger-border);
+}
+
+.wdl__notice-title {
+  font-weight: var(--opp-font-weight-semibold);
+}

@@ -302,6 +302,59 @@ public sealed partial class SandboxedRenderer : IRenderer
             }
         }
 
+        /// <summary>
+        /// Verifies one produced page's burn-in in the document's process (E12-T06): the child decodes the produced image and
+        /// the source page and reports its findings, which are checked against the request before they are believed.
+        /// </summary>
+        public async Task<Endorsing.BurnInResult> VerifyAsync(Endorsing.BurnInRequest request, CancellationToken cancellationToken = default)
+        {
+            Endorsing.BurnInVerifier.Validate(request);
+            var produced = Path.GetFullPath(request.ProducedPath);
+            var source = Path.GetFullPath(request.SourcePath);
+            if (!IsInside(produced) || !IsInside(source))
+            {
+                throw new ArgumentException("The produced page and its source must be inside the session's work directory.", nameof(request));
+            }
+
+            if (DropsUser)
+            {
+                LinuxSandbox.ChangeOwner(_work, owner._options.RunAsUser, owner._options.RunAsGroup);
+                LinuxSandbox.ChangeOwner(produced, owner._options.RunAsUser, owner._options.RunAsGroup);
+                LinuxSandbox.ChangeOwner(source, owner._options.RunAsUser, owner._options.RunAsGroup);
+            }
+
+            var child = await EnsureChildAsync(cancellationToken).ConfigureAwait(false);
+            await child.SendAsync(SandboxProtocol.Serialize(new SandboxRenderRequest(source, _work, null, false, null, new SandboxVerifyRequest(
+                produced, request.Format, request.Frame, request.PageTopPx, request.Redactions))), cancellationToken).ConfigureAwait(false);
+            var message = await child.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            switch (message.Type)
+            {
+                case SandboxMessageTypes.Verified when message.Verified is { } result:
+                    await child.FailIfPeakOverLimitAsync().ConfigureAwait(false);
+                    if (!Plausible(result, request.Redactions.Count))
+                    {
+                        throw await child.FailAsync(RenderErrorCodes.SandboxCrashed, "The render process reported an invalid verification.").ConfigureAwait(false);
+                    }
+
+                    child.Progress();
+                    return result;
+                case SandboxMessageTypes.Failed when message.Code is { } code && RenderErrorCodesSet.IsKnown(code):
+                    child.Progress();
+                    throw new RenderException(code, Bounded(message.Message) ?? "The page cannot be verified.");
+                case SandboxMessageTypes.Fatal when message.Code == RenderErrorCodes.MemoryLimit:
+                    throw await child.FailAsync(RenderErrorCodes.MemoryLimit, "The render process ran out of memory.").ConfigureAwait(false);
+                default:
+                    throw await child.FailAsync(RenderErrorCodes.SandboxCrashed, "The render process violated the protocol.").ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>A verdict as the verifier can produce it: known codes, boxes of the request, bounded counts.</summary>
+        private static bool Plausible(Endorsing.BurnInResult result, int boxes) =>
+            result.Issues is { } issues && issues.Count <= 2 * boxes + 4 && result.BoxesChecked >= 0 && result.BoxesChecked <= boxes
+            && result.WidthPx >= 0 && result.PageHeightPx >= 0
+            && issues.All(i => i is not null && Application.Productions.BurnInCodes.All.Contains(i.Code)
+                && (i.Box is null || (i.Box >= 1 && i.Box <= boxes)) && (i.Pixels is null || i.Pixels >= 0));
+
         /// <summary>The live child, or a new one when there is none (or it died).</summary>
         private async Task<Child> EnsureChildAsync(CancellationToken cancellationToken)
         {

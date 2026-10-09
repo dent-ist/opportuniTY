@@ -7,6 +7,7 @@ using Npgsql;
 using Opportunity.Application.Messaging;
 using Opportunity.Application.Workspaces;
 using Opportunity.Contracts.Messaging.Indexing;
+using Opportunity.Data.Audit;
 using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
 using Opportunity.Data.Workspaces;
@@ -42,6 +43,7 @@ public static class IndexingWorkerModule
             return services;
         }
 
+        services.AddPostgresAuditStore();
         services.AddPostgresSearchWorkStore();
         services.AddPostgresProjectionSource();
         services.AddPostgresIndexPlacementStore();

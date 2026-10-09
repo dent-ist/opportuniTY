@@ -64,13 +64,21 @@ internal sealed class WorkspaceTransaction : IAsyncDisposable
     /// A transaction with no workspace context, for installation-level tables only (the workspace registry,
     /// ADR-015 D7.1). RLS policies match no tenant row without <c>app.workspace_id</c>, so this cannot read tenant data.
     /// </summary>
-    public static async Task<WorkspaceTransaction> BeginInstallationAsync(NpgsqlDataSource dataSource, CancellationToken cancellationToken)
+    public static Task<WorkspaceTransaction> BeginInstallationAsync(NpgsqlDataSource dataSource, CancellationToken cancellationToken) =>
+        BeginInstallationAsync(dataSource, IsolationLevel.Unspecified, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="BeginInstallationAsync(NpgsqlDataSource, CancellationToken)"/> with an explicit isolation level, e.g.
+    /// <see cref="IsolationLevel.RepeatableRead"/> for the audit chain verification, which reads one consistent snapshot.
+    /// </summary>
+    public static async Task<WorkspaceTransaction> BeginInstallationAsync(
+        NpgsqlDataSource dataSource, IsolationLevel isolationLevel, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(dataSource);
         var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            var transaction = await connection.BeginTransactionAsync(isolationLevel, cancellationToken).ConfigureAwait(false);
             return new WorkspaceTransaction(Guid.Empty, connection, transaction);
         }
         catch

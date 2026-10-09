@@ -10,10 +10,13 @@ recorder copies every dead-lettered or parked message into PostgreSQL (`jobs dlq
 | [Re-dispatch stuck work](re-dispatch-stuck-work.md) | work sits in Pending/Dispatched/Running without progress; outbox or index backlog grows |
 | [Replay failed work](replay-failed-work.md) | chunks, index tasks or SearchOutbox rows are `Failed`; a job ended *completed with errors*; DLQ depth > 0 |
 | [Alias reindex](alias-reindex.md) | the search projection must be rebuilt into a new index generation (mapping change, corruption) |
+| [Workspace deletion](workspace-deletion.md) | requesting, approving and following a workspace deletion; a run that waits, halts or ends with residuals; the destruction certificate |
 | [Deletion verification](deletion-verification.md) | proving that a workspace's data is gone from PostgreSQL, OpenSearch and object storage |
 | [Alert runbooks](alerts.md) | a Prometheus alert fired (one section per alert) |
 | [Metrics, dashboards and alerts](metrics.md) | finding the metric, dashboard panel or alert threshold for a pipeline signal |
+| [Message and worker trust](message-trust.md) | a message was rejected (`Integrity.MessageRejected`); configuring or rotating envelope signing, broker users or database logins; the Q-15 policy for jobs whose initiator lost access |
 | [Secrets, keys and envelope encryption](keys-and-secrets.md) | supplying secrets, rotating KEKs and data keys (rewrap job), backing up keys, giving a workspace its own key, crypto-shredding (`keys …` CLI) |
+| [Audit hash chain and `audit verify`](audit-chain.md) | proving the audit trail was not modified, deleted or reordered; exporting signed checkpoints for an exhibit; sealing before an audit purge or deletion run (`audit …` CLI) |
 
 ## Tools
 
@@ -89,7 +92,10 @@ AMQP headers and envelope fields (`headers`, JSON, without the payload), the dea
 count, the error, and the body up to 64 KiB (`body_size` is the full size). It is idempotent by message id (a
 duplicate dead-letter changes nothing) and deleted 30 days after it was recorded (`Messaging__DeadLetterRecorder__Retention`).
 A delivery is acknowledged only after its record is committed; while PostgreSQL is down the recorder retries and the
-messages wait in `opportunity.dead-letter.record`. The dispatcher's broker user may read that queue only (ADR-015 D9.5).
+messages wait in `opportunity.dead-letter.record`. The dispatcher's broker user may read that queue only (ADR-015 D9.5);
+no runtime user can read a `*.dlq` or `*.parking` queue ([message-trust.md](message-trust.md)). Messages a worker
+rejected — a forged envelope or a missing or invalid signature — are recorded here too (reasons `permanent`,
+`signature-missing`, `signature-invalid`, `signature-key-unknown`) and audited as `Integrity.MessageRejected`.
 
 ## Game day
 
