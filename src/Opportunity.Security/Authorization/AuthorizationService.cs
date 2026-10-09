@@ -158,6 +158,19 @@ internal sealed class AuthorizationService(ISecurityStateReader reader, IAuditEv
         return new VisibilityResult(decision, decision.IsAllowed ? PolicyEvaluator.Visibility(state!, now) : null);
     }
 
+    public async Task<DocumentAccessCheck> GetDocumentAccessCheckAsync(
+        SecurityPrincipal principal, Guid workspaceId, Permission permission, CancellationToken cancellationToken = default)
+    {
+        _ = PermissionCatalog.Get(permission);
+        if (Unauthenticated(principal) is not null)
+        {
+            return _ => false;
+        }
+
+        var state = await PrincipalStateAsync(principal, workspaceId, cancellationToken).ConfigureAwait(false);
+        return document => PolicyEvaluator.EvaluateDocument(state, permission, document, time.GetUtcNow()).IsAllowed;
+    }
+
     private static AuthorizationDecision? Unauthenticated(SecurityPrincipal principal)
     {
         ArgumentNullException.ThrowIfNull(principal);

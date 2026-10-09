@@ -5,6 +5,7 @@ import { CodingEditorResource } from '../models/coding-editor-resource';
 import { CodingFieldValueResource } from '../models/coding-field-value-resource';
 import { CodingIndexingStateResource } from '../models/coding-indexing-state-resource';
 export interface DocumentCodingResource {
+  accessRetained?: boolean;
   documentId: string;
   documentVersion: number | string;
   fields: Array<CodingFieldValueResource>;

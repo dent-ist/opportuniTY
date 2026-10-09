@@ -406,8 +406,9 @@ describe('Review grid (Documents list)', () => {
 
     press('Enter');
     await settle();
-    // Review mode (E16-T03) opens on the focused document; the list stays behind it.
-    expect(root().querySelector('opp-review-workspace')?.textContent).toContain('ACM0000002');
+    // Review mode (E16-T03) opens on the focused document; the list stays behind it. (This fake API has no
+    // document routes, so the document answers 404 and shows the no-access state of E16-T08.)
+    expect(root().querySelector('opp-review-workspace')?.textContent).toContain('Doc 2 of 250');
     expect(root().querySelector('.documents__list')?.hasAttribute('hidden')).toBe(true);
   });
 

@@ -305,6 +305,18 @@ and may relax it only through an amendment to this ADR.
    committed Withhold blocks finalization regardless of index freshness. New workspaces also get the default
    template of the familiarity guide §3.4, whose Confidentiality Designation is bound to `Confidential` and
    `AttorneysEyesOnly`.
+9. *Amendment 2026-10-09 (E16-T08, #134), as implemented:* an interactive save (`PUT …/documents/{id}/coding`) of a
+   security-affecting field that would hide the document from its own author (a restriction class none of their roles
+   is granted, or a wall naming them) needs `confirmAccessLoss: true`, like giving up one's own role (amendment 7).
+   The coding store judges it inside the coding transaction, on the classes and wall coverage exactly as the write
+   leaves them, with the PDP's document step over the caller's principal state (`IAuthorizationService.
+   GetDocumentAccessCheckAsync`, no audit event); unconfirmed, nothing is written or audited and the answer is 409
+   `confirmation-required` with `reason: removes-own-access`. The confirmed save answers 200 with
+   `accessRetained: false`, no fields and no editor; from then on the document answers the document 404 like any
+   other hidden document. The answer reveals nothing beyond the caller's own change. Bulk, propagation and import
+   writes are unchanged (Mass Edit's typed confirmation, Q-34). The web app treats a document 404 during a session as
+   "no longer available": nothing more is requested for it, and its list row shows no metadata (familiarity guide
+   §3.5).
 
 ### D7. PostgreSQL row-level security
 

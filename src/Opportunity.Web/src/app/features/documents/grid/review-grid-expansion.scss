@@ -20,9 +20,20 @@
   padding-inline-start: calc(var(--opp-cell-padding-x) + var(--opp-space-5));
 }
 
-.grid__placeholder {
+.grid__placeholder,
+.grid__gone {
   color: var(--opp-color-text-muted);
   font-style: italic;
+}
+
+// E16-T08: a row whose document is no longer available (no metadata, no selection). Its label may run on over the
+// row's empty cells.
+.grid__gone {
+  position: relative;
+  z-index: 1;
+  gap: var(--opp-space-1);
+  overflow: visible;
+  contain: none;
 }
 
 .grid__continued {

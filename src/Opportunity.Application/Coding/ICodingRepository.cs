@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 
 using Opportunity.Application.Audit;
+using Opportunity.Application.Authorization;
 using Opportunity.Application.Jobs;
 using Opportunity.Core.Coding;
 using Opportunity.Core.Fields;
@@ -196,6 +197,15 @@ public sealed record CodingWriteRequest
     /// (ADR-013 §2.1); the store fills category, action, resource and details. Not part of the idempotency hash.
     /// </summary>
     public AuditEvent? Audit { get; init; }
+
+    /// <summary>
+    /// A single-document interactive write: when set and the write changes a security-affecting field, the store evaluates
+    /// the document's restriction classes and wall coverage as this write leaves them, inside its transaction; when the
+    /// check fails (the author would lose access) nothing is written and the outcome is
+    /// <see cref="CodingWriteOutcome.AccessLossUnconfirmed"/> (E16-T08). Null: no check (confirmed, or a job).
+    /// Not part of the idempotency hash.
+    /// </summary>
+    public DocumentAccessCheck? RetainsAccess { get; init; }
 }
 
 public enum CodingWriteOutcome
@@ -217,6 +227,12 @@ public enum CodingWriteOutcome
 
     /// <summary>The idempotency key was used before for a different request.</summary>
     IdempotencyKeyReuse,
+
+    /// <summary>
+    /// <see cref="CodingWriteRequest.RetainsAccess"/> refused the document's security state after the write: it would hide
+    /// the document from its author. Nothing was written; the author must confirm the change.
+    /// </summary>
+    AccessLossUnconfirmed,
 }
 
 public enum DocumentCodingOutcome

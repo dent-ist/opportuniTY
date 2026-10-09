@@ -6607,7 +6607,7 @@
           "Coding"
         ],
         "summary": "Save coding changes with optimistic concurrency (If-Match: the ETag last read).",
-        "description": "All changes apply together or not at all, as one DocumentVersion. 412 version-conflict when the document changed since it was read: the problem carries currentVersion, lastEditor and current (the coding now). Security-affecting fields also need Coding.WritePrivilege. A retry with the same Idempotency-Key returns the original result (header Idempotent-Replayed) and writes nothing.",
+        "description": "All changes apply together or not at all, as one DocumentVersion. 412 version-conflict when the document changed since it was read: the problem carries currentVersion, lastEditor and current (the coding now). Security-affecting fields also need Coding.WritePrivilege. A retry with the same Idempotency-Key returns the original result (header Idempotent-Replayed) and writes nothing. A change that would hide the document from you answers 409 confirmation-required (reason removes-own-access) and writes nothing unless confirmAccessLoss is true; the confirmed save answers with accessRetained false and no fields.",
         "operationId": "SaveDocumentCoding",
         "parameters": [
           {
@@ -6684,6 +6684,16 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16560,6 +16570,10 @@
                 "$ref": "#/components/schemas/CodingEditorResource"
               }
             ]
+          },
+          "accessRetained": {
+            "type": "boolean",
+            "default": true
           }
         }
       },
@@ -26372,6 +26386,10 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "confirmAccessLoss": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

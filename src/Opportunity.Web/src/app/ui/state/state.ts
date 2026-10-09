@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output } f
 import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { ApiError, UserFacingError, describeError } from '../../core/api/problem-details';
 import { Button } from '../button/button';
-import { Icon } from '../icon/icon';
+import { Icon, IconName } from '../icon/icon';
 
 // Loading / empty / error states (ADR-018 §7). Every async region renders exactly one of: content,
 // <opp-loading-state>, <opp-empty-state> or <opp-error-state>.
@@ -23,7 +23,7 @@ export class LoadingState {
 @Component({
   selector: 'opp-empty-state',
   imports: [Icon],
-  template: `<opp-icon class="state__icon" name="inbox" />
+  template: `<opp-icon class="state__icon" [name]="icon()" />
     <h2 class="state__title">{{ title() }}</h2>
     @if (message()) {
       <p class="state__message">{{ message() }}</p>
@@ -36,6 +36,8 @@ export class LoadingState {
 export class EmptyState {
   readonly title = input.required<string>();
   readonly message = input<string>();
+  /** Decorative; `inbox` (nothing here) unless the reason is better shown otherwise. */
+  readonly icon = input<IconName>('inbox');
 }
 
 /**

@@ -162,6 +162,15 @@ export class Api {
     return (await this.ok(response)).json() as Promise<T>;
   }
 
+  /** `DELETE` with the anti-forgery header and `If-Match` (the ETag of a `GET` of the same resource). */
+  async delete(relative: string): Promise<void> {
+    const etag = (await this.getRaw(relative)).headers()['etag'];
+    const response = await this.request.delete(this.path(relative), {
+      headers: { ...(await this.writeHeaders(false)), ...(etag ? { 'If-Match': etag } : {}) },
+    });
+    await this.ok(response);
+  }
+
   /** Polls `relative` until `done` holds for its JSON body. */
   async waitFor<T>(
     relative: string,

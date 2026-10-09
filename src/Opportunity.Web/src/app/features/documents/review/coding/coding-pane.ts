@@ -37,8 +37,10 @@ import type {
   ApplyToRelatedData,
   ApplyToRelatedResult,
 } from '../related/apply-to-related-dialog';
+import { DocumentAccess, DocumentUnavailableError } from '../document-access';
 import type { CodingEditor } from '../review-regions';
 import {
+  CodingAccessLossError,
   CodingApi,
   CodingConflictError,
   CodingLayout,
@@ -63,6 +65,7 @@ import {
   toggleChoice,
   validate,
 } from './coding-form';
+import { AccessLossDialog, AccessLossData } from './access-loss-dialog';
 import { CodingConflict, CodingDifference } from './coding-conflict';
 import { PendingCoding } from './pending-coding';
 
@@ -111,8 +114,13 @@ const WRITE_PRIVILEGE = 'Coding.WritePrivilege';
  * - A stale version (someone else saved first) is never overwritten silently: the pane shows who changed what and
  *   when, and offers to reload their coding or to apply the reviewer's changes on top of it.
  * - After a save: "Saved · indexing" until search has the new version, then "Saved · searchable".
- * - Read-only without Coding.Write (values without inputs), per field when the layout marks it read-only, and for
- *   security-affecting fields without Coding.WritePrivilege.
+ * - Read-only without Coding.Write (values without inputs), per field when the layout marks it read-only, for
+ *   security-affecting fields without Coding.WritePrivilege, and for fields read-only for the reviewer's role (the
+ *   API's `editable`); a field hidden from the role is not in the API's answer and is not shown at all.
+ * - Security-affecting changes (E16-T08): unsaved changes to them say they affect who may see the document. A save
+ *   that would hide the document from the reviewer is refused by the API until they confirm it ("Save and lose
+ *   access?"); after it, `accessLost` tells Review mode to move on. A document that stops being available (404)
+ *   shows no coding and requests nothing more.
  */
 @Component({
   selector: 'opp-review-coding',
@@ -137,6 +145,8 @@ export class ReviewCoding implements CodingEditor {
   readonly controlNumber = input<string | null>(null);
   /** Coding was applied to the family or duplicates (or a job was started for it). */
   readonly propagated = output<ApplyToRelatedResult>();
+  /** A save the reviewer confirmed hid this document from them (its id): Review mode moves on (E16-T08). */
+  readonly accessLost = output<string>();
   /**
    * Admin › Coding Layouts preview (E04-T06): render this layout instead of the user's layouts, exactly as reviewers
    * see it, without the save, status and Apply to Family controls. Values can be tried out but are never saved.
@@ -155,6 +165,7 @@ export class ReviewCoding implements CodingEditor {
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly access = inject(DocumentAccess, { optional: true });
   protected readonly uid = inject(_IdGenerator).getId('opp-coding-');
   protected readonly accessHint =
     'Affects access: changing it can change who may see this document.';
@@ -171,7 +182,12 @@ export class ReviewCoding implements CodingEditor {
     (this.layouts() ?? []).map((l) => ({ value: l.id, label: l.name })),
   );
 
-  protected readonly coding = signal<DocumentCoding | 'loading' | 'unavailable'>('loading');
+  /** `unavailable`: it could not be loaded; `noAccess`: the document is no longer available to the reviewer. */
+  protected readonly coding = signal<DocumentCoding | 'loading' | 'unavailable' | 'noAccess'>(
+    'loading',
+  );
+  /** The reviewer's own confirmed save made the document unavailable to them (in this visit). */
+  protected readonly lostHere = signal(false);
   /** The reviewer's unsaved values by query name (only fields they touched). */
   private readonly edits = signal<Readonly<Record<string, CodingValue>>>({});
   private readonly errors = signal<ReadonlyMap<string, string>>(new Map());
@@ -228,7 +244,7 @@ export class ReviewCoding implements CodingEditor {
         title: section.title,
         id: `${this.uid}-s${s}`,
         rows: section.fields
-          .filter((field) => isVisible(field, value))
+          .filter((field) => isVisible(field, value) && this.listed(field, coding))
           .map((field) => this.row(field, coding, errors.get(field.queryName) ?? null, n++)),
       }))
       .filter((s) => s.rows.length > 0);
@@ -236,6 +252,19 @@ export class ReviewCoding implements CodingEditor {
 
   /** Fields on screen in layout order (Alt+Shift+C, then n jumps to the n-th). */
   private readonly rows = computed(() => this.sections().flatMap((s) => s.rows));
+  /** Labels of the security-affecting fields with unsaved changes ("Affects access", E16-T08). */
+  protected readonly accessChanges = computed(() => {
+    const base = this.base();
+    const edits = this.edits();
+    return this.rows()
+      .filter(
+        (r) =>
+          r.field.securityAffecting &&
+          r.field.queryName in edits &&
+          !sameValue(edits[r.field.queryName], base[r.field.queryName]),
+      )
+      .map((r) => r.field.label);
+  });
   /** Save actions: kept while the next document loads, so focus on them survives Save & Next. */
   protected readonly showActions = computed(
     () =>
@@ -273,6 +302,17 @@ export class ReviewCoding implements CodingEditor {
   });
 
   constructor() {
+    // The document stops being available while open (another user's change, a new wall, a deletion): its coding
+    // goes away with it, unsaved edits included, and nothing more is requested.
+    effect(() => {
+      const id = this.documentId();
+      if (!this.access?.isUnavailable(id)) return;
+      untracked(() => {
+        if (this.coding() === 'noAccess') return;
+        this.seq++;
+        this.showNoAccess();
+      });
+    });
     this.api.layouts().then(
       (layouts) => this.previewLayout() || this.layouts.set(layouts),
       () => this.previewLayout() || this.layouts.set([]),
@@ -553,6 +593,26 @@ export class ReviewCoding implements CodingEditor {
     return queryName in edits ? edits[queryName] : this.base()[queryName];
   }
 
+  /**
+   * A layout field the API's answer for this document does not list is hidden from the reviewer's role (a field
+   * restriction): it is not shown. An answer listing no field at all says nothing either way.
+   */
+  private listed(field: CodingLayoutField, coding: DocumentCoding): boolean {
+    const listed = Object.keys(coding.fields);
+    return listed.length === 0 || listed.includes(field.queryName);
+  }
+
+  private showNoAccess(): void {
+    // A field or button with focus goes away with the form: focus stays in the pane's region.
+    const region = this.host.closest<HTMLElement>('[data-command-region]');
+    if (this.host.contains(this.host.ownerDocument.activeElement)) region?.focus();
+    this.coding.set('noAccess');
+    this.edits.set({});
+    this.errors.set(new Map());
+    this.conflict.set(null);
+    this.saving.set(false);
+  }
+
   private load(documentId: string): void {
     const seq = ++this.seq;
     // A field with focus goes away while the next document loads: focus waits on the pane, then returns to the
@@ -570,6 +630,11 @@ export class ReviewCoding implements CodingEditor {
     this.conflict.set(null);
     this.savedHere.set(false);
     this.savedFields.set(new Set());
+    this.lostHere.set(false);
+    if (this.access?.isUnavailable(documentId)) {
+      this.coding.set('noAccess');
+      return;
+    }
     this.api.get(documentId).then(
       (coding) => {
         if (seq !== this.seq) return;
@@ -585,7 +650,12 @@ export class ReviewCoding implements CodingEditor {
           );
         }
       },
-      () => seq === this.seq && this.coding.set('unavailable'),
+      (e: unknown) => {
+        if (seq !== this.seq) return;
+        if (!(e instanceof DocumentUnavailableError)) return this.coding.set('unavailable');
+        this.access?.markUnavailable(documentId);
+        this.showNoAccess();
+      },
     );
   }
 
@@ -629,11 +699,36 @@ export class ReviewCoding implements CodingEditor {
     const seq = this.seq;
     this.saving.set(true);
     this.message.set(null);
-    try {
-      const saved = await this.api.save(coding.documentId, coding.version, changes, {
+    const send = (confirmAccessLoss: boolean) =>
+      this.api.save(coding.documentId, coding.version, changes, {
         layoutId: layout.serverId,
         idempotencyKey: newIdempotencyKey(),
+        ...(confirmAccessLoss ? { confirmAccessLoss } : {}),
       });
+    try {
+      let saved: DocumentCoding;
+      try {
+        saved = await send(false);
+      } catch (e) {
+        if (!(e instanceof CodingAccessLossError) || seq !== this.seq) throw e;
+        // Nothing was saved: the reviewer decides whether to give up their own access (E16-T08).
+        this.saving.set(false);
+        const confirmed = await this.confirmAccessLoss(changes);
+        if (seq !== this.seq) return false;
+        if (!confirmed) {
+          this.message.set(
+            'Not saved: this change would end your access to the document. Change your edits, or cancel them.',
+          );
+          this.announcer.announce('Not saved. Your changes are kept.');
+          return false;
+        }
+        this.saving.set(true);
+        saved = await send(true);
+      }
+      if (saved.accessLost) {
+        if (seq === this.seq) this.afterAccessLost(saved.documentId);
+        return true;
+      }
       this.pending?.track(saved);
       if (seq === this.seq) {
         this.coding.set(saved);
@@ -656,8 +751,19 @@ export class ReviewCoding implements CodingEditor {
       } else if (e instanceof CodingRejectedError) {
         const fieldErrors = new Map(Object.entries(e.fieldErrors));
         this.errors.set(fieldErrors);
-        this.message.set(e.message);
-        if (fieldErrors.size > 0) this.focusFirstError(fieldErrors);
+        // A message about a field that is not on screen (not in this layout, or hidden by its condition, such as
+        // the Privilege Basis a Withhold needs) is shown with the save's message instead of under the field.
+        const shown = new Set(this.rows().map((r) => r.field.queryName));
+        const elsewhere = [...fieldErrors].filter(([q]) => !shown.has(q)).map(([, m]) => m);
+        this.message.set([e.message, ...elsewhere].join(' '));
+        if (fieldErrors.size > elsewhere.length) this.focusFirstError(fieldErrors);
+      } else if (e instanceof DocumentUnavailableError) {
+        this.access?.markUnavailable(coding.documentId);
+        this.showNoAccess();
+        this.announcer.announce(
+          'This document is no longer available. Your changes could not be saved.',
+          { politeness: 'assertive' },
+        );
       } else {
         this.message.set('The coding could not be saved. Check your connection and try again.');
       }
@@ -665,6 +771,33 @@ export class ReviewCoding implements CodingEditor {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  /** Asks the reviewer to confirm a save that ends their own access; true when they confirm. */
+  private async confirmAccessLoss(
+    changes: Readonly<Record<string, CodingValue>>,
+  ): Promise<boolean> {
+    const fields = this.rows()
+      .filter((r) => r.field.securityAffecting && r.field.queryName in changes)
+      .map((r) => r.field.label);
+    const ref = this.dialogs.open<boolean, AccessLossData>(AccessLossDialog, {
+      role: 'alertdialog',
+      autoFocus: '[data-autofocus]',
+      data: { controlNumber: this.controlNumber(), fields },
+    });
+    return (await firstValueFrom(ref.closed)) === true;
+  }
+
+  /** The confirmed save stands and the document is gone for the reviewer: nothing of it stays on screen. */
+  private afterAccessLost(documentId: string): void {
+    this.access?.markUnavailable(documentId);
+    this.showNoAccess();
+    this.lostHere.set(true);
+    const name = this.controlNumber() ?? 'this document';
+    this.announcer.announce(`Saved. You no longer have access to ${name}.`, {
+      politeness: 'assertive',
+    });
+    this.accessLost.emit(documentId);
   }
 
   private row(
@@ -688,9 +821,11 @@ export class ReviewCoding implements CodingEditor {
       error,
       options: this.options(field, kind, value),
       lockedReason:
-        this.canCode() && !field.readOnly && !permitted && field.securityAffecting
-          ? 'Changing it needs the privilege coding permission.'
-          : null,
+        !this.canCode() || field.readOnly || permitted
+          ? null
+          : field.securityAffecting
+            ? 'Changing it needs the privilege coding permission.'
+            : 'Read-only for your role.',
     };
   }
 

@@ -16,6 +16,11 @@ namespace Opportunity.Contracts.Api;
 /// <param name="LayoutId">The layout the fields were selected by; null when every coding field is listed.</param>
 /// <param name="Fields">Coding fields in layout order (field id order without a layout); fields you may not see are omitted.</param>
 /// <param name="LastEditor">Who made the latest coding change among the listed fields; null when never coded.</param>
+/// <param name="AccessRetained">
+/// False only in the answer to a save confirmed with <c>confirmAccessLoss</c> that hid the document from you: the save
+/// stands, <see cref="Fields"/> is empty and <see cref="LastEditor"/> null, and the document now answers 404 like any
+/// document you may not see (E16-T08).
+/// </param>
 public sealed record DocumentCodingResource(
     Guid DocumentId,
     long DocumentVersion,
@@ -23,7 +28,8 @@ public sealed record DocumentCodingResource(
     CodingIndexingStateResource IndexingState,
     Guid? LayoutId,
     IReadOnlyList<CodingFieldValueResource> Fields,
-    CodingEditorResource? LastEditor);
+    CodingEditorResource? LastEditor,
+    bool AccessRetained = true);
 
 /// <summary>One coding field of a document.</summary>
 /// <param name="Value">
@@ -72,7 +78,12 @@ public enum CodingIndexingStateResource
 /// When set, the save is checked against this layout: only its editable fields may change, and its visible required
 /// fields must have a value afterwards.
 /// </param>
-public sealed record UpdateDocumentCodingRequest(IReadOnlyList<CodingChangeRequest> Changes, Guid? LayoutId = null);
+/// <param name="ConfirmAccessLoss">
+/// Required when a change of a security-affecting field would hide the document from you (a restriction class your roles
+/// may not see, an ethical wall naming you): without it such a save writes nothing and answers 409
+/// <c>confirmation-required</c> with <c>reason: removes-own-access</c> (E16-T08).
+/// </param>
+public sealed record UpdateDocumentCodingRequest(IReadOnlyList<CodingChangeRequest> Changes, Guid? LayoutId = null, bool ConfirmAccessLoss = false);
 
 /// <param name="Operation">set (a null value clears the field), addChoices or removeChoices (multiple choice only).</param>
 /// <param name="Value">Canonical value for set; an array of choice ids for addChoices/removeChoices.</param>

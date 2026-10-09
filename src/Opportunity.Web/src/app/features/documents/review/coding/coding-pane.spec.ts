@@ -6,7 +6,9 @@ import { FakeApi, provideFakeApi } from '../../../../core/api/fake-api.testing';
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
 import { expectNoAxeViolations } from '../../../../ui/testing/axe.testing';
+import { DocumentAccess, DocumentUnavailableError } from '../document-access';
 import {
+  CodingAccessLossError,
   CodingApi,
   CodingConflictError,
   CodingLayout,
@@ -129,6 +131,8 @@ function coding(
 class FakeCodingApi extends CodingApi {
   layoutList: CodingLayout[] = [FIRST_PASS, DETAILS];
   readonly docs = new Map<string, DocumentCoding>();
+  readonly gets: string[] = [];
+  getError: unknown = null;
   readonly saves: {
     documentId: string;
     version: string;
@@ -151,6 +155,8 @@ class FakeCodingApi extends CodingApi {
   }
 
   get(documentId: string): Promise<DocumentCoding> {
+    this.gets.push(documentId);
+    if (this.getError) return Promise.reject(this.getError);
     return Promise.resolve(this.docs.get(documentId) ?? coding(documentId));
   }
 
@@ -170,7 +176,9 @@ class FakeCodingApi extends CodingApi {
   template: `<opp-review-coding
     [documentId]="documentId()"
     [canCode]="canCode()"
+    controlNumber="ACM0000001"
     (move)="moves.push($event)"
+    (accessLost)="lost.push($event)"
   />`,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -178,6 +186,7 @@ class Host {
   readonly documentId = signal('doc-1');
   readonly canCode = signal(true);
   readonly moves: string[] = [];
+  readonly lost: string[] = [];
   readonly pane = viewChild.required(ReviewCoding);
 }
 
@@ -187,10 +196,16 @@ describe('Coding pane (E16-T05)', () => {
   let permissions: Set<string>;
 
   async function setup(
-    options: { permissions?: string[]; canCode?: boolean; layoutId?: string } = {},
+    options: {
+      permissions?: string[];
+      canCode?: boolean;
+      layoutId?: string;
+      layouts?: CodingLayout[];
+    } = {},
   ): Promise<void> {
     localStorage.clear();
     api = new FakeCodingApi();
+    if (options.layouts) api.layoutList = options.layouts;
     permissions = new Set(options.permissions ?? ['Coding.Write', 'Coding.WritePrivilege']);
     TestBed.configureTestingModule({
       providers: [
@@ -198,6 +213,7 @@ describe('Coding pane (E16-T05)', () => {
         provideFakeApi(new FakeApi()),
         { provide: CodingApi, useValue: api },
         PendingCoding,
+        DocumentAccess,
         {
           provide: WorkspaceContext,
           useValue: {
@@ -501,6 +517,187 @@ describe('Coding pane (E16-T05)', () => {
     expect(list.querySelector('.opp-visually-hidden[id$="-hint"]')?.textContent).toContain(
       'Up and Down arrows',
     );
+  });
+
+  describe('security-affecting coding and restricted states (E16-T08)', () => {
+    const dialog = () => document.querySelector<HTMLElement>('[role="alertdialog"]');
+    const dialogButton = (name: string) =>
+      [...(dialog()?.querySelectorAll('button') ?? [])].find(
+        (b) => b.textContent?.trim() === name,
+      )!;
+
+    it('says unsaved changes affect access, and confirms a save that ends the reviewer’s own access', async () => {
+      await setup();
+      option('responsiveness', 'Responsive').click();
+      await settle();
+      expect(el().querySelector('.coding__access-note')).toBeNull();
+      option('privilege_status', 'Redact').click();
+      await settle();
+      option('privilege_basis', 'Work Product').click();
+      await settle();
+      expect(el().querySelector('.coding__access-note')?.textContent).toContain(
+        'Your changes to Privilege Status affect who may see this document.',
+      );
+
+      // The API refuses the save until confirmed: the reviewer is asked, with Cancel focused.
+      api.onSave = (documentId, version, values) =>
+        api.saves.at(-1)!.options.confirmAccessLoss
+          ? Promise.resolve(
+              coding(documentId, {}, { version: String(Number(version) + 1), accessLost: true }),
+            )
+          : Promise.reject(new CodingAccessLossError());
+      const first = pane().save();
+      await settle();
+      expect(dialog()?.textContent).toContain('Save and lose access?');
+      expect(dialog()?.textContent).toContain('ACM0000001');
+      expect(dialog()?.textContent).toContain('you changed Privilege Status');
+      expect(document.activeElement).toBe(dialogButton('Cancel'));
+      dialogButton('Cancel').click();
+      expect(await first).toBe(false);
+      await settle();
+      expect(el().querySelector('.coding__message')?.textContent).toContain('Not saved');
+      expect(pane().dirty()).toBe(true);
+      expect(api.saves).toHaveLength(1);
+      expect(api.saves[0].options.confirmAccessLoss).toBeUndefined();
+
+      // Confirmed: sent again with confirmAccessLoss and a fresh key; the coding leaves the screen.
+      const second = pane().save();
+      await settle();
+      dialogButton('Save and lose access').click();
+      expect(await second).toBe(true);
+      await settle();
+      expect(api.saves).toHaveLength(3);
+      expect(api.saves[2].options.confirmAccessLoss).toBe(true);
+      expect(api.saves[2].options.idempotencyKey).not.toBe(api.saves[1].options.idempotencyKey);
+      expect(fixture.componentInstance.lost).toEqual(['doc-1']);
+      expect(TestBed.inject(DocumentAccess).isUnavailable('doc-1')).toBe(true);
+      expect(el().textContent).toContain('Saved. You no longer have access to this document');
+      expect(el().querySelector('.coding__form')).toBeNull();
+      expect(pane().dirty()).toBe(false);
+      await expectNoAxeViolations(el());
+    });
+
+    it('shows no coding and requests nothing more once the document is no longer available', async () => {
+      await setup();
+      option('responsiveness', 'Responsive').click();
+      await settle();
+      expect(api.gets).toEqual(['doc-1']);
+      // Another user's change (or a new wall) hid the open document: unsaved edits go with it.
+      TestBed.inject(DocumentAccess).markUnavailable('doc-1');
+      await settle();
+      expect(el().textContent).toContain('No coding to show: this document is not available.');
+      expect(el().querySelector('.coding__form')).toBeNull();
+      expect(pane().dirty()).toBe(false);
+      fixture.componentInstance.documentId.set('doc-2');
+      await settle();
+      fixture.componentInstance.documentId.set('doc-1');
+      await settle();
+      expect(api.gets).toEqual(['doc-1', 'doc-2']);
+
+      // A document that answers 404 when its coding is read, or when it is saved.
+      api.getError = new DocumentUnavailableError('doc-3');
+      fixture.componentInstance.documentId.set('doc-3');
+      await settle();
+      expect(el().textContent).toContain('No coding to show');
+      expect(TestBed.inject(DocumentAccess).isUnavailable('doc-3')).toBe(true);
+      api.getError = null;
+      fixture.componentInstance.documentId.set('doc-4');
+      await settle();
+      option('responsiveness', 'Responsive').click();
+      await settle();
+      api.onSave = () => Promise.reject(new DocumentUnavailableError('doc-4'));
+      expect(await pane().save()).toBe(false);
+      await settle();
+      expect(el().textContent).toContain('No coding to show');
+      expect(TestBed.inject(DocumentAccess).isUnavailable('doc-4')).toBe(true);
+    });
+
+    it('marks fields read-only for the role, leaves out fields hidden from it, and shows refused fields not on screen with the message', async () => {
+      await setup();
+      api.docs.set(
+        'doc-2',
+        coding(
+          'doc-2',
+          {},
+          {
+            fields: {
+              responsiveness: { editable: true, securityAffecting: false, changedAt: null },
+              privilege_status: { editable: true, securityAffecting: true, changedAt: null },
+              privilege_basis: { editable: true, securityAffecting: false, changedAt: null },
+              issues: { editable: true, securityAffecting: false, changedAt: null },
+              comments: { editable: false, securityAffecting: false, changedAt: null },
+            },
+          },
+        ),
+      );
+      fixture.componentInstance.documentId.set('doc-2');
+      await settle();
+      expect(fieldEl('comments')!.textContent).toContain('Read-only for your role.');
+      expect(fieldEl('comments')!.querySelector('input, textarea')).toBeNull();
+      // Key Document is not in the API's answer: hidden from this role, so not on screen at all.
+      expect(fieldEl('key_document')).toBeNull();
+      expect(el().textContent).not.toContain('Key Document');
+
+      // E13-T01: the API's privilege-basis-required for a Basis that is not on screen joins the save's message.
+      option('responsiveness', 'Responsive').click();
+      await settle();
+      api.onSave = () =>
+        Promise.reject(
+          new CodingRejectedError(
+            400,
+            {
+              privilege_basis:
+                'Privilege Basis is required when Privilege Status is Withhold or Redact.',
+            },
+            'The coding was not saved.',
+          ),
+        );
+      expect(await pane().save()).toBe(false);
+      await settle();
+      expect(el().querySelector('.coding__message')?.textContent).toContain(
+        'The coding was not saved. Privilege Basis is required when Privilege Status is Withhold or Redact.',
+      );
+    });
+
+    it('shows the API’s privilege-basis-required under Privilege Basis when it is on screen', async () => {
+      // A layout that shows Privilege Basis for Withhold without making it required: the API still requires it.
+      await setup({
+        layouts: [
+          {
+            ...FIRST_PASS,
+            sections: [
+              { title: 'Responsiveness', fields: [RESPONSIVENESS] },
+              { title: 'Privilege', fields: [PRIVILEGE, { ...BASIS, required: false }] },
+            ],
+          },
+        ],
+      });
+      option('privilege_status', 'Withhold').click();
+      await settle();
+      api.onSave = () =>
+        Promise.reject(
+          new CodingRejectedError(
+            400,
+            {
+              privilege_basis:
+                'Privilege Basis is required when Privilege Status is Withhold or Redact.',
+            },
+            'The coding was not saved.',
+          ),
+        );
+      // Responsiveness is required in this layout: give it a value so the save reaches the API.
+      option('responsiveness', 'Responsive').click();
+      await settle();
+      expect(await pane().save()).toBe(false);
+      await settle();
+      expect(group('privilege_basis')!.getAttribute('aria-invalid')).toBe('true');
+      expect(fieldEl('privilege_basis')!.textContent).toContain(
+        'Privilege Basis is required when Privilege Status is Withhold or Redact.',
+      );
+      expect(el().querySelector('.coding__message')?.textContent?.trim()).toContain(
+        'The coding was not saved.',
+      );
+    });
   });
 
   it('focuses the n-th field on screen (Alt+Shift+C, then n)', async () => {

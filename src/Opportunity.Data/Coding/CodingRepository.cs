@@ -935,6 +935,15 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
             var binding = await DocumentSecuritySql.BindingAsync(tx, restrictions, cancellationToken).ConfigureAwait(false);
             plan.RestrictionChanges = await RecomputeRestrictionsAsync(tx, ws, securityDocuments, binding, cancellationToken).ConfigureAwait(false);
             plan.WallChanges = await DocumentSecuritySql.SyncWallsAsync(tx, securityDocuments, cancellationToken).ConfigureAwait(false);
+
+            // E16-T08: an unconfirmed interactive save that would hide the document from its author writes nothing (the
+            // caller disposes the transaction). Judged on the classes and walls exactly as this write leaves them.
+            if (request.RetainsAccess is { } retainsAccess && targets.Count == 1
+                && await DocumentSecuritySql.AttributesAsync(tx, targets[0].DocumentId, cancellationToken).ConfigureAwait(false) is { } attributes
+                && !retainsAccess(attributes))
+            {
+                return (CodingWriteResult.Failed(CodingWriteOutcome.AccessLossUnconfirmed), plan);
+            }
         }
 
         if (request.Audit is { } audit)
