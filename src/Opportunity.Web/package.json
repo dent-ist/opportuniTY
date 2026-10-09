@@ -32,7 +32,7 @@
     "@angular/cli": "^22.2.1",
     "@angular/compiler-cli": "^22.2.0",
     "@playwright/test": "1.63.0",
-    "@types/node": "^24.19.1",
+    "@types/node": "^26.6.4",
     "axe-core": "^4.13.0",
     "jsdom": "^30.0.0",
     "ng-openapi-gen": "1.1.0",
