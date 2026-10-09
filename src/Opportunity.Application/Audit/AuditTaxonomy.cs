@@ -331,6 +331,19 @@ public static class AuditTaxonomy
         public const string BatesConflict = "BatesConflict";
     }
 
+    /// <summary>Key management (E05-T09): data keys and KEKs created, rotated or rewrapped, and destroyed. Key ids only.</summary>
+    public static class Admin
+    {
+        public const string Category = "Admin";
+        public const string KeyCreated = "KeyCreated";
+
+        /// <summary>A data key or KEK got a new version, or a data key was rewrapped under another KEK version.</summary>
+        public const string KeyRotated = "KeyRotated";
+
+        /// <summary>Key material was destroyed: a pruned KEK version, or a workspace's keys (crypto-shredding).</summary>
+        public const string KeyDestroyed = "KeyDestroyed";
+    }
+
     public static class Audit
     {
         public const string Category = "Audit";

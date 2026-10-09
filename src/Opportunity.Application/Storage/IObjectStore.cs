@@ -98,13 +98,15 @@ public sealed record PutObjectResult(
 /// <param name="Sha256">Recorded by the provider when it was known before the write committed; otherwise null and the
 /// PostgreSQL registry is the authority.</param>
 /// <param name="KeyId">The encryption key identifier recorded with the object (ADR-011 §6.1).</param>
+/// <param name="EncryptionScheme">How the object is encrypted: what a caller adopting an existing object registers.</param>
 public sealed record ObjectInfo(
     ObjectKey Key,
     long Length,
     Sha256Digest? Sha256,
     string? KeyId,
     string ContentType,
-    DateTimeOffset? LastModified);
+    DateTimeOffset? LastModified,
+    EncryptionScheme EncryptionScheme = EncryptionScheme.ProviderSse);
 
 public sealed record ObjectListing(ObjectKey Key, long Length);
 

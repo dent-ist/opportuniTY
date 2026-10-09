@@ -29,6 +29,12 @@ One machine, one of everything (architecture baseline §16/§29 developer regres
   and worker wait for `migrator: service_completed_successfully`; web waits for a healthy api.
 - **Object store**: the filesystem provider on the named volume `objects`, shared by api and worker (ADR-020 rule 1).
   For S3 semantics, start SeaweedFS with `COMPOSE_PROFILES=s3` and set `OPPORTUNITY_OBJECT_STORAGE=S3` in `.env`.
+- **Encryption at rest**: workspace objects are envelope-encrypted with per-workspace data keys (E05-T09). The local key
+  store lives in the named volume `keys` (api and worker), separate from `objects`; back it up separately and see
+  [docs/operations/keys-and-secrets.md](../../docs/operations/keys-and-secrets.md) for rotation and the `keys …` CLI.
+  `OPPORTUNITY_OBJECT_ENCRYPTION=ProviderSse` in `.env` switches it off. No secret is committed: every password, the
+  S3 secret and the dev OIDC client secret come from `.env` (`./opportunity.sh init`; rerun it after an update to add
+  new ones), and any setting can also be passed as a file (`<Setting>_FILE`, e.g. `ConnectionStrings__App_FILE`).
 - **No Redis/Valkey** (§16, §34). CI fails if one appears.
 - **Database logins**: `opportunity_owner` runs the migrator and owns every object (no superuser, no CREATEROLE);
   `opportunity_runtime` (api and worker, `ConnectionStrings__App`) is a member of `opportunity_app`: DML only.

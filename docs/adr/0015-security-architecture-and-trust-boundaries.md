@@ -449,6 +449,13 @@ and may relax it only through an amendment to this ADR.
    (`E20-T02`) need no data migration.
 4. ASP.NET Core Data Protection keys (session and token encryption, antiforgery) are persisted in PG and encrypted
    with a KEK from `IKeyProvider`. They are shared by all API replicas. Key lifetime is 90 days.
+*Implementation note 2026-10-09 (E05-T09, #54):* D10.1–D10.3 are implemented: `ISecretProvider` (Docker secret files
+   and `OPPORTUNITY_SECRET_*`), the `*_FILE` configuration convention in every host, `IKeyEncryptionKeyProvider` and
+   `ISigningKeyProvider` with a built-in local key directory (Vault, AWS KMS and Azure Key Vault adapters implement the
+   same ports later; no cloud SDK ships yet), and envelope encryption of workspace objects as amended in ADR-011 §6.
+   **Deviation:** D10.4 (sealing the Data Protection key ring with a KEK) is not part of E05-T09 and remains open; the
+   ring is still stored in PostgreSQL unsealed. The Compose profile now generates the dev OIDC client secret instead of
+   committing it. Runbook: [docs/operations/keys-and-secrets.md](../operations/keys-and-secrets.md).
 5. Secrets, tokens, connection strings, presigned URLs, document text, file names, control numbers and search text
    MUST NOT appear in logs, traces or metrics. Telemetry carries IDs, counts and durations only (attribute
    allow-list), verified by a scrubbing test (`E19-T04`, `E05-T04`, `E05-T09`). Executed search text is recorded

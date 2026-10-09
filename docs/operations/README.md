@@ -13,6 +13,7 @@ recorder copies every dead-lettered or parked message into PostgreSQL (`jobs dlq
 | [Deletion verification](deletion-verification.md) | proving that a workspace's data is gone from PostgreSQL, OpenSearch and object storage |
 | [Alert runbooks](alerts.md) | a Prometheus alert fired (one section per alert) |
 | [Metrics, dashboards and alerts](metrics.md) | finding the metric, dashboard panel or alert threshold for a pipeline signal |
+| [Secrets, keys and envelope encryption](keys-and-secrets.md) | supplying secrets, rotating KEKs and data keys (rewrap job), backing up keys, giving a workspace its own key, crypto-shredding (`keys …` CLI) |
 
 ## Tools
 

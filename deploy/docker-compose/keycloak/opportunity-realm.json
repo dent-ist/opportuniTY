@@ -83,7 +83,7 @@
       "protocol": "openid-connect",
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "opportunity-dev-client",
+      "secret": "${OPPORTUNITY_OIDC_CLIENT_SECRET}",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,

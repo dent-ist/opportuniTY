@@ -163,6 +163,22 @@ complete.
 3. Destroying the workspace key (ADR-014) makes every remaining copy unreadable, including copies in backups. This is
    what crypto-shredding means here, and it only works because `KeyId` is recorded per object.
 
+*Amendment 2026-10-09 (E05-T09, #54):* the data key is **per workspace and versioned**, not per object.
+`opportunity.workspace_data_key` (V0053) holds each workspace's data keys, wrapped by the installation KEK or the
+workspace's dedicated KEK; exactly one version is active for new objects. Each object derives its own AES-256-GCM key
+with HKDF from the data key, a random salt in a 64-byte object header and the logical key, and is sealed in 64 KiB
+chunks so byte ranges stay cheap and truncation is detected. The header names the data key version, `KeyId` records it
+as `wdk-v<n>`, and `WrappedDek` stays NULL for envelope objects too (reserved; V0053 relaxes the check). Because objects
+are write-once, a per-object wrapped key could not be rewrapped in the object; keeping wrapped keys in a few PostgreSQL
+rows makes KEK rotation a rewrap of those rows (the "rewrap job" of §6.2) and never touches objects. "Switching a
+workspace to a dedicated key" creates a new data key version wrapped by the dedicated KEK for new objects; the rewrap job
+moves the older versions under it, after which destroying the dedicated KEK shreds every copy. Envelope encryption is an
+installation setting (`ObjectStorage:Encryption:Mode`, default `ProviderSse`); it is applied by a decorator in front of
+any provider, covers `ws/…` objects only (`sys/…` keeps provider SSE), reads objects written before it was switched on
+unchanged, and makes delivery `stream` for every provider (§5.4: a presigned URL would serve ciphertext). Listings
+report stored (ciphertext) sizes; the registry keeps plaintext sizes and hashes. Runbook:
+[docs/operations/keys-and-secrets.md](../operations/keys-and-secrets.md).
+
 ### 7. Deletion by prefix
 
 1. `DeletePrefix` accepts only these shapes: `ws/{ws}/`, `ws/{ws}/{area}/`, `ws/{ws}/docs/{documentId}/`,
