@@ -57,6 +57,51 @@ public sealed class SandboxedRendererTests : IDisposable
     }
 
     [Fact]
+    public async Task Pages_are_endorsed_in_the_sandbox_byte_for_byte_as_in_process()
+    {
+        SkipUnlessLinux();
+        var renderer = Sandboxed();
+        var work = Directory.CreateDirectory(Path.Combine(_root, "endorse")).FullName;
+        var tiff = Path.Combine(work, "source.tif");
+        await File.WriteAllBytesAsync(tiff, PageImages.Tiff(["E-1", "E-2"], width: 850, height: 1100, dpi: 100), Ct);
+        var jpeg = Path.Combine(work, "source.jpg");
+        await File.WriteAllBytesAsync(jpeg, PageImages.Jpeg("E-3", 425, 550, 50), Ct);
+        var output = Directory.CreateDirectory(Path.Combine(work, "out")).FullName;
+        var layout = new Opportunity.Rendering.Endorsing.EndorsementLayout(
+        [
+            new(Opportunity.Core.Productions.EndorsementPosition.BottomLeft, "CONFIDENTIAL"),
+            new(Opportunity.Core.Productions.EndorsementPosition.BottomRight, "ABC0000002"),
+        ]);
+        Opportunity.Rendering.Endorsing.EndorseRequest[] requests =
+        [
+            new(tiff, 1, output, Opportunity.Core.Pages.PageImageFormat.TiffG4, layout),
+            new(jpeg, 0, output, Opportunity.Core.Pages.PageImageFormat.Jpeg, layout),
+            new(null, 0, output, Opportunity.Core.Pages.PageImageFormat.TiffG4, layout with { BodyLines = ["Withheld for Privilege"] }, 300, 2550, 3300),
+        ];
+
+        var session = renderer.BeginDocument(work);
+        await using (session)
+        {
+            foreach (var request in requests)
+            {
+                var sandboxed = await session.EndorseAsync(request, Ct);
+                var direct = Opportunity.Rendering.Endorsing.PageEndorser.Endorse(request);
+                sandboxed.Content.Should().Equal(direct.Content, "an endorsed page is the same in the sandbox and in process");
+                sandboxed.Should().BeEquivalentTo(direct, o => o.Excluding(i => i.Content));
+                Directory.EnumerateFiles(output).Should().BeEmpty("the worker removes the endorsed file once read");
+            }
+
+            var garbage = Path.Combine(work, "garbage");
+            await File.WriteAllBytesAsync(garbage, [1, 2, 3, 4, 5], Ct);
+            var failed = async () => await session.EndorseAsync(requests[0] with { InputPath = garbage, Frame = 0 }, Ct);
+            (await failed.Should().ThrowAsync<RenderException>()).Which.Code.Should().Be(RenderErrorCodes.Unsupported);
+            ChildProcesses().Should().ContainSingle("one document, one process, also for its endorsements");
+        }
+
+        ChildProcesses().Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task One_process_renders_every_source_of_a_document_and_ends_with_the_session()
     {
         SkipUnlessLinux();

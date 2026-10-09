@@ -664,6 +664,25 @@ internal static class RouteAttackCatalog
             new RouteProbe("production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/documents", HttpStatusCode.OK)),
         Case("POST", Ws + "/productions/{productionId}/verification", ProtectedOperation.ProductionInclusion,
             new RouteProbe("production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/verification", HttpStatusCode.OK)),
+        // Designations (E12-T04): the production and the document are both identifiers; a foreign document in an own production
+        // must answer like an unknown one.
+        Case("GET", Ws + "/productions/{productionId}/designations", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/designations", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/productions/{productionId}/designation-overrides/{documentId}", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production and document", HttpMethod.Put, (o, t) => $"{W(o)}/productions/{t.DraftProductionId}/designation-overrides/{t.DocumentId}",
+                null, (_, _) => J(new JsonObject { ["choiceId"] = null, ["reason"] = "Attack probe" })),
+            new RouteProbe("own draft, another workspace's document", HttpMethod.Put,
+                (o, t) => $"{W(o)}/productions/{o.DraftProductionId}/designation-overrides/{t.DocumentId}", null,
+                (_, _) => J(new JsonObject { ["choiceId"] = null, ["reason"] = "Attack probe" }))),
+        Case("DELETE", Ws + "/productions/{productionId}/designation-overrides/{documentId}", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production and document", HttpMethod.Delete,
+                (o, t) => $"{W(o)}/productions/{t.DraftProductionId}/designation-overrides/{t.DocumentId}", null),
+            new RouteProbe("own draft, another workspace's document", HttpMethod.Delete,
+                (o, t) => $"{W(o)}/productions/{o.DraftProductionId}/designation-overrides/{t.DocumentId}", null)),
+        Case("GET", Ws + "/productions/{productionId}/redesignation-report", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-report", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/redesignation-overlay", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-overlay", HttpStatusCode.OK)),
 
         // Routes without a workspace-scoped identifier.
         Exempt("GET", V1 + "/me", "the caller's own session; no identifier"),

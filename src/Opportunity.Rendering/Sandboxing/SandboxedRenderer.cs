@@ -204,18 +204,7 @@ public sealed partial class SandboxedRenderer : IRenderer
                 LinuxSandbox.ChangeOwner(output, owner._options.RunAsUser, owner._options.RunAsGroup);
             }
 
-            if (_child is null || _child.HasEnded)
-            {
-                if (_child is not null)
-                {
-                    await _child.DisposeAsync().ConfigureAwait(false);
-                    _child = null;
-                }
-
-                _child = await Child.StartAsync(owner, owner.StartMessage(_work, null), cancellationToken).ConfigureAwait(false);
-            }
-
-            var child = _child;
+            var child = await EnsureChildAsync(cancellationToken).ConfigureAwait(false);
             await child.SendAsync(SandboxProtocol.Serialize(new SandboxRenderRequest(input, output, request.Pages, request.Review)), cancellationToken).ConfigureAwait(false);
             while (true)
             {
@@ -249,6 +238,84 @@ public sealed partial class SandboxedRenderer : IRenderer
                         throw await child.FailAsync(RenderErrorCodes.SandboxCrashed, "The render process violated the protocol.").ConfigureAwait(false);
                 }
             }
+        }
+
+        /// <summary>
+        /// Endorses one page in the document's process (E12-T04). The child is stopped while its file is checked and read
+        /// (<see cref="EndorsedOutputValidator"/>); the file is then deleted and its bytes returned.
+        /// </summary>
+        public async Task<Endorsing.EndorsedImage> EndorseAsync(Endorsing.EndorseRequest request, CancellationToken cancellationToken = default)
+        {
+            Endorsing.PageEndorser.Validate(request);
+            var input = request.InputPath is null ? null : Path.GetFullPath(request.InputPath);
+            var output = Path.GetFullPath(request.OutputDirectory).TrimEnd(Path.DirectorySeparatorChar);
+            if ((input is not null && !IsInside(input)) || !IsInside(output))
+            {
+                throw new ArgumentException("The source and output must be inside the session's work directory.", nameof(request));
+            }
+
+            if (DropsUser)
+            {
+                LinuxSandbox.ChangeOwner(_work, owner._options.RunAsUser, owner._options.RunAsGroup);
+                if (input is not null)
+                {
+                    LinuxSandbox.ChangeOwner(input, owner._options.RunAsUser, owner._options.RunAsGroup);
+                }
+
+                LinuxSandbox.ChangeOwner(output, owner._options.RunAsUser, owner._options.RunAsGroup);
+            }
+
+            var child = await EnsureChildAsync(cancellationToken).ConfigureAwait(false);
+            await child.SendAsync(SandboxProtocol.Serialize(new SandboxRenderRequest(input, output, null, false, new SandboxEndorseRequest(
+                request.Frame, request.Format, request.Layout, request.Dpi, request.BlankWidthPx, request.BlankHeightPx))), cancellationToken).ConfigureAwait(false);
+            var message = await child.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            switch (message.Type)
+            {
+                case SandboxMessageTypes.Endorsed when message.Endorsed is { } reported:
+                    child.Suspend();
+                    Endorsing.EndorsedImage? image;
+                    try
+                    {
+                        await child.FailIfPeakOverLimitAsync().ConfigureAwait(false);
+                        image = EndorsedOutputValidator.Read(reported, output, request.Format, owner._options.MaxFileBytes);
+                        if (image is null)
+                        {
+                            throw await child.FailAsync(RenderErrorCodes.SandboxCrashed, "The render process reported an invalid endorsed page.").ConfigureAwait(false);
+                        }
+
+                        File.Delete(Path.Combine(output, reported.FileName));
+                    }
+                    finally
+                    {
+                        child.Resume();
+                    }
+
+                    return image;
+                case SandboxMessageTypes.Failed when message.Code is { } code && RenderErrorCodesSet.IsKnown(code):
+                    child.Progress();
+                    throw new RenderException(code, Bounded(message.Message) ?? "The page cannot be endorsed.");
+                case SandboxMessageTypes.Fatal when message.Code == RenderErrorCodes.MemoryLimit:
+                    throw await child.FailAsync(RenderErrorCodes.MemoryLimit, "The render process ran out of memory.").ConfigureAwait(false);
+                default:
+                    throw await child.FailAsync(RenderErrorCodes.SandboxCrashed, "The render process violated the protocol.").ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>The live child, or a new one when there is none (or it died).</summary>
+        private async Task<Child> EnsureChildAsync(CancellationToken cancellationToken)
+        {
+            if (_child is null || _child.HasEnded)
+            {
+                if (_child is not null)
+                {
+                    await _child.DisposeAsync().ConfigureAwait(false);
+                    _child = null;
+                }
+
+                _child = await Child.StartAsync(owner, owner.StartMessage(_work, null), cancellationToken).ConfigureAwait(false);
+            }
+
+            return _child;
         }
 
         public async Task<SandboxProbeReport> ProbeAsync(IReadOnlyList<string> endpoints, CancellationToken cancellationToken)

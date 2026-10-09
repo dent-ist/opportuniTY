@@ -45,6 +45,9 @@ public enum ProductionOutcomeStatus
 
     /// <summary>The caller lacks a permission the request needs beyond the endpoint's (403).</summary>
     Forbidden,
+
+    /// <summary>A member's designation cannot be produced as specified (E12-T04); the production cannot be finalized (409).</summary>
+    DesignationRefused,
 }
 
 public sealed record ProductionOutcome(
@@ -158,6 +161,8 @@ public sealed partial class ProductionService(
                 ["PreviousVersionId"] = previousVersion?.ToString(),
                 ["SpecificationSha256"] = Convert.ToHexStringLower(normalized.Sha256),
                 ["BatesStart"] = normalized.Format.Format(normalized.Specification.Bates.StartNumber),
+                ["DesignationFieldId"] = normalized.Specification.Designations?.FieldId?.ToString(CultureInfo.InvariantCulture),
+                ["DesignationRule"] = DesignationRuleName(ProductionSpecificationRules.RuleOf(normalized.Specification)),
             }) with
             { SnapshotId = snapshot.SnapshotId },
         }, cancellationToken).ConfigureAwait(false);
@@ -204,6 +209,9 @@ public sealed partial class ProductionService(
                 ["SpecificationSha256"] = Convert.ToHexStringLower(normalized.Sha256),
                 ["PreviousSpecificationSha256"] = Convert.ToHexStringLower(current.SpecificationSha256),
                 ["AllocationReleased"] = current.BatesState is BatesAllocationState.Allocated or BatesAllocationState.Failed ? "true" : "false",
+                ["DesignationFieldId"] = normalized.Specification.Designations?.FieldId?.ToString(CultureInfo.InvariantCulture),
+                ["DesignationRule"] = DesignationRuleName(ProductionSpecificationRules.RuleOf(normalized.Specification)),
+                ["PreviousDesignationRule"] = DesignationRuleName(PlanOf(current).Rule),
             }) with
             { SnapshotId = snapshot.SnapshotId }, cancellationToken).ConfigureAwait(false);
         return Outcome(result, normalized.Format);
@@ -323,11 +331,18 @@ public sealed partial class ProductionService(
             ]);
         }
 
+        var plan = PlanOf(current);
+        var designationAudit = UserEvent(principal, AuditTaxonomy.Production.DesignationsFrozen, new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["ProductionId"] = productionId.ToString(),
+            ["DesignationFieldId"] = plan.FieldId?.ToString(CultureInfo.InvariantCulture),
+            ["DesignationRule"] = DesignationRuleName(plan.Rule),
+        });
         var result = await productions.FinalizeAsync(workspaceId, productionId, expectedRowVersion, manifest, sha, principal.UserId, at,
         [
             Resource(UserEvent(principal, AuditTaxonomy.Production.SpecFrozen, details), current),
             Resource(UserEvent(principal, AuditTaxonomy.Production.Finalized, details), current),
-        ], conflictOverride, cancellationToken).ConfigureAwait(false);
+        ], plan, designationAudit, conflictOverride, cancellationToken).ConfigureAwait(false);
         return Outcome(result, format);
     }
 
@@ -619,6 +634,7 @@ public sealed partial class ProductionService(
                 + "; choose a start number after the numbers already used."),
         ProductionWriteStatus.PrivilegeWithheld => new ProductionOutcome(ProductionOutcomeStatus.PrivilegeWithheld, result.Production, Reason: result.Reason),
         ProductionWriteStatus.PrivilegeConflicts => new ProductionOutcome(ProductionOutcomeStatus.PrivilegeConflicts, result.Production, Reason: result.Reason),
+        ProductionWriteStatus.DesignationRefused => new ProductionOutcome(ProductionOutcomeStatus.DesignationRefused, result.Production, Reason: result.Reason),
         _ => new ProductionOutcome(ProductionOutcomeStatus.Conflict, result.Production, Reason: result.Reason),
     };
 
@@ -658,6 +674,9 @@ public sealed partial class ProductionService(
     private static string Display(SecurityPrincipal principal) => string.IsNullOrEmpty(principal.DisplayName) ? principal.UserId.ToString() : principal.DisplayName;
 
     private static string Invariant(long value) => value.ToString(CultureInfo.InvariantCulture);
+
+    private static string DesignationRuleName(DesignationFamilyRule rule) =>
+        rule == DesignationFamilyRule.Document ? "document" : "highestInFamily";
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Production {ProductionId} differs from its manifest: {Differences}")]
     private static partial void LogDifferences(ILogger logger, Guid productionId, string differences);

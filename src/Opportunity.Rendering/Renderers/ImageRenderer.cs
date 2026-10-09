@@ -123,7 +123,7 @@ internal static class ImageRenderer
     }
 
     /// <summary>Directory numbers of the page frames (reduced-resolution subfiles skipped, as <see cref="ImageProbe"/> does).</summary>
-    private static List<short> PageDirectories(Tiff tiff)
+    internal static List<short> PageDirectories(Tiff tiff)
     {
         var pages = new List<short>();
         var count = Math.Min((int)tiff.NumberOfDirectories(), short.MaxValue);
@@ -144,7 +144,7 @@ internal static class ImageRenderer
         return pages;
     }
 
-    private static SKBitmap? DecodeTiffFrame(Tiff tiff, ImageFrame frame)
+    internal static SKBitmap? DecodeTiffFrame(Tiff tiff, ImageFrame frame)
     {
         int width = Int(tiff, TiffTag.IMAGEWIDTH, 0), height = Int(tiff, TiffTag.IMAGELENGTH, 0);
         if (width != frame.WidthPx || height != frame.HeightPx)

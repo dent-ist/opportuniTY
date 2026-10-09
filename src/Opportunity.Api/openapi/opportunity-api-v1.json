@@ -12439,6 +12439,359 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/designations": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Each document's confidentiality designation in production order: its own, the one it is produced with and why (document, family or override).",
+        "description": "For a draft the designations are computed from the current coding with the specification's family rule and the overrides; once finalized they are the values frozen at finalization, stamped on every page and written to the load file. Needs allocated Bates numbers.",
+        "operationId": "ListProductionDesignations",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfProductionDesignationResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/designation-overrides/{documentId}": {
+      "put": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Produce one document of a draft with another designation than the family rule gives, with a reason (audited).",
+        "operationId": "OverrideProductionDesignation",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignationOverrideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignationOverrideResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Remove a draft document's designation override; the family rule applies again (audited).",
+        "operationId": "RemoveProductionDesignationOverride",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/redesignation-report": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Produced documents whose designation would differ now from the one they were produced with, with their Bates ranges.",
+        "description": "Compares each document's designation frozen at finalization with what the production's family rule and overrides give for the current coding. The overlay load file (…/redesignation-overlay) carries the same rows. Documents you may not view are only counted.",
+        "operationId": "GetProductionRedesignationReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedesignationReportResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/productions/{productionId}/verification": {
       "post": {
         "tags": [
@@ -13336,6 +13689,75 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/redesignation-overlay": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "The re-designation overlay load file (DAT): ProdBegBates, ProdEndBates and the designation each re-designated document now carries. Audited.",
+        "operationId": "DownloadProductionRedesignationOverlay",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
                 }
               }
             }
@@ -15479,6 +15901,31 @@
           }
         }
       },
+      "CursorPageOfProductionDesignationResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionDesignationResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfProductionDocumentResource": {
         "required": [
           "items",
@@ -15980,6 +16427,81 @@
             "format": "int32"
           }
         }
+      },
+      "DesignationFamilyRuleResource": {
+        "enum": [
+          "highestInFamily",
+          "document",
+          null
+        ]
+      },
+      "DesignationOverrideRequest": {
+        "required": [
+          "choiceId",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "choiceId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "DesignationOverrideResource": {
+        "required": [
+          "documentId",
+          "choiceId",
+          "legend",
+          "reason",
+          "createdBy",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "choiceId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "legend": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "DesignationSourceResource": {
+        "enum": [
+          "none",
+          "document",
+          "family",
+          "override"
+        ]
       },
       "DocumentCodingResource": {
         "required": [
@@ -21100,6 +21622,145 @@
           }
         }
       },
+      "ProductionDesignationLevel": {
+        "required": [
+          "choiceId"
+        ],
+        "type": "object",
+        "properties": {
+          "choiceId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "legend": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProductionDesignationResource": {
+        "required": [
+          "sequence",
+          "documentId",
+          "controlNumber",
+          "prodBegBates",
+          "prodEndBates",
+          "ownChoiceId",
+          "ownDesignation",
+          "choiceId",
+          "legend",
+          "source",
+          "overrideReason"
+        ],
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "prodBegBates": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "prodEndBates": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ownChoiceId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "ownDesignation": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "choiceId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "legend": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/DesignationSourceResource"
+          },
+          "overrideReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProductionDesignationSettings": {
+        "type": "object",
+        "properties": {
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "familyRule": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DesignationFamilyRuleResource"
+              }
+            ]
+          },
+          "levels": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ProductionDesignationLevel"
+            }
+          }
+        }
+      },
       "ProductionDifference": {
         "required": [
           "item",
@@ -21191,6 +21852,12 @@
               "null",
               "string"
             ]
+          },
+          "designation": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -21235,6 +21902,15 @@
               "null",
               "boolean"
             ]
+          },
+          "margin": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -21600,6 +22276,16 @@
               },
               {
                 "$ref": "#/components/schemas/ProductionEndorsementSettings"
+              }
+            ]
+          },
+          "designations": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProductionDesignationSettings"
               }
             ]
           }
@@ -22313,6 +22999,105 @@
           "black",
           "labelled"
         ]
+      },
+      "RedesignationReportResource": {
+        "required": [
+          "productionId",
+          "items",
+          "next",
+          "restrictedCount"
+        ],
+        "type": "object",
+        "properties": {
+          "productionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RedesignationResource"
+            }
+          },
+          "next": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "restrictedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "RedesignationResource": {
+        "required": [
+          "sequence",
+          "documentId",
+          "controlNumber",
+          "prodBegBates",
+          "prodEndBates",
+          "producedChoiceId",
+          "producedLegend",
+          "currentChoiceId",
+          "currentLegend"
+        ],
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "prodBegBates": {
+            "type": "string"
+          },
+          "prodEndBates": {
+            "type": "string"
+          },
+          "producedChoiceId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "producedLegend": {
+            "type": "string"
+          },
+          "currentChoiceId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "currentLegend": {
+            "type": "string"
+          }
+        }
       },
       "RelatedDocumentResource": {
         "required": [

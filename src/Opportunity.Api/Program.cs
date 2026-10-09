@@ -66,6 +66,7 @@ builder.Services.AddExportContentEndpoints();
 builder.Services.AddImportContentEndpoints();
 builder.Services.AddSearchTermReportEndpoints(builder.Configuration);
 builder.Services.AddSearchTermReportContentEndpoints();
+builder.Services.AddProductionContentEndpoints();
 builder.Services.AddDedupeEndpoints();
 builder.Services.AddPrivilegeConflictEndpoints();
 builder.Services.AddPrivilegeConflictContentEndpoints();
