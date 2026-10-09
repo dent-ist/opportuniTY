@@ -166,7 +166,7 @@ fenced (no worker may still write with a cached key) and outside a preservation 
 `keys rotate-signing --purpose audit-checkpoint` adds a version; new checkpoints are signed with it (key id
 `audit-checkpoint-v<n>` next to each signature), older checkpoints keep verifying with their version. Export a public key
 for a declaration exhibit with `keys public-key --purpose audit-checkpoint --version <n>` (PEM, ECDSA P-256). Signing
-keys are never destroyed by the CLI: old checkpoints must stay verifiable.
+keys are never destroyed by the CLI: old checkpoints must stay verifiable. Checkpoints and their verification: [audit hash chain](audit-chain.md).
 
 ### Back up the keys
 

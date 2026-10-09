@@ -2,7 +2,7 @@ using Opportunity.Hosting.Operations;
 using Opportunity.Hosting.Workers;
 using Opportunity.Storage;
 
-// `jobs …` and `keys …` run the operations CLIs (docs/operations) instead of the worker host.
+// `jobs …`, `keys …` and `audit …` run the operations CLIs (docs/operations) instead of the worker host.
 if (await JobOperationsCli.TryRunAsync(args) is { } exitCode)
 {
     return exitCode;
@@ -11,6 +11,11 @@ if (await JobOperationsCli.TryRunAsync(args) is { } exitCode)
 if (await KeyOperationsCli.TryRunAsync(args) is { } keysExitCode)
 {
     return keysExitCode;
+}
+
+if (await AuditOperationsCli.TryRunAsync(args) is { } auditExitCode)
+{
+    return auditExitCode;
 }
 
 // Thin composition root (ADR-019 R5). Lite runs this with the default (every worker type); the same image runs a

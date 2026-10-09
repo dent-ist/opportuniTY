@@ -328,6 +328,10 @@ services:
       Messaging__RabbitMq__Signing__Enabled: ${OPPORTUNITY_ENVELOPE_SIGNING:-true}
       Messaging__RabbitMq__Signing__KeyId: k1
       OPPORTUNITY_SECRET_ENVELOPE_HMAC_K1: ${ENVELOPE_HMAC_SECRET_KEY:?set ENVELOPE_HMAC_SECRET_KEY in .env (./opportunity.sh init)}
+      # Audit hash-chain sealer login (E14-T03, ADR-013 §1.2): the dispatcher seals and checkpoints with it, and
+      # `audit verify|seal|checkpoints` read every chain with it. Created by `./opportunity.sh up`.
+      ConnectionStrings__AuditSealer: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=${OPPORTUNITY_DB_AUDIT_SEALER_USER:-opportunity_sealer};Password=${OPPORTUNITY_DB_AUDIT_SEALER_PASSWORD:?set OPPORTUNITY_DB_AUDIT_SEALER_PASSWORD in .env (./opportunity.sh init)};GSS Encryption Mode=Disable
       # Import share (E08-T04): load-file volumes (natives, text) are read from here, read-only; an import profile's
       # volume folder is a path inside it. Default host folder: deploy/docker-compose/import-share.
       Import__VolumeShareRoot: /var/lib/opportunity/import
