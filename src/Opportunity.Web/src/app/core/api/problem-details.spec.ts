@@ -78,4 +78,13 @@ describe('problem details', () => {
       'It does not exist or you do not have access to it.',
     );
   });
+
+  it('explains a delete refused by a legal hold and a release the requester tried to approve', () => {
+    expect(describeError(new ApiError(423, { code: 'preservation-locked' })).title).toBe(
+      'Blocked by a legal hold',
+    );
+    expect(describeError(new ApiError(403, { code: 'second-person-required' })).title).toBe(
+      'Another person must approve',
+    );
+  });
 });

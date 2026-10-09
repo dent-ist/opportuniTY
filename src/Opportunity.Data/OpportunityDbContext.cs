@@ -59,6 +59,7 @@ public sealed class OpportunityDbContext(DbContextOptions<OpportunityDbContext> 
             e.Property(w => w.Status).HasConversion<string>();
             e.Property(w => w.CreatedAt).HasDefaultValueSql("now()");
             e.Property(w => w.UpdatedAt).HasDefaultValueSql("now()");
+            e.Property(w => w.ActivePreservationLocks).ValueGeneratedOnAddOrUpdate();
         });
 
         modelBuilder.Entity<Document>(e =>

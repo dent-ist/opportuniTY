@@ -11,6 +11,10 @@ namespace Opportunity.Contracts.Api;
 /// Read-only: where index management (ADR-006) placed the search projection; null until the workspace is placed
 /// (normally by its first import) or when search is not configured for this API host. Never a physical index name.
 /// </param>
+/// <param name="ActivePreservationLocks">
+/// Active preservation locks (legal holds, E20-T01): above zero, deleting or purging the workspace's data answers 423.
+/// Shown to every member; the locks themselves need <c>Workspace.ManageHolds</c>.
+/// </param>
 public sealed record WorkspaceResource(
     Guid WorkspaceId,
     string Name,
@@ -23,7 +27,8 @@ public sealed record WorkspaceResource(
     string? StorageProfile = null,
     long? Version = null,
     DateTimeOffset? UpdatedAt = null,
-    WorkspaceSearchPlacementResource? SearchPlacement = null);
+    WorkspaceSearchPlacementResource? SearchPlacement = null,
+    int ActivePreservationLocks = 0);
 
 public enum WorkspaceResourceStatus
 {

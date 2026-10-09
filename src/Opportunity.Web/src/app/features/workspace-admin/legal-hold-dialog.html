@@ -1,0 +1,99 @@
+<form novalidate (submit)="submit($event)">
+  <opp-dialog-layout [title]="title">
+    <div class="wsa__dialog-body">
+      @if (hold; as h) {
+        <p class="wsa__lead">
+          @if (h.releaseRequiresApproval) {
+            This hold needs a second person to release it. Your release is a request: the hold stays
+            in place until another person who manages legal holds approves it.
+          } @else {
+            The hold ends as soon as you release it. If no other hold applies, data in this
+            workspace can be deleted again.
+          }
+        </p>
+      } @else {
+        <p class="wsa__lead">
+          The hold takes effect at once. While it applies, nothing in this workspace can be deleted
+          or purged: documents and their files, coding and redaction history, frozen sets,
+          productions, exports, reports and the audit trail. Review continues as normal.
+        </p>
+      }
+
+      <div class="wsa__textarea-field">
+        <label class="wsa__label" for="hold-reason">
+          {{ hold ? 'Reason for releasing' : 'Reason for the hold' }}
+          <span class="wsa__required" aria-hidden="true">*</span>
+        </label>
+        <textarea
+          id="hold-reason"
+          class="wsa__textarea"
+          rows="3"
+          required
+          [attr.maxlength]="maxReason"
+          [attr.aria-invalid]="reasonError() ? true : null"
+          [attr.aria-describedby]="
+            reasonError() ? 'hold-reason-hint hold-reason-error' : 'hold-reason-hint'
+          "
+          [value]="reason()"
+          [disabled]="saving()"
+          (input)="onReason($event)"
+        ></textarea>
+        <p id="hold-reason-hint" class="wsa__hint">
+          {{
+            hold
+              ? 'For example: matter settled and the preservation period has ended.'
+              : 'For example: litigation reasonably anticipated, preservation letter received.'
+          }}
+          Kept with the hold for the life of the workspace.
+        </p>
+        @if (reasonError(); as message) {
+          <p id="hold-reason-error" class="wsa__field-error">
+            <span class="opp-visually-hidden">Error:</span>
+            {{ message }}
+          </p>
+        }
+      </div>
+
+      @if (!hold) {
+        <opp-text-field
+          label="Matter or notice reference"
+          hint="Optional. A case number, court order or preservation notice."
+          [error]="referenceError()"
+          [disabled]="saving()"
+          [(value)]="reference"
+        />
+        <div class="wsa__check">
+          <opp-checkbox [disabled]="saving()" [(checked)]="secondPerson">
+            Releasing needs approval by a second person
+          </opp-checkbox>
+          <p class="wsa__hint">
+            Recommended. The person who requests the release cannot approve it.
+          </p>
+        </div>
+      }
+
+      @if (failure(); as f) {
+        <div class="wsa__notice wsa__notice--danger" role="alert">
+          <opp-icon name="error" />
+          <div>
+            <p class="wsa__notice-title">{{ f.title }}</p>
+            <p>{{ f.detail }}</p>
+            @if (f.reference) {
+              <p class="wsa__fine">
+                Reference: <code>{{ f.reference }}</code>
+              </p>
+            }
+          </div>
+        </div>
+      }
+    </div>
+    <ng-container dialogActions>
+      <button type="button" oppButton="ghost" (click)="ref.close()">Cancel</button>
+      <button type="submit" oppButton="primary" [busy]="saving()">
+        {{
+          hold ? (hold.releaseRequiresApproval ? 'Request release' : 'Release hold') : 'Place hold'
+        }}
+      </button>
+    </ng-container>
+  </opp-dialog-layout>
+</form>

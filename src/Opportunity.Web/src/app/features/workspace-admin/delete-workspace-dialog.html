@@ -5,12 +5,12 @@
         <div class="wsa__notice wsa__notice--warning">
           <opp-icon name="lock" />
           <div>
-            <p class="wsa__notice-title">{{ data.workspaceName }} is under a preservation lock</p>
+            <p class="wsa__notice-title">{{ data.workspaceName }} is under a legal hold</p>
             <p>
-              Nothing in this workspace can be deleted while the lock applies. Placed by
+              Nothing in this workspace can be deleted while the hold applies. Placed by
               {{ l.placedBy }} on {{ date(l.placedAt) }}: {{ l.reason }}
             </p>
-            <p>Deletion becomes possible once the lock is released.</p>
+            <p>Deletion becomes possible once every legal hold is released.</p>
           </div>
         </div>
       }

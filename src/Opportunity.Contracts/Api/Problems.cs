@@ -64,5 +64,14 @@ public static class ProblemCodes
     /// <summary>The change would remove the workspace's last Workspace Admin assignment (E05-T08).</summary>
     public const string LastAdministrator = "last-administrator";
 
+    /// <summary>
+    /// 423: the workspace is under a preservation lock (legal hold, E20-T01, ADR-014 §2.3); nothing of it can be deleted or
+    /// purged until every lock is released.
+    /// </summary>
+    public const string PreservationLocked = "preservation-locked";
+
+    /// <summary>The person who requested a legal hold's release cannot also approve it (Q-23 two-person rule, E20-T01).</summary>
+    public const string SecondPersonRequired = "second-person-required";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }

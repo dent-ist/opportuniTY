@@ -12,6 +12,7 @@ import { RedactionsMock } from './mock-redactions';
 import { FieldAdminMock } from './mock-field-admin';
 import { RoleAdminMock } from './mock-role-admin';
 import { RelationshipsMock, hitRelations } from './mock-relationships';
+import { LegalHoldsMock } from './mock-legal-holds';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -115,6 +116,8 @@ export interface MockControl {
   readonly lastSearch: () => Record<string, unknown> | null;
   /** Relationships and coding propagation (E16-T10): previews and applies received. */
   readonly relationships: RelationshipsMock;
+  /** Legal holds (E20-T01): holds per workspace (ws-2 starts held) and writes received. */
+  readonly legalHolds: LegalHoldsMock;
 }
 
 /**
@@ -261,6 +264,7 @@ export const ALL_PERMISSIONS = [
   'Workspace.ManageFields',
   'Workspace.RequestDeletion',
   'HighlightSet.Manage',
+  'Workspace.ManageHolds',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -455,7 +459,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     () => documents,
     options.propagationThreshold,
   );
+  const legalHolds = new LegalHoldsMock();
   const control: MockControl = {
+    legalHolds,
     relationships,
     freshness,
     imports,
@@ -514,6 +520,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Fields, choices and coding layouts (E04-T06): ./mock-field-admin.ts.
     const administered = signedIn ? fieldAdmin.handle(route, method, path) : undefined;
     if (administered) return administered;
+    // Legal holds (E20-T01): ./mock-legal-holds.ts.
+    const held = signedIn ? legalHolds.handle(route, method, path) : undefined;
+    if (held) return held;
     // Roles, permissions and user/group assignment (E05-T08): ./mock-role-admin.ts.
     const roles = signedIn ? roleAdmin.handle(route, method, path, url) : undefined;
     if (roles) return roles;
@@ -820,6 +829,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     if (signedIn && ws && method === 'GET')
       return json(route, {
         ...ws,
+        activePreservationLocks: legalHolds.activeCount(wsPath![1]),
         permissions: created.has(wsPath![1]) ? ALL_PERMISSIONS : permissions,
       });
     unhandled.push(`${route.request().method()} ${path}`);

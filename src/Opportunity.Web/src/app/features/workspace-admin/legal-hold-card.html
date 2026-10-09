@@ -1,0 +1,135 @@
+<section class="wsa__card" aria-labelledby="settings-hold">
+  <h2 id="settings-hold" class="wsa__card-title">Legal hold</h2>
+  <div class="wsa__hold-head">
+    @if (activeTotal() > 0) {
+      <opp-badge tone="warning" icon="lock">On legal hold</opp-badge>
+      <span class="wsa__muted">
+        {{ activeTotal() === 1 ? '1 active hold' : activeTotal() + ' active holds' }}
+      </span>
+    } @else {
+      <opp-badge tone="neutral">No legal hold</opp-badge>
+    }
+  </div>
+  <p>{{ effect }}</p>
+
+  @if (canManage()) {
+    @if (loadError(); as error) {
+      <opp-error-state [error]="error" (retry)="load()" />
+    } @else if (holds() === null) {
+      <opp-loading-state label="Loading legal holds…" />
+    } @else {
+      @if (active().length > 0) {
+        <ul class="wsa__holds" aria-label="Active legal holds">
+          @for (h of active(); track h.lockId) {
+            <li class="wsa__hold">
+              <div class="wsa__hold-head">
+                @if (h.status === 'releasePending') {
+                  <opp-badge tone="info" icon="clock">Release requested</opp-badge>
+                } @else {
+                  <opp-badge tone="warning" icon="lock">Active</opp-badge>
+                }
+                <span class="wsa__muted" [id]="'hold-' + h.lockId">
+                  Placed by {{ name(h.placedBy) }} on {{ date(h.placedAt) }}
+                </span>
+              </div>
+              <p class="wsa__hold-reason">{{ h.reason }}</p>
+              @if (h.matterReference) {
+                <p class="wsa__muted">Reference: {{ h.matterReference }}</p>
+              }
+              <p class="wsa__fine">
+                {{
+                  h.releaseRequiresApproval
+                    ? 'Releasing needs approval by a second person.'
+                    : 'One person can release this hold.'
+                }}
+              </p>
+              @if (h.status === 'releasePending' && h.releaseRequestedBy; as requester) {
+                <div class="wsa__notice wsa__notice--warning">
+                  <div>
+                    <p class="wsa__notice-title">
+                      Release requested by {{ isMine(requester) ? 'you' : name(requester) }} on
+                      {{ date(h.releaseRequestedAt) }}
+                    </p>
+                    <p class="wsa__hold-reason">{{ h.releaseReason }}</p>
+                    @if (isMine(requester)) {
+                      <p>Another person who manages legal holds must approve it.</p>
+                    }
+                  </div>
+                </div>
+                <div class="wsa__actions">
+                  @if (!isMine(requester)) {
+                    <button
+                      type="button"
+                      oppButton="primary"
+                      [attr.aria-describedby]="'hold-' + h.lockId"
+                      [disabled]="busy() !== null"
+                      (click)="approve(h)"
+                    >
+                      Approve release…
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    oppButton="secondary"
+                    [attr.aria-describedby]="'hold-' + h.lockId"
+                    [busy]="busy() === h.lockId"
+                    [disabled]="busy() !== null"
+                    (click)="cancel(h)"
+                  >
+                    Cancel release request
+                  </button>
+                </div>
+              } @else {
+                <div class="wsa__actions">
+                  <button
+                    type="button"
+                    oppButton="secondary"
+                    [attr.aria-describedby]="'hold-' + h.lockId"
+                    [disabled]="busy() !== null"
+                    (click)="release(h)"
+                  >
+                    Release…
+                  </button>
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
+      @if (released().length > 0) {
+        <details class="wsa__history">
+          <summary>
+            {{
+              released().length === 1 ? '1 released hold' : released().length + ' released holds'
+            }}
+          </summary>
+          <ul class="wsa__holds">
+            @for (h of released(); track h.lockId) {
+              <li class="wsa__hold">
+                <p class="wsa__muted">
+                  Placed by {{ name(h.placedBy) }} on {{ date(h.placedAt) }}; released on
+                  {{ date(h.releasedAt) }}
+                  @if (h.releaseApprovedBy; as approver) {
+                    (requested by {{ name(h.releaseRequestedBy!) }}, approved by
+                    {{ name(approver) }})
+                  } @else if (h.releaseRequestedBy; as releaser) {
+                    by {{ name(releaser) }}
+                  }
+                </p>
+                <p class="wsa__hold-reason">{{ h.reason }}</p>
+                <p class="wsa__fine">Released because: {{ h.releaseReason }}</p>
+              </li>
+            }
+          </ul>
+        </details>
+      }
+      <div>
+        <button type="button" oppButton="secondary" (click)="place()">Place legal hold…</button>
+      </div>
+    }
+  } @else {
+    <p class="wsa__fine">
+      Legal holds are placed and released by people who manage legal holds in this workspace.
+    </p>
+  }
+</section>

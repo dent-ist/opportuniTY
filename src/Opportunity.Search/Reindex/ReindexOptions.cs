@@ -30,6 +30,11 @@ public sealed class ReindexOptions
     /// <summary>R13 step 7: the replaced generation stays read-only this long (at least the longest point-in-time age).</summary>
     public TimeSpan Retention { get; set; } = TimeSpan.FromHours(24);
 
+    /// <summary>
+    /// How often a retired location whose deletion waits for a preservation lock (legal hold, E20-T01) checks the hold again.
+    /// </summary>
+    public TimeSpan PreservationRecheckInterval { get; set; } = TimeSpan.FromMinutes(15);
+
     /// <summary>Documents compared per validation page (one PostgreSQL snapshot and one index range scan each).</summary>
     public int ValidationPageSize { get; set; } = 1_000;
 
@@ -50,10 +55,10 @@ public sealed class ReindexOptions
         if (PollInterval <= TimeSpan.Zero || LeaseDuration < TimeSpan.FromSeconds(5) || WriterSettleDelay < TimeSpan.Zero
             || TaskWindow < 1 || DocumentsPerTask is < 1 or > 100_000 || Retention < TimeSpan.Zero
             || ValidationPageSize is < 10 or > 5_000 || FullCheckMaxDocuments < 0
-            || SampledPages < 1 || RecheckTimeout <= TimeSpan.Zero || MaxRechecks < 1)
+            || SampledPages < 1 || RecheckTimeout <= TimeSpan.Zero || MaxRechecks < 1 || PreservationRecheckInterval <= TimeSpan.Zero)
         {
             throw new InvalidOperationException(
-                $"{SectionName}: PollInterval, RecheckTimeout must be positive, LeaseDuration at least 5 s, TaskWindow, SampledPages and " +
+                $"{SectionName}: PollInterval, RecheckTimeout, PreservationRecheckInterval must be positive, LeaseDuration at least 5 s, TaskWindow, SampledPages and " +
                 "MaxRechecks at least 1, DocumentsPerTask 1 to 100,000, ValidationPageSize 10 to 5,000, WriterSettleDelay, Retention and " +
                 "FullCheckMaxDocuments not negative.");
         }

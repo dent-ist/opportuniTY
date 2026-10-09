@@ -558,6 +558,8 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
             UPDATE opportunity.document_set_snapshot s
                SET status = 'Expired', expired_at = now()
              WHERE s.workspace_id = @ws
+               -- A preservation lock (E20-T01) keeps every snapshot; the membership delete below would be refused anyway.
+               AND NOT EXISTS (SELECT 1 FROM opportunity.workspace w WHERE w.workspace_id = @ws AND w.active_preservation_locks > 0)
                AND s.snapshot_id IN (
                    SELECT c.snapshot_id
                      FROM opportunity.document_set_snapshot c

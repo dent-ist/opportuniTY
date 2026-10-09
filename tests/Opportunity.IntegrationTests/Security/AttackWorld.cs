@@ -72,7 +72,8 @@ internal sealed record WorkspaceResources(
     Guid WallId,
     Guid SpareWallId,
     Guid BreakGlassActivationId,
-    Guid RedactionSetId)
+    Guid RedactionSetId,
+    Guid PreservationLockId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -82,7 +83,8 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+        Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -93,7 +95,7 @@ internal sealed record WorkspaceResources(
             SpareProfileId, BulkCodingJobId, LayoutId, PreflightId, SavedSearchFolderId, SpareFolderId, SavedSearchId, SpareSavedSearchId,
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
-            WallId, SpareWallId, BreakGlassActivationId, RedactionSetId,
+            WallId, SpareWallId, BreakGlassActivationId, RedactionSetId, PreservationLockId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -358,6 +360,17 @@ internal sealed class AttackWorld : IAsyncDisposable
             redaction.StatusCode.Should().Be(HttpStatusCode.OK, await redaction.Content.ReadAsStringAsync(Ct));
         }
 
+        // Legal hold (E20-T01): a released lock, so the probes can address it while nothing in the workspace is held (a held
+        // workspace would answer 423 to the suite's own delete probes).
+        var hold = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/preservation-locks", owner, HttpStatusCode.Created,
+            new JsonObject { ["reason"] = "Attack suite probe", ["releaseRequiresApproval"] = false });
+        var holdId = hold.GetProperty("lockId").GetGuid();
+        using (var released = await SendAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/preservation-locks/{holdId}/release", owner,
+            Json(new JsonObject { ["reason"] = "Attack suite probe" }), ifMatch: "\"1\""))
+        {
+            released.StatusCode.Should().Be(HttpStatusCode.OK, await released.Content.ReadAsStringAsync(Ct));
+        }
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -401,7 +414,8 @@ internal sealed class AttackWorld : IAsyncDisposable
             wall.GetProperty("wallId").GetGuid(),
             spareWall.GetProperty("wallId").GetGuid(),
             activationId,
-            redactionSetId);
+            redactionSetId,
+            holdId);
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>

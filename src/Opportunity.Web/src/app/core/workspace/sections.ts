@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   manageFields: 'Workspace.ManageFields',
   manageUsers: 'Workspace.ManageUsers',
   manageSecurity: 'Workspace.ManageSecurity',
+  /** Place and release legal holds (preservation locks, E20-T01). */
+  manageHolds: 'Workspace.ManageHolds',
   auditRead: 'Audit.Read',
   /** Create, change and delete shared document-list views (E16-T09, "manage views"). */
   manageSharedViews: 'View.ManageShared',

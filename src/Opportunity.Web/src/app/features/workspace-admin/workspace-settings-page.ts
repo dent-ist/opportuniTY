@@ -40,9 +40,11 @@ import {
   toWrite,
   validateDraft,
 } from './workspace-form';
+import { HttpLegalHoldApi, LegalHoldApi } from './legal-hold-api';
+import { LegalHoldCard } from './legal-hold-card';
 import {
   type DeletionAvailability,
-  NotYetAvailableDeletion,
+  HoldAwareDeletion,
   WorkspaceDeletion,
 } from './workspace-deletion';
 
@@ -61,16 +63,29 @@ const PLACEMENT_STATE: Record<WorkspaceSearchPlacementState, string> = {
 /**
  * Admin › Workspace Settings (E04-T07): name, matter number and display time zone (everything `PUT
  * /api/v1/workspaces/{id}` changes, sent with `If-Match`), the read-only storage profile, search index placement and
- * projection generation, and the deletion entry point. Deletion follows `WorkspaceDeletion`: in this version it is
- * not available, so the entry point is shown disabled with the reason and no deletion API is called.
+ * projection generation, legal holds (E20-T01: the hold state for every member, placing and releasing for hold
+ * managers) and the deletion entry point. Deletion follows `WorkspaceDeletion`: blocked while a legal hold applies,
+ * otherwise not available in this version (#167), so no deletion API is called.
  */
 @Component({
   selector: 'opp-workspace-settings-page',
-  imports: [Badge, Button, ErrorState, Icon, LoadingState, RouterLink, WorkspaceFields],
+  imports: [
+    Badge,
+    Button,
+    ErrorState,
+    Icon,
+    LegalHoldCard,
+    LoadingState,
+    RouterLink,
+    WorkspaceFields,
+  ],
   templateUrl: './workspace-settings-page.html',
   styleUrl: './workspace-admin.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [{ provide: WorkspaceDeletion, useClass: NotYetAvailableDeletion }],
+  providers: [
+    { provide: LegalHoldApi, useClass: HttpLegalHoldApi },
+    { provide: WorkspaceDeletion, useClass: HoldAwareDeletion },
+  ],
   host: { class: 'wsa-page' },
 })
 export class WorkspaceSettingsPage {
@@ -86,6 +101,7 @@ export class WorkspaceSettingsPage {
 
   protected readonly workspaceId = this.context.workspaceId;
   protected readonly canSeeSetup = this.context.can(PERMISSIONS.manageSecurity);
+  protected readonly canManageHolds = this.context.can(PERMISSIONS.manageHolds);
   protected readonly placementKind = PLACEMENT_KIND;
   protected readonly placementState = PLACEMENT_STATE;
 
@@ -124,7 +140,7 @@ export class WorkspaceSettingsPage {
       case 'unavailable':
         return state.reason;
       case 'locked':
-        return 'Deletion is blocked while a preservation lock (legal hold) applies to this workspace.';
+        return 'Deletion is blocked while a legal hold (preservation lock) applies to this workspace.';
       case 'allowed':
         return 'Removes the workspace and its contents once a second person approves the request.';
       default:
@@ -135,6 +151,25 @@ export class WorkspaceSettingsPage {
   constructor() {
     void this.load();
     void this.deletion.availability().then((a) => this.deletionState.set(a));
+  }
+
+  /** Active legal holds as the workspace resource reports them. */
+  protected holdCount(ws: Workspace): number {
+    return Number(ws.activePreservationLocks ?? 0);
+  }
+
+  /** A hold was placed or released: the workspace (header badge) and the deletion entry point follow. */
+  protected async holdsChanged(): Promise<void> {
+    try {
+      const workspace = await this.directory.refresh(this.workspaceId);
+      this.workspace.update((ws) =>
+        ws ? { ...ws, activePreservationLocks: workspace.activePreservationLocks } : ws,
+      );
+      this.active.enter(workspace);
+    } catch {
+      // The card already shows the change; the badge catches up on the next navigation.
+    }
+    this.deletionState.set(await this.deletion.availability().catch(() => null));
   }
 
   protected date(value: unknown): string {

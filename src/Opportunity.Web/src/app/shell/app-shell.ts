@@ -26,7 +26,7 @@ import {
   allowedSections,
   type WorkspaceSection,
 } from '../core/workspace/sections';
-import { Button, DialogService, Icon, type IconName } from '../ui';
+import { Badge, Button, DialogService, Icon, type IconName } from '../ui';
 import { Brand } from './brand';
 import { SHELL_PATHS } from './navigation';
 import { JobTray } from './job-tray';
@@ -65,6 +65,7 @@ const SECTION_ICONS: Readonly<Record<string, IconName>> = {
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
+    Badge,
     Brand,
     Button,
     Icon,
@@ -95,6 +96,10 @@ export class AppShell {
     allowedSections(ADMIN_AREAS, this.workspace()?.permissions ?? []),
   );
   protected readonly sessionEnded = computed(() => this.session.status() === 'expired');
+  /** The workspace is under a legal hold (E20-T01): shown in the header to every member. */
+  protected readonly onHold = computed(
+    () => Number(this.workspace()?.activePreservationLocks ?? 0) > 0,
+  );
 
   private readonly preferences = inject(PreferenceStorage);
   /** The user's choice: collapsed to icons; follows the user profile like the other UI preferences. */

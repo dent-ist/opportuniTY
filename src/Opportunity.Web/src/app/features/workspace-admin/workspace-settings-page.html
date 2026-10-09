@@ -123,6 +123,12 @@
     </section>
   }
 
+  <opp-legal-hold-card
+    [activeCount]="holdCount(ws)"
+    [canManage]="canManageHolds"
+    (changed)="holdsChanged()"
+  />
+
   <section class="wsa__card wsa__card--danger" aria-labelledby="settings-delete">
     <h2 id="settings-delete" class="wsa__card-title">Delete workspace</h2>
     <p id="delete-explanation">{{ deletionText() }}</p>

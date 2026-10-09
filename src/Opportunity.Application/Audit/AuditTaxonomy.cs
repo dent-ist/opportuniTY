@@ -223,6 +223,22 @@ public static class AuditTaxonomy
         public const string Category = "Workspace";
         public const string Created = "Created";
         public const string SettingsChanged = "SettingsChanged";
+
+        /// <summary>A preservation lock (legal hold) was placed (E20-T01, ADR-014 §2); resource = the lock id.</summary>
+        public const string HoldPlaced = "HoldPlaced";
+
+        /// <summary>Release of a lock that needs a second person's approval was requested.</summary>
+        public const string HoldReleaseRequested = "HoldReleaseRequested";
+
+        /// <summary>A pending release request was withdrawn (by its requester or another hold manager).</summary>
+        public const string HoldReleaseCancelled = "HoldReleaseCancelled";
+
+        public const string HoldReleased = "HoldReleased";
+
+        /// <summary>A delete or purge was refused because the workspace is under a preservation lock (423).</summary>
+        public const string DeletionBlocked = "DeletionBlocked";
+
+        public const string PreservationLockResourceType = "PreservationLock";
     }
 
     /// <summary>
@@ -294,7 +310,8 @@ public static class AuditTaxonomy
         .. Expand("Workspace", "Created", "SettingsChanged", "Closed", "Reopened", "HoldPlaced", "HoldReleaseRequested",
             "HoldReleased", "DeletionRequested", "DeletionApproved", "DeletionCancelled", "DeletionStarted",
             "DeletionStepCompleted", "DeletionHalted", "Deleted",
-            "Field.Created", "Field.Modified", "Field.Retired", "CodingLayout.Created", "CodingLayout.Modified", "CodingLayout.Deleted"),
+            "Field.Created", "Field.Modified", "Field.Retired", "CodingLayout.Created", "CodingLayout.Modified", "CodingLayout.Deleted",
+            "HoldReleaseCancelled", "DeletionBlocked"),
         .. Expand("Admin", "ConfigChanged", "UserProvisioned", "UserDeactivated", "KeyCreated", "KeyRotated", "KeyDestroyed",
             "SecretRotated"),
         .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged"),

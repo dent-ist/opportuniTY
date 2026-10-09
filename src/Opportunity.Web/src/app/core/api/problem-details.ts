@@ -142,6 +142,23 @@ export function describeError(error: ApiError): UserFacingError {
           'This item was updated after you opened it. Reload to see the latest version, then reapply your change.',
         retryable: false,
       };
+    case 'preservation-locked':
+      return {
+        ...base,
+        title: 'Blocked by a legal hold',
+        detail:
+          'This workspace is under a legal hold. Nothing in it can be deleted until every hold is released.',
+        retryable: false,
+      };
+    case 'second-person-required':
+      return {
+        ...base,
+        title: 'Another person must approve',
+        detail:
+          error.problem.detail ??
+          'You requested this release, so another person who manages legal holds must approve it.',
+        retryable: false,
+      };
     case 'idempotency-key-reuse':
       return {
         ...base,

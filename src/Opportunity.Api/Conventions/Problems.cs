@@ -3,7 +3,12 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
+using Opportunity.Application.Audit;
+using Opportunity.Application.Authorization;
+using Opportunity.Application.Workspaces;
 using Opportunity.Contracts.Api;
+using Opportunity.Data.Workspaces;
+using Opportunity.Security.Authorization;
 
 namespace Opportunity.Api.Conventions;
 
@@ -66,6 +71,7 @@ public static class Problems
         StatusCodes.Status413PayloadTooLarge => ProblemCodes.PayloadTooLarge,
         StatusCodes.Status415UnsupportedMediaType => ProblemCodes.UnsupportedMediaType,
         StatusCodes.Status422UnprocessableEntity => ProblemCodes.UnprocessableContent,
+        StatusCodes.Status423Locked => ProblemCodes.PreservationLocked,
         StatusCodes.Status428PreconditionRequired => ProblemCodes.PreconditionRequired,
         StatusCodes.Status429TooManyRequests => ProblemCodes.RateLimited,
         StatusCodes.Status503ServiceUnavailable => ProblemCodes.ServiceUnavailable,
@@ -77,11 +83,32 @@ public static class Problems
 /// <summary>
 /// Turns unhandled exceptions into problem details without exposing messages or stack traces. Server errors are
 /// logged here: since .NET 10 the exception handler middleware does not log exceptions an IExceptionHandler handled.
+/// A delete the database refused because the workspace is under a preservation lock (SQLSTATE O0423, V0048) becomes
+/// 423 <c>preservation-locked</c> with a <c>Workspace.DeletionBlocked</c> audit event, whichever endpoint ran it, so a
+/// delete path added later answers the same way without code of its own (E20-T01, ADR-014 §2.3).
 /// </summary>
 internal sealed partial class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger) : IExceptionHandler
 {
-    public ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
+    public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
+        if (PreservationLockViolation.TryGet(exception, out var locked))
+        {
+            await AuditBlockedAsync(httpContext, locked!, cancellationToken).ConfigureAwait(false);
+            httpContext.Response.StatusCode = StatusCodes.Status423Locked;
+            var problem = new ProblemDetails
+            {
+                Status = StatusCodes.Status423Locked,
+                Detail = "This workspace is under a legal hold (preservation lock). Nothing in it can be deleted or purged until every hold is released.",
+            };
+            problem.Extensions[Problems.CodeExtension] = ProblemCodes.PreservationLocked;
+            return await problemDetails.TryWriteAsync(new ProblemDetailsContext
+            {
+                HttpContext = httpContext,
+                Exception = exception,
+                ProblemDetails = problem,
+            }).ConfigureAwait(false);
+        }
+
         var (status, detail) = exception switch
         {
             BadHttpRequestException bad => (bad.StatusCode, "The request could not be read."),
@@ -93,14 +120,65 @@ internal sealed partial class ApiExceptionHandler(IProblemDetailsService problem
         }
 
         httpContext.Response.StatusCode = status;
-        return problemDetails.TryWriteAsync(new ProblemDetailsContext
+        return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = httpContext,
             Exception = exception,
             ProblemDetails = new ProblemDetails { Status = status, Detail = detail },
-        });
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>The refused attempt, in its own transaction (the refused one rolled back). IDs and the route only (ADR-013 §7).</summary>
+    private async Task AuditBlockedAsync(HttpContext httpContext, PreservationLockedException locked, CancellationToken cancellationToken)
+    {
+        var workspaceId = locked.WorkspaceId != Guid.Empty ? locked.WorkspaceId : httpContext.GetWorkspaceAccess()?.WorkspaceId;
+        if (workspaceId is null || httpContext.RequestServices.GetService<IAuditEventWriter>() is not { } audit)
+        {
+            return;
+        }
+
+        var principal = httpContext.ToSecurityPrincipal();
+        var endpoint = httpContext.Features.Get<IExceptionHandlerFeature>()?.Endpoint ?? httpContext.GetEndpoint();
+        var route = (endpoint as RouteEndpoint)?.RoutePattern.RawText ?? httpContext.Request.Path.Value ?? string.Empty;
+        try
+        {
+            await audit.WriteAsync(new AuditEvent
+            {
+                WorkspaceId = workspaceId,
+                OccurredAt = DateTimeOffset.UtcNow,
+                Category = AuditTaxonomy.Workspace.Category,
+                Action = AuditTaxonomy.Workspace.DeletionBlocked,
+                ActorType = principal.UserId == Guid.Empty ? AuditActorType.Service : AuditActorType.User,
+                ActorId = principal.UserId == Guid.Empty ? "anonymous" : principal.UserId.ToString(),
+                ActorDisplay = principal.DisplayName.Length > AuditEventRules.MaxActorDisplayLength
+                    ? principal.DisplayName[..AuditEventRules.MaxActorDisplayLength]
+                    : principal.DisplayName,
+                ClientIp = principal.ClientIp,
+                UserAgent = principal.UserAgent,
+                ResourceType = "Workspace",
+                ResourceId = workspaceId.Value.ToString(),
+                Outcome = AuditOutcome.Denied,
+                ReasonCode = "LegalHold",
+                CorrelationId = principal.CorrelationId,
+                Details = new Dictionary<string, string?>
+                {
+                    ["method"] = httpContext.Request.Method,
+                    ["route"] = route.Length > 200 ? route[..200] : route,
+                    ["target"] = locked.Target.Length > 64 ? locked.Target[..64] : locked.Target,
+                },
+            }, cancellationToken).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // The refusal stands whether or not its audit event could be written; the failure is logged.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogAuditFailed(logger, ex, httpContext.TraceIdentifier);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception for {Method} {Path} (trace {TraceIdentifier}).")]
     private static partial void LogUnhandled(ILogger logger, Exception exception, string method, PathString path, string traceIdentifier);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The audit event of a delete refused by a legal hold could not be written (trace {TraceIdentifier}).")]
+    private static partial void LogAuditFailed(ILogger logger, Exception exception, string traceIdentifier);
 }

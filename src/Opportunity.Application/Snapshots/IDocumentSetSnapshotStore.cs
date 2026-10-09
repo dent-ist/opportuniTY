@@ -84,7 +84,7 @@ public interface IDocumentSetSnapshotStore
     /// <paramref name="unreferencedLifetime"/> has passed since creation, and referenced bulk-coding snapshots once every
     /// referencing job finished more than <paramref name="jobRetention"/> ago. Export, production and report snapshots
     /// that are referenced never expire here. Member pages and staging are deleted; headers stay as tombstones.
-    /// Returns the expired snapshots.
+    /// Nothing expires while the workspace is under a preservation lock (E20-T01). Returns the expired snapshots.
     /// </summary>
     Task<IReadOnlyList<Guid>> ExpireAsync(
         Guid workspaceId, TimeSpan unreferencedLifetime, TimeSpan jobRetention, int limit, CancellationToken cancellationToken = default);

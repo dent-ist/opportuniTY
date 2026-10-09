@@ -48,6 +48,7 @@ builder.Services.AddSnapshotEndpoints(builder.Configuration);
 builder.Services.AddJobEndpoints(builder.Configuration);
 builder.Services.AddWorkspaceEndpoints(builder.Configuration);
 builder.Services.AddRoleAssignmentEndpoints();
+builder.Services.AddPreservationLockEndpoints();
 builder.Services.AddPostgresIdentityStores();
 builder.Services.AddPostgresSecurityState();
 builder.Services.AddImportMappingEndpoints();
