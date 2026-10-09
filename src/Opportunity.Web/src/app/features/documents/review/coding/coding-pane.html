@@ -1,7 +1,9 @@
 @let current = layout();
 <div class="coding__body">
   <div class="coding__top">
-    @if (layoutOptions().length > 1) {
+    @if (stateKind() === 'noAccess') {
+      <!-- A document that is not available has no coding to show in any layout. -->
+    } @else if (layoutOptions().length > 1) {
       <opp-select
         class="coding__layout"
         label="Layout"
@@ -56,6 +58,16 @@
     }
     @case ('unavailable') {
       <p class="coding__muted">The coding of this document could not be loaded.</p>
+    }
+    @case ('noAccess') {
+      <p class="coding__no-access">
+        <opp-icon name="eye-off" />
+        <span>{{
+          lostHere()
+            ? 'Saved. You no longer have access to this document, so its coding is not shown.'
+            : 'No coding to show: this document is not available.'
+        }}</span>
+      </p>
     }
     @default {
       @if (layouts() === null) {
@@ -193,14 +205,26 @@
     }
   </div>
 }
+@if (accessChanges().length > 0) {
+  <p class="coding__access-note" [id]="uid + '-access-note'">
+    <opp-icon name="lock" />
+    <span
+      >Your changes to {{ accessChanges().join(', ') }} affect who may see this document. Saving may
+      restrict it, also for you.</span
+    >
+  </p>
+}
 @if (showActions()) {
   <div class="coding__actions">
-    <button type="button" oppButton="ghost" [disabled]="!dirty()" (click)="discard()">
-      Cancel
-    </button>
-    <button type="button" oppButton="secondary" [busy]="saving()" (click)="save()">
-      <opp-icon name="check" />Save
-    </button>
+    <!-- Not available: nothing to save or cancel; Save & Previous / Save & Next still move on. -->
+    @if (stateKind() !== 'noAccess') {
+      <button type="button" oppButton="ghost" [disabled]="!dirty()" (click)="discard()">
+        Cancel
+      </button>
+      <button type="button" oppButton="secondary" [busy]="saving()" (click)="save()">
+        <opp-icon name="check" />Save
+      </button>
+    }
     <button type="button" oppButton="secondary" (click)="move.emit('previous')">
       <opp-icon name="chevron-left" />Save &amp; Previous
     </button>

@@ -29,12 +29,23 @@ import {
   modeLabel,
 } from './viewer-modes';
 
-/** What the viewer shows: the displayed document and, once loaded, its metadata and first content. */
+/**
+ * What the viewer shows: the displayed document and, once loaded, its metadata and first content. `unavailable`:
+ * it could not be loaded (try again later); `noAccess`: it answers like a missing document (hidden from the
+ * reviewer, or gone; E16-T08), so nothing of it is requested or shown.
+ */
 export interface ViewerDocument {
   readonly hit: SearchHit;
-  readonly state: 'loading' | 'ready' | 'unavailable';
+  readonly state: 'loading' | 'ready' | 'unavailable' | 'noAccess';
   readonly content: LoadedDocument | null;
 }
+
+/** The standard no-access state (familiarity guide §3.5): the same words whether hidden, walled or deleted. */
+export const NO_ACCESS = {
+  title: 'Document not available',
+  message:
+    'You don’t have access to this document, or it no longer exists. Nothing from it is shown.',
+} as const;
 
 /**
  * The document viewer of Review mode (E16-T04, familiarity guide §3.2, AI UI guidelines §13): the mode switcher
@@ -84,6 +95,7 @@ export class DocumentViewer {
     inject(WorkspaceContext, { optional: true })?.can(PERMISSIONS.downloadNative) ?? false;
 
   protected readonly modes = VIEWER_MODES;
+  protected readonly noAccess = NO_ACCESS;
   protected readonly content = computed(() => this.document().content);
   protected readonly ready = computed(() => this.document().state === 'ready' && !!this.content());
 

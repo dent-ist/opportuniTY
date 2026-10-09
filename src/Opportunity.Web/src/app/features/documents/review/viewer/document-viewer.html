@@ -7,30 +7,33 @@
   [attr.data-state]="doc.state"
   [attr.aria-busy]="doc.state === 'loading' ? true : null"
 >
-  <ul
-    #tabList
-    class="opp-tab-list viewer__modes"
-    role="tablist"
-    aria-label="Viewer mode"
-    (keydown)="onTabKey($event)"
-  >
-    @for (m of modes; track m.mode) {
-      <li
-        class="opp-tab"
-        role="tab"
-        [id]="'viewer-tab-' + m.mode"
-        [attr.data-mode]="m.mode"
-        aria-controls="viewer-panel"
-        [attr.aria-selected]="m.mode === current"
-        [attr.aria-disabled]="ready() && !available(m.mode) ? true : null"
-        [tabIndex]="m.mode === current ? 0 : -1"
-        [oppTooltip]="reason(m.mode)"
-        (click)="choose(m.mode)"
-      >
-        {{ m.label }}
-      </li>
-    }
-  </ul>
+  <!-- No modes for a document that is not available: each would request its content (E16-T08). -->
+  @if (doc.state !== 'noAccess') {
+    <ul
+      #tabList
+      class="opp-tab-list viewer__modes"
+      role="tablist"
+      aria-label="Viewer mode"
+      (keydown)="onTabKey($event)"
+    >
+      @for (m of modes; track m.mode) {
+        <li
+          class="opp-tab"
+          role="tab"
+          [id]="'viewer-tab-' + m.mode"
+          [attr.data-mode]="m.mode"
+          aria-controls="viewer-panel"
+          [attr.aria-selected]="m.mode === current"
+          [attr.aria-disabled]="ready() && !available(m.mode) ? true : null"
+          [tabIndex]="m.mode === current ? 0 : -1"
+          [oppTooltip]="reason(m.mode)"
+          (click)="choose(m.mode)"
+        >
+          {{ m.label }}
+        </li>
+      }
+    </ul>
+  }
   @if (fallback(); as f) {
     <div class="viewer__fallback" role="status">
       <opp-icon name="info" />
@@ -53,10 +56,18 @@
   <div
     id="viewer-panel"
     class="viewer__panel"
-    role="tabpanel"
-    [attr.aria-labelledby]="'viewer-tab-' + current"
+    [attr.role]="doc.state === 'noAccess' ? null : 'tabpanel'"
+    [attr.aria-labelledby]="doc.state === 'noAccess' ? null : 'viewer-tab-' + current"
   >
     @switch (doc.state) {
+      @case ('noAccess') {
+        <opp-empty-state
+          class="viewer__no-access"
+          icon="eye-off"
+          [title]="noAccess.title"
+          [message]="noAccess.message"
+        />
+      }
       @case ('loading') {
         <opp-loading-state label="Loading document…" />
       }

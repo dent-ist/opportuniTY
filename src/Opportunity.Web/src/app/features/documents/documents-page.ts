@@ -52,6 +52,7 @@ import {
   relatedFromParams,
 } from './relationships/relationship-link';
 import { PendingCoding } from './review/coding/pending-coding';
+import { DocumentAccess } from './review/document-access';
 import { DocumentLoader } from './review/document-loader';
 import { CursorSource, ReviewCursor } from './review/review-cursor';
 import {
@@ -282,6 +283,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
   styleUrl: './documents-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
+    DocumentAccess,
     DocumentLoader,
     { provide: DocumentContentApi, useClass: HttpDocumentContentApi },
     { provide: CodingApi, useClass: HttpCodingApi },

@@ -232,6 +232,84 @@ public sealed class DocumentSecurityAdministrationTests(MigrationPostgresFixture
             .Should().Be(2);
     }
 
+    [Fact]
+    public async Task A_save_that_would_hide_the_document_from_its_author_needs_confirmation_and_writes_nothing_without_it()
+    {
+        await using var db = await ContentDatabase.CreateAsync(postgres);
+        var core = db.Security.Core;
+        var ws = await core.CreateWorkspaceAsync();
+        var w = await WorkspaceAsync(core, ws);
+        var wallField = (await core.Fields.CreateFieldAsync(
+            new NewField(ws, "Matter Wall", FieldType.SingleChoice, FieldStorage.Coding, SecurityClass: SecurityClass.EthicalWall), Ct)).Value!.FieldId;
+        var matterB = (await core.Fields.AddChoiceAsync(ws, wallField, "Matter B", Ct)).Value!.ChoiceId;
+        var admin = await MemberAsync(core, ws, WorkspaceRole.WorkspaceAdmin);
+        var privilege = await MemberAsync(core, ws, WorkspaceRole.PrivilegeReviewer);
+        var doc = (await db.DocumentAsync(ws)).DocumentId;
+        var walled = (await db.DocumentAsync(ws)).DocumentId;
+        var kept = (await db.DocumentAsync(ws)).DocumentId;
+        await using var factory = Factory(core.AppConnectionString, b =>
+        {
+            b.UseSetting("ObjectStorage:Provider", "FileSystem");
+            b.UseSetting("ObjectStorage:FileSystem:RootPath", db.StoreRoot);
+        });
+        using var client = factory.CreateClient();
+        var api = new Api(client);
+        var security = $"/api/v1/workspaces/{ws}/security";
+
+        // Confidential is visible to admins only; a wall over "Matter B" names the privilege reviewer.
+        (await api.SendAsync(HttpMethod.Put, security + "/restriction-classes/Confidential", admin, new JsonObject
+        {
+            ["displayName"] = "Confidential",
+            ["roles"] = new JsonArray("WorkspaceAdmin"),
+            ["rules"] = new JsonArray(new JsonObject { ["fieldId"] = w.Confidentiality, ["choiceId"] = w.Confidential }),
+        }, ifMatch: "*")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await api.SendAsync(HttpMethod.Post, security + "/walls", admin, Wall("Matter B", [privilege], [], [], [], [(wallField, matterB)])))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        // Unconfirmed: 409 confirmation-required, and nothing of the save is left (no value, no event, no class, no audit).
+        foreach (var (document, change) in new[] { (doc, Set(w.Confidentiality, w.Confidential)), (walled, Set(wallField, matterB)) })
+        {
+            using var refused = await PutAsync(client, CodingUrl(ws, document), privilege, change, "\"1\"", "save-1");
+            refused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            var problem = await JsonAsync(refused);
+            problem.GetProperty("code").GetString().Should().Be("confirmation-required");
+            problem.GetProperty("reason").GetString().Should().Be("removes-own-access");
+            using var after = await GetAsync(client, CodingUrl(ws, document), privilege);
+            after.StatusCode.Should().Be(HttpStatusCode.OK);
+            ETag(after).Should().Be("\"1\"", "the refused save wrote nothing");
+        }
+
+        (await core.ScalarAsync<long>(
+            "SELECT count(*) FROM opportunity.coding_event WHERE workspace_id = @ws", ("ws", ws))).Should().Be(0);
+        (await core.ScalarAsync<long>(
+            "SELECT count(*) FROM opportunity.document_restriction WHERE workspace_id = @ws", ("ws", ws))).Should().Be(0);
+        (await core.ScalarAsync<long>(
+            "SELECT count(*) FROM opportunity.document_wall WHERE workspace_id = @ws", ("ws", ws))).Should().Be(0);
+
+        // Confirmed: the save stands, the answer lists no fields, and the document now answers like a missing one.
+        var confirmed = Set(w.Confidentiality, w.Confidential);
+        confirmed["confirmAccessLoss"] = true;
+        using (var saved = await PutAsync(client, CodingUrl(ws, doc), privilege, confirmed, "\"1\"", "save-1"))
+        {
+            saved.StatusCode.Should().Be(HttpStatusCode.OK, "the refused attempt left its idempotency key unused");
+            var body = await JsonAsync(saved);
+            body.GetProperty("accessRetained").GetBoolean().Should().BeFalse();
+            body.GetProperty("fields").GetArrayLength().Should().Be(0);
+            body.GetProperty("lastEditor").ValueKind.Should().Be(JsonValueKind.Null);
+        }
+
+        (await api.ProblemAsync(HttpMethod.Get, CodingUrl(ws, doc), privilege))
+            .Should().Be(await api.ProblemAsync(HttpMethod.Get, CodingUrl(ws, Guid.CreateVersion7()), privilege));
+        (await core.ScalarAsync<long>(
+            "SELECT count(*) FROM audit.audit_event WHERE workspace_id = @ws AND category = 'Coding' AND action = 'Changed'", ("ws", ws)))
+            .Should().Be(1, "only the confirmed save is audited");
+
+        // A security-affecting change the author keeps access through needs no confirmation.
+        using var keptSave = await PutAsync(client, CodingUrl(ws, kept), admin, Set(w.Confidentiality, w.Confidential), "\"1\"");
+        keptSave.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await JsonAsync(keptSave)).GetProperty("accessRetained").GetBoolean().Should().BeTrue();
+    }
+
     private static async Task<string> Errors(HttpResponseMessage response)
     {
         var json = JsonNode.Parse(await response.Content.ReadAsStringAsync(Ct))!.AsObject();

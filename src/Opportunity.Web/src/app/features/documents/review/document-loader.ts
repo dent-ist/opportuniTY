@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import type { DocumentPageResource, DocumentResource } from '../../../core/api/generated/models';
+import { DocumentAccess, DocumentUnavailableError } from './document-access';
 import { ContentPurpose, DocumentContentApi, TextChunk } from './review-ports';
 import {
   ModeAvailabilityMap,
@@ -36,15 +37,20 @@ interface Entry {
  * prefetch). Every request goes through the protected-content gateway; prefetches carry `purpose=prefetch`, so
  * they are audited as prefetch and never as viewed (ADR-013). Displaying a prefetched document reuses that
  * delivery: the view is then recorded with its retrieval id. Only the documents around the cursor are kept.
+ * A document that is no longer available (E16-T08) is never requested again, not even as a prefetch.
  */
 @Injectable()
 export class DocumentLoader {
   private readonly api = inject(DocumentContentApi);
   private readonly preference = inject(ViewerModePreference);
+  private readonly access = inject(DocumentAccess, { optional: true });
   private readonly entries = new Map<string, Entry>();
 
   /** The document for display: the prefetched one if there is one, else display requests. */
   display(documentId: string): Promise<LoadedDocument> {
+    if (this.access?.isUnavailable(documentId)) {
+      return Promise.reject(new DocumentUnavailableError(documentId));
+    }
     const entry = this.entries.get(documentId);
     if (entry) return entry.promise;
     return this.fetch(documentId, 'display');
@@ -57,8 +63,13 @@ export class DocumentLoader {
 
   /** Starts loading `documentId` in the background, unless it is loaded or on its way. */
   prefetch(documentId: string): void {
-    if (this.entries.has(documentId)) return;
+    if (this.entries.has(documentId) || this.access?.isUnavailable(documentId)) return;
     this.fetch(documentId, 'prefetch').catch(() => undefined); // retried for display
+  }
+
+  /** Drops what was loaded for `documentId`: it is no longer available, so nothing of it stays in memory. */
+  forget(documentId: string): void {
+    this.entries.delete(documentId);
   }
 
   /** Forgets every document except `keep` (the current one and its neighbours). */
@@ -73,9 +84,10 @@ export class DocumentLoader {
     this.entries.set(documentId, entry);
     promise.then(
       (value) => (entry.value = value),
-      () => {
-        // A failed load is not cached: the next display asks again.
+      (e: unknown) => {
+        // A failed load is not cached: the next display asks again (unless the document is no longer available).
         if (this.entries.get(documentId) === entry) this.entries.delete(documentId);
+        if (e instanceof DocumentUnavailableError) this.access?.markUnavailable(documentId);
       },
     );
     return promise;

@@ -48,12 +48,19 @@ describe('Review mode (E16-T03)', () => {
   let reopened: boolean;
   let removed: Set<number>;
   let retrievals: number;
+  /** Documents hidden from the reviewer (E16-T08): every route of theirs answers the document 404. */
+  let revoked: Set<number>;
+  const NOT_FOUND: FakeResponse = {
+    status: 404,
+    body: { title: 'Not Found', status: 404, detail: 'The document does not exist.' },
+  };
 
   async function setup(options: { total?: number } = {}): Promise<void> {
     result = { total: options.total ?? 250, pageSize: 100 };
     expired = false;
     reopened = false;
     removed = new Set();
+    revoked = new Set();
     retrievals = 0;
     // Pages over the documents still in the set (a recoded document can leave it).
     const page = (n: number) => {
@@ -98,24 +105,36 @@ describe('Review mode (E16-T03)', () => {
       );
     for (let n = 1; n <= 260; n++) {
       api
-        .on('GET', `${WS}/documents/doc-${n}`, (req) => ({
-          body: documentResource(n),
-          headers: { 'X-Opportunity-Retrieval-Id': `m-${n}-${req.params.get('purpose')}` },
-        }))
-        .on('GET', `${WS}/documents/doc-${n}/text/chunks/0`, (req) => text(req, n))
-        .on('POST', `${WS}/documents/doc-${n}/views`, { status: 204 })
-        .on('GET', `${WS}/documents/doc-${n}/coding`, {
-          body: {
-            documentId: `doc-${n}`,
-            documentVersion: '7',
-            projectedVersion: '7',
-            indexingState: 'indexed',
-            layoutId: null,
-            lastEditor: null,
-            fields: n === 3 ? [{ fieldId: 'f-resp', value: 1, editable: true }] : [],
-          },
-          headers: { ETag: '"7"' },
-        });
+        .on('GET', `${WS}/documents/doc-${n}`, (req) =>
+          revoked.has(n)
+            ? NOT_FOUND
+            : {
+                body: documentResource(n),
+                headers: { 'X-Opportunity-Retrieval-Id': `m-${n}-${req.params.get('purpose')}` },
+              },
+        )
+        .on('GET', `${WS}/documents/doc-${n}/text/chunks/0`, (req) =>
+          revoked.has(n) ? NOT_FOUND : text(req, n),
+        )
+        .on('POST', `${WS}/documents/doc-${n}/views`, () =>
+          revoked.has(n) ? NOT_FOUND : { status: 204 },
+        )
+        .on('GET', `${WS}/documents/doc-${n}/coding`, () =>
+          revoked.has(n)
+            ? NOT_FOUND
+            : {
+                body: {
+                  documentId: `doc-${n}`,
+                  documentVersion: '7',
+                  projectedVersion: '7',
+                  indexingState: 'indexed',
+                  layoutId: null,
+                  lastEditor: null,
+                  fields: n === 3 ? [{ fieldId: 'f-resp', value: 1, editable: true }] : [],
+                },
+                headers: { ETag: '"7"' },
+              },
+        );
     }
     TestBed.configureTestingModule({
       providers: [...provideAppRouting(), ...provideOpportunityHttp(), ...provideFakeApi(api)],
@@ -428,6 +447,125 @@ describe('Review mode (E16-T03)', () => {
     await settle();
     expect(bar()).toContain('Doc 1 of 250');
     expect(location.path()).toBe('/w/ws-1/documents?view=review');
+  });
+
+  describe('access-restricted documents (E16-T08)', () => {
+    const requestsFor = (n: number) =>
+      api.requests
+        .filter((r) => r.url.includes(`/documents/doc-${n}`))
+        .map((r) => `${r.method} ${r.url.slice(r.url.indexOf(`doc-${n}`))}`);
+    const state = () =>
+      review()!.querySelector('[data-viewer-document]')?.getAttribute('data-state');
+    const rowText = (index: number) =>
+      grid().querySelectorAll('.grid__body [role="row"]')[index]?.textContent ?? '';
+
+    it('a hit revoked between search and open shows the no-access state, requests no artifact and becomes a placeholder row', async () => {
+      await setup();
+      // Another user's change hides doc-2 after the list was loaded (a stale hit, Q-12).
+      revoked.add(2);
+      await openRow(1);
+      expect(bar()).toContain('Doc 2 of 250');
+      expect(bar()).toContain('No longer available');
+      expect(bar()).not.toContain('ACM0000002');
+      expect(state()).toBe('noAccess');
+      expect(region('Viewer').textContent).toContain('Document not available');
+      expect(region('Viewer').querySelector('[role="tab"]')).toBeNull();
+      expect(region('Coding').textContent).toContain('No coding to show');
+      expect(region('Related Items').textContent).toContain('No related items');
+      // Only the first refused reads; no text, pages, images, hits, view or prefetch of its neighbour.
+      expect(requestsFor(2).every((r) => /^GET doc-2(\/coding|\/relationships)?$/.test(r))).toBe(
+        true,
+      );
+      expect(textRequests()).toEqual([]);
+      expect(views()).toEqual([]);
+      await expectNoAxeViolations(review()!);
+
+      // Next works; coming back to it requests nothing at all.
+      press('Period', { altKey: true, shiftKey: true, key: '>' });
+      await settle();
+      expect(bar()).toContain('ACM0000003');
+      expect(viewerText()).toBe('Extracted text of document 3');
+      const before = requestsFor(2).length;
+      press('Comma', { altKey: true, shiftKey: true, key: '<' });
+      await settle();
+      expect(state()).toBe('noAccess');
+      expect(requestsFor(2)).toHaveLength(before);
+
+      // The list row lost its metadata for the rest of the visit, and cannot be selected.
+      press('Escape', { key: 'Escape' });
+      await settle();
+      expect(rowText(1)).toContain('No longer available');
+      expect(rowText(1)).not.toContain('ACM0000002');
+      expect(
+        grid().querySelectorAll('.grid__body [role="row"]')[1].querySelector('input'),
+      ).toBeNull();
+    }, 30_000);
+
+    it('a document hidden while open leaves the screen on its next request; a confirmed save that hides it moves on', async () => {
+      await setup();
+      await openRow(0);
+      expect(viewerText()).toBe('Extracted text of document 1');
+
+      // Hidden by someone else while open: the save answers 404, and the content leaves the screen.
+      revoked.add(1);
+      region('Coding').querySelector<HTMLInputElement>('input[type="radio"]')!.click();
+      await settle();
+      button('Save').click();
+      await settle();
+      expect(state()).toBe('noAccess');
+      expect(viewerText()).toBeUndefined();
+      expect(bar()).not.toContain('ACM0000001');
+      expect(bar()).toContain('Doc 1 of 250');
+
+      // doc-2: the reviewer's own change would hide it from them: confirmed, saved, and Review moves to doc-3.
+      button('Next document').click();
+      await settle();
+      expect(bar()).toContain('ACM0000002');
+      api.on('PUT', `${WS}/documents/doc-2/coding`, (req) => {
+        if (!(req.body as { confirmAccessLoss?: boolean }).confirmAccessLoss) {
+          return {
+            status: 409,
+            body: { status: 409, code: 'confirmation-required', reason: 'removes-own-access' },
+          };
+        }
+        revoked.add(2);
+        return {
+          body: {
+            documentId: 'doc-2',
+            documentVersion: '8',
+            projectedVersion: '7',
+            indexingState: 'pending',
+            layoutId: null,
+            lastEditor: null,
+            fields: [],
+            accessRetained: false,
+          },
+          headers: { ETag: '"8"' },
+        };
+      });
+      region('Coding').querySelector<HTMLInputElement>('input[type="radio"]')!.click();
+      await settle();
+      button('Save').click();
+      await settle();
+      const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]')!;
+      expect(dialog.textContent).toContain('Save and lose access?');
+      [...dialog.querySelectorAll('button')]
+        .find((b) => b.textContent?.trim() === 'Save and lose access')!
+        .click();
+      await settle();
+      expect(bar()).toContain('Doc 3 of 250');
+      expect(bar()).toContain('ACM0000003');
+      const puts = api.requests.filter((r) => r.method === 'PUT' && r.url.includes('doc-2'));
+      expect(
+        puts.map((r) => (r.body as { confirmAccessLoss?: boolean }).confirmAccessLoss),
+      ).toEqual([undefined, true]);
+
+      press('Escape', { key: 'Escape' });
+      await settle();
+      expect(rowText(0)).toContain('No longer available');
+      expect(rowText(1)).toContain('No longer available');
+      expect(rowText(2)).toContain('ACM0000003');
+    }, 30_000);
   });
 
   it('shows the list when the page is loaded with the Review mode URL', async () => {

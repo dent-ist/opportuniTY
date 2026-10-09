@@ -53,6 +53,17 @@
   white-space: nowrap;
 }
 
+// E16-T08: a document that is no longer available keeps no identity on screen.
+.review__identity--gone,
+.review__gone {
+  color: var(--opp-color-text-muted);
+}
+
+.review__gone {
+  margin: 0;
+  padding: var(--opp-space-3);
+}
+
 .review__toggles {
   display: flex;
   gap: var(--opp-space-1);

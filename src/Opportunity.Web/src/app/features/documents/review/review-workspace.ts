@@ -21,6 +21,7 @@ import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { Announcer, Button, DialogService, Icon, IconButton, SplitPane } from '../../../ui';
+import { DocumentAccess, DocumentUnavailableError } from './document-access';
 import { DocumentLoader, LoadedDocument } from './document-loader';
 import { CursorDirection, MoveResult, ReviewCursor } from './review-cursor';
 import { ReviewCoding } from './coding/coding-pane';
@@ -50,6 +51,11 @@ interface Notice {
  *   unsaved edits asks Save / Discard / Cancel.
  * - The next document (its metadata and the first content of its viewer mode) is prefetched through the gateway
  *   with `purpose=prefetch` (never audited as viewed); a view is recorded only once a document is on screen.
+ * - Access-restricted states (E16-T08, familiarity guide §3.5): a document that answers like a missing one (hidden
+ *   by another user's change or a new wall, or deleted), when opened or while open, shows the standard no-access
+ *   state with nothing of it on screen and nothing more requested (no content, hits, coding, related items or
+ *   prefetch); its list row becomes "No longer available". When the reviewer's own confirmed save hides the
+ *   document from them, Review moves on to the next document (Save & Previous: the previous one).
  */
 @Component({
   selector: 'opp-review-workspace',
@@ -84,6 +90,7 @@ export class ReviewWorkspace {
   private readonly prefs = inject(UiPreferences);
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
+  private readonly access = inject(DocumentAccess);
   protected readonly canCode = inject(WorkspaceContext).can(PERMISSIONS.codingWrite);
 
   private readonly editor = viewChild(ReviewCoding);
@@ -100,9 +107,13 @@ export class ReviewWorkspace {
   protected readonly notice = signal<Notice | null>(null);
   /** Bumped whenever another document is displayed; late responses for an older one are dropped. */
   private seq = 0;
+  /** Save & Next / Save & Previous is saving: a save that ends the reviewer's access then moves that way. */
+  private savingToMove = false;
 
   private readonly displayedId = computed(() => this.cursor().displayed()?.documentId ?? null);
   protected readonly hit = computed(() => this.cursor().displayed());
+  /** The displayed document is no longer available to the reviewer (E16-T08). */
+  protected readonly noAccess = computed(() => this.access.isUnavailable(this.displayedId()));
   /** Whether the displayed document has a family or duplicates (the hit's flags, else what Related Items found). */
   protected readonly relations = computed(() => {
     const hit = this.hit();
@@ -151,6 +162,23 @@ export class ReviewWorkspace {
       if (id) untracked(() => this.show(this.cursor().displayed()!));
     });
 
+    // The displayed document stops being available while open (any of its requests answered 404): its content
+    // leaves the screen and memory at once.
+    effect(() => {
+      if (!this.noAccess()) return;
+      untracked(() => {
+        const current = this.viewer();
+        if (!current || current.state === 'noAccess') return;
+        this.seq++;
+        this.loader.forget(current.hit.documentId);
+        // Focus inside the content that goes away stays in the viewer's region.
+        const region = this.viewerRegion().nativeElement;
+        const active = this.document.activeElement;
+        if (active !== region && region.contains(active)) region.focus();
+        this.viewer.set({ hit: current.hit, state: 'noAccess', content: null });
+      });
+    });
+
     // Prefetch the next document once the current one is on screen; keep only the neighbours.
     effect(() => {
       const current = this.viewer();
@@ -184,8 +212,22 @@ export class ReviewWorkspace {
   /** Save & Next / Save & Previous: saves the coding pane's edits, then moves. */
   protected async saveAndMove(direction: CursorDirection): Promise<void> {
     const editor = this.editor();
-    if (editor?.dirty() && !(await editor.save())) return;
+    this.savingToMove = true;
+    try {
+      if (editor?.dirty() && !(await editor.save())) return;
+    } finally {
+      this.savingToMove = false;
+    }
     await this.step(direction);
+  }
+
+  /**
+   * The reviewer confirmed a save that hid the document from them (E16-T08): the list row becomes "No longer
+   * available" and, after a plain Save, Review moves on to the next document (Save & Next / Save & Previous move
+   * anyway).
+   */
+  protected onAccessLost(): void {
+    if (!this.savingToMove) void this.step('next');
   }
 
   /** "Continue from next" after the current document left the refreshed results. */
@@ -259,7 +301,15 @@ export class ReviewWorkspace {
       autoFocus: '[data-autofocus]',
     });
     const choice = (await firstValueFrom(ref.closed)) ?? 'cancel';
-    if (choice === 'save') return editor.save();
+    if (choice === 'save') {
+      // The move that asked goes ahead after the save, also when the save ended the reviewer's access.
+      this.savingToMove = true;
+      try {
+        return await editor.save();
+      } finally {
+        this.savingToMove = false;
+      }
+    }
     if (choice === 'discard') editor.discard();
     return choice === 'discard';
   }
@@ -269,6 +319,10 @@ export class ReviewWorkspace {
   private show(hit: SearchHit): void {
     const seq = ++this.seq;
     const id = hit.documentId;
+    if (this.access.isUnavailable(id)) {
+      this.viewer.set({ hit, state: 'noAccess', content: null });
+      return;
+    }
     const loaded = this.loader.loaded(id);
     this.viewer.set({ hit, state: loaded ? 'ready' : 'loading', content: loaded ?? null });
     if (loaded) {
@@ -280,8 +334,11 @@ export class ReviewWorkspace {
           this.viewer.set({ hit, state: 'ready', content });
           this.displayed(seq, content);
         },
-        () => {
-          if (seq === this.seq) this.viewer.set({ hit, state: 'unavailable', content: null });
+        (e: unknown) => {
+          if (seq !== this.seq) return;
+          const noAccess = e instanceof DocumentUnavailableError;
+          if (noAccess) this.access.markUnavailable(id);
+          this.viewer.set({ hit, state: noAccess ? 'noAccess' : 'unavailable', content: null });
         },
       );
     }
@@ -291,7 +348,7 @@ export class ReviewWorkspace {
   private displayed(seq: number, loaded: LoadedDocument): void {
     afterNextRender(
       () => {
-        if (seq !== this.seq) return;
+        if (seq !== this.seq || this.access.isUnavailable(loaded.documentId)) return;
         this.content.recordView(loaded.documentId, loaded.retrievalId).catch(() => undefined);
       },
       { injector: this.injector },

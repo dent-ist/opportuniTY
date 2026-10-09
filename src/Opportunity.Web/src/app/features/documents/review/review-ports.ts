@@ -20,6 +20,7 @@ import type {
 } from '../../../core/api/generated/models';
 import { ApiError } from '../../../core/api/problem-details';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
+import { DocumentAccess, DocumentUnavailableError, isDocumentNotFound } from './document-access';
 
 // The two backends Review mode talks to, as ports so the viewer (E16-T04) and coding pane (E16-T05) can be built
 // against them while the document content API (E11-T01) and the coding API (E10-T01) land. The HTTP adapters
@@ -95,6 +96,7 @@ export type PageImageKind = 'image' | 'thumbnail';
 /**
  * The document content API (E11-T01) as the viewer uses it. Every call goes through the protected-content gateway,
  * which authorizes and audits it before the first byte; nothing here is cached by the browser (`no-store`).
+ * A document the caller may no longer see (or that is gone) rejects with `DocumentUnavailableError` (E16-T08).
  */
 @Injectable()
 export abstract class DocumentContentApi {
@@ -141,25 +143,30 @@ export class HttpDocumentContentApi extends DocumentContentApi {
   private readonly http = inject(HttpClient);
   private readonly context = inject(WorkspaceContext);
   private readonly page = inject(DOCUMENT);
+  private readonly access = inject(DocumentAccess, { optional: true });
 
   async document(
     documentId: string,
     purpose: ContentPurpose,
   ): Promise<Delivered<DocumentResource>> {
-    const response = await firstValueFrom(
-      this.http.get<DocumentResource>(this.context.apiUrl('documents', documentId), {
-        params: { purpose },
-        observe: 'response',
-      }),
+    const response = await this.guard(documentId, () =>
+      firstValueFrom(
+        this.http.get<DocumentResource>(this.context.apiUrl('documents', documentId), {
+          params: { purpose },
+          observe: 'response',
+        }),
+      ),
     );
     return { value: response.body!, retrievalId: retrievalIdOf(response) };
   }
 
   async textChunk(documentId: string, index: number, purpose: ContentPurpose): Promise<TextChunk> {
-    const response = await firstValueFrom(
-      this.http.get<DocumentTextChunkResource>(
-        this.context.apiUrl('documents', documentId, 'text', 'chunks', String(index)),
-        { params: { purpose }, observe: 'response' },
+    const response = await this.guard(documentId, () =>
+      firstValueFrom(
+        this.http.get<DocumentTextChunkResource>(
+          this.context.apiUrl('documents', documentId, 'text', 'chunks', String(index)),
+          { params: { purpose }, observe: 'response' },
+        ),
       ),
     );
     return toTextChunk(documentId, response.body!, retrievalIdOf(response));
@@ -187,11 +194,15 @@ export class HttpDocumentContentApi extends DocumentContentApi {
     let first: string | null = null;
     do {
       const params: Record<string, string> = cursor ? { purpose, cursor } : { purpose };
-      const response: HttpResponse<CursorPageOfDocumentPageResource> = await firstValueFrom(
-        this.http.get<CursorPageOfDocumentPageResource>(
-          this.context.apiUrl('documents', documentId, 'pages'),
-          { params, observe: 'response' },
-        ),
+      const response: HttpResponse<CursorPageOfDocumentPageResource> = await this.guard(
+        documentId,
+        () =>
+          firstValueFrom(
+            this.http.get<CursorPageOfDocumentPageResource>(
+              this.context.apiUrl('documents', documentId, 'pages'),
+              { params, observe: 'response' },
+            ),
+          ),
       );
       first ??= retrievalIdOf(response);
       items.push(...(response.body?.items ?? []));
@@ -206,10 +217,12 @@ export class HttpDocumentContentApi extends DocumentContentApi {
     kind: PageImageKind,
     purpose: ContentPurpose,
   ): Promise<Delivered<Blob>> {
-    const response = await firstValueFrom(
-      this.http.get(
-        this.context.apiUrl('documents', documentId, 'pages', String(pageNumber), kind),
-        { params: { purpose }, observe: 'response', responseType: 'blob' },
+    const response = await this.guard(documentId, () =>
+      firstValueFrom(
+        this.http.get(
+          this.context.apiUrl('documents', documentId, 'pages', String(pageNumber), kind),
+          { params: { purpose }, observe: 'response', responseType: 'blob' },
+        ),
       ),
     );
     return { value: response.body ?? new Blob(), retrievalId: retrievalIdOf(response) };
@@ -234,6 +247,27 @@ export class HttpDocumentContentApi extends DocumentContentApi {
       this.http.post(this.context.apiUrl('documents', documentId, 'views'), body),
     );
   }
+
+  /**
+   * The document routes answer 404 for a document the caller may not see, exactly as for one that does not exist
+   * (the requests here only name chunks and pages the document has): from then on it is unavailable.
+   */
+  private guard<T>(documentId: string, request: () => Promise<T>): Promise<T> {
+    return request().catch((e: unknown) => {
+      throw unavailable(e, documentId, this.access);
+    });
+  }
+}
+
+/** A document 404 as `DocumentUnavailableError` (recorded in `access`); any other error unchanged. */
+export function unavailable(
+  error: unknown,
+  documentId: string,
+  access: DocumentAccess | null,
+): unknown {
+  if (!isDocumentNotFound(error)) return error;
+  access?.markUnavailable(documentId);
+  return new DocumentUnavailableError(documentId);
 }
 
 export function toTextHitsPage(body: DocumentTextHitsResource): TextHitsPage {
@@ -317,6 +351,11 @@ export interface DocumentCoding {
   /** Per field (by query name): editability and last change, for every coding field the caller may see. */
   readonly fields: Readonly<Record<string, CodingFieldState>>;
   readonly lastEditor: CodingLastEditor | null;
+  /**
+   * Set by a save the reviewer confirmed although it hides the document from them (E16-T08): it was saved, and
+   * the coding is no longer theirs to see (`values` and `fields` are empty).
+   */
+  readonly accessLost?: boolean;
 }
 
 /** A choice of a choice field, in admin order; inactive choices keep their values but cannot be newly chosen. */
@@ -368,6 +407,8 @@ export interface CodingLayout {
 export interface CodingSaveOptions {
   readonly layoutId: string | null;
   readonly idempotencyKey: string;
+  /** The reviewer confirmed that the save may remove their own access to the document (E16-T08). */
+  readonly confirmAccessLoss?: boolean;
 }
 
 /** 412 `version-conflict`: someone changed the document since it was read. Never last-write-wins. */
@@ -375,6 +416,17 @@ export class CodingConflictError extends Error {
   constructor(readonly current: DocumentCoding) {
     super('The document was changed by someone else.');
     this.name = 'CodingConflictError';
+  }
+}
+
+/**
+ * 409 `confirmation-required` (`removes-own-access`): the change would hide the document from the reviewer, so it
+ * was not saved. Saving it anyway needs their explicit confirmation (`confirmAccessLoss`, E16-T08).
+ */
+export class CodingAccessLossError extends Error {
+  constructor() {
+    super('This change would remove your access to the document.');
+    this.name = 'CodingAccessLossError';
   }
 }
 
@@ -399,8 +451,10 @@ export abstract class CodingApi {
   abstract layouts(): Promise<readonly CodingLayout[]>;
   abstract get(documentId: string): Promise<DocumentCoding>;
   /**
-   * Saves changed values. Rejects with `CodingConflictError` when `version` is stale and `CodingRejectedError` when
-   * the API refuses the values; never overwrites a newer version silently.
+   * Saves changed values. Rejects with `CodingConflictError` when `version` is stale, `CodingRejectedError` when
+   * the API refuses the values, `CodingAccessLossError` when the change would hide the document from the reviewer
+   * (unless `confirmAccessLoss`) and `DocumentUnavailableError` when it is no longer available; never overwrites a
+   * newer version silently.
    */
   abstract save(
     documentId: string,
@@ -424,6 +478,7 @@ export class HttpCodingApi extends CodingApi {
   private readonly http = inject(HttpClient);
   private readonly rootUrl = inject(ApiConfiguration).rootUrl;
   private readonly context = inject(WorkspaceContext);
+  private readonly access = inject(DocumentAccess, { optional: true });
   private catalog?: Promise<CodingCatalog>;
 
   async layouts(): Promise<readonly CodingLayout[]> {
@@ -446,7 +501,9 @@ export class HttpCodingApi extends CodingApi {
           this.context.apiUrl('documents', documentId, 'coding'),
           { observe: 'response' },
         ),
-      ),
+      ).catch((e: unknown) => {
+        throw unavailable(e, documentId, this.access);
+      }),
       this.fields(),
     ]);
     return toCoding(response, catalog);
@@ -464,6 +521,7 @@ export class HttpCodingApi extends CodingApi {
         toChange(catalog, queryName, value),
       ),
       layoutId: options.layoutId,
+      ...(options.confirmAccessLoss ? { confirmAccessLoss: true } : {}),
     };
     const put = () =>
       firstValueFrom(
@@ -486,7 +544,7 @@ export class HttpCodingApi extends CodingApi {
       }
       return toCoding(response, catalog);
     } catch (e) {
-      throw codingSaveError(e, catalog);
+      throw codingSaveError(unavailable(e, documentId, this.access), catalog);
     }
   }
 
@@ -602,6 +660,7 @@ export function codingOf(
           jobId: editor.jobId,
         }
       : null,
+    ...(body.accessRetained === false ? { accessLost: true } : {}),
   };
 }
 
@@ -688,6 +747,9 @@ export function codingSaveError(e: unknown, catalog: CodingCatalog): unknown {
   const problem = e.problem;
   if (e.status === 412 && problem['current']) {
     return new CodingConflictError(codingOf(problem['current'] as DocumentCodingResource, catalog));
+  }
+  if (e.status === 409 && problem['reason'] === 'removes-own-access') {
+    return new CodingAccessLossError();
   }
   if (e.status === 400 || e.status === 422) {
     const fieldErrors: Record<string, string> = {};

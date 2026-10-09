@@ -53,8 +53,17 @@ public sealed record CodingChange(int FieldId, CodingOperationKind Kind, JsonNod
 /// <param name="ExpectedVersion">From <c>If-Match</c>; null only for <c>If-Match: *</c>.</param>
 /// <param name="IdempotencyKey">The client's <c>Idempotency-Key</c>, or null.</param>
 /// <param name="LayoutId">When set, the changes are validated against the layout (editable fields, required values).</param>
+/// <param name="ConfirmAccessLoss">
+/// The caller confirmed that the save may hide the document from them (E16-T08). Without it such a save writes nothing
+/// and answers <see cref="CodingStatus.AccessLossUnconfirmed"/>.
+/// </param>
 public sealed record InteractiveCodingRequest(
-    Guid DocumentId, long? ExpectedVersion, IReadOnlyList<CodingChange> Changes, Guid? LayoutId = null, string? IdempotencyKey = null);
+    Guid DocumentId,
+    long? ExpectedVersion,
+    IReadOnlyList<CodingChange> Changes,
+    Guid? LayoutId = null,
+    string? IdempotencyKey = null,
+    bool ConfirmAccessLoss = false);
 
 public enum CodingStatus
 {
@@ -75,6 +84,9 @@ public enum CodingStatus
     VersionConflict,
 
     IdempotencyKeyReuse,
+
+    /// <summary>The save would remove the caller's own access to the document and was not confirmed; nothing was written: 409.</summary>
+    AccessLossUnconfirmed,
 }
 
 public sealed record CodingOutcome
@@ -88,6 +100,12 @@ public sealed record CodingOutcome
 
     /// <summary>The save changed at least one value (and bumped DocumentVersion).</summary>
     public bool Changed { get; init; }
+
+    /// <summary>
+    /// False after a confirmed save that hid the document from the caller: <see cref="View"/> then lists no fields and no
+    /// editor (the document's coding is no longer theirs to see).
+    /// </summary>
+    public bool AccessRetained { get; init; } = true;
 
     internal static CodingOutcome Of(CodingStatus status, params FieldError[] errors) => new() { Status = status, Errors = errors };
 }
@@ -227,6 +245,12 @@ public sealed class InteractiveCodingService(
             }
         }
 
+        // E16-T08: a security-affecting change may hide the document from the caller; unless they confirmed it, the store
+        // checks the document's classes and walls as the write leaves them and refuses (nothing written) when it would.
+        var touchesSecurity = resolved.Any(r => r.Field.IsSecurityAffecting);
+        var retainsAccess = touchesSecurity && !request.ConfirmAccessLoss
+            ? await authorization.GetDocumentAccessCheckAsync(principal, ws, Permission.DocumentView, cancellationToken).ConfigureAwait(false)
+            : null;
         var write = await coding.ApplyAsync(new CodingWriteRequest
         {
             WorkspaceId = ws,
@@ -236,6 +260,7 @@ public sealed class InteractiveCodingService(
             Operations = [.. resolved.Select(r => new CodingFieldOperation(r.Field.FieldId, r.Change.Kind, r.Canonical))],
             ExpectedVersion = request.ExpectedVersion,
             Audit = Audit(principal, request),
+            RetainsAccess = retainsAccess,
         }, cancellationToken).ConfigureAwait(false);
 
         var status = write.Outcome switch
@@ -245,9 +270,10 @@ public sealed class InteractiveCodingService(
             CodingWriteOutcome.VersionConflict => CodingStatus.VersionConflict,
             CodingWriteOutcome.NotFound => CodingStatus.NotFound,
             CodingWriteOutcome.IdempotencyKeyReuse => CodingStatus.IdempotencyKeyReuse,
+            CodingWriteOutcome.AccessLossUnconfirmed => CodingStatus.AccessLossUnconfirmed,
             _ => CodingStatus.Invalid,
         };
-        if (status is CodingStatus.Invalid or CodingStatus.NotFound or CodingStatus.IdempotencyKeyReuse)
+        if (status is CodingStatus.Invalid or CodingStatus.NotFound or CodingStatus.IdempotencyKeyReuse or CodingStatus.AccessLossUnconfirmed)
         {
             return new CodingOutcome { Status = status, Errors = write.Errors };
         }
@@ -256,6 +282,25 @@ public sealed class InteractiveCodingService(
         if (view is null)
         {
             return CodingOutcome.Of(CodingStatus.NotFound);
+        }
+
+        // A confirmed (or replayed) save of a security-affecting field may have hidden the document from the caller: the
+        // save stands, but its coding is no longer theirs to read. Checked without an AuthZ.Denied event: it is not an
+        // access attempt, and the coding audit event already records the change.
+        if ((touchesSecurity && status == CodingStatus.Ok) || status == CodingStatus.Replayed)
+        {
+            var visible = await authorization.AuthorizeManyAsync(
+                principal, ws, Permission.DocumentView, [request.DocumentId], DenialAudit.Caller, cancellationToken).ConfigureAwait(false);
+            if (!visible[request.DocumentId].IsAllowed)
+            {
+                return new CodingOutcome
+                {
+                    Status = status,
+                    View = view with { Fields = [], LastEditor = null },
+                    Changed = write.EventsWritten > 0,
+                    AccessRetained = false,
+                };
+            }
         }
 
         return new CodingOutcome { Status = status, View = view, Changed = write.EventsWritten > 0 };

@@ -34,6 +34,9 @@ public sealed class CodingEndpoints : IApiEndpointModule
 {
     public const string Path = "/documents/{documentId}/coding";
 
+    /// <summary>The <c>reason</c> of the 409 a save answers when it would hide the document from its author (E16-T08).</summary>
+    public const string RemovesOwnAccess = "removes-own-access";
+
     private const string Tag = "Coding";
     // The document 404 of every document route (the content gateway's), so coding and content answer an unknown, hidden or
     // malformed document identically.
@@ -62,11 +65,14 @@ public sealed class CodingEndpoints : IApiEndpointModule
                 "All changes apply together or not at all, as one DocumentVersion. 412 version-conflict when the document " +
                 "changed since it was read: the problem carries currentVersion, lastEditor and current (the coding now). " +
                 "Security-affecting fields also need Coding.WritePrivilege. A retry with the same Idempotency-Key returns the " +
-                "original result (header Idempotent-Replayed) and writes nothing.")
+                "original result (header Idempotent-Replayed) and writes nothing. A change that would hide the document from you " +
+                "answers 409 confirmation-required (reason removes-own-access) and writes nothing unless confirmAccessLoss is " +
+                "true; the confirmed save answers with accessRetained false and no fields.")
             .RequirePermission(Permission.CodingWrite)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status412PreconditionFailed)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesProblem(StatusCodes.Status428PreconditionRequired);
@@ -137,22 +143,25 @@ public sealed class CodingEndpoints : IApiEndpointModule
                 ExpectedVersion(context.Request.Headers.IfMatch),
                 [.. changes.Select(c => new CodingChange(c.FieldId, Operation(c.Operation), c.Value?.DeepClone()))],
                 request.LayoutId,
-                idempotencyKey),
+                idempotencyKey,
+                request.ConfirmAccessLoss),
             cancellationToken).ConfigureAwait(false);
 
         switch (outcome.Status)
         {
             case CodingStatus.Ok:
-                return Ok(context, outcome.View!);
+                return Ok(context, outcome.View!, outcome.AccessRetained);
             case CodingStatus.Replayed:
                 context.Response.Headers[IdempotencyMiddleware.ReplayedHeaderName] = "true";
-                return Ok(context, outcome.View!);
+                return Ok(context, outcome.View!, outcome.AccessRetained);
             case CodingStatus.Invalid:
                 return Invalid(outcome.Errors);
             case CodingStatus.Forbidden:
                 return Forbidden();
             case CodingStatus.VersionConflict:
                 return Conflict(context, outcome.View!);
+            case CodingStatus.AccessLossUnconfirmed:
+                return AccessLossUnconfirmed();
             case CodingStatus.IdempotencyKeyReuse:
                 return Problems.Create(StatusCodes.Status422UnprocessableEntity, ProblemCodes.IdempotencyKeyReuse,
                     $"This {IdempotencyMiddleware.HeaderName} was already used with a different coding request.");
@@ -187,7 +196,7 @@ public sealed class CodingEndpoints : IApiEndpointModule
         return versions is [var single] ? single : -1;
     }
 
-    internal static DocumentCodingResource ToResource(DocumentCodingView view) => new(
+    internal static DocumentCodingResource ToResource(DocumentCodingView view, bool accessRetained = true) => new(
         view.DocumentId,
         view.DocumentVersion,
         view.ProjectedVersion,
@@ -200,13 +209,26 @@ public sealed class CodingEndpoints : IApiEndpointModule
         view.LayoutId,
         [.. view.Fields.Select(f => new CodingFieldValueResource(
             f.Field.FieldId, f.Value?.DeepClone(), f.Editable, f.Field.IsSecurityAffecting, f.ChangedAtVersion, f.ChangedBy, f.ChangedAt))],
-        view.LastEditor is { } e ? new CodingEditorResource(e.UserId, e.DisplayName, e.At, e.DocumentVersion, e.JobId) : null);
+        view.LastEditor is { } e ? new CodingEditorResource(e.UserId, e.DisplayName, e.At, e.DocumentVersion, e.JobId) : null,
+        accessRetained);
 
-    private static Ok<DocumentCodingResource> Ok(HttpContext context, DocumentCodingView view)
+    private static Ok<DocumentCodingResource> Ok(HttpContext context, DocumentCodingView view, bool accessRetained = true)
     {
         context.Response.Headers.ETag = EntityTags.ForVersion(view.DocumentVersion);
-        return TypedResults.Ok(ToResource(view));
+        return TypedResults.Ok(ToResource(view, accessRetained));
     }
+
+    /// <summary>E16-T08: like giving up one's own role (E05-T08), losing one's own access to a document needs a confirmation.</summary>
+    private static ProblemHttpResult AccessLossUnconfirmed() =>
+        TypedResults.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            detail: "This change would remove your own access to the document. Confirm it with confirmAccessLoss.",
+            type: ProblemCodes.TypeFor(ProblemCodes.ConfirmationRequired),
+            extensions: new Dictionary<string, object?>
+            {
+                [Problems.CodeExtension] = ProblemCodes.ConfirmationRequired,
+                ["reason"] = RemovesOwnAccess,
+            });
 
     private static ProblemHttpResult Conflict(HttpContext context, DocumentCodingView current)
     {

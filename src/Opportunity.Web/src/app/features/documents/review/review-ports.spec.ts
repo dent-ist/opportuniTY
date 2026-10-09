@@ -14,11 +14,14 @@ import type {
   FieldResource,
 } from '../../../core/api/generated/models';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
+import { DocumentAccess, DocumentUnavailableError } from './document-access';
 import {
   ALL_FIELDS_LAYOUT,
+  CodingAccessLossError,
   CodingConflictError,
   CodingRejectedError,
   HttpCodingApi,
+  HttpDocumentContentApi,
   catalogOf,
   codingSaveError,
   layoutsOf,
@@ -258,4 +261,106 @@ describe('coding API adapter (E10-T01 ↔ Review mode)', () => {
       });
     }
   });
+
+  it('asks for confirmation before a save that ends the reviewer’s access, then sends it confirmed (E16-T08)', async () => {
+    const catalog = catalogOf(FIELDS);
+    const loss = codingSaveError(
+      new ApiError(409, { code: 'confirmation-required', reason: 'removes-own-access' }),
+      catalog,
+    );
+    expect(loss).toBeInstanceOf(CodingAccessLossError);
+    // Another 409 (not about access) stays what it was.
+    const other = new ApiError(409, { code: 'conflict' });
+    expect(codingSaveError(other, catalog)).toBe(other);
+
+    const api = new FakeApi()
+      .on('GET', '/api/v1/workspaces/ws-1/fields', { body: { items: FIELDS } })
+      .on('PUT', '/api/v1/workspaces/ws-1/documents/doc-1/coding', (req) =>
+        (req.body as { confirmAccessLoss?: boolean }).confirmAccessLoss
+          ? {
+              body: {
+                documentId: 'doc-1',
+                documentVersion: 8,
+                indexingState: 'pending',
+                lastEditor: null,
+                fields: [],
+                accessRetained: false,
+              },
+              headers: { ETag: '"8"' },
+            }
+          : {
+              status: 409,
+              body: { status: 409, code: 'confirmation-required', reason: 'removes-own-access' },
+            },
+      );
+    configure(api);
+    const http = TestBed.inject(HttpCodingApi);
+    const options = { layoutId: null, idempotencyKey: 'key-1' };
+    await expect(
+      http.save('doc-1', '7', { privilege: 'Withhold' }, options),
+    ).rejects.toBeInstanceOf(CodingAccessLossError);
+    const saved = await http.save(
+      'doc-1',
+      '7',
+      { privilege: 'Withhold' },
+      { ...options, idempotencyKey: 'key-2', confirmAccessLoss: true },
+    );
+    expect(saved.accessLost).toBe(true);
+    expect(saved.values).toEqual({});
+    const bodies = api.requests.filter((r) => r.method === 'PUT').map((r) => r.body);
+    expect(bodies[0]).not.toHaveProperty('confirmAccessLoss');
+    expect(bodies[1]).toEqual(expect.objectContaining({ confirmAccessLoss: true }));
+  });
+
+  it('turns the document 404 of every content and coding route into "not available" (E16-T08)', async () => {
+    const api = new FakeApi().on('GET', '/api/v1/workspaces/ws-1/fields', {
+      body: { items: FIELDS },
+    });
+    configure(api, [HttpDocumentContentApi]);
+    const access = TestBed.inject(DocumentAccess);
+    const content = TestBed.inject(HttpDocumentContentApi);
+    const coding = TestBed.inject(HttpCodingApi);
+    for (const [id, call] of [
+      ['doc-1', () => content.document('doc-1', 'display')],
+      ['doc-2', () => content.textChunk('doc-2', 0, 'display')],
+      ['doc-3', () => content.pages('doc-3', 'prefetch')],
+      ['doc-4', () => content.pageImage('doc-4', 1, 'image', 'display')],
+      ['doc-5', () => coding.get('doc-5')],
+      [
+        'doc-6',
+        () => coding.save('doc-6', '1', { notes: 'x' }, { layoutId: null, idempotencyKey: 'k' }),
+      ],
+    ] as const) {
+      const error = await (call as () => Promise<unknown>)().catch((e: unknown) => e);
+      expect(error, id).toBeInstanceOf(DocumentUnavailableError);
+      expect((error as DocumentUnavailableError).documentId).toBe(id);
+      expect(access.isUnavailable(id)).toBe(true);
+    }
+    // Other failures are not about access.
+    api.on('GET', '/api/v1/workspaces/ws-1/documents/doc-7', {
+      status: 500,
+      body: { title: 'Boom', status: 500 },
+    });
+    await expect(content.document('doc-7', 'display')).rejects.toBeInstanceOf(ApiError);
+    expect(access.isUnavailable('doc-7')).toBe(false);
+  });
 });
+
+function configure(api: FakeApi, extra: unknown[] = []): void {
+  TestBed.configureTestingModule({
+    providers: [
+      provideHttpClient(withInterceptors([problemDetailsInterceptor])),
+      provideFakeApi(api),
+      {
+        provide: WorkspaceContext,
+        useValue: {
+          workspaceId: 'ws-1',
+          apiUrl: (...s: string[]) => ['/api/v1/workspaces/ws-1', ...s].join('/'),
+        },
+      },
+      DocumentAccess,
+      HttpCodingApi,
+      ...(extra as never[]),
+    ],
+  });
+}
