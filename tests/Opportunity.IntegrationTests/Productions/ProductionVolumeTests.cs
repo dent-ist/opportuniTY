@@ -114,7 +114,7 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
             });
             var allocated = await v.Productions.AllocateAsync(ws, user, draft.ProductionId);
             allocated.BatesState.Should().Be(BatesAllocationState.Allocated, allocated.BatesReason);
-            var finalized = await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, Ct);
+            var finalized = await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, ProductionHarness.Acknowledged, Ct);
             finalized.Status.Should().Be(ProductionOutcomeStatus.Ok, finalized.Reason);
             var members = await v.Productions.AssignmentAsync(ws, draft.ProductionId);
             members.Should().OnlyContain(m => m.RedactionSetId == set.RedactionSetId);
@@ -307,7 +307,7 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
         (await v.Service().StartAsync(ProductionHarness.Principal(user), ws, Guid.CreateVersion7(), null, Ct)).Status.Should().Be(ProductionVolumeStartStatus.NotFound);
 
         var allocated = await v.Productions.AllocateAsync(ws, user, draft.ProductionId);
-        (await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, Ct))
+        (await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, ProductionHarness.Unimaged(), Ct))
             .Status.Should().Be(ProductionOutcomeStatus.Ok);
 
         // Documents without page images: every page is a "Technical Issue" page; the withheld one a placeholder.
@@ -337,7 +337,7 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
         var snapshot = await v.Productions.SnapshotAsync(ws, user, docs);
         var draft = await v.Productions.CreateOkAsync(ws, user, snapshot.SnapshotId, ProductionHarness.Spec("LOST"));
         var allocated = await v.Productions.AllocateAsync(ws, user, draft.ProductionId);
-        (await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, Ct))
+        (await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, ProductionHarness.Unimaged(), Ct))
             .Status.Should().Be(ProductionOutcomeStatus.Ok);
         var creation = await v.StartAsync(ws, user, draft.ProductionId);
 
@@ -425,6 +425,19 @@ public sealed class ProductionVolumeTests(MigrationPostgresFixture postgres)
 
         manifest.ToJsonString().Should().NotContain(volume.ExportId.ToString()).And.NotContain(volume.JobId.ToString(), "nothing run-specific");
         volume.Report.Files.Should().Be(files.Count);
+
+        // E12-T07: the volume-level hash covers MANIFEST.csv (path, size and SHA-256 of every delivered file), and the load
+        // files read back reconcile: images = OPT rows = Bates span, natives = NativeLink values, texts = TextLink values.
+        manifest["totals"]!["fileListSha256"]!.GetValue<string>().Should().Be(Convert.ToHexStringLower(SHA256.HashData(files["MANIFEST.csv"].Bytes)));
+        var csvRows = ParseCsv(files["MANIFEST.csv"].Bytes);
+        csvRows.Select(r => r[0]).Should().BeEquivalentTo(listed.Keys);
+        var reconciliation = manifest["reconciliation"]!;
+        reconciliation["status"]!.GetValue<string>().Should().Be("passed");
+        reconciliation["optRows"]!.GetValue<long>().Should().Be(reconciliation["images"]!.GetValue<long>())
+            .And.Be(reconciliation["batesSpan"]!.GetValue<long>())
+            .And.Be(listed.Keys.Count(k => k.Contains("/IMAGES/", StringComparison.Ordinal)));
+        reconciliation["natives"]!.GetValue<long>().Should().Be(listed.Keys.Count(k => k.Contains("/NATIVES/", StringComparison.Ordinal)));
+        reconciliation["texts"]!.GetValue<long>().Should().Be(listed.Keys.Count(k => k.Contains("/TEXT/", StringComparison.Ordinal)));
     }
 
     private static int[] Expected(NormalizedRect rect, int width, int pageHeight, int pageTop)

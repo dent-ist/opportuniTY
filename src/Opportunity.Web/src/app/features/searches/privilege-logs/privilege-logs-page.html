@@ -1,0 +1,202 @@
+<div class="pl__header">
+  <div class="pl__heading-group">
+    <h1 class="pl__title">Privilege Logs</h1>
+    <p class="pl__muted">
+      Generate the log of documents withheld or redacted for privilege in a finalized production.
+      Each version is kept with its SHA-256 and downloads byte for byte the same every time.
+      Descriptions come from the Privilege Description field.
+    </p>
+  </div>
+</div>
+
+<section class="pl__panel" aria-labelledby="pl-generate">
+  <h2 id="pl-generate">Generate</h2>
+  @if (canProduce && productions().length > 0) {
+    <div class="pl__options">
+      <opp-select
+        class="pl__field"
+        label="Production"
+        hint="Finalized productions only: their documents, Bates numbers and redactions are frozen."
+        [options]="productionOptions()"
+        [(value)]="production"
+      />
+      <opp-select
+        class="pl__field"
+        label="Template"
+        [options]="templateOptions()"
+        [(value)]="template"
+      />
+      <button type="button" oppButton="primary" [busy]="generating()" (click)="generate()">
+        <opp-icon name="play" />
+        Generate log
+      </button>
+    </div>
+    @if (templateColumns().length > 0) {
+      <p class="pl__muted">Columns: {{ templateColumns().join(', ') }}</p>
+    }
+  } @else if (canProduce) {
+    <p class="pl__muted">There is no finalized production to log yet.</p>
+  } @else {
+    <p class="pl__muted">
+      Generating a log from a production needs permission to create productions.
+    </p>
+  }
+  <p class="pl__notice">
+    <opp-icon name="lock" />
+    <span>
+      Only documents you can see are listed or counted. A version that lists a document or uses a
+      field you cannot see is not shown to you.
+    </span>
+  </p>
+</section>
+
+<section class="pl__section" aria-labelledby="pl-versions">
+  <div class="pl__section-head">
+    <h2 id="pl-versions">Versions</h2>
+    <button type="button" oppButton="secondary" [busy]="loading()" (click)="refresh()">
+      <opp-icon name="refresh" />
+      Refresh
+    </button>
+  </div>
+
+  @if (versions(); as list) {
+    @if (error(); as e) {
+      <opp-error-state [error]="e" (retry)="refresh()" />
+    }
+    @if (list.length === 0) {
+      <opp-empty-state
+        title="No privilege logs yet"
+        message="Generate a log from a finalized production to see its versions here."
+      />
+    } @else {
+      <div class="pl__table-wrap" tabindex="0" role="region" aria-label="Privilege log versions">
+        <table class="pl__table">
+          <thead>
+            <tr>
+              <th scope="col">Production</th>
+              <th scope="col">Version</th>
+              <th scope="col">Template</th>
+              <th scope="col">Listed</th>
+              <th scope="col">Excluded by rules</th>
+              <th scope="col">SHA-256</th>
+              <th scope="col">Generated</th>
+              <th scope="col"><span class="opp-visually-hidden">Details</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (v of list; track v.logId) {
+              <tr [class.pl__row--selected]="v.logId === selectedLog()">
+                <td class="pl__name">{{ v.productionName ?? 'Frozen set' }}</td>
+                <td>{{ v.version }}</td>
+                <td>{{ v.templateName }}</td>
+                <td>
+                  {{ count(v.entries, 'document') }}
+                  <span class="pl__small"
+                    >{{ v.withheld }} withheld · {{ v.redacted }} redacted</span
+                  >
+                </td>
+                <td>{{ v.excludedByRules.toLocaleString() }}</td>
+                <td>
+                  <code class="pl__sha" [attr.title]="v.contentSha256">{{
+                    short(v.contentSha256)
+                  }}</code>
+                </td>
+                <td>
+                  {{ generatedAt(v) }}
+                  <span class="pl__small">by {{ v.generatedBy }}</span>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    oppButton="ghost"
+                    [attr.aria-pressed]="v.logId === selectedLog()"
+                    [attr.aria-label]="
+                      'Show details of version ' +
+                      v.version +
+                      ' of ' +
+                      (v.productionName ?? 'the frozen set')
+                    "
+                    (click)="select(v)"
+                  >
+                    Details
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (selected(); as s) {
+        <article class="pl__detail" aria-labelledby="pl-detail">
+          <div class="pl__detail-head">
+            <h3 id="pl-detail" class="pl__detail-title">
+              {{ s.productionName ?? 'Frozen set' }} · version {{ s.version }}
+            </h3>
+            <div class="pl__actions">
+              <a oppButton="secondary" [href]="downloadUrl(s, 'csv')" download>
+                <opp-icon name="download" />
+                Download CSV
+              </a>
+              <a oppButton="secondary" [href]="downloadUrl(s, 'xlsx')" download>
+                <opp-icon name="download" />
+                Download XLSX
+              </a>
+            </div>
+          </div>
+          <dl class="pl__facts">
+            <dt>Template</dt>
+            <dd>{{ s.templateName }}</dd>
+            <dt>Columns</dt>
+            <dd>{{ s.columns.join(', ') }}</dd>
+            <dt>Privacy-only redactions</dt>
+            <dd>
+              {{ s.privacyRedactionsIncluded ? 'Listed as Redacted (Privacy)' : 'Not listed' }}
+            </dd>
+            @if (s.productionId) {
+              <dt>Production ID</dt>
+              <dd>
+                <code class="pl__sha">{{ s.productionId }}</code>
+              </dd>
+            }
+            <dt>Snapshot ID</dt>
+            <dd>
+              <code class="pl__sha">{{ s.snapshotId }}</code>
+            </dd>
+            <dt>Content SHA-256</dt>
+            <dd>
+              <code class="pl__sha">{{ s.contentSha256 }}</code>
+            </dd>
+            @for (f of s.files; track f.format) {
+              <dt>{{ f.format.toUpperCase() }} SHA-256</dt>
+              <dd>
+                <code class="pl__sha">{{ f.sha256 }}</code>
+                <span class="pl__small">{{ size(f.bytes) }}</span>
+              </dd>
+            }
+          </dl>
+          <h4 class="pl__subhead">Exclusion rules</h4>
+          @if (s.rules.length === 0) {
+            <p class="pl__muted">
+              No exclusion rules: every withheld or redacted document is listed.
+            </p>
+          } @else {
+            <ul class="pl__rules">
+              @for (r of s.rules; track $index) {
+                <li>
+                  <strong>{{ r.label }}</strong>
+                  <span class="pl__small">{{ r.conditions }}</span>
+                  <opp-badge tone="info">{{ count(r.excluded, 'document') }} excluded</opp-badge>
+                </li>
+              }
+            </ul>
+          }
+        </article>
+      }
+    }
+  } @else if (error(); as e) {
+    <opp-error-state [error]="e" (retry)="refresh()" />
+  } @else {
+    <opp-loading-state label="Loading privilege logs…" />
+  }
+</section>

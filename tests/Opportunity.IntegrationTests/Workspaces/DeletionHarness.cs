@@ -174,7 +174,7 @@ internal sealed class DeletionHarness : IAsyncDisposable
         var snapshot = await Productions.SnapshotAsync(ws, manager, docs);
         var draft = await Productions.CreateOkAsync(ws, manager, snapshot.SnapshotId, ProductionHarness.Spec(prefix + "P"));
         var allocated = await Productions.AllocateAsync(ws, manager, draft.ProductionId);
-        var finalized = await Productions.Service().FinalizeAsync(ProductionHarness.Principal(manager), ws, draft.ProductionId, allocated.RowVersion, Ct);
+        var finalized = await Productions.Service().FinalizeAsync(ProductionHarness.Principal(manager), ws, draft.ProductionId, allocated.RowVersion, ProductionHarness.Unimaged(), Ct);
         finalized.Status.Should().Be(Opportunity.Production.Productions.ProductionOutcomeStatus.Ok, finalized.Reason);
 
         // A volume run of the production (as #104 records it): an export row with production_id and one produced file.

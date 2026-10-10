@@ -26,14 +26,24 @@ public sealed record UpdateProductionRequest(ProductionSpecification Specificati
 public sealed record VoidProductionRequest(string Reason);
 
 /// <summary>
-/// Optional body of <c>POST …/productions/{productionId}/finalize</c>. Without it, unresolved family or duplicate
-/// privilege conflicts among the members refuse the finalization (409 <c>PRIVILEGE_CONFLICTS</c>, E13-T02).
+/// Optional body of <c>POST …/productions/{productionId}/finalize</c>. Finalization runs the QC gate (E12-T07): a failed
+/// blocking check refuses it (409 with the QC report) unless the check may be overridden and an override with a reason
+/// is given; warnings must be acknowledged.
 /// </summary>
 /// <param name="PrivilegeConflictOverride">
-/// Finalize even if such conflicts exist: needs <c>PrivilegeLog.Generate</c> besides <c>Production.Finalize</c>; when
-/// conflicts exist, the reason is recorded in the manifest (<c>privilegeConflictOverride</c>) and audited.
+/// Finalize even if unresolved family or duplicate privilege conflicts exist (E13-T02): needs <c>PrivilegeLog.Generate</c>
+/// besides <c>Production.Finalize</c>; the reason is recorded in the manifest and audited. The same as a
+/// <see cref="QcOverrides"/> entry for <c>privilegeConflicts</c>.
 /// </param>
-public sealed record FinalizeProductionRequest(PrivilegeConflictOverrideRequest? PrivilegeConflictOverride = null);
+/// <param name="QcOverrides">
+/// Overrides of failed QC checks that may be overridden, each with its reason (1–2,000 characters): recorded in the QC
+/// report and the manifest and audited (<c>Production.QcOverride</c>). Used only when the check fails.
+/// </param>
+/// <param name="AcknowledgeWarnings">Finalize despite QC warnings (incomplete families, missing text, blank confidentiality).</param>
+public sealed record FinalizeProductionRequest(
+    PrivilegeConflictOverrideRequest? PrivilegeConflictOverride = null,
+    IReadOnlyList<ProductionQcOverrideRequest>? QcOverrides = null,
+    bool AcknowledgeWarnings = false);
 
 /// <param name="Reason">Why the production may go out with the conflicts (1–2,000 characters).</param>
 public sealed record PrivilegeConflictOverrideRequest(string Reason);
@@ -54,6 +64,10 @@ public sealed record PrivilegeConflictOverrideRequest(string Reason);
 /// The Redaction Set burned into the produced images (E12-T05); null burns the workspace's Default set. Each member's
 /// redactions are frozen with the production at finalization.
 /// </param>
+/// <param name="WithheldDocuments">
+/// Documents coded Privilege Status = Withhold (E12-T07): <c>block</c> (default) keeps them in the production and the QC
+/// gate refuses to finalize; <c>placeholder</c> produces each as a "Withheld" placeholder taking one Bates number.
+/// </param>
 public sealed record ProductionSpecification(
     ProductionBatesSettings Bates,
     ProductionImageSettings? Images = null,
@@ -64,7 +78,18 @@ public sealed record ProductionSpecification(
     ProductionEndorsementSettings? Endorsements = null,
     ProductionDesignationSettings? Designations = null,
     ProductionPlaceholderSettings? Placeholders = null,
-    Guid? RedactionSetId = null);
+    Guid? RedactionSetId = null,
+    WithheldDocumentsResource? WithheldDocuments = null);
+
+/// <summary>How a production treats documents coded Privilege Status = Withhold (E12-T07).</summary>
+public enum WithheldDocumentsResource
+{
+    /// <summary>They stay members; the QC gate blocks finalization until they leave the frozen set or their call changes.</summary>
+    Block,
+
+    /// <summary>Each is produced as a "Withheld" placeholder (one Bates number, one DAT row).</summary>
+    Placeholder,
+}
 
 /// <summary>
 /// The centred text of generated pages (E12-T05). Each may use <c>{bates}</c>, <c>{confidentiality}</c> and

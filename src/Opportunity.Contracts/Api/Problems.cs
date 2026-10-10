@@ -73,5 +73,15 @@ public static class ProblemCodes
     /// <summary>The person who requested a legal hold's release cannot also approve it (Q-23 two-person rule, E20-T01).</summary>
     public const string SecondPersonRequired = "second-person-required";
 
+    /// <summary>
+    /// 403: the workspace requires its members to accept the current acknowledgment text (reviewer attestation or
+    /// protective-order undertaking, E20-T03) and the caller has not; the <c>acknowledgmentUrl</c> extension reads it and
+    /// <c>acknowledgmentVersion</c> names the version to accept.
+    /// </summary>
+    public const string AcknowledgmentRequired = "acknowledgment-required";
+
+    /// <summary>409: the acknowledgment version accepted is no longer current, or its text differs from the text shown (E20-T03).</summary>
+    public const string AcknowledgmentOutdated = "acknowledgment-outdated";
+
     public static string TypeFor(string code) => TypePrefix + code;
 }

@@ -153,7 +153,7 @@ public sealed class WorkspaceDeletionTests(MigrationPostgresFixture postgres)
 
         done.Status.Should().Be(WorkspaceDeletionStatus.Completed, done.Error);
         var left = await h.RowsAsync(ws);
-        left.Keys.Except(Kept).Should().BeSubsetOf(["production", "production_document", "bates_range", "export", "export_file", "stored_object",
+        left.Keys.Except(Kept).Should().BeSubsetOf(["production", "production_document", "production_qc_run", "production_qc_exception", "bates_range", "export", "export_file", "stored_object",
             "document_set_snapshot", "document_set_snapshot_page", "job"]);
         left["production"].Should().Be(productions);
         left["production_document"].Should().Be(members);

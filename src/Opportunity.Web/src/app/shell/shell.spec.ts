@@ -230,7 +230,7 @@ describe('Application shell', () => {
     expect(harness.routeNativeElement!.querySelector('nav[aria-label="Admin"]')).toBeNull();
   });
 
-  it('shows the Searches tabs (saved searches, search terms reports, privilege conflicts) at the top', async () => {
+  it('shows the Searches tabs (saved searches, search terms reports, privilege conflicts and logs) at the top', async () => {
     setup();
     const harness = await open('/w/ws-1/searches');
     const sub = harness.routeNativeElement!.querySelector('main nav[aria-label="Searches"]')!;
@@ -238,6 +238,7 @@ describe('Application shell', () => {
       'Saved Searches',
       'Search Terms Reports',
       'Privilege Conflicts',
+      'Privilege Logs',
     ]);
     expect(sub.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('Saved Searches');
     expect(harness.routeNativeElement!.querySelector('main nav[aria-label="Admin"]')).toBeNull();

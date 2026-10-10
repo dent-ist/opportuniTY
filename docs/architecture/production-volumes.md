@@ -91,7 +91,8 @@ SHA-256; V0054). Like everything in a run it holds no times or run identifiers, 
   the volume again.
 
 Volumes are written from finalized productions only (Q-79), so the verification gates the volume's completion and
-delivery rather than the production's finalization; E12-T07's QC gate checks the same rules before finalization.
+delivery rather than the production's finalization; E12-T07's QC gate checks the same rules before finalization, and
+each run's load files are reconciled before completion (production-qc-gate.md).
 
 The run resource has `verification` (status, counts, report SHA-256), and its initiator downloads the report through
 the gateway (`GET …/volumes/{volumeId}/verification-report`, `Production.Create`, audited `Production.Downloaded`) for a

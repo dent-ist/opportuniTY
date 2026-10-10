@@ -28,6 +28,33 @@ public sealed class EndpointAuthorizationTests
         "/health/ready",
     ];
 
+    /// <summary>
+    /// E20-T03: the only workspace routes a member reaches before accepting the workspace's acknowledgment text. Every other
+    /// workspace route (content, search, coding, administration) is behind the gate.
+    /// </summary>
+    private static readonly HashSet<string> BeforeAcknowledgmentAllowList =
+    [
+        "GET /api/v1/workspaces/{workspaceId}/",
+        "GET /api/v1/workspaces/{workspaceId}/acknowledgment",
+        "POST /api/v1/workspaces/{workspaceId}/acknowledgment/acceptances",
+    ];
+
+    [Fact]
+    public void Only_the_acknowledgment_routes_and_the_workspace_descriptor_skip_the_acknowledgment_gate()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Authentication:PublicOrigin", "https://localhost");
+            builder.UseSetting("Authentication:Oidc:Authority", "https://idp.invalid");
+            builder.UseSetting("Authentication:Oidc:ClientId", "architecture-test");
+        });
+        var exempt = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
+            .Where(e => e.Metadata.GetMetadata<AcknowledgmentExemptMetadata>() is not null)
+            .Select(e => $"{string.Join(',', e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? [])} /{e.RoutePattern.RawText?.TrimStart('/')}")
+            .ToList();
+        exempt.Should().BeEquivalentTo(BeforeAcknowledgmentAllowList);
+    }
+
     [Fact]
     public void Every_endpoint_declares_its_authorization()
     {

@@ -1,0 +1,146 @@
+// Admin › Acknowledgments and its publish dialog (E20-T03). opportuniTY tokens only.
+
+:host(.acka-page) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 80rem;
+  padding: var(--opp-space-5);
+}
+
+.acka__title {
+  margin: 0;
+  font-size: var(--opp-font-size-2xl);
+  line-height: var(--opp-line-height-tight);
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.acka__lead,
+.acka__muted {
+  margin: 0;
+  max-width: 52rem;
+  color: var(--opp-color-text-muted);
+}
+
+.acka__muted {
+  font-size: var(--opp-font-size-sm);
+}
+
+.acka__text {
+  max-block-size: min(50vh, 28rem);
+  overflow-y: auto;
+  padding: var(--opp-space-3) var(--opp-space-4);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface-sunken);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.acka__fine {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.acka__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.acka__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-4);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  background: var(--opp-color-surface);
+}
+
+.acka__card-title {
+  margin: 0;
+  font-size: var(--opp-font-size-lg);
+}
+
+.acka__card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.acka__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2) var(--opp-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--opp-font-size-sm);
+}
+
+.acka__table-wrap {
+  overflow-x: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.acka__table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-sm);
+
+  th,
+  td {
+    padding: var(--opp-space-1) var(--opp-space-3);
+    border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+    text-align: start;
+    vertical-align: middle;
+  }
+
+  thead th {
+    background: var(--opp-color-surface-sunken);
+    color: var(--opp-color-text-muted);
+    font-weight: var(--opp-font-weight-semibold);
+  }
+
+  tbody th {
+    font-weight: var(--opp-font-weight-regular);
+  }
+
+  tbody tr:last-child > * {
+    border-block-end: none;
+  }
+
+  tbody tr:hover > * {
+    background: var(--opp-color-hover);
+  }
+
+  .acka__num {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.acka__person {
+  min-inline-size: 12rem;
+}
+
+.acka__name {
+  display: block;
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.acka__hash {
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-xs);
+}

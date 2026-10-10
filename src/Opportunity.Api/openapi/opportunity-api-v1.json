@@ -4508,7 +4508,7 @@
           "Workspaces"
         ],
         "summary": "The workspace, the current user's effective permissions in it and its read-only search placement.",
-        "description": "A workspace the user is not a member of returns 404, exactly like one that does not exist.",
+        "description": "A workspace the user is not a member of returns 404, exactly like one that does not exist. Readable before the member accepted the workspace's acknowledgment text (acknowledgmentPending), so clients can show it (E20-T03).",
         "operationId": "GetWorkspace",
         "parameters": [
           {
@@ -5583,6 +5583,422 @@
           },
           "428": {
             "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "The workspace's current acknowledgment text and whether the caller accepted it.",
+        "description": "Readable before accepting. While required and not accepted, every other workspace route except the workspace itself answers 403 acknowledgment-required.",
+        "operationId": "GetAcknowledgment",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment/acceptances": {
+      "post": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "Accept the current acknowledgment text (its version and SHA-256 as shown). Audited; accepting again changes nothing.",
+        "description": "409 acknowledgment-outdated when the version is no longer current or the hash differs (read it again); 409 conflict when the workspace requires no acknowledgment. 201 when recorded, 200 when it already was.",
+        "operationId": "AcceptAcknowledgment",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AcknowledgmentAcceptanceWrite"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentAcceptanceResource"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentAcceptanceResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment-versions": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "Every published acknowledgment version (without its text), newest first, with acceptance counts; ETag = current version.",
+        "operationId": "ListAcknowledgmentVersions",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentVersionList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "Publish the next acknowledgment version (If-Match: the current version, \"0\" for the first). Audited.",
+        "description": "Every member, the publisher included, must accept the new version before using the workspace again.",
+        "operationId": "PublishAcknowledgmentVersion",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AcknowledgmentVersionWrite"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentVersionResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment-versions/{version}": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "One published acknowledgment version with its text.",
+        "operationId": "GetAcknowledgmentVersion",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentVersionResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment-roster": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "Who accepted which acknowledgment version, by name: direct members and everyone who accepted a version.",
+        "operationId": "ListAcknowledgmentRoster",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfAcknowledgmentRosterEntryResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8111,6 +8527,57 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment-roster/export": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "The acknowledgment roster as CSV (UTF-8 with BOM): one row per acceptance, plus pending direct members. Audited.",
+        "operationId": "ExportAcknowledgmentRoster",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/search-index": {
       "get": {
         "tags": [
@@ -9185,6 +9652,737 @@
           },
           "428": {
             "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-log-templates": {
+      "get": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "The workspace's privilege log templates by name, and the built-in presets resolved in this workspace.",
+        "operationId": "ListPrivilegeLogTemplates",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeLogTemplateList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "Create a privilege log template: columns, Priv ID numbering, date format and zone, privacy redactions, exclusion rules (audited).",
+        "description": "Absent members take their defaults; without columns the preset's columns (default document-by-document) are used.",
+        "operationId": "CreatePrivilegeLogTemplate",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivilegeLogTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeLogTemplateResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-log-templates/{templateId}": {
+      "get": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "A privilege log template with its ETag.",
+        "operationId": "GetPrivilegeLogTemplate",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "templateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeLogTemplateResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "Replace a privilege log template (If-Match required; audited). Versions generated earlier keep the template they used.",
+        "operationId": "UpdatePrivilegeLogTemplate",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "templateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivilegeLogTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeLogTemplateResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-logs": {
+      "post": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "Generate a privilege log from a finalized production or a frozen set: 201 with a new version, or 200 with the unchanged latest one.",
+        "description": "Lists every document withheld or redacted for privilege exactly once: production members produced as a placeholder and coded Withhold (their Bates is their Priv ID), members produced with redactions (privilege reasons or coded Redact; privacy-only ones only when the template includes them) and documents coded Withhold that were not produced (members' families and the optional review set snapshotId). A frozen-set log lists members coded Withhold or Redact. Documents produced in full never appear; documents you may not see are neither listed nor counted. Recorded exclusion rules are written into the metadata with their counts. Needs Production.Create for a production. At most 50,000 documents per log.",
+        "operationId": "GeneratePrivilegeLog",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePrivilegeLogRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeLogGenerationResource"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeLogGenerationResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "Privilege log versions newest first, optionally of one production or frozen set.",
+        "operationId": "ListPrivilegeLogs",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfPrivilegeLogResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-logs/{logId}": {
+      "get": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "A privilege log version: source, template, metadata (exclusion rules with their counts) and the files' SHA-256.",
+        "operationId": "GetPrivilegeLog",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeLogResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-logs/{logId}/entries": {
+      "get": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "The rows of a privilege log version in log order, their cells in column order.",
+        "operationId": "ListPrivilegeLogEntries",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfPrivilegeLogEntryResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-logs/{logId}/content": {
+      "get": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "A privilege log version as CSV (UTF-8 with BOM, default) or XLSX, byte-identical on every download. Audited.",
+        "operationId": "DownloadPrivilegeLog",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -12500,8 +13698,8 @@
         "tags": [
           "Productions"
         ],
-        "summary": "Finalize an allocated draft (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.",
-        "description": "409 PRIVILEGE_WITHHELD while members are coded Withhold; 409 PRIVILEGE_CONFLICTS while members' families or duplicate groups have unresolved privilege conflicts (E13-T02), unless the body gives privilegeConflictOverride with a reason (needs PrivilegeLog.Generate; recorded in the manifest and audited). Neither answer counts or names documents.",
+        "summary": "Finalize an allocated draft behind the QC gate (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.",
+        "description": "Runs every QC check (E12-T07) over the members as they are now; the run is kept with the production and named in its manifest. A failed blocking check answers 409 with the QC report in `qc` (reason PRIVILEGE_WITHHELD, BATES_OVERLAP, PRIVILEGE_CONFLICTS, DESIGNATION_REFUSED or QC_FAILED; QC_WARNINGS for unacknowledged warnings) unless the check may be overridden and qcOverrides (or privilegeConflictOverride) gives a reason (privilege conflicts need PrivilegeLog.Generate); overrides are printed in the QC report, recorded in the manifest and audited. The report counts documents; it never names documents you may not view.",
         "operationId": "FinalizeProduction",
         "parameters": [
           {
@@ -13239,6 +14437,228 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/qc": {
+      "post": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Run the QC gate over an allocated draft now: every check with its status and document count (the validation summary before finalizing).",
+        "description": "The same checks finalization runs (E12-T07). The run is kept and audited (Production.QcRun); its document-level exceptions are listed by …/qc/exceptions and in the QC report (…/qc/report). 409 when the production is not an allocated draft.",
+        "operationId": "RunProductionQc",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionQcReportResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "The production's latest QC run; a finalized production's is the run it was finalized with (overrides and acknowledged warnings included).",
+        "operationId": "GetProductionQc",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionQcReportResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/qc/exceptions": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Document-level exceptions of the latest QC run (?check= to narrow), by check and production order; documents you may not view are only counted.",
+        "operationId": "ListProductionQcExceptions",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "check",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionQcExceptionPageResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14493,6 +15913,83 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/qc/report": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "The QC report of the production's latest QC run as CSV (default) or PDF (?format=pdf): checks, overrides with their reasons, and exceptions. Audited.",
+        "description": "Documents you may not view are counted, not listed. A finalized production's report is the run it was finalized with.",
+        "operationId": "DownloadProductionQcReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/productions/{productionId}/redesignation-overlay": {
       "get": {
         "tags": [
@@ -14965,6 +16462,271 @@
   },
   "components": {
     "schemas": {
+      "AcknowledgmentAcceptanceResource": {
+        "required": [
+          "version",
+          "textSha256",
+          "acceptedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "textSha256": {
+            "type": "string"
+          },
+          "acceptedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "AcknowledgmentAcceptanceWrite": {
+        "required": [
+          "version",
+          "textSha256"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "textSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AcknowledgmentActor": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AcknowledgmentResource": {
+        "required": [
+          "required",
+          "version",
+          "title",
+          "text",
+          "textSha256",
+          "publishedAt",
+          "acknowledged",
+          "acknowledgedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "boolean"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "textSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "publishedAt": {
+            "format": "date-time"
+          },
+          "acknowledged": {
+            "type": "boolean"
+          },
+          "acknowledgedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "AcknowledgmentRosterEntryResource": {
+        "required": [
+          "userId",
+          "displayName",
+          "email",
+          "directMember",
+          "status",
+          "acceptances"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "directMember": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AcknowledgmentRosterStatus"
+          },
+          "acceptances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AcknowledgmentAcceptanceResource"
+            }
+          }
+        }
+      },
+      "AcknowledgmentRosterStatus": {
+        "enum": [
+          "current",
+          "outdated",
+          "pending"
+        ]
+      },
+      "AcknowledgmentVersionList": {
+        "required": [
+          "items",
+          "currentVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AcknowledgmentVersionResource"
+            }
+          },
+          "currentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AcknowledgmentVersionResource": {
+        "required": [
+          "version",
+          "title",
+          "text",
+          "textSha256",
+          "publishedBy",
+          "publishedAt",
+          "acceptedCount",
+          "isCurrent"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "textSha256": {
+            "type": "string"
+          },
+          "publishedBy": {
+            "$ref": "#/components/schemas/AcknowledgmentActor"
+          },
+          "publishedAt": {
+            "format": "date-time"
+          },
+          "acceptedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isCurrent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AcknowledgmentVersionWrite": {
+        "required": [
+          "title",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "BatesAllocationStateResource": {
         "enum": [
           "none",
@@ -16555,6 +18317,31 @@
           }
         }
       },
+      "CursorPageOfAcknowledgmentRosterEntryResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AcknowledgmentRosterEntryResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
       "CursorPageOfBulkCodingReportItemResource": {
         "required": [
           "items",
@@ -16917,6 +18704,56 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/JobSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfPrivilegeLogEntryResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogEntryResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfPrivilegeLogResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogResource"
             }
           },
           "nextCursor": {
@@ -19482,6 +21319,55 @@
               },
               {
                 "$ref": "#/components/schemas/PrivilegeConflictOverrideRequest"
+              }
+            ]
+          },
+          "qcOverrides": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ProductionQcOverrideRequest"
+            }
+          },
+          "acknowledgeWarnings": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "GeneratePrivilegeLogRequest": {
+        "type": "object",
+        "properties": {
+          "productionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "preset": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrivilegeLogPreset"
               }
             ]
           }
@@ -22591,6 +24477,642 @@
           }
         }
       },
+      "PrivilegeLogAppliedRule": {
+        "required": [
+          "label",
+          "dateField",
+          "onOrAfter",
+          "before",
+          "logCategories",
+          "attorneysInvolved",
+          "excludedDocuments"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "dateField": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "onOrAfter": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "before": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "logCategories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attorneysInvolved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excludedDocuments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PrivilegeLogColumn": {
+        "required": [
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PrivilegeLogColumnKind"
+          },
+          "header": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PrivilegeLogColumnKind": {
+        "enum": [
+          "privId",
+          "begBates",
+          "endBates",
+          "controlNumber",
+          "familyRange",
+          "treatment",
+          "basis",
+          "subjectOrFileName",
+          "redactionReasons",
+          "field"
+        ]
+      },
+      "PrivilegeLogEntryResource": {
+        "required": [
+          "ordinal",
+          "documentId",
+          "treatment",
+          "cells"
+        ],
+        "type": "object",
+        "properties": {
+          "ordinal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "treatment": {
+            "$ref": "#/components/schemas/PrivilegeLogTreatment"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PrivilegeLogExclusionRule": {
+        "required": [
+          "label"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "dateFieldId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "onOrAfter": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "before": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "logCategoryChoiceIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "attorneysInvolved": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PrivilegeLogFileResource": {
+        "required": [
+          "format",
+          "sha256",
+          "bytes"
+        ],
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "bytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "PrivilegeLogGenerationResource": {
+        "required": [
+          "log",
+          "unchanged"
+        ],
+        "type": "object",
+        "properties": {
+          "log": {
+            "$ref": "#/components/schemas/PrivilegeLogResource"
+          },
+          "unchanged": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PrivilegeLogMetadata": {
+        "required": [
+          "formatVersion",
+          "source",
+          "productionId",
+          "productionName",
+          "productionVersion",
+          "snapshotId",
+          "reviewSetSnapshotId",
+          "templateId",
+          "templateName",
+          "columns",
+          "privacyRedactionsIncluded",
+          "exclusionRules",
+          "entries",
+          "withheld",
+          "redacted",
+          "redactedPrivacy",
+          "excludedByRules"
+        ],
+        "type": "object",
+        "properties": {
+          "formatVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PrivilegeLogSourceKind"
+          },
+          "productionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "productionName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "productionVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reviewSetSnapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "templateName": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "privacyRedactionsIncluded": {
+            "type": "boolean"
+          },
+          "exclusionRules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogAppliedRule"
+            }
+          },
+          "entries": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "withheld": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "redacted": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "redactedPrivacy": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "excludedByRules": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PrivilegeLogPreset": {
+        "enum": [
+          "documentByDocument",
+          "metadataOnly",
+          null
+        ]
+      },
+      "PrivilegeLogPresetResource": {
+        "required": [
+          "preset",
+          "name",
+          "definition"
+        ],
+        "type": "object",
+        "properties": {
+          "preset": {
+            "$ref": "#/components/schemas/PrivilegeLogPreset"
+          },
+          "name": {
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/PrivilegeLogTemplateDefinition"
+          }
+        }
+      },
+      "PrivilegeLogResource": {
+        "required": [
+          "logId",
+          "version",
+          "source",
+          "productionId",
+          "snapshotId",
+          "reviewSetSnapshotId",
+          "templateId",
+          "templateName",
+          "contentSha256",
+          "files",
+          "metadata",
+          "generatedBy",
+          "generatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "logId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PrivilegeLogSourceKind"
+          },
+          "productionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reviewSetSnapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "templateName": {
+            "type": "string"
+          },
+          "contentSha256": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogFileResource"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PrivilegeLogMetadata"
+          },
+          "generatedBy": {
+            "$ref": "#/components/schemas/ReviewerResource"
+          },
+          "generatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "PrivilegeLogSourceKind": {
+        "enum": [
+          "production",
+          "snapshot"
+        ]
+      },
+      "PrivilegeLogTemplateDefinition": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogColumn"
+            }
+          },
+          "preset": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrivilegeLogPreset"
+              }
+            ]
+          },
+          "privIdPrefix": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "privIdStart": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "privIdPadding": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "dateFormat": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timeZone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "multiValueSeparator": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "includePrivacyRedactions": {
+            "type": "boolean",
+            "default": false
+          },
+          "exclusionRules": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogExclusionRule"
+            }
+          }
+        }
+      },
+      "PrivilegeLogTemplateList": {
+        "required": [
+          "items",
+          "presets"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogTemplateResource"
+            }
+          },
+          "presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogPresetResource"
+            }
+          }
+        }
+      },
+      "PrivilegeLogTemplateRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "definition": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrivilegeLogTemplateDefinition"
+              }
+            ]
+          }
+        }
+      },
+      "PrivilegeLogTemplateResource": {
+        "required": [
+          "templateId",
+          "name",
+          "definition",
+          "modifiedBy",
+          "modifiedAt",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/PrivilegeLogTemplateDefinition"
+          },
+          "modifiedBy": {
+            "$ref": "#/components/schemas/ReviewerResource"
+          },
+          "modifiedAt": {
+            "format": "date-time"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "PrivilegeLogTreatment": {
+        "enum": [
+          "withheld",
+          "redacted",
+          "redactedPrivacy"
+        ]
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -23271,6 +25793,250 @@
           }
         }
       },
+      "ProductionQcCheckResource": {
+        "enum": [
+          "withheldWithoutPlaceholder",
+          "placeholderNoLongerWithheld",
+          "redactWithoutRedactions",
+          "redactedNative",
+          "redactionsNotProducible",
+          "renderFailure",
+          "pageCountChanged",
+          "batesOverlap",
+          "privilegeConflicts",
+          "designationNotProducible",
+          "inaccessible",
+          "incompleteFamily",
+          "textMissing",
+          "blankConfidentiality"
+        ]
+      },
+      "ProductionQcCheckResultResource": {
+        "required": [
+          "check",
+          "title",
+          "severity",
+          "overridable",
+          "status",
+          "documents",
+          "remedy",
+          "overrideReason"
+        ],
+        "type": "object",
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/ProductionQcCheckResource"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ProductionQcSeverityResource"
+          },
+          "overridable": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProductionQcStatusResource"
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "remedy": {
+            "type": "string"
+          },
+          "overrideReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProductionQcExceptionPageResource": {
+        "required": [
+          "qcRunId",
+          "items",
+          "nextCursor",
+          "restricted"
+        ],
+        "type": "object",
+        "properties": {
+          "qcRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionQcExceptionResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "restricted": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ProductionQcExceptionResource": {
+        "required": [
+          "check",
+          "sequence",
+          "documentId",
+          "controlNumber",
+          "prodBegBates",
+          "prodEndBates",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/ProductionQcCheckResource"
+          },
+          "sequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "prodBegBates": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "prodEndBates": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProductionQcOutcomeResource": {
+        "enum": [
+          "passed",
+          "blocked"
+        ]
+      },
+      "ProductionQcOverrideRequest": {
+        "required": [
+          "check",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/ProductionQcCheckResource"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductionQcPurposeResource": {
+        "enum": [
+          "check",
+          "finalization"
+        ]
+      },
+      "ProductionQcReportResource": {
+        "required": [
+          "qcRunId",
+          "productionId",
+          "purpose",
+          "outcome",
+          "runAt",
+          "runBy",
+          "warningsAcknowledged",
+          "reportSha256",
+          "checks"
+        ],
+        "type": "object",
+        "properties": {
+          "qcRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/ProductionQcPurposeResource"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ProductionQcOutcomeResource"
+          },
+          "runAt": {
+            "format": "date-time"
+          },
+          "runBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "warningsAcknowledged": {
+            "type": "boolean"
+          },
+          "reportSha256": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionQcCheckResultResource"
+            }
+          }
+        }
+      },
+      "ProductionQcSeverityResource": {
+        "enum": [
+          "blocking",
+          "warning"
+        ]
+      },
+      "ProductionQcStatusResource": {
+        "enum": [
+          "passed",
+          "failed",
+          "overridden",
+          "warning",
+          "acknowledged"
+        ]
+      },
       "ProductionResource": {
         "required": [
           "productionId",
@@ -23472,6 +26238,16 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "withheldDocuments": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WithheldDocumentsResource"
+              }
+            ]
           }
         }
       },
@@ -27872,6 +30648,13 @@
           }
         }
       },
+      "WithheldDocumentsResource": {
+        "enum": [
+          "block",
+          "placeholder",
+          null
+        ]
+      },
       "WorkspaceDeletionApprovalWrite": {
         "type": "object",
         "properties": {
@@ -28281,6 +31064,10 @@
             ],
             "format": "int32",
             "default": 0
+          },
+          "acknowledgmentPending": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -28433,6 +31220,9 @@
       "name": "Legal holds"
     },
     {
+      "name": "Acknowledgments"
+    },
+    {
       "name": "Document content"
     },
     {
@@ -28449,6 +31239,9 @@
     },
     {
       "name": "Review batches"
+    },
+    {
+      "name": "Privilege logs"
     },
     {
       "name": "Snapshots"

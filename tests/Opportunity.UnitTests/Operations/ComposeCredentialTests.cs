@@ -90,6 +90,17 @@ public sealed partial class ComposeCredentialTests
     }
 
     [Fact]
+    public void The_api_hashes_audit_sessions_with_a_key_from_env_that_init_generates_long_enough()
+    {
+        // E14-T02: without the key audit events carry no session hash (ADR-013 §4).
+        Environment(Services(), "api")["Authentication__Session__AuditHashKey"]
+            .Should().StartWith("${AUDIT_SESSION_HASH_SECRET_KEY:?", "the key comes from .env, never a literal");
+        File.ReadAllText(Path.Combine(ComposeDirectory, ".env.example")).Should().Contain("\nAUDIT_SESSION_HASH_SECRET_KEY=\n");
+        File.ReadAllText(Path.Combine(ComposeDirectory, "opportunity.sh")).Should().Contain("*_HASH_SECRET_KEY ]] && length=44",
+            "44 base64 digits decode to the 32 bytes the options validator requires");
+    }
+
+    [Fact]
     public void The_broker_user_script_grants_exactly_the_code_permissions()
     {
         var lines = File.ReadAllLines(Path.Combine(ComposeDirectory, "rabbitmq", "users.sh"))

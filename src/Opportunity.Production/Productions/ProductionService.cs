@@ -48,6 +48,9 @@ public enum ProductionOutcomeStatus
 
     /// <summary>A member's designation cannot be produced as specified (E12-T04); the production cannot be finalized (409).</summary>
     DesignationRefused,
+
+    /// <summary>The QC gate blocked the finalization (E12-T07, 409 with the QC report).</summary>
+    QcBlocked,
 }
 
 public sealed record ProductionOutcome(
@@ -55,7 +58,8 @@ public sealed record ProductionOutcome(
     ProductionRecord? Production = null,
     IReadOnlyDictionary<string, string[]>? Errors = null,
     string? Reason = null,
-    JobInfo? Job = null)
+    JobInfo? Job = null,
+    ProductionQcResult? Qc = null)
 {
     public static ProductionOutcome Invalid(string key, string message) =>
         new(ProductionOutcomeStatus.Invalid, Errors: new Dictionary<string, string[]> { [key] = [message] });
@@ -84,7 +88,7 @@ public sealed partial class ProductionService(
 {
     public const int MaxNameLength = 200;
 
-    public const int MaxConflictOverrideReasonLength = 2_000;
+    public const int MaxConflictOverrideReasonLength = ProductionQcRules.MaxOverrideReasonLength;
 
     public async Task<ProductionOutcome> CreateAsync(
         SecurityPrincipal principal, Guid workspaceId, CreateProductionRequest request, Guid? snapshotId, CancellationToken cancellationToken = default)
@@ -241,36 +245,47 @@ public sealed partial class ProductionService(
         return outcome with { Job = job };
     }
 
-    /// <summary>Freezes an allocated draft without a privilege conflict override.</summary>
+    /// <summary>Finalizes an allocated draft without overrides or acknowledged warnings.</summary>
     public Task<ProductionOutcome> FinalizeAsync(
         SecurityPrincipal principal, Guid workspaceId, Guid productionId, long expectedRowVersion, CancellationToken cancellationToken = default) =>
-        FinalizeAsync(principal, workspaceId, productionId, expectedRowVersion, null, cancellationToken);
+        FinalizeAsync(principal, workspaceId, productionId, expectedRowVersion, ProductionFinalizeOptions.None, cancellationToken);
 
-    /// <summary>Freezes an allocated draft: the manifest (specification, frozen set, Bates assignment hash, versions) and the Produced range.</summary>
-    /// <param name="privilegeConflictOverrideReason">
-    /// E13-T02 AC 2: finalize even if members' families or duplicates have unresolved privilege conflicts. Needs
-    /// <c>PrivilegeLog.Generate</c> besides <c>Production.Finalize</c>; used (recorded in the manifest and audited as
-    /// <c>Privilege.ConflictOverride</c>) only when conflicts exist at the finalization.
-    /// </param>
-    public async Task<ProductionOutcome> FinalizeAsync(
+    /// <summary>Finalizes an allocated draft, overriding unresolved privilege conflicts with a reason (E13-T02 AC 2) when given.</summary>
+    public Task<ProductionOutcome> FinalizeAsync(
         SecurityPrincipal principal, Guid workspaceId, Guid productionId, long expectedRowVersion, string? privilegeConflictOverrideReason,
+        CancellationToken cancellationToken = default) =>
+        FinalizeAsync(principal, workspaceId, productionId, expectedRowVersion, privilegeConflictOverrideReason is null
+            ? ProductionFinalizeOptions.None
+            : new ProductionFinalizeOptions([new ProductionQcOverride(ProductionQcCheck.PrivilegeConflicts, privilegeConflictOverrideReason)], false),
+            cancellationToken);
+
+    /// <summary>
+    /// Freezes an allocated draft behind the QC gate (E12-T07): every member is re-authorized for the caller (Q-15), the
+    /// gate's checks run in the finalization transaction over the members as they are now, and a failed blocking check
+    /// refuses the finalization (the run and its exceptions are kept and audited) unless <paramref name="options"/>
+    /// overrides it with a reason (overridable checks only; privilege conflicts need <c>PrivilegeLog.Generate</c> besides
+    /// <c>Production.Finalize</c>); warnings must be acknowledged. A passed run is named in the manifest with its
+    /// overrides (each audited as <c>Production.QcOverride</c>; a privilege conflict override also as
+    /// <c>Privilege.ConflictOverride</c>), and the specification, membership, Bates numbers, designations, page sets and
+    /// redaction versions are frozen.
+    /// </summary>
+    public async Task<ProductionOutcome> FinalizeAsync(
+        SecurityPrincipal principal, Guid workspaceId, Guid productionId, long expectedRowVersion, ProductionFinalizeOptions options,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(principal);
-        var overrideReason = privilegeConflictOverrideReason?.Trim();
-        if (overrideReason is not null)
+        ArgumentNullException.ThrowIfNull(options);
+        var (overrides, invalid) = ValidateOverrides(options.Overrides);
+        if (invalid is not null)
         {
-            if (overrideReason.Length is 0 or > MaxConflictOverrideReasonLength)
-            {
-                return ProductionOutcome.Invalid("privilegeConflictOverride.reason",
-                    $"Give the reason for overriding the privilege conflicts (1 to {MaxConflictOverrideReasonLength} characters).");
-            }
+            return invalid;
+        }
 
-            if (!(await authorization.AuthorizeAsync(principal, workspaceId, Permission.PrivilegeLogGenerate, cancellationToken).ConfigureAwait(false)).IsAllowed)
-            {
-                return new ProductionOutcome(ProductionOutcomeStatus.Forbidden,
-                    Reason: "Overriding privilege conflicts needs PrivilegeLog.Generate as well as Production.Finalize.");
-            }
+        if (overrides.Any(o => o.Check == ProductionQcCheck.PrivilegeConflicts)
+            && !(await authorization.AuthorizeAsync(principal, workspaceId, Permission.PrivilegeLogGenerate, cancellationToken).ConfigureAwait(false)).IsAllowed)
+        {
+            return new ProductionOutcome(ProductionOutcomeStatus.Forbidden,
+                Reason: "Overriding privilege conflicts needs PrivilegeLog.Generate as well as Production.Finalize.");
         }
 
         if (await productions.GetAsync(workspaceId, productionId, cancellationToken).ConfigureAwait(false) is not { } current)
@@ -296,39 +311,63 @@ public sealed partial class ProductionService(
 
         var coding = await codingStore.GetHighWaterAsync(workspaceId, cancellationToken).ConfigureAwait(false);
         var at = time.GetUtcNow();
-        var (manifest, sha) = ProductionManifest.Build(current, snapshot, coding, ProductionSoftware.Current, principal.UserId, at);
+        var qc = await QcRequestAsync(principal, current, ProductionQcPurpose.Finalization, overrides, options.AcknowledgeWarnings, at, cancellationToken)
+            .ConfigureAwait(false);
         var format = new BatesFormat(current.BatesPrefix, current.BatesPadding, current.BatesSuffix, BatesNumberingLevel.Page);
-        var details = new Dictionary<string, string?>(StringComparer.Ordinal)
+        FinalizationWrite Compose(ProductionQcResult result)
         {
-            ["ProductionId"] = productionId.ToString(),
-            ["Version"] = current.Version.ToString(CultureInfo.InvariantCulture),
-            ["SpecificationSha256"] = Convert.ToHexStringLower(current.SpecificationSha256),
-            ["ManifestSha256"] = Convert.ToHexStringLower(sha),
-            ["BatesRange"] = $"{format.Format(current.BatesFirst!.Value)}-{format.Format(current.BatesLast!.Value)}",
-            ["AssignmentsSha256"] = Convert.ToHexStringLower(current.AssignmentsSha256!),
-            ["Documents"] = current.BatesDocuments?.ToString(CultureInfo.InvariantCulture),
-        };
-        PrivilegeConflictOverrideWrite? conflictOverride = null;
-        if (overrideReason is not null)
-        {
-            var (overrideManifest, overrideSha) = ProductionManifest.Build(current, snapshot, coding, ProductionSoftware.Current, principal.UserId, at, overrideReason);
-            var overrideDetails = new Dictionary<string, string?>(details, StringComparer.Ordinal)
+            var conflictOverride = result[ProductionQcCheck.PrivilegeConflicts].OverrideReason;
+            var (manifest, sha) = ProductionManifest.Build(current, snapshot, coding, ProductionSoftware.Current, principal.UserId, at, conflictOverride, result);
+            var details = new Dictionary<string, string?>(StringComparer.Ordinal)
             {
-                ["ManifestSha256"] = Convert.ToHexStringLower(overrideSha),
-                ["PrivilegeConflictOverride"] = "true",
+                ["ProductionId"] = productionId.ToString(),
+                ["Version"] = current.Version.ToString(CultureInfo.InvariantCulture),
+                ["SpecificationSha256"] = Convert.ToHexStringLower(current.SpecificationSha256),
+                ["ManifestSha256"] = Convert.ToHexStringLower(sha),
+                ["BatesRange"] = $"{format.Format(current.BatesFirst!.Value)}-{format.Format(current.BatesLast!.Value)}",
+                ["AssignmentsSha256"] = Convert.ToHexStringLower(current.AssignmentsSha256!),
+                ["Documents"] = current.BatesDocuments?.ToString(CultureInfo.InvariantCulture),
+                ["QcRunId"] = result.QcRunId.ToString(),
+                ["QcReportSha256"] = Convert.ToHexStringLower(result.ReportSha256),
+                ["QcOverridden"] = string.Join(',', result.Overridden.Select(c => c.Definition.Key)),
+                ["QcWarningsAcknowledged"] = string.Join(',', result.Warnings.Select(c => c.Definition.Key)),
             };
-            conflictOverride = new PrivilegeConflictOverrideWrite(overrideManifest, overrideSha,
+            if (conflictOverride is not null)
+            {
+                details["PrivilegeConflictOverride"] = "true";
+            }
+
+            List<AuditEvent> audit =
             [
-                Resource(UserEvent(principal, AuditTaxonomy.Production.SpecFrozen, overrideDetails), current),
-                Resource(UserEvent(principal, AuditTaxonomy.Production.Finalized, overrideDetails), current),
-                Resource(UserEvent(principal, AuditTaxonomy.Privilege.ConflictOverride, new Dictionary<string, string?>(StringComparer.Ordinal)
+                Resource(UserEvent(principal, AuditTaxonomy.Production.SpecFrozen, details), current),
+                Resource(UserEvent(principal, AuditTaxonomy.Production.Finalized, details), current),
+            ];
+            foreach (var check in result.Overridden)
+            {
+                audit.Add(Resource(UserEvent(principal, AuditTaxonomy.Production.QcOverride, new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["ProductionId"] = productionId.ToString(),
+                    ["QcRunId"] = result.QcRunId.ToString(),
+                    ["Check"] = check.Definition.Key,
+                    ["Documents"] = check.Documents.ToString(CultureInfo.InvariantCulture),
+                    ["Reason"] = Truncate(check.OverrideReason!, 500),
+                    ["ManifestSha256"] = Convert.ToHexStringLower(sha),
+                }), current));
+            }
+
+            if (conflictOverride is not null)
+            {
+                audit.Add(Resource(UserEvent(principal, AuditTaxonomy.Privilege.ConflictOverride, new Dictionary<string, string?>(StringComparer.Ordinal)
                 {
                     ["ProductionId"] = productionId.ToString(),
                     ["Version"] = current.Version.ToString(CultureInfo.InvariantCulture),
-                    ["Reason"] = overrideReason.Length <= 500 ? overrideReason : overrideReason[..500],
-                    ["ManifestSha256"] = Convert.ToHexStringLower(overrideSha),
-                }) with { Category = AuditTaxonomy.Privilege.Category }, current),
-            ]);
+                    ["Reason"] = Truncate(conflictOverride, 500),
+                    ["ManifestSha256"] = Convert.ToHexStringLower(sha),
+                }) with
+                { Category = AuditTaxonomy.Privilege.Category }, current));
+            }
+
+            return new FinalizationWrite(manifest, sha, audit);
         }
 
         var plan = PlanOf(current);
@@ -338,13 +377,12 @@ public sealed partial class ProductionService(
             ["DesignationFieldId"] = plan.FieldId?.ToString(CultureInfo.InvariantCulture),
             ["DesignationRule"] = DesignationRuleName(plan.Rule),
         });
-        var result = await productions.FinalizeAsync(workspaceId, productionId, expectedRowVersion, manifest, sha, principal.UserId, at,
-        [
-            Resource(UserEvent(principal, AuditTaxonomy.Production.SpecFrozen, details), current),
-            Resource(UserEvent(principal, AuditTaxonomy.Production.Finalized, details), current),
-        ], plan, designationAudit, conflictOverride, ProductionSpecificationRules.Deserialize(current.SpecificationJson).RedactionSetId, cancellationToken)
+        var result = await productions.FinalizeAsync(workspaceId, productionId, expectedRowVersion, principal.UserId, at, qc,
+            UserEvent(principal, AuditTaxonomy.Production.QcRun, new Dictionary<string, string?>()), Compose, plan, designationAudit, cancellationToken)
             .ConfigureAwait(false);
-        return Outcome(result, format);
+        return result.Qc is { Passed: false }
+            ? Blocked(result, format)
+            : Outcome(result, format) with { Qc = result.Qc };
     }
 
     public async Task<ProductionOutcome> VoidAsync(

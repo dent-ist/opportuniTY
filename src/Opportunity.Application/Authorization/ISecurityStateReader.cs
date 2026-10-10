@@ -34,7 +34,22 @@ public sealed record PrincipalSecurityState(
     IReadOnlySet<WorkspaceRole> Roles,
     IReadOnlyDictionary<string, IReadOnlySet<WorkspaceRole>> ClassGrants,
     IReadOnlySet<Guid> WallIds,
-    DateTimeOffset? BreakGlassExpiresAt);
+    DateTimeOffset? BreakGlassExpiresAt)
+{
+    /// <summary>The workspace's current acknowledgment version and whether the principal accepted it (E20-T03).</summary>
+    public AcknowledgmentGateState Acknowledgment { get; init; } = AcknowledgmentGateState.None;
+}
+
+/// <summary>
+/// The acknowledgment gate of one principal in one workspace (E20-T03): <see cref="RequiredVersion"/> is the current
+/// published version (null: the workspace requires none); the principal is let through only once they accepted it.
+/// </summary>
+public sealed record AcknowledgmentGateState(int? RequiredVersion, bool Accepted)
+{
+    public static AcknowledgmentGateState None { get; } = new(null, Accepted: true);
+
+    public bool Pending => RequiredVersion is not null && !Accepted;
+}
 
 /// <summary>A document's restriction classes and wall coverage. Absent from the read when it does not exist or is deleted.</summary>
 public sealed record DocumentSecurityAttributes(IReadOnlyList<string> RestrictionClasses, IReadOnlyList<Guid> WallIds)

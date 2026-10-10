@@ -97,7 +97,7 @@ public sealed class BurnInVerificationTests(MigrationPostgresFixture postgres)
                 FileTypeRules = [new ProductionFileTypeRule([withheldType], ProductionOutputResource.Placeholder)],
             });
             var allocated = await v.Productions.AllocateAsync(ws, user, draft.ProductionId);
-            (await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, Ct))
+            (await v.Productions.Service().FinalizeAsync(ProductionHarness.Principal(user), ws, draft.ProductionId, allocated.RowVersion, ProductionHarness.Acknowledged, Ct))
                 .Status.Should().Be(ProductionOutcomeStatus.Ok);
             var members = await v.Productions.AssignmentAsync(ws, draft.ProductionId);
             var member = members.Single(m => m.DocumentId == redacted.DocumentId);

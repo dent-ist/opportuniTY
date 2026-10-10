@@ -376,6 +376,12 @@ public static partial class ProductionSpecificationRules
             return value;
         }
 
+        var withheldDocuments = input.WithheldDocuments ?? WithheldDocumentsResource.Block;
+        if (!Enum.IsDefined(withheldDocuments))
+        {
+            Add("withheldDocuments", "Use block or placeholder.");
+        }
+
         var withheld = Placeholder("withheld", placeholders.Withheld, DefaultWithheldText);
         var technical = Placeholder("technicalIssue", placeholders.TechnicalIssue, DefaultTechnicalIssueText);
         var slipSheet = Placeholder("nativeSlipSheet", placeholders.NativeSlipSheet, DefaultNativeSlipSheetText);
@@ -407,7 +413,8 @@ public static partial class ProductionSpecificationRules
             new ProductionEndorsementSettings([.. stamps.OrderBy(s => s.Position)], fontSize, endorsements.ExpandCanvas ?? true, margin),
             designations,
             new ProductionPlaceholderSettings(withheld, technical, slipSheet),
-            input.RedactionSetId);
+            input.RedactionSetId,
+            withheldDocuments);
         var json = Serialize(normalized);
         return new NormalizedSpecification(normalized, json, Hash(json));
     }
