@@ -10,6 +10,7 @@ using Opportunity.Application.Authorization;
 using Opportunity.Contracts.Api;
 using Opportunity.Core.Security;
 using Opportunity.Security.Authentication;
+using Opportunity.Security.Http;
 
 namespace Opportunity.Security.Authorization;
 
@@ -96,7 +97,7 @@ public static class WorkspaceAuthorizationConventions
             Groups = [.. user.FindAll(OpportunityClaimTypes.Group).Select(c => c.Value).Where(g => g.Length > 0).Distinct(StringComparer.Ordinal)],
             ClientIp = context.Connection.RemoteIpAddress?.ToString(),
             UserAgent = string.IsNullOrEmpty(userAgent) ? null : userAgent[..Math.Min(userAgent.Length, 512)],
-            CorrelationId = context.TraceIdentifier,
+            CorrelationId = RequestCorrelation.Get(context),
         };
     }
 }

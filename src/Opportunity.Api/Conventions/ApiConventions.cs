@@ -72,13 +72,15 @@ public static class ApiConventions
     }
 
     /// <summary>
-    /// Middleware order matters: security headers and errors outermost; authentication, CSRF and authorization after
-    /// routing (they read endpoint metadata) and before idempotency (keys are scoped to the user).
+    /// Middleware order matters: the client address from a trusted proxy first (audit, E14-T02), then security headers and
+    /// errors; authentication, CSRF and authorization after routing (they read endpoint metadata) and before idempotency
+    /// (keys are scoped to the user).
     /// </summary>
     public static WebApplication UseApiConventions(this WebApplication app)
     {
         ArgumentNullException.ThrowIfNull(app);
 
+        app.UseTrustedProxies();
         app.UseOpportunitySecurityHeaders();
         app.UseExceptionHandler();
         app.UseStatusCodePages();

@@ -56,7 +56,12 @@ compose() {
 
 env_value() { [[ -f "$env_file" ]] && sed -n "s/^$1=//p" "$env_file" | tail -n 1 || true; }
 
-random_secret() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 || true; }
+# 32 characters; a *_HASH_SECRET_KEY is a base64 key of at least 32 bytes, so it gets 44 (alphanumerics are base64 digits).
+random_secret() {
+  local length=32
+  [[ "${1:-}" == *_HASH_SECRET_KEY ]] && length=44
+  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$length" || true
+}
 
 cmd_init() {
   local line key
@@ -66,7 +71,7 @@ cmd_init() {
     while IFS= read -r line || [[ -n "$line" ]]; do
       key="${line%%=*}"
       if [[ "$line" =~ ^[A-Z0-9_]+(PASSWORD|SECRET_KEY)=$ ]] && ! grep -q "^$key=" "$env_file"; then
-        printf '%s=%s\n' "$key" "$(random_secret)" >>"$env_file"
+        printf '%s=%s\n' "$key" "$(random_secret "$key")" >>"$env_file"
         added=1
       fi
     done <"$here/.env.example"
@@ -77,7 +82,7 @@ cmd_init() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     if [[ "$line" =~ ^[A-Z0-9_]+(PASSWORD|SECRET_KEY)=$ ]]; then
-      printf '%s=%s\n' "$key" "$(random_secret)"
+      printf '%s=%s\n' "$key" "$(random_secret "$key")"
     else
       printf '%s\n' "$line"
     fi

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -186,8 +187,15 @@ internal sealed class AttackWorld : IAsyncDisposable
             builder.UseSetting("Snapshots:BackgroundEnabled", "false");
             builder.UseSetting("SearchTermReports:BackgroundEnabled", "false");
             builder.UseSetting("Jobs:Events:MaxStreamDuration", "00:00:01");
+            // Audit envelopes (E14-T02): a session hash key (obviously fake) and a client address, as behind a real listener.
+            builder.UseSetting("Authentication:Session:AuditHashKey", Convert.ToBase64String(new byte[32]));
+            // Installation administration and step-up for the audit coverage scenario (workspace creation, holds, deletion).
+            builder.UseSetting("Authentication:Mfa:AmrValues:0", "mfa");
+            builder.UseSetting("Authorization:InstallationAdminGroups:0", InstallationAdminGroup);
+            builder.UseSetting("Authorization:RetentionApproverGroups:0", RetentionApproverGroup);
             builder.ConfigureTestServices(services =>
             {
+                services.AddSingleton<IStartupFilter, ClientAddressStartupFilter>();
                 services.RemoveAll<ISecurityStateReader>();
                 services.AddSingleton<ISecurityStateReader, Data.Security.PostgresSecurityStateReader>();
             });
@@ -494,15 +502,22 @@ internal sealed class AttackWorld : IAsyncDisposable
 
     /// <summary>Sends a request as <paramref name="user"/> (null: anonymous) with a fresh Idempotency-Key on writes.</summary>
     public async Task<HttpResponseMessage> SendAsync(
-        HttpMethod method, string url, Guid? user, HttpContent? content = null, string? ifMatch = null, string? groups = null)
+        HttpMethod method, string url, Guid? user, HttpContent? content = null, string? ifMatch = null, string? groups = null,
+        string? amr = null, string? correlationId = null)
     {
         using var request = new HttpRequestMessage(method, new Uri(url, UriKind.Relative)) { Content = content };
         if (user is { } id)
         {
             request.Headers.Add(TestAuthentication.UserHeader, id.ToString());
+            request.Headers.Add(TestAuthentication.SessionHeader, SessionOf(id).ToString());
             if (groups is not null)
             {
                 request.Headers.Add(TestAuthentication.GroupsHeader, groups);
+            }
+
+            if (amr is not null)
+            {
+                request.Headers.Add(TestAuthentication.AmrHeader, amr);
             }
         }
         else
@@ -520,7 +535,27 @@ internal sealed class AttackWorld : IAsyncDisposable
             request.Headers.TryAddWithoutValidation("If-Match", ifMatch);
         }
 
+        if (correlationId is not null)
+        {
+            request.Headers.Add("X-Correlation-Id", correlationId);
+        }
+
         return await Client.SendAsync(request, Ct);
+    }
+
+    public const string InstallationAdminGroup = "cn=attack-world-installation-admins";
+
+    public const string RetentionApproverGroup = "cn=attack-world-retention-approvers";
+
+    /// <summary>The client address every request of the world comes from (TEST-NET-1, RFC 5737).</summary>
+    public static IPAddress ClientAddress { get; } = IPAddress.Parse("192.0.2.10");
+
+    /// <summary>The (stable) server-side session of <paramref name="user"/> in this world.</summary>
+    public static Guid SessionOf(Guid user)
+    {
+        var bytes = user.ToByteArray();
+        bytes[0] ^= 0x5a;
+        return new Guid(bytes);
     }
 
     public async Task<JsonElement> JsonAsync(HttpMethod method, string url, Guid user, HttpStatusCode expected, JsonNode? body = null)
@@ -560,4 +595,18 @@ internal sealed class AttackWorld : IAsyncDisposable
         _openSearch.Dispose();
         await Db.DisposeAsync();
     }
+}
+
+/// <summary>TestServer leaves the remote address empty; the world's requests come from <see cref="AttackWorld.ClientAddress"/>.</summary>
+internal sealed class ClientAddressStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use((context, nextMiddleware) =>
+        {
+            context.Connection.RemoteIpAddress ??= AttackWorld.ClientAddress;
+            return nextMiddleware(context);
+        });
+        next(app);
+    };
 }
