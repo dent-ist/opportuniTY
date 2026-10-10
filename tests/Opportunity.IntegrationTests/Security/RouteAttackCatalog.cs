@@ -687,6 +687,16 @@ internal static class RouteAttackCatalog
             new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-report", HttpStatusCode.OK)),
         Case("GET", Ws + "/productions/{productionId}/redesignation-overlay", ProtectedOperation.ProductionInclusion,
             new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-overlay", HttpStatusCode.OK)),
+        // Production QC gate (E12-T07): the draft is not allocated (409 for its owner), the finalized production keeps its finalization run.
+        Case("POST", Ws + "/productions/{productionId}/qc", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.DraftProductionId}/qc", null)),
+        Case("GET", Ws + "/productions/{productionId}/qc", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/qc", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/qc/exceptions", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/qc/exceptions", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/qc/report", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production, CSV", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/qc/report", HttpStatusCode.OK),
+            new RouteProbe("finalized production, PDF", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/qc/report?format=pdf", HttpStatusCode.OK)),
         // Production volumes (E12-T05): the production and the run are both identifiers; a foreign run under an own production
         // (or a foreign file under an own run) must answer like an unknown one.
         Case("POST", Ws + "/productions/{productionId}/volumes", ProtectedOperation.ProductionInclusion,

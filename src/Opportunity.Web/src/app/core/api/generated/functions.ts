@@ -365,6 +365,12 @@ export type { RemoveProductionDesignationOverride$Params as RemoveProductionDesi
 export { removeProductionDesignationOverride as removeProductionDesignationOverride } from './fn/productions/remove-production-designation-override';
 export type { GetProductionRedesignationReport$Params as GetProductionRedesignationReport$Params } from './fn/productions/get-production-redesignation-report';
 export { getProductionRedesignationReport as getProductionRedesignationReport } from './fn/productions/get-production-redesignation-report';
+export type { GetProductionQc$Params as GetProductionQc$Params } from './fn/productions/get-production-qc';
+export { getProductionQc as getProductionQc } from './fn/productions/get-production-qc';
+export type { RunProductionQc$Params as RunProductionQc$Params } from './fn/productions/run-production-qc';
+export { runProductionQc as runProductionQc } from './fn/productions/run-production-qc';
+export type { ListProductionQcExceptions$Params as ListProductionQcExceptions$Params } from './fn/productions/list-production-qc-exceptions';
+export { listProductionQcExceptions as listProductionQcExceptions } from './fn/productions/list-production-qc-exceptions';
 export type { VerifyProduction$Params as VerifyProduction$Params } from './fn/productions/verify-production';
 export { verifyProduction as verifyProduction } from './fn/productions/verify-production';
 export type { ListProductionVolumes$Params as ListProductionVolumes$Params } from './fn/productions/list-production-volumes';
@@ -375,6 +381,8 @@ export type { GetProductionVolume$Params as GetProductionVolume$Params } from '.
 export { getProductionVolume as getProductionVolume } from './fn/productions/get-production-volume';
 export type { ListProductionVolumeFiles$Params as ListProductionVolumeFiles$Params } from './fn/productions/list-production-volume-files';
 export { listProductionVolumeFiles as listProductionVolumeFiles } from './fn/productions/list-production-volume-files';
+export type { DownloadProductionQcReport$Params as DownloadProductionQcReport$Params } from './fn/productions/download-production-qc-report';
+export { downloadProductionQcReport as downloadProductionQcReport } from './fn/productions/download-production-qc-report';
 export type { DownloadProductionRedesignationOverlay$Params as DownloadProductionRedesignationOverlay$Params } from './fn/productions/download-production-redesignation-overlay';
 export { downloadProductionRedesignationOverlay as downloadProductionRedesignationOverlay } from './fn/productions/download-production-redesignation-overlay';
 export type { DownloadProductionVolumeFile$Params as DownloadProductionVolumeFile$Params } from './fn/productions/download-production-volume-file';

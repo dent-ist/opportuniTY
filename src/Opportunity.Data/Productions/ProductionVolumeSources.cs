@@ -127,31 +127,11 @@ public sealed partial class ProductionRepository
     }
 
     /// <summary>
-    /// Freezes every member's active page set and its redaction version and count in the production's Redaction Set (the
-    /// workspace's Default set when none is named). Null when frozen; otherwise why the finalization is refused.
+    /// Freezes every member's active page set and its redaction version and count in the production's Redaction Set
+    /// (<paramref name="set"/>, resolved by <see cref="ResolveRedactionSetAsync"/>; null when the workspace has none).
     /// </summary>
-    private static async Task<string?> FreezeRedactionsAsync(WorkspaceTransaction tx, Guid productionId, Guid? redactionSetId, CancellationToken cancellationToken)
+    private static async Task FreezeRedactionsAsync(WorkspaceTransaction tx, Guid productionId, Guid? set, CancellationToken cancellationToken)
     {
-        Guid? set;
-        await using (var resolve = tx.Command(
-            """
-            SELECT redaction_set_id FROM opportunity.redaction_set
-             WHERE workspace_id = @ws AND (redaction_set_id = @set OR (@set::uuid IS NULL AND lower(name) = lower(@default)))
-             ORDER BY created_at
-             LIMIT 1
-            """))
-        {
-            resolve.Parameters.AddWithValue("ws", tx.WorkspaceId);
-            resolve.Parameters.Add(Nullable("set", NpgsqlDbType.Uuid, redactionSetId));
-            resolve.Parameters.AddWithValue("default", RedactionDefaults.SetName);
-            set = await resolve.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as Guid?;
-        }
-
-        if (redactionSetId is not null && set is null)
-        {
-            return "The Redaction Set named by the specification does not exist. Choose an existing Redaction Set, then finalize.";
-        }
-
         await using var freeze = tx.Command(
             """
             UPDATE opportunity.production_document pd
@@ -168,6 +148,5 @@ public sealed partial class ProductionRepository
         freeze.Parameters.AddWithValue("id", productionId);
         freeze.Parameters.Add(Nullable("set", NpgsqlDbType.Uuid, set));
         await freeze.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        return null;
     }
 }

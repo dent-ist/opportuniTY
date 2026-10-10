@@ -1048,6 +1048,46 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
          ORDER BY c.choice_id LIMIT 1
         """;
 
+    /// <summary>
+    /// E12-T07: whether the document <paramref name="documentId"/> (an SQL expression) is coded Privilege Status = Withhold,
+    /// for the production store's planning SQL. Parameters: <c>@ws</c>, <c>@privilegeStatus</c>, <c>@withholdKey</c>
+    /// (<see cref="AddPrivilegeKeyParameters"/>).
+    /// </summary>
+    internal static string DocumentWithheldSql(string documentId) =>
+        $"""
+        EXISTS (SELECT FROM opportunity.document_coding_choice wc
+                  JOIN opportunity.choice wch ON wch.workspace_id = wc.workspace_id AND wch.field_id = wc.field_id AND wch.choice_id = wc.choice_id
+                 WHERE wc.workspace_id = @ws AND wc.document_id = {documentId} AND wc.field_id = @privilegeStatus AND wch.system_key = @withholdKey)
+        """;
+
+    internal static void AddPrivilegeKeyParameters(NpgsqlCommand command)
+    {
+        command.Parameters.AddWithValue("privilegeStatus", PrivilegeFields.Status);
+        command.Parameters.AddWithValue("withholdKey", PrivilegeFields.Keys.Withhold);
+    }
+
+    /// <summary>
+    /// E12-T07: the production QC gate's privilege checks, written as exceptions of run <paramref name="qcRunId"/> in the
+    /// caller's transaction (which holds the privilege gate): members coded Withhold that are not placeholders, withheld
+    /// placeholders no longer coded Withhold, members coded Redact without redactions in <paramref name="redactionSetId"/>,
+    /// and members whose family mixes withheld and other live documents or whose duplicate group's live members' calls
+    /// differ (the gate's rule of <see cref="PrivilegeConflictRules"/>, member by member). Set-based over every member.
+    /// </summary>
+    internal static async Task InsertProductionQcPrivilegeExceptionsAsync(
+        WorkspaceTransaction tx, Guid productionId, Guid qcRunId, Guid? redactionSetId, CancellationToken cancellationToken)
+    {
+        await using var command = tx.Command(PrivilegeConflictSql.ProductionQc);
+        command.Parameters.AddWithValue("ws", tx.WorkspaceId);
+        command.Parameters.AddWithValue("id", productionId);
+        command.Parameters.AddWithValue("run", qcRunId);
+        command.Parameters.AddWithValue("status", PrivilegeFields.Status);
+        command.Parameters.AddWithValue("withhold", PrivilegeFields.Keys.Withhold);
+        command.Parameters.AddWithValue("redact", PrivilegeFields.Keys.Redact);
+        command.Parameters.AddWithValue("notPrivileged", PrivilegeFields.Keys.NotPrivileged);
+        command.Parameters.Add(new NpgsqlParameter("set", NpgsqlDbType.Uuid) { Value = (object?)redactionSetId ?? DBNull.Value });
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     internal static async Task<bool> AnyProductionMemberWithheldAsync(WorkspaceTransaction tx, Guid productionId, CancellationToken cancellationToken)
     {
         await using var command = tx.Command(
@@ -1793,6 +1833,60 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
                 GROUP BY g.duplicate_group_id
                 HAVING count(DISTINCT coalesce(s.choice_id, 0)) > 1
                    AND bool_or(s.choice_id IS NOT NULL AND s.system_key IS DISTINCT FROM @notPrivileged))
+            """;
+
+        /// <summary>
+        /// E12-T07: the QC gate's privilege exceptions (checks 1, 2, 3 and 9 of ProductionQcCheck) of production @id as
+        /// rows of run @run. A family conflicts when its live members mix Withhold with other calls.
+        /// </summary>
+        public const string ProductionQc =
+            $"""
+            WITH {Status},
+            members AS (
+                SELECT pd.sequence, pd.document_id, pd.output, pd.placeholder_reason, d.family_id, d.duplicate_group_id,
+                       EXISTS (SELECT FROM status s WHERE s.document_id = pd.document_id AND s.system_key = @withhold) AS withheld,
+                       EXISTS (SELECT FROM status s WHERE s.document_id = pd.document_id AND s.system_key = @redact) AS redact
+                FROM opportunity.production_document pd
+                JOIN opportunity.document d ON d.workspace_id = pd.workspace_id AND d.document_id = pd.document_id
+                WHERE pd.workspace_id = @ws AND pd.production_id = @id),
+            families AS (
+                SELECT f.family_id
+                FROM (SELECT DISTINCT family_id FROM members WHERE family_id IS NOT NULL) f
+                JOIN opportunity.document d ON d.workspace_id = @ws AND d.family_id = f.family_id
+                {Live}
+                LEFT JOIN status s ON s.document_id = d.document_id
+                GROUP BY f.family_id
+                HAVING bool_or(s.system_key = @withhold) AND bool_or(s.system_key IS DISTINCT FROM @withhold)),
+            duplicates AS (
+                SELECT g.duplicate_group_id
+                FROM (SELECT DISTINCT duplicate_group_id FROM members WHERE duplicate_group_id IS NOT NULL) g
+                JOIN opportunity.document d ON d.workspace_id = @ws AND d.duplicate_group_id = g.duplicate_group_id
+                {Live}
+                LEFT JOIN status s ON s.document_id = d.document_id
+                GROUP BY g.duplicate_group_id
+                HAVING count(DISTINCT coalesce(s.choice_id, 0)) > 1
+                   AND bool_or(s.choice_id IS NOT NULL AND s.system_key IS DISTINCT FROM @notPrivileged)),
+            exceptions AS (
+                SELECT 1 AS check_code, m.sequence, m.document_id, NULL::text AS detail FROM members m
+                 WHERE m.withheld AND m.output <> 3
+                UNION ALL
+                SELECT 2, m.sequence, m.document_id, NULL FROM members m
+                 WHERE m.placeholder_reason = 1 AND NOT m.withheld
+                UNION ALL
+                SELECT 3, m.sequence, m.document_id, NULL FROM members m
+                 WHERE m.redact AND NOT EXISTS (
+                     SELECT FROM opportunity.document_redaction_state st
+                      WHERE st.workspace_id = @ws AND st.document_id = m.document_id AND st.redaction_set_id = @set AND st.active_count > 0)
+                UNION ALL
+                SELECT 9, m.sequence, m.document_id,
+                       CASE WHEN f.family_id IS NOT NULL AND g.duplicate_group_id IS NOT NULL THEN 'Family;Duplicates'
+                            WHEN f.family_id IS NOT NULL THEN 'Family' ELSE 'Duplicates' END
+                  FROM members m
+                  LEFT JOIN families f ON f.family_id = m.family_id
+                  LEFT JOIN duplicates g ON g.duplicate_group_id = m.duplicate_group_id
+                 WHERE f.family_id IS NOT NULL OR g.duplicate_group_id IS NOT NULL)
+            INSERT INTO opportunity.production_qc_exception (workspace_id, qc_run_id, check_code, sequence, document_id, detail)
+            SELECT @ws, @run, e.check_code, e.sequence, e.document_id, e.detail FROM exceptions e
             """;
     }
 

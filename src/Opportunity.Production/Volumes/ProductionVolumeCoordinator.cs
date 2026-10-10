@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -203,8 +204,17 @@ public sealed partial class ProductionVolumeCoordinator(
         finals.Add(await ExportCoordinator.PutPartsAsync(store, ws, volume.ExportId, runId, "volume.opt", ExportFileKind.Opt, layout.OptPath, [],
             optParts, cancellationToken).ConfigureAwait(false));
         var totals = await exports.GetDocumentTotalsAsync(ws, volume.ExportId, cancellationToken).ConfigureAwait(false);
+
+        // E12-T07: the load files read back must reconcile with what the run registered before anything is delivered.
+        var reconciliation = await ReconcileAsync(production, settings, finals[0], finals[1], totals, cancellationToken).ConfigureAwait(false);
+        if (!reconciliation.Passed)
+        {
+            return await RejectReconciliationAsync(volume, productionId, settings, [verification, burnIn], checkedRun, reconciliation, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var (manifestJson, manifestCsv, files, bytes) = await WriteManifestsAsync(volume, production, settings, totals, finals, verification, checkedRun,
-            cancellationToken).ConfigureAwait(false);
+            reconciliation, cancellationToken).ConfigureAwait(false);
         finals.Add(manifestJson);
         finals.Add(manifestCsv);
         finals.Add(verification);
@@ -243,6 +253,7 @@ public sealed partial class ProductionVolumeCoordinator(
                 ["BurnInPages"] = Invariant(summary.Pages),
                 ["BurnInBoxes"] = Invariant(summary.Boxes),
                 ["BurnInReportSha256"] = Convert.ToHexStringLower(burnIn.Sha256),
+                ["Reconciliation"] = "Passed",
             },
         };
         if (!await exports.CompleteAsync(ws, volume.ExportId, finals, report, completed, cancellationToken).ConfigureAwait(false))
@@ -271,6 +282,79 @@ public sealed partial class ProductionVolumeCoordinator(
 
             return BurnInVerification.Summarize(rows);
         }
+    }
+
+    /// <summary>
+    /// Reads the stored DAT and OPT back (their bytes must still hash to what was registered) and reconciles them with
+    /// the run's registered files and the production's members and Bates span (E12-T07).
+    /// </summary>
+    private async Task<VolumeReconciliationResult> ReconcileAsync(
+        ProductionRecord production, ExportSettings settings, NewExportFile dat, NewExportFile opt, ExportDocumentTotals totals,
+        CancellationToken cancellationToken)
+    {
+        var datKey = ObjectKey.Parse(dat.ObjectKey);
+        var optKey = ObjectKey.Parse(opt.ObjectKey);
+        var datStream = await store.OpenReadAsync(datKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+        await using (datStream.ConfigureAwait(false))
+        {
+            var optStream = await store.OpenReadAsync(optKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+            await using (optStream.ConfigureAwait(false))
+            {
+                await using var datRead = new VerifyingReadStream(datStream, datKey, Sha256Digest.FromBytes(dat.Sha256), dat.SizeBytes);
+                await using var optRead = new VerifyingReadStream(optStream, optKey, Sha256Digest.FromBytes(opt.Sha256), opt.SizeBytes);
+                var format = ProductionSpecificationRules.FormatOf(ProductionSpecificationRules.Deserialize(production.SpecificationJson));
+                return await VolumeReconciliation.ReconcileAsync(datRead, optRead, settings, format,
+                    new VolumeRegistration(production.BatesDocuments ?? totals.Exported, totals.Images, totals.Natives, totals.Texts, production.BatesUnits ?? 0),
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A volume whose load files do not reconcile (E12-T07): the run ends as Failed without load files or manifest, with
+    /// <c>Production.VerificationFailed</c> (<c>Check = Reconciliation</c>), so it is never delivered.
+    /// </summary>
+    private async Task<ProductionVolumeStep> RejectReconciliationAsync(
+        ExportRecord volume, Guid productionId, ExportSettings settings, IReadOnlyList<NewExportFile> files, ExportVerification verification,
+        VolumeReconciliationResult reconciliation, CancellationToken cancellationToken)
+    {
+        var reason = "The volume's load files do not reconcile with its files: " + string.Join(" ", reconciliation.Problems) + " The volume is not delivered.";
+        var rejected = new AuditEvent
+        {
+            WorkspaceId = volume.WorkspaceId,
+            OccurredAt = DateTimeOffset.UtcNow,
+            Category = AuditTaxonomy.Production.Category,
+            Action = AuditTaxonomy.Production.VerificationFailed,
+            ActorType = AuditActorType.Service,
+            ActorId = WorkerActor,
+            ActorDisplay = "Production volume writer",
+            OnBehalfOf = volume.CreatedBy,
+            ResourceType = AuditTaxonomy.Production.ResourceType,
+            ResourceId = productionId.ToString(),
+            Outcome = AuditOutcome.Failure,
+            ReasonCode = "ReconciliationFailed",
+            JobId = volume.JobId,
+            SnapshotId = volume.SnapshotId,
+            Details = new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["Check"] = "Reconciliation",
+                ["ProductionId"] = productionId.ToString(),
+                ["VolumeId"] = volume.ExportId.ToString(),
+                ["Volume"] = settings.VolumeName,
+                ["DatRows"] = Invariant(reconciliation.DatRows),
+                ["OptRows"] = Invariant(reconciliation.OptRows),
+                ["Images"] = Invariant(reconciliation.ImageFiles),
+                ["BatesSpan"] = Invariant(reconciliation.BatesSpan),
+                ["Problems"] = string.Join(" ", reconciliation.Problems),
+            },
+        };
+        if (!await exports.RejectAsync(volume.WorkspaceId, volume.ExportId, files, verification, reason, rejected, cancellationToken).ConfigureAwait(false))
+        {
+            return ProductionVolumeStep.None;
+        }
+
+        LogNotReconciled(logger, productionId, volume.ExportId, string.Join(" ", reconciliation.Problems));
+        return ProductionVolumeStep.Rejected;
     }
 
     /// <summary>
@@ -330,7 +414,7 @@ public sealed partial class ProductionVolumeCoordinator(
     /// </summary>
     private async Task<(NewExportFile Json, NewExportFile Csv, long Files, long Bytes)> WriteManifestsAsync(
         ExportRecord volume, ProductionRecord production, ExportSettings settings, ExportDocumentTotals totals, List<NewExportFile> finals,
-        NewExportFile verification, ExportVerification burnIn, CancellationToken cancellationToken)
+        NewExportFile verification, ExportVerification burnIn, VolumeReconciliationResult reconciliation, CancellationToken cancellationToken)
     {
         var directory = options.TempDirectory ?? Path.GetTempPath();
         var jsonPath = Path.Combine(directory, "opp-volume-" + Guid.NewGuid().ToString("N") + ".json");
@@ -343,8 +427,18 @@ public sealed partial class ProductionVolumeCoordinator(
             await using (var csvFile = File.Create(csvPath))
             await using (var json = new Utf8JsonWriter(jsonFile, JsonWriting))
             await using (var csv = new StreamWriter(csvFile, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true)))
+            using (var listHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
             {
-                await csv.WriteAsync(LoadFileText.CsvRow("Path", "Bytes", "SHA256")).ConfigureAwait(false);
+                // E12-T07: the volume-level hash is the SHA-256 of MANIFEST.csv (byte-order mark and every row), so it
+                // covers every delivered file's path, size and SHA-256.
+                listHash.AppendData(Encoding.UTF8.GetPreamble());
+                async Task CsvAsync(string row)
+                {
+                    listHash.AppendData(Encoding.UTF8.GetBytes(row));
+                    await csv.WriteAsync(row).ConfigureAwait(false);
+                }
+
+                await CsvAsync(LoadFileText.CsvRow("Path", "Bytes", "SHA256")).ConfigureAwait(false);
                 json.WriteStartObject();
                 json.WriteNumber("schemaVersion", 1);
                 json.WriteString("kind", "productionVolume");
@@ -379,6 +473,33 @@ public sealed partial class ProductionVolumeCoordinator(
                 json.WriteNumber("failures", burnIn.Failures);
                 json.WriteString("reportSha256", Convert.ToHexStringLower(burnIn.ReportSha256));
                 json.WriteEndObject();
+                json.WriteStartObject("reconciliation");
+                json.WriteString("status", reconciliation.Passed ? "passed" : "failed");
+                json.WriteNumber("datRows", reconciliation.DatRows);
+                json.WriteNumber("optRows", reconciliation.OptRows);
+                json.WriteNumber("images", reconciliation.ImageFiles);
+                json.WriteNumber("batesSpan", reconciliation.BatesSpan);
+                json.WriteNumber("natives", reconciliation.NativeFiles);
+                if (reconciliation.NativeLinks is { } nativeLinks)
+                {
+                    json.WriteNumber("nativeLinks", nativeLinks);
+                }
+                else
+                {
+                    json.WriteNull("nativeLinks");
+                }
+
+                json.WriteNumber("texts", reconciliation.TextFiles);
+                if (reconciliation.TextLinks is { } textLinks)
+                {
+                    json.WriteNumber("textLinks", textLinks);
+                }
+                else
+                {
+                    json.WriteNull("textLinks");
+                }
+
+                json.WriteEndObject();
                 json.WriteStartArray("files");
 
                 var pending = new Queue<NewExportFile>(finals.OrderBy(x => x.Path, StringComparer.Ordinal));
@@ -390,7 +511,7 @@ public sealed partial class ProductionVolumeCoordinator(
                     json.WriteNumber("bytes", size);
                     json.WriteString("sha256", Convert.ToHexStringLower(sha));
                     json.WriteEndObject();
-                    await csv.WriteAsync(LoadFileText.CsvRow(path, Invariant(size), Convert.ToHexStringLower(sha))).ConfigureAwait(false);
+                    await CsvAsync(LoadFileText.CsvRow(path, Invariant(size), Convert.ToHexStringLower(sha))).ConfigureAwait(false);
                     count++;
                     bytes += size;
                 }
@@ -428,6 +549,7 @@ public sealed partial class ProductionVolumeCoordinator(
                 json.WriteStartObject("totals");
                 json.WriteNumber("files", count);
                 json.WriteNumber("bytes", bytes);
+                json.WriteString("fileListSha256", Convert.ToHexStringLower(listHash.GetHashAndReset()));
                 json.WriteEndObject();
                 json.WriteEndObject();
             }
@@ -453,6 +575,9 @@ public sealed partial class ProductionVolumeCoordinator(
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Production {ProductionId}: volume run {VolumeId} failed its burn-in verification: {Failures} check(s) for {Documents} document(s)")]
     private static partial void LogRejected(ILogger logger, Guid productionId, Guid volumeId, long failures, long documents);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Production {ProductionId}: volume run {VolumeId} does not reconcile: {Problems}")]
+    private static partial void LogNotReconciled(ILogger logger, Guid productionId, Guid volumeId, string problems);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Production {ProductionId}: volume run {VolumeId} completed: {Documents} document(s), {Images} image(s)")]
     private static partial void LogCompleted(ILogger logger, Guid productionId, Guid volumeId, long documents, long images);

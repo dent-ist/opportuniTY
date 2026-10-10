@@ -12500,8 +12500,8 @@
         "tags": [
           "Productions"
         ],
-        "summary": "Finalize an allocated draft (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.",
-        "description": "409 PRIVILEGE_WITHHELD while members are coded Withhold; 409 PRIVILEGE_CONFLICTS while members' families or duplicate groups have unresolved privilege conflicts (E13-T02), unless the body gives privilegeConflictOverride with a reason (needs PrivilegeLog.Generate; recorded in the manifest and audited). Neither answer counts or names documents.",
+        "summary": "Finalize an allocated draft behind the QC gate (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.",
+        "description": "Runs every QC check (E12-T07) over the members as they are now; the run is kept with the production and named in its manifest. A failed blocking check answers 409 with the QC report in `qc` (reason PRIVILEGE_WITHHELD, BATES_OVERLAP, PRIVILEGE_CONFLICTS, DESIGNATION_REFUSED or QC_FAILED; QC_WARNINGS for unacknowledged warnings) unless the check may be overridden and qcOverrides (or privilegeConflictOverride) gives a reason (privilege conflicts need PrivilegeLog.Generate); overrides are printed in the QC report, recorded in the manifest and audited. The report counts documents; it never names documents you may not view.",
         "operationId": "FinalizeProduction",
         "parameters": [
           {
@@ -13239,6 +13239,228 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/qc": {
+      "post": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Run the QC gate over an allocated draft now: every check with its status and document count (the validation summary before finalizing).",
+        "description": "The same checks finalization runs (E12-T07). The run is kept and audited (Production.QcRun); its document-level exceptions are listed by …/qc/exceptions and in the QC report (…/qc/report). 409 when the production is not an allocated draft.",
+        "operationId": "RunProductionQc",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionQcReportResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "The production's latest QC run; a finalized production's is the run it was finalized with (overrides and acknowledged warnings included).",
+        "operationId": "GetProductionQc",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionQcReportResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/qc/exceptions": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Document-level exceptions of the latest QC run (?check= to narrow), by check and production order; documents you may not view are only counted.",
+        "operationId": "ListProductionQcExceptions",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "check",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionQcExceptionPageResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14482,6 +14704,83 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/{productionId}/qc/report": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "The QC report of the production's latest QC run as CSV (default) or PDF (?format=pdf): checks, overrides with their reasons, and exceptions. Audited.",
+        "description": "Documents you may not view are counted, not listed. A finalized production's report is the run it was finalized with.",
+        "operationId": "DownloadProductionQcReport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -19484,6 +19783,19 @@
                 "$ref": "#/components/schemas/PrivilegeConflictOverrideRequest"
               }
             ]
+          },
+          "qcOverrides": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ProductionQcOverrideRequest"
+            }
+          },
+          "acknowledgeWarnings": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -23271,6 +23583,250 @@
           }
         }
       },
+      "ProductionQcCheckResource": {
+        "enum": [
+          "withheldWithoutPlaceholder",
+          "placeholderNoLongerWithheld",
+          "redactWithoutRedactions",
+          "redactedNative",
+          "redactionsNotProducible",
+          "renderFailure",
+          "pageCountChanged",
+          "batesOverlap",
+          "privilegeConflicts",
+          "designationNotProducible",
+          "inaccessible",
+          "incompleteFamily",
+          "textMissing",
+          "blankConfidentiality"
+        ]
+      },
+      "ProductionQcCheckResultResource": {
+        "required": [
+          "check",
+          "title",
+          "severity",
+          "overridable",
+          "status",
+          "documents",
+          "remedy",
+          "overrideReason"
+        ],
+        "type": "object",
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/ProductionQcCheckResource"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ProductionQcSeverityResource"
+          },
+          "overridable": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProductionQcStatusResource"
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "remedy": {
+            "type": "string"
+          },
+          "overrideReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProductionQcExceptionPageResource": {
+        "required": [
+          "qcRunId",
+          "items",
+          "nextCursor",
+          "restricted"
+        ],
+        "type": "object",
+        "properties": {
+          "qcRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionQcExceptionResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "restricted": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ProductionQcExceptionResource": {
+        "required": [
+          "check",
+          "sequence",
+          "documentId",
+          "controlNumber",
+          "prodBegBates",
+          "prodEndBates",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/ProductionQcCheckResource"
+          },
+          "sequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "prodBegBates": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "prodEndBates": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProductionQcOutcomeResource": {
+        "enum": [
+          "passed",
+          "blocked"
+        ]
+      },
+      "ProductionQcOverrideRequest": {
+        "required": [
+          "check",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/ProductionQcCheckResource"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductionQcPurposeResource": {
+        "enum": [
+          "check",
+          "finalization"
+        ]
+      },
+      "ProductionQcReportResource": {
+        "required": [
+          "qcRunId",
+          "productionId",
+          "purpose",
+          "outcome",
+          "runAt",
+          "runBy",
+          "warningsAcknowledged",
+          "reportSha256",
+          "checks"
+        ],
+        "type": "object",
+        "properties": {
+          "qcRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/ProductionQcPurposeResource"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ProductionQcOutcomeResource"
+          },
+          "runAt": {
+            "format": "date-time"
+          },
+          "runBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "warningsAcknowledged": {
+            "type": "boolean"
+          },
+          "reportSha256": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionQcCheckResultResource"
+            }
+          }
+        }
+      },
+      "ProductionQcSeverityResource": {
+        "enum": [
+          "blocking",
+          "warning"
+        ]
+      },
+      "ProductionQcStatusResource": {
+        "enum": [
+          "passed",
+          "failed",
+          "overridden",
+          "warning",
+          "acknowledged"
+        ]
+      },
       "ProductionResource": {
         "required": [
           "productionId",
@@ -23472,6 +24028,16 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "withheldDocuments": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WithheldDocumentsResource"
+              }
+            ]
           }
         }
       },
@@ -27871,6 +28437,13 @@
             "type": "string"
           }
         }
+      },
+      "WithheldDocumentsResource": {
+        "enum": [
+          "block",
+          "placeholder",
+          null
+        ]
       },
       "WorkspaceDeletionApprovalWrite": {
         "type": "object",

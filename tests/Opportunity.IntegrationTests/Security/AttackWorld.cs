@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -306,6 +307,12 @@ internal sealed class AttackWorld : IAsyncDisposable
         await Productions.RunAllocationAsync(ws, allocation.GetProperty("jobId").GetGuid());
         using (var current = await SendAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/productions/{finalized}", owner))
         using (var finalize = await SendAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/productions/{finalized}/finalize", owner,
+            JsonContent.Create(new JsonObject
+            {
+                // E12-T07: the attack document has no stored page images (a Technical Issue page) and the QC warnings are accepted.
+                ["qcOverrides"] = new JsonArray(new JsonObject { ["check"] = "renderFailure", ["reason"] = "Attack-suite document without page images." }),
+                ["acknowledgeWarnings"] = true,
+            }),
             ifMatch: current.Headers.ETag!.ToString()))
         {
             finalize.StatusCode.Should().Be(HttpStatusCode.OK, await finalize.Content.ReadAsStringAsync(Ct));
