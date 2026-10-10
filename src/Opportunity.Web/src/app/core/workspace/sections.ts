@@ -77,6 +77,12 @@ export const SEARCH_AREAS: readonly WorkspaceSection[] = [
     label: 'Privilege Conflicts',
     permission: PERMISSIONS.privilegeLogGenerate,
   },
+  // Privilege logs of finalized productions (E13-T03): versions, SHA-256, CSV/XLSX.
+  {
+    path: 'privilege-logs',
+    label: 'Privilege Logs',
+    permission: PERMISSIONS.privilegeLogGenerate,
+  },
 ];
 
 /** Entries of the Admin ▾ menu, in guide order; paths are under `/w/:workspaceId/admin/`. */

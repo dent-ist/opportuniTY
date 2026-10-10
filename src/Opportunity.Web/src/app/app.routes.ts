@@ -113,6 +113,16 @@ export const workspaceChildren: Routes = [
                 (m) => m.PrivilegeConflictsPage,
               ),
           };
+        if (a.path === 'privilege-logs')
+          return {
+            ...base,
+            title: a.label,
+            // Privilege Logs (E13-T03): generate from a finalized production, versions, downloads.
+            loadComponent: () =>
+              import('./features/searches/privilege-logs/privilege-logs-page').then(
+                (m) => m.PrivilegeLogsPage,
+              ),
+          };
         return { ...base, title: a.label, loadComponent: sectionPage };
       }),
     ],

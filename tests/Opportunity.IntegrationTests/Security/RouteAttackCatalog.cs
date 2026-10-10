@@ -38,6 +38,7 @@ internal static class ProtectedOperation
     public const string Import = "Import jobs, reports and profiles";
     public const string Job = "Job status";
     public const string Workspace = "Workspace administration and catalogues";
+    public const string PrivilegeLog = "Privilege logs (templates, versions, rows, files)";
 
     public static IReadOnlyList<string> Section24 { get; } = [Open, View, NativeDownload, ImageRetrieval, Export, ProductionInclusion];
 }
@@ -475,6 +476,39 @@ internal static class RouteAttackCatalog
             WorkspaceOnly(HttpMethod.Get, "/privilege-conflicts/export", HttpStatusCode.OK),
             new RouteProbe("production in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-conflicts/export?productionId={t.FinalizedProductionId}",
                 HttpStatusCode.OK)),
+        // Privilege logs (E13-T03): templates, generation from a production (with a review set) or a frozen set, versions,
+        // their rows and files (gateway). A version listing a document the caller may not see answers like a missing one.
+        Case("GET", Ws + "/privilege-log-templates", ProtectedOperation.PrivilegeLog,
+            WorkspaceOnly(HttpMethod.Get, "/privilege-log-templates", HttpStatusCode.OK)),
+        Case("POST", Ws + "/privilege-log-templates", ProtectedOperation.PrivilegeLog,
+            WorkspaceOnly(HttpMethod.Post, "/privilege-log-templates", HttpStatusCode.Created,
+                _ => J(new JsonObject { ["name"] = "Probe " + Guid.NewGuid().ToString("N") }))),
+        Case("GET", Ws + "/privilege-log-templates/{templateId}", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("template", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-log-templates/{t.PrivilegeLogTemplateId}", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/privilege-log-templates/{templateId}", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("template", HttpMethod.Put, (o, t) => $"{W(o)}/privilege-log-templates/{t.PrivilegeLogTemplateId}", HttpStatusCode.OK,
+                (o, _) => J(new JsonObject { ["name"] = "Log template " + o.Name, ["definition"] = new JsonObject { ["privIdPrefix"] = "PRIV" } }),
+                IfMatch: "*")),
+        Case("POST", Ws + "/privilege-logs", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("production and template in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-logs", null,
+                (o, t) => J(new JsonObject { ["productionId"] = t.FinalizedProductionId.ToString(), ["templateId"] = o.PrivilegeLogTemplateId.ToString() })),
+            new RouteProbe("template in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-logs", null,
+                (o, t) => J(new JsonObject { ["productionId"] = o.FinalizedProductionId.ToString(), ["templateId"] = t.PrivilegeLogTemplateId.ToString() })),
+            new RouteProbe("review set in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-logs", null,
+                (o, t) => J(new JsonObject { ["productionId"] = o.FinalizedProductionId.ToString(), ["snapshotId"] = t.ProductionSnapshotId.ToString() })),
+            new RouteProbe("frozen set in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-logs", null,
+                (_, t) => J(new JsonObject { ["snapshotId"] = t.ProductionSnapshotId.ToString(), ["preset"] = "metadataOnly" }))),
+        Case("GET", Ws + "/privilege-logs", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("production in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs?productionId={t.FinalizedProductionId}",
+                HttpStatusCode.OK, Expectation: ForeignExpectation.EmptySet),
+            new RouteProbe("frozen set in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs?snapshotId={t.ProductionSnapshotId}",
+                HttpStatusCode.OK, Expectation: ForeignExpectation.EmptySet)),
+        Case("GET", Ws + "/privilege-logs/{logId}", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/privilege-logs/{logId}/entries", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}/entries", HttpStatusCode.OK)),
+        Case("GET", Ws + "/privilege-logs/{logId}/content", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}/content?format=xlsx", HttpStatusCode.OK)),
         Case("POST", Ws + "/privilege-conflicts/propagations", ProtectedOperation.Coding,
             // The probe document is in no duplicate group: the own request is a validation problem, a foreign source a 404.
             new RouteProbe("source document and duplicate group in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-conflicts/propagations",
