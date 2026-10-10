@@ -15,6 +15,10 @@ namespace Opportunity.Contracts.Api;
 /// Active preservation locks (legal holds, E20-T01): above zero, deleting or purging the workspace's data answers 423.
 /// Shown to every member; the locks themselves need <c>Workspace.ManageHolds</c>.
 /// </param>
+/// <param name="AcknowledgmentPending">
+/// True while the workspace requires an acknowledgment (E20-T03) the caller has not accepted in its current version: every
+/// workspace route except this one and <c>…/acknowledgment</c> answers 403 <c>acknowledgment-required</c> until then.
+/// </param>
 public sealed record WorkspaceResource(
     Guid WorkspaceId,
     string Name,
@@ -28,7 +32,8 @@ public sealed record WorkspaceResource(
     long? Version = null,
     DateTimeOffset? UpdatedAt = null,
     WorkspaceSearchPlacementResource? SearchPlacement = null,
-    int ActivePreservationLocks = 0);
+    int ActivePreservationLocks = 0,
+    bool AcknowledgmentPending = false);
 
 public enum WorkspaceResourceStatus
 {

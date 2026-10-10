@@ -171,6 +171,36 @@ internal sealed class AuthorizationService(ISecurityStateReader reader, IAuditEv
         return document => PolicyEvaluator.EvaluateDocument(state, permission, document, time.GetUtcNow()).IsAllowed;
     }
 
+    public async Task<AcknowledgmentGateState> GetAcknowledgmentGateAsync(
+        SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        if (Unauthenticated(principal) is not null)
+        {
+            return AcknowledgmentGateState.None;
+        }
+
+        var state = await PrincipalStateAsync(principal, workspaceId, cancellationToken).ConfigureAwait(false);
+        return state?.Acknowledgment ?? AcknowledgmentGateState.None;
+    }
+
+    public async Task<AuthorizationDecision> AuthorizeAcknowledgmentAsync(
+        SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default)
+    {
+        var gate = await GetAcknowledgmentGateAsync(principal, workspaceId, cancellationToken).ConfigureAwait(false);
+        if (!gate.Pending)
+        {
+            return AuthorizationDecision.Allow();
+        }
+
+        var decision = AuthorizationDecision.Deny(AuthorizationReasons.AcknowledgmentRequired);
+        await WriteDeniedAsync(principal, workspaceId, decision.Reason, ResourceWorkspace, workspaceId.ToString(), new Dictionary<string, string?>
+        {
+            ["permission"] = "Workspace.Member",
+            ["acknowledgmentVersion"] = gate.RequiredVersion!.Value.ToString(CultureInfo.InvariantCulture),
+        }, cancellationToken).ConfigureAwait(false);
+        return decision;
+    }
+
     private static AuthorizationDecision? Unauthenticated(SecurityPrincipal principal)
     {
         ArgumentNullException.ThrowIfNull(principal);

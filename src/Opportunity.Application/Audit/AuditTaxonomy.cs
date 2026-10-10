@@ -285,6 +285,18 @@ public static class AuditTaxonomy
         public const string WallDeleted = "WallDeleted";
         public const string BreakGlassActivated = "BreakGlassActivated";
         public const string BreakGlassEnded = "BreakGlassEnded";
+
+        /// <summary>A member accepted the current acknowledgment text version (E20-T03): version and text hash.</summary>
+        public const string AcknowledgmentAccepted = "AcknowledgmentAccepted";
+
+        /// <summary>An administrator published a new acknowledgment text version (E20-T03): version and text hash.</summary>
+        public const string AcknowledgmentPublished = "AcknowledgmentPublished";
+
+        /// <summary>The acknowledgment roster was exported as CSV (E20-T03): row and member counts.</summary>
+        public const string AcknowledgmentRosterExported = "AcknowledgmentRosterExported";
+
+        /// <summary>The audit resource type of acknowledgment events; the resource id is the workspace id.</summary>
+        public const string AcknowledgmentResourceType = "Workspace";
     }
 
     public static class Workspace
@@ -430,7 +442,7 @@ public static class AuditTaxonomy
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",
-            "AcknowledgmentAccepted"),
+            "AcknowledgmentAccepted", "AcknowledgmentPublished", "AcknowledgmentRosterExported"),
         .. Expand("Workspace", "Created", "SettingsChanged", "Closed", "Reopened", "HoldPlaced", "HoldReleaseRequested",
             "HoldReleased", "DeletionRequested", "DeletionApproved", "DeletionCancelled", "DeletionStarted",
             "DeletionStepCompleted", "DeletionHalted", "Deleted",

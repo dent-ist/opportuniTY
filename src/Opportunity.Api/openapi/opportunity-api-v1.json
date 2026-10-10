@@ -4508,7 +4508,7 @@
           "Workspaces"
         ],
         "summary": "The workspace, the current user's effective permissions in it and its read-only search placement.",
-        "description": "A workspace the user is not a member of returns 404, exactly like one that does not exist.",
+        "description": "A workspace the user is not a member of returns 404, exactly like one that does not exist. Readable before the member accepted the workspace's acknowledgment text (acknowledgmentPending), so clients can show it (E20-T03).",
         "operationId": "GetWorkspace",
         "parameters": [
           {
@@ -5583,6 +5583,422 @@
           },
           "428": {
             "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "The workspace's current acknowledgment text and whether the caller accepted it.",
+        "description": "Readable before accepting. While required and not accepted, every other workspace route except the workspace itself answers 403 acknowledgment-required.",
+        "operationId": "GetAcknowledgment",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment/acceptances": {
+      "post": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "Accept the current acknowledgment text (its version and SHA-256 as shown). Audited; accepting again changes nothing.",
+        "description": "409 acknowledgment-outdated when the version is no longer current or the hash differs (read it again); 409 conflict when the workspace requires no acknowledgment. 201 when recorded, 200 when it already was.",
+        "operationId": "AcceptAcknowledgment",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AcknowledgmentAcceptanceWrite"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentAcceptanceResource"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentAcceptanceResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment-versions": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "Every published acknowledgment version (without its text), newest first, with acceptance counts; ETag = current version.",
+        "operationId": "ListAcknowledgmentVersions",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentVersionList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "Publish the next acknowledgment version (If-Match: the current version, \"0\" for the first). Audited.",
+        "description": "Every member, the publisher included, must accept the new version before using the workspace again.",
+        "operationId": "PublishAcknowledgmentVersion",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AcknowledgmentVersionWrite"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentVersionResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Precondition Required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment-versions/{version}": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "One published acknowledgment version with its text.",
+        "operationId": "GetAcknowledgmentVersion",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgmentVersionResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment-roster": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "Who accepted which acknowledgment version, by name: direct members and everyone who accepted a version.",
+        "operationId": "ListAcknowledgmentRoster",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfAcknowledgmentRosterEntryResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -8084,6 +8500,57 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/acknowledgment-roster/export": {
+      "get": {
+        "tags": [
+          "Acknowledgments"
+        ],
+        "summary": "The acknowledgment roster as CSV (UTF-8 with BOM): one row per acceptance, plus pending direct members. Audited.",
+        "operationId": "ExportAcknowledgmentRoster",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
                 }
               }
             }
@@ -15995,6 +16462,271 @@
   },
   "components": {
     "schemas": {
+      "AcknowledgmentAcceptanceResource": {
+        "required": [
+          "version",
+          "textSha256",
+          "acceptedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "textSha256": {
+            "type": "string"
+          },
+          "acceptedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "AcknowledgmentAcceptanceWrite": {
+        "required": [
+          "version",
+          "textSha256"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "textSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AcknowledgmentActor": {
+        "required": [
+          "userId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AcknowledgmentResource": {
+        "required": [
+          "required",
+          "version",
+          "title",
+          "text",
+          "textSha256",
+          "publishedAt",
+          "acknowledged",
+          "acknowledgedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "boolean"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "textSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "publishedAt": {
+            "format": "date-time"
+          },
+          "acknowledged": {
+            "type": "boolean"
+          },
+          "acknowledgedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "AcknowledgmentRosterEntryResource": {
+        "required": [
+          "userId",
+          "displayName",
+          "email",
+          "directMember",
+          "status",
+          "acceptances"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "directMember": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AcknowledgmentRosterStatus"
+          },
+          "acceptances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AcknowledgmentAcceptanceResource"
+            }
+          }
+        }
+      },
+      "AcknowledgmentRosterStatus": {
+        "enum": [
+          "current",
+          "outdated",
+          "pending"
+        ]
+      },
+      "AcknowledgmentVersionList": {
+        "required": [
+          "items",
+          "currentVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AcknowledgmentVersionResource"
+            }
+          },
+          "currentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AcknowledgmentVersionResource": {
+        "required": [
+          "version",
+          "title",
+          "text",
+          "textSha256",
+          "publishedBy",
+          "publishedAt",
+          "acceptedCount",
+          "isCurrent"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "textSha256": {
+            "type": "string"
+          },
+          "publishedBy": {
+            "$ref": "#/components/schemas/AcknowledgmentActor"
+          },
+          "publishedAt": {
+            "format": "date-time"
+          },
+          "acceptedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isCurrent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AcknowledgmentVersionWrite": {
+        "required": [
+          "title",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "BatesAllocationStateResource": {
         "enum": [
           "none",
@@ -17582,6 +18314,31 @@
                 "$ref": "#/components/schemas/SearchExpand"
               }
             ]
+          }
+        }
+      },
+      "CursorPageOfAcknowledgmentRosterEntryResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AcknowledgmentRosterEntryResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
           }
         }
       },
@@ -30307,6 +31064,10 @@
             ],
             "format": "int32",
             "default": 0
+          },
+          "acknowledgmentPending": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -30457,6 +31218,9 @@
     },
     {
       "name": "Legal holds"
+    },
+    {
+      "name": "Acknowledgments"
     },
     {
       "name": "Document content"

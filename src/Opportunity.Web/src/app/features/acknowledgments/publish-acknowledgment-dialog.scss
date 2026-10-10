@@ -1,0 +1,85 @@
+// Publish dialog of Admin › Acknowledgments (E20-T03). opportuniTY tokens only.
+
+.acka__dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+}
+
+.acka__textarea-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+}
+
+.acka__label {
+  font-size: var(--opp-font-size-control);
+  font-weight: var(--opp-font-weight-medium);
+  color: var(--opp-color-text);
+}
+
+.acka__required {
+  color: var(--opp-color-danger-text);
+}
+
+.acka__textarea {
+  width: 100%;
+  padding: var(--opp-space-2) var(--opp-control-padding-x);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font: inherit;
+  font-size: var(--opp-font-size-control);
+  resize: vertical;
+}
+
+.acka__textarea[aria-invalid='true'] {
+  border-color: var(--opp-color-danger-border);
+  box-shadow: inset 0 0 0 1px var(--opp-color-danger-border);
+}
+
+.acka__textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.acka__hint,
+.acka__field-error {
+  margin: 0;
+  font-size: var(--opp-font-size-xs);
+}
+
+.acka__hint {
+  color: var(--opp-color-text-muted);
+}
+
+.acka__field-error {
+  color: var(--opp-color-danger-text);
+}
+
+.acka__notice {
+  display: flex;
+  gap: var(--opp-space-2);
+  align-items: flex-start;
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border-inline-start: 3px solid var(--opp-color-info-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+
+  p {
+    margin: 0;
+  }
+}
+
+.acka__notice--danger {
+  border-inline-start-color: var(--opp-color-danger-border);
+  background: var(--opp-color-danger-bg);
+  color: var(--opp-color-danger-text);
+}
+
+.acka__notice-title {
+  font-weight: var(--opp-font-weight-semibold);
+}

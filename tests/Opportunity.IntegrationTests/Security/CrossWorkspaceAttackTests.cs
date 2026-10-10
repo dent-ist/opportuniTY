@@ -69,10 +69,11 @@ public sealed class CrossWorkspaceAttackTests(AttackWorldFixture fixture) : ICla
                 route.Probes.Should().NotBeEmpty("{0}: every workspace route is attacked", route.Key);
                 // Page numbers, chunk indexes, field and choice ids (per-workspace counters, ADR-003 R4: every workspace has
                 // field 1000 and choice 1), restriction class keys and redaction reason codes are workspace-local keys, and
-                // user ids are installation-level (role assignment, E05-T08): none is an identifier another workspace could leak.
+                // user ids are installation-level (role assignment, E05-T08), acknowledgment versions are numbered per workspace
+                // (E20-T03): none is an identifier another workspace could leak.
                 var identifiers = route.Pattern.Split('/').Where(s => s.StartsWith('{')
                     && s is not "{workspaceId}" and not "{pageNumber}" and not "{chunkIndex}" and not "{fieldId}" and not "{choiceId}"
-                        and not "{classKey}" and not "{reasonCode}" and not "{userId}");
+                        and not "{classKey}" and not "{reasonCode}" and not "{userId}" and not "{version}");
                 if (identifiers.Any())
                 {
                     route.Probes.Should().Contain(p => p.HasForeignIdentifier, "{0}: its path identifiers are substituted", route.Key);

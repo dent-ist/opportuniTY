@@ -8,6 +8,7 @@ using AwesomeAssertions;
 
 using Opportunity.Application.Coding;
 using Opportunity.Application.Fields;
+using Opportunity.Application.Productions;
 using Opportunity.Application.Redactions;
 using Opportunity.Contracts.Api;
 using Opportunity.Core.Coding;

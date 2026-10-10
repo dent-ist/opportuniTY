@@ -8,9 +8,11 @@ import {
 } from './core/workspace/sections';
 import { devRoutes } from './dev/dev-routes';
 import { AppShell } from './shell/app-shell';
+import { acknowledgmentGuard } from './core/workspace/acknowledgment';
 import {
   WORKSPACE_SCOPE,
   authGuard,
+  currentWorkspaceResolver,
   requirePermission,
   workspaceGuard,
   workspaceResolver,
@@ -42,6 +44,11 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
     import('./features/role-admin/users-groups-page').then((m) => m.UsersGroupsPage),
   'roles-security': () =>
     import('./features/role-admin/roles-security-page').then((m) => m.RolesSecurityPage),
+  // Reviewer attestation and protective-order acknowledgment (E20-T03).
+  acknowledgments: () =>
+    import('./features/acknowledgments/acknowledgments-admin-page').then(
+      (m) => m.AcknowledgmentsAdminPage,
+    ),
 };
 
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */
@@ -198,7 +205,7 @@ export function workspaceRoute(children: Routes = workspaceChildren): Route {
   return {
     path: 'w/:workspaceId',
     component: WorkspaceShell,
-    canActivate: [workspaceGuard],
+    canActivate: [workspaceGuard, acknowledgmentGuard],
     resolve: { [WORKSPACE_DATA]: workspaceResolver },
     data: { [WORKSPACE_SCOPE]: true },
     children,
@@ -250,6 +257,18 @@ export function appRoutes(workspace: Route = workspaceRoute()): Routes {
           loadComponent: () =>
             import('./features/workspace-deletions/workspace-deletion-page').then(
               (m) => m.WorkspaceDeletionPage,
+            ),
+        },
+        {
+          // The acknowledgment a member accepts before using the workspace (E20-T03). Outside the workspace scope:
+          // the workspace's sections stay closed until it is accepted.
+          path: 'w/:workspaceId/acknowledgment',
+          title: 'Acknowledgment',
+          canActivate: [workspaceGuard],
+          resolve: { [WORKSPACE_DATA]: currentWorkspaceResolver },
+          loadComponent: () =>
+            import('./features/acknowledgments/acknowledgment-page').then(
+              (m) => m.AcknowledgmentPage,
             ),
         },
         {

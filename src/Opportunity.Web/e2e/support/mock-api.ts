@@ -16,6 +16,7 @@ import { RoleAdminMock } from './mock-role-admin';
 import { RelationshipsMock, hitRelations } from './mock-relationships';
 import { LegalHoldsMock } from './mock-legal-holds';
 import { DeletionsMock } from './mock-deletions';
+import { AcknowledgmentsMock } from './mock-acknowledgments';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -55,6 +56,8 @@ export interface MockApiOptions {
   freshness?: MockFreshnessState;
   /** Propagation targets above this run as a job (wave-12 contract; the API default is 1,000). */
   propagationThreshold?: number;
+  /** ws-1 publishes an acknowledgment the user has not accepted yet (E20-T03); by default it is accepted. */
+  acknowledgmentPending?: boolean;
 }
 
 /** A request the mock answered, with its JSON body and Idempotency-Key. */
@@ -134,6 +137,8 @@ export interface MockControl {
   readonly legalHolds: LegalHoldsMock;
   /** Workspace deletions (E20-T02): requests (del-7 waiting, del-5 completed) and writes received. */
   readonly deletions: DeletionsMock;
+  /** Acknowledgments (E20-T03): ws-1's text versions, the user's acceptances and writes received. */
+  readonly acknowledgments: AcknowledgmentsMock;
 }
 
 /**
@@ -281,6 +286,7 @@ export const ALL_PERMISSIONS = [
   'Workspace.RequestDeletion',
   'HighlightSet.Manage',
   'Workspace.ManageHolds',
+  'Workspace.ManageAcknowledgments',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -486,7 +492,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       'Installation.ApproveDeletion',
     ),
   );
+  const acknowledgments = new AcknowledgmentsMock(options.acknowledgmentPending ?? false);
   const control: MockControl = {
+    acknowledgments,
     legalHolds,
     deletions,
     relationships,
@@ -529,6 +537,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         : route.fulfill(problem(401, 'Unauthorized'));
     }
     const method = route.request().method();
+    // Acknowledgments (E20-T03): ./mock-acknowledgments.ts; also the gate in front of every other workspace route.
+    const acknowledged = signedIn ? acknowledgments.handle(route, method, path) : undefined;
+    if (acknowledged) return acknowledged;
     // E16-T08: a document hidden from the reviewer answers every route like a missing one (the gateway's 404).
     const named = /^\/api\/v1\/workspaces\/[^/]+\/documents\/doc-(\d+)(?:\/|$)/.exec(path);
     if (named) {
@@ -889,6 +900,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       return json(route, {
         ...ws,
         activePreservationLocks: legalHolds.activeCount(wsPath![1]),
+        acknowledgmentPending: acknowledgments.pending(wsPath![1]),
         permissions: created.has(wsPath![1]) ? ALL_PERMISSIONS : permissions,
       });
     unhandled.push(`${route.request().method()} ${path}`);
