@@ -62,7 +62,7 @@ public sealed class DesignationProductionTests(MigrationPostgresFixture postgres
             [.. members.Select(m => new DesignationMember(m.Sequence, m.FamilyKey, own.GetValueOrDefault(m.DocumentId)))], plan.Levels, plan.Rule);
         live.Select(r => (r.Sequence, r.ChoiceId, r.Legend, r.Source)).Should().Equal(expected.Select(e => (e.Sequence, e.ChoiceId, e.Legend, e.Source)));
 
-        var finalized = await service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion, Ct);
+        var finalized = await service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion, ProductionHarness.Unimaged(), Ct);
         finalized.Status.Should().Be(ProductionOutcomeStatus.Ok, finalized.Reason);
 
         var frozen = (await h.AssignmentAsync(ws, draft.ProductionId)).ToDictionary(r => r.DocumentId);
@@ -165,7 +165,7 @@ public sealed class DesignationProductionTests(MigrationPostgresFixture postgres
                 $"DesignationOverrideRemoved:-:{docs[2]}");
 
         draft = (await h.Store.GetAsync(ws, draft.ProductionId, Ct))!;
-        (await service.FinalizeAsync(principal, ws, draft.ProductionId, draft.RowVersion, Ct)).Status.Should().Be(ProductionOutcomeStatus.Ok);
+        (await service.FinalizeAsync(principal, ws, draft.ProductionId, draft.RowVersion, ProductionHarness.Unimaged(), Ct)).Status.Should().Be(ProductionOutcomeStatus.Ok);
         var frozen = await h.AssignmentAsync(ws, draft.ProductionId);
         frozen.Select(r => (r.Designation, r.DesignationSource)).Should().Equal(
             ("CONFIDENTIAL", DesignationSource.Override), ("HIGHLY CONFIDENTIAL – AEO", DesignationSource.Document), (string.Empty, DesignationSource.None));
@@ -229,7 +229,7 @@ public sealed class DesignationProductionTests(MigrationPostgresFixture postgres
         (await service.UpdateAsync(principal, ws, listed.ProductionId, listed.RowVersion, new UpdateProductionRequest(withLevel), Ct)).Status
             .Should().Be(ProductionOutcomeStatus.Ok);
         listed = await h.AllocateAsync(ws, user, listed.ProductionId);
-        (await service.FinalizeAsync(principal, ws, listed.ProductionId, listed.RowVersion, Ct)).Status.Should().Be(ProductionOutcomeStatus.Ok);
+        (await service.FinalizeAsync(principal, ws, listed.ProductionId, listed.RowVersion, ProductionHarness.Unimaged(), Ct)).Status.Should().Be(ProductionOutcomeStatus.Ok);
         (await h.AssignmentAsync(ws, listed.ProductionId)).Select(r => r.Designation).Should().Equal("CONFIDENTIAL", "RESTRICTED – OUTSIDE COUNSEL");
     }
 
@@ -245,7 +245,7 @@ public sealed class DesignationProductionTests(MigrationPostgresFixture postgres
         var principal = ProductionHarness.Principal(user);
         var draft = await h.AllocateAsync(ws, user, (await h.CreateOkAsync(ws, user, snapshot.SnapshotId, ProductionHarness.Spec("RED", padding: 4))).ProductionId);
         (await service.RedesignationReportAsync(principal, draft, 0, 50, Ct)).Outcome.Status.Should().Be(ProductionOutcomeStatus.Conflict, "a draft has nothing produced");
-        (await service.FinalizeAsync(principal, ws, draft.ProductionId, draft.RowVersion, Ct)).Status.Should().Be(ProductionOutcomeStatus.Ok);
+        (await service.FinalizeAsync(principal, ws, draft.ProductionId, draft.RowVersion, ProductionHarness.Unimaged(), Ct)).Status.Should().Be(ProductionOutcomeStatus.Ok);
         var production = (await h.Store.GetAsync(ws, draft.ProductionId, Ct))!;
         (await service.RedesignationReportAsync(principal, production, 0, 50, Ct)).Report!.Rows.Should().BeEmpty("nothing changed yet");
 

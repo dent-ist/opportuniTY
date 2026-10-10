@@ -64,7 +64,8 @@ public sealed class PrivilegeProductionGateTests(MigrationPostgresFixture postgr
             (await CodeAsync(h, ws, user, docs[1],
                 CodingFieldOperation.Set(PrivilegeFields.Status, JsonValue.Create(Status(PrivilegeFields.Keys.Redact))))).Outcome
                 .Should().Be(CodingWriteOutcome.Applied, "coding writes share the gate");
-            var finalizing = service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion, Ct);
+            var finalizing = service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion,
+                ProductionHarness.Unimaged(new ProductionQcOverride(ProductionQcCheck.RedactWithoutRedactions, "Redactions are drawn on the produced copy.")), Ct);
             (await Task.WhenAny(finalizing, Task.Delay(TimeSpan.FromMilliseconds(750), Ct))).Should().NotBeSameAs(finalizing,
                 "finalization waits for the in-flight privilege change");
             await inFlight.CommitAsync(Ct);

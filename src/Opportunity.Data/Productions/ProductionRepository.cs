@@ -340,16 +340,19 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
         }
 
         await LockPrefixAsync(tx, production.BatesPrefixKey, cancellationToken).ConfigureAwait(false);
+        // E12-T07: with withheldDocuments = placeholder, a member coded Privilege Status = Withhold now becomes a withheld
+        // placeholder; the QC gate re-checks the call when the production is finalized.
+        var withheld = plan.WithheldAsPlaceholder ? CodingRepository.DocumentWithheldSql("s.document_id") : "false";
         await using (var order = tx.Command(
-            """
+            $"""
             DELETE FROM opportunity.production_document WHERE workspace_id = @ws AND production_id = @id;
 
             CREATE TEMP TABLE production_plan ON COMMIT DROP AS
             SELECT row_number() OVER (ORDER BY m.family_first, m.family_sequence, m.ordinal) AS sequence,
-                   m.document_id, m.ordinal, m.family_key, m.family_sequence, m.document_version, m.page_count, m.file_extension
+                   m.document_id, m.ordinal, m.family_key, m.family_sequence, m.document_version, m.page_count, m.file_extension, m.withheld
               FROM (SELECT s.ordinal, s.document_id, s.baseline_version AS document_version, d.family_id AS family_key,
                            d.family_sequence, lower(d.file_extension) AS file_extension, coalesce(ps.page_count, 0) AS page_count,
-                           min(s.ordinal) OVER (PARTITION BY d.family_id) AS family_first
+                           min(s.ordinal) OVER (PARTITION BY d.family_id) AS family_first, {withheld} AS withheld
                       FROM (SELECT p.first_ordinal + u.i - 1 AS ordinal, u.document_id, u.baseline_version
                               FROM opportunity.document_set_snapshot_page p
                              CROSS JOIN LATERAL unnest(p.document_ids, p.baseline_versions)
@@ -359,11 +362,12 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
                       LEFT JOIN opportunity.page_set ps ON ps.workspace_id = d.workspace_id AND ps.page_set_id = d.active_page_set_id) m;
 
             DECLARE production_plan_cursor NO SCROLL CURSOR FOR
-            SELECT sequence, document_id, ordinal, family_key, family_sequence, document_version, page_count, file_extension
+            SELECT sequence, document_id, ordinal, family_key, family_sequence, document_version, page_count, file_extension, withheld
               FROM production_plan ORDER BY sequence;
             """))
         {
             order.Parameters.AddWithValue("ws", ws);
+            CodingRepository.AddPrivilegeKeyParameters(order);
             order.Parameters.AddWithValue("id", productionId);
             order.Parameters.AddWithValue("snapshot", production.SnapshotId);
             await order.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -372,15 +376,17 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
         var planner = new BatesPlanner(plan.Level, plan.DocumentsPerChunk, plan.UnitsPerChunk);
         while (true)
         {
-            var batch = new List<(BatesMember Member, long Ordinal, int FamilySequence, long Version, string? Extension, BatesPlannedMember Planned)>(PlanBatch);
+            var batch = new List<(BatesMember Member, long Ordinal, int FamilySequence, long Version, string? Extension, bool Withheld, BatesPlannedMember Planned)>(PlanBatch);
             await using (var fetch = tx.Command($"FETCH {PlanBatch} FROM production_plan_cursor"))
             await using (var reader = await fetch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
             {
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     var extension = reader.IsDBNull(7) ? null : reader.GetString(7);
-                    var member = new BatesMember(reader.GetInt64(0), reader.GetGuid(1), reader.GetGuid(3), plan.OutputFor(extension), reader.GetInt32(6));
-                    batch.Add((member, reader.GetInt64(2), reader.GetInt32(4), reader.GetInt64(5), extension, planner.Add(member)));
+                    var withheldMember = reader.GetBoolean(8);
+                    var member = new BatesMember(reader.GetInt64(0), reader.GetGuid(1), reader.GetGuid(3),
+                        withheldMember ? ProductionOutputKind.Placeholder : plan.OutputFor(extension), reader.GetInt32(6));
+                    batch.Add((member, reader.GetInt64(2), reader.GetInt32(4), reader.GetInt64(5), extension, withheldMember, planner.Add(member)));
                 }
             }
 
@@ -390,13 +396,14 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
                     """
                     INSERT INTO opportunity.production_document
                         (workspace_id, production_id, sequence, document_id, snapshot_ordinal, family_key, family_sequence, document_version,
-                         page_count, file_extension, output, units, first_offset, chunk_sequence)
+                         page_count, file_extension, output, units, first_offset, chunk_sequence, placeholder_reason)
                     SELECT @ws, @id, u.sequence, u.document_id, u.ordinal, u.family_key, u.family_sequence, u.document_version,
-                           u.page_count, u.file_extension, u.output, u.units, u.first_offset, u.chunk_sequence
+                           u.page_count, u.file_extension, u.output, u.units, u.first_offset, u.chunk_sequence,
+                           CASE WHEN u.withheld THEN 1 END
                       FROM unnest(@sequence, @document, @ordinal, @family, @family_sequence, @version, @pages, @extension, @output, @units,
-                                  @offset, @chunk)
+                                  @offset, @chunk, @withheld)
                            AS u(sequence, document_id, ordinal, family_key, family_sequence, document_version, page_count, file_extension,
-                                output, units, first_offset, chunk_sequence)
+                                output, units, first_offset, chunk_sequence, withheld)
                     """);
                 insert.Parameters.AddWithValue("ws", ws);
                 insert.Parameters.AddWithValue("id", productionId);
@@ -415,6 +422,7 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
                 insert.Parameters.AddWithValue("units", batch.Select(b => b.Planned.Units).ToArray());
                 insert.Parameters.AddWithValue("offset", batch.Select(b => b.Planned.FirstOffset).ToArray());
                 insert.Parameters.AddWithValue("chunk", batch.Select(b => b.Planned.ChunkSequence).ToArray());
+                insert.Parameters.AddWithValue("withheld", batch.Select(b => b.Withheld).ToArray());
                 await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
@@ -812,13 +820,12 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
     }
 
     public async Task<ProductionWriteResult> FinalizeAsync(
-        Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
-        IReadOnlyList<AuditEvent> audit, DesignationPlan designations, AuditEvent designationAudit, PrivilegeConflictOverrideWrite? conflictOverride = null,
-        Guid? redactionSetId = null, CancellationToken cancellationToken = default)
+        Guid workspaceId, Guid productionId, long expectedRowVersion, Guid finalizedBy, DateTimeOffset finalizedAt, ProductionQcRequest qc, AuditEvent qcAudit,
+        Func<ProductionQcResult, FinalizationWrite> compose, DesignationPlan designations, AuditEvent designationAudit, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(manifest);
-        ArgumentNullException.ThrowIfNull(manifestSha256);
-        ArgumentNullException.ThrowIfNull(audit);
+        ArgumentNullException.ThrowIfNull(qc);
+        ArgumentNullException.ThrowIfNull(qcAudit);
+        ArgumentNullException.ThrowIfNull(compose);
         ArgumentNullException.ThrowIfNull(designations);
         ArgumentNullException.ThrowIfNull(designationAudit);
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
@@ -839,51 +846,43 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
                 Reason: current.Status == ProductionStatus.Draft ? "Allocate Bates numbers before finalizing." : "Only a draft production is finalized.");
         }
 
-        var conflicts = await LockAndFindConflictsAsync(tx, productionId, current.BatesPrefixKey, current.BatesFirst!.Value, current.BatesLast!.Value, cancellationToken)
-            .ConfigureAwait(false);
-        if (conflicts.Count > 0)
-        {
-            return new ProductionWriteResult(ProductionWriteStatus.BatesConflict, current, conflicts);
-        }
-
-        // E13-T01 AC 3: a member coded Privilege Status = Withhold blocks the finalization, read from the coding store
-        // after every Privilege Status change before this point has committed (never from the search index).
-        await PrivilegeGateSql.EnterExclusiveAsync(tx, cancellationToken).ConfigureAwait(false);
-        // The answer gives no count: members the caller may not see must not be counted anywhere (Q-52).
-        if (await CodingRepository.AnyProductionMemberWithheldAsync(tx, productionId, cancellationToken).ConfigureAwait(false))
-        {
-            return new ProductionWriteResult(ProductionWriteStatus.PrivilegeWithheld, current,
-                Reason: "Documents in this production are coded Privilege Status = Withhold. Take them out of the frozen set or change their "
-                    + "privilege call, then allocate Bates numbers again.");
-        }
-
-        // E13-T02 AC 2: unresolved family or duplicate privilege conflicts block too, unless an authorized override with a
-        // reason was given; then the manifest and audit events that record the override are written instead.
-        if (await CodingRepository.AnyProductionPrivilegeConflictAsync(tx, productionId, cancellationToken).ConfigureAwait(false))
-        {
-            if (conflictOverride is null)
-            {
-                return new ProductionWriteResult(ProductionWriteStatus.PrivilegeConflicts, current,
-                    Reason: "Documents in this production have unresolved family or duplicate privilege conflicts. Resolve them (see the "
-                        + "privilege conflicts report for this production) or finalize with an override and a reason.");
-            }
-
-            (manifest, manifestSha256, audit) = (conflictOverride.Manifest, conflictOverride.ManifestSha256, conflictOverride.Audit);
-        }
-
-        // E12-T04: each member's designation is frozen from the coding store under the same gate (confidentiality
-        // designation changes enter it too), so the stamp and the load-file value come from this one value.
-        var (refusal, frozen) = await FreezeDesignationsAsync(tx, productionId, designations, cancellationToken).ConfigureAwait(false);
+        var (redactionSet, refusal) = await ResolveRedactionSetAsync(tx, qc.RedactionSetId, cancellationToken).ConfigureAwait(false);
         if (refusal is not null)
         {
-            return new ProductionWriteResult(ProductionWriteStatus.DesignationRefused, current, Reason: refusal);
+            return new ProductionWriteResult(ProductionWriteStatus.InvalidState, current, Reason: refusal);
+        }
+
+        // The prefix lock keeps other allocations of the prefix out until the range is Produced; the exclusive privilege
+        // gate makes every Privilege Status and designation change before this point visible (E13-T01 AC 3), and none
+        // can commit until the members' designations are frozen.
+        var conflicts = await LockAndFindConflictsAsync(tx, productionId, current.BatesPrefixKey, current.BatesFirst!.Value, current.BatesLast!.Value, cancellationToken)
+            .ConfigureAwait(false);
+        await PrivilegeGateSql.EnterExclusiveAsync(tx, cancellationToken).ConfigureAwait(false);
+
+        // E12-T07: the QC gate over the members as they are now. A blocked run is kept (with its exceptions and audit
+        // event) and nothing else changes.
+        var result = await RunQcInTransactionAsync(tx, current, qc, redactionSet, qcAudit, cancellationToken).ConfigureAwait(false);
+        if (!result.Passed)
+        {
+            await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+            var status = result[ProductionQcCheck.BatesOverlap].Status == ProductionQcStatus.Failed && conflicts.Count > 0
+                ? ProductionWriteStatus.BatesConflict
+                : ProductionWriteStatus.QcBlocked;
+            return new ProductionWriteResult(status, current, conflicts, Qc: result);
+        }
+
+        var (manifest, manifestSha256, audit) = compose(result);
+
+        // E12-T04: each member's designation is frozen from the coding store under the same gate, so the stamp and the
+        // load-file value come from this one value (the QC gate refused what cannot be produced).
+        var (designationRefusal, frozen) = await FreezeDesignationsAsync(tx, productionId, designations, cancellationToken).ConfigureAwait(false);
+        if (designationRefusal is not null)
+        {
+            return new ProductionWriteResult(ProductionWriteStatus.DesignationRefused, current, Reason: designationRefusal);
         }
 
         // E12-T05: the page set and redaction version every volume run of this production reads (Q-08).
-        if (await FreezeRedactionsAsync(tx, productionId, redactionSetId, cancellationToken).ConfigureAwait(false) is { } redactionRefusal)
-        {
-            return new ProductionWriteResult(ProductionWriteStatus.InvalidState, current, Reason: redactionRefusal);
-        }
+        await FreezeRedactionsAsync(tx, productionId, redactionSet, cancellationToken).ConfigureAwait(false);
 
         await using (var update = tx.Command(
             """
@@ -925,7 +924,7 @@ public sealed partial class ProductionRepository(NpgsqlDataSource dataSource) : 
 
         var record = (await ReadOneAsync(tx, productionId, forUpdate: false, cancellationToken).ConfigureAwait(false))!;
         await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return new ProductionWriteResult(ProductionWriteStatus.Applied, record);
+        return new ProductionWriteResult(ProductionWriteStatus.Applied, record, Qc: result);
     }
 
     public async Task<ProductionWriteResult> VoidAsync(

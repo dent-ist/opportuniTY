@@ -241,6 +241,12 @@ public static class AuditTaxonomy
         /// <summary>A file or the package of a production volume was downloaded through the gateway.</summary>
         public const string Downloaded = "Downloaded";
 
+        /// <summary>The QC gate ran over a draft (on request or inside a finalization), passed or blocked (E12-T07).</summary>
+        public const string QcRun = "QcRun";
+
+        /// <summary>A failed QC check was overridden at finalization by an authorized person, with a reason (E12-T07).</summary>
+        public const string QcOverride = "QcOverride";
+
         /// <summary>The audit resource type of production events.</summary>
         public const string ResourceType = "Production";
     }
@@ -406,7 +412,8 @@ public static class AuditTaxonomy
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
-            "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted"),
+            "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted",
+            "QcRun"),
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",
