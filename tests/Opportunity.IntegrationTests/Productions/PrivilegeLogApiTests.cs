@@ -104,8 +104,11 @@ public sealed class PrivilegeLogApiTests(MigrationPostgresFixture postgres)
             FileTypeRules = [new ProductionFileTypeRule(["msg"], ProductionOutputResource.Placeholder)],
         });
         var allocated = await h.AllocateAsync(ws, admin, draft.ProductionId);
-        (await h.Service().FinalizeAsync(ProductionHarness.Principal(admin), ws, draft.ProductionId, allocated.RowVersion,
-            "Withheld attachments are logged on the privilege log.", Ct)).Status.Should().Be(ProductionOutcomeStatus.Ok);
+        var finalized = await h.Service().FinalizeAsync(ProductionHarness.Principal(admin), ws, draft.ProductionId, allocated.RowVersion,
+            ProductionHarness.Unimaged(
+                new ProductionQcOverride(ProductionQcCheck.PrivilegeConflicts, "Withheld attachments are logged on the privilege log."),
+                new ProductionQcOverride(ProductionQcCheck.RedactWithoutRedactions, "The work-product redactions are drawn on the produced copy.")), Ct);
+        finalized.Status.Should().Be(ProductionOutcomeStatus.Ok, "{0} {1}", finalized.Reason, JsonSerializer.Serialize(finalized.Errors));
         await CodeAsync(docs[5], StatusOf(PrivilegeFields.Keys.Withhold), CodingFieldOperation.AddChoices(PrivilegeFields.Basis, attorneyClient));
         var reviewSet = await h.SnapshotAsync(ws, admin, [docs[6], docs[7], docs[1]]);
         var another = await h.CreateOkAsync(ws, admin, snapshot.SnapshotId, ProductionHarness.Spec("PLGD"));
