@@ -1,0 +1,183 @@
+<header class="acka__header">
+  <div>
+    <h1 class="acka__title" tabindex="-1">Acknowledgments</h1>
+    <p class="acka__lead">
+      Members must read and accept the current text before they can open documents or use anything
+      else in this workspace: for example a protective order's undertaking, a confidentiality
+      attestation or a conflicts check. Publishing a new version asks everyone, you included, to
+      accept again.
+    </p>
+  </div>
+  <button
+    type="button"
+    oppButton="primary"
+    [disabled]="loading() || !!loadError()"
+    (click)="publish()"
+  >
+    <opp-icon name="plus" />
+    {{ currentVersion() ? 'Publish new version…' : 'Require an acknowledgment…' }}
+  </button>
+</header>
+
+@if (loading()) {
+  <opp-loading-state label="Loading acknowledgments…" />
+} @else if (loadError(); as error) {
+  <opp-error-state [error]="error" (retry)="load()" />
+} @else {
+  <section class="acka__card" aria-labelledby="acka-current">
+    <h2 id="acka-current" class="acka__card-title">Current text</h2>
+    @if (current(); as v) {
+      <div class="acka__card-head">
+        <p class="acka__muted">
+          <strong>{{ v.title }}</strong> · version {{ v.version }}, published by
+          {{ name(v.publishedBy) }} on {{ date(v.publishedAt) }}
+        </p>
+        <opp-badge tone="info">
+          {{ v.acceptedCount === 1 ? '1 person accepted' : v.acceptedCount + ' people accepted' }}
+        </opp-badge>
+      </div>
+      <div
+        class="acka__text"
+        role="region"
+        tabindex="0"
+        aria-label="Current acknowledgment text"
+        [textContent]="v.text"
+      ></div>
+      <p class="acka__fine">
+        Text fingerprint (SHA-256): <code>{{ v.textSha256 }}</code>
+      </p>
+    } @else {
+      <opp-empty-state
+        icon="info"
+        title="No acknowledgment is required"
+        message="Members open this workspace without accepting anything. Publish a text to require it."
+      />
+    }
+  </section>
+
+  <section class="acka__card" aria-labelledby="acka-roster">
+    <div class="acka__card-head">
+      <h2 id="acka-roster" class="acka__card-title">Who accepted</h2>
+      <a oppButton="secondary" [href]="exportUrl" download>
+        <opp-icon name="download" />
+        Download roster (CSV)
+      </a>
+    </div>
+    <p class="acka__muted">
+      People with a role in this workspace, and everyone who accepted a version. People who get
+      access through an identity-provider group appear once they accept.
+    </p>
+    @if (!roster().length) {
+      <opp-empty-state
+        title="Nobody to list yet"
+        message="Assign roles to people, or wait until members accept the text."
+      />
+    } @else {
+      @if (currentVersion()) {
+        <ul class="acka__summary" aria-label="Summary of the people shown">
+          <li>{{ counts().current }} accepted version {{ currentVersion() }}</li>
+          <li>{{ counts().outdated }} accepted an earlier version only</li>
+          <li>{{ counts().pending }} have not accepted</li>
+        </ul>
+      }
+      <div class="acka__table-wrap">
+        <table class="acka__table">
+          <caption class="opp-visually-hidden">
+            Acknowledgment roster,
+            {{
+              roster().length
+            }}
+            of
+            {{
+              rosterTotal()
+            }}
+            people shown
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Person</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="acka__num">Latest version accepted</th>
+              <th scope="col">Accepted on</th>
+              <th scope="col">Text fingerprint</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (e of roster(); track e.userId) {
+              @let last = latest(e);
+              <tr>
+                <th scope="row" class="acka__person">
+                  <span class="acka__name">{{ name(e) }}</span>
+                  @if (e.email) {
+                    <span class="acka__muted">{{ e.email }}</span>
+                  }
+                </th>
+                <td>
+                  <opp-badge [tone]="status(e).tone">{{ status(e).label }}</opp-badge>
+                </td>
+                <td class="acka__num">{{ last ? last.version : '–' }}</td>
+                <td>{{ last ? date(last.acceptedAt) : '–' }}</td>
+                <td>
+                  @if (last) {
+                    <span class="acka__hash" [title]="last.textSha256"
+                      >{{ short(last.textSha256) }}…</span
+                    >
+                  } @else {
+                    –
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (nextCursor()) {
+        <div>
+          <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+            Show more people
+          </button>
+        </div>
+      }
+    }
+  </section>
+
+  @if (versions().length) {
+    <section class="acka__card" aria-labelledby="acka-history">
+      <h2 id="acka-history" class="acka__card-title">Version history</h2>
+      <div class="acka__table-wrap">
+        <table class="acka__table">
+          <caption class="opp-visually-hidden">
+            Published versions, newest first
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col" class="acka__num">Version</th>
+              <th scope="col">Title</th>
+              <th scope="col">Published</th>
+              <th scope="col" class="acka__num">Accepted by</th>
+              <th scope="col">Text fingerprint</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (v of versions(); track v.version) {
+              <tr>
+                <th scope="row" class="acka__num">
+                  {{ v.version }}
+                  @if (v.isCurrent) {
+                    <opp-badge tone="success">Current</opp-badge>
+                  }
+                </th>
+                <td>{{ v.title }}</td>
+                <td>{{ date(v.publishedAt) }} by {{ name(v.publishedBy) }}</td>
+                <td class="acka__num">{{ v.acceptedCount }}</td>
+                <td>
+                  <span class="acka__hash" [title]="v.textSha256">{{ short(v.textSha256) }}…</span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+}

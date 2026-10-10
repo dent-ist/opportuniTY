@@ -286,6 +286,14 @@ public sealed class ImportApiTests(MigrationPostgresFixture postgres)
         public Task<DocumentAccessCheck> GetDocumentAccessCheckAsync(
             SecurityPrincipal principal, Guid workspaceId, Permission permission, CancellationToken cancellationToken = default) =>
             inner.GetDocumentAccessCheckAsync(principal, workspaceId, permission, cancellationToken);
+
+        public Task<AcknowledgmentGateState> GetAcknowledgmentGateAsync(
+            SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default) =>
+            inner.GetAcknowledgmentGateAsync(principal, workspaceId, cancellationToken);
+
+        public Task<AuthorizationDecision> AuthorizeAcknowledgmentAsync(
+            SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default) =>
+            inner.AuthorizeAcknowledgmentAsync(principal, workspaceId, cancellationToken);
     }
 
     private static async Task<HttpResponseMessage> PostAsync(HttpClient client, Guid ws, byte[] dat, object request, string key, bool requestAsFile = false)

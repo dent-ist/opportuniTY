@@ -45,6 +45,9 @@ public static class AuthorizationReasons
     public const string DocumentNotFound = "DocumentNotFound";
     public const string RestrictionClass = "RestrictionClass";
     public const string EthicalWall = "EthicalWall";
+
+    /// <summary>The member has not accepted the workspace's current acknowledgment text (E20-T03).</summary>
+    public const string AcknowledgmentRequired = "AcknowledgmentRequired";
 }
 
 /// <summary>One decision. <see cref="BreakGlass"/> is true when the allow relied on an active activation (D6.4).</summary>
@@ -155,4 +158,18 @@ public interface IAuthorizationService
     /// </summary>
     Task<DocumentAccessCheck> GetDocumentAccessCheckAsync(
         SecurityPrincipal principal, Guid workspaceId, Permission permission, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The acknowledgment gate (E20-T03) from the principal-side state already read in this scope: the workspace's current
+    /// acknowledgment version and whether the principal accepted it. Writes no audit event.
+    /// </summary>
+    Task<AcknowledgmentGateState> GetAcknowledgmentGateAsync(
+        SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// PEP-1's acknowledgment step (E20-T03): Allow when the workspace requires no acknowledgment or the principal accepted
+    /// its current version, otherwise Deny with <see cref="AuthorizationReasons.AcknowledgmentRequired"/> (audited).
+    /// </summary>
+    Task<AuthorizationDecision> AuthorizeAcknowledgmentAsync(
+        SecurityPrincipal principal, Guid workspaceId, CancellationToken cancellationToken = default);
 }
