@@ -74,6 +74,8 @@ builder.Services.AddPrivilegeConflictContentEndpoints();
 builder.Services.AddSearchIndexEndpoints();
 builder.Services.AddCodingHistoryEndpoints();
 builder.Services.AddReviewBatchEndpoints();
+builder.Services.AddPrivilegeLogEndpoints();
+builder.Services.AddPrivilegeLogContentEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();

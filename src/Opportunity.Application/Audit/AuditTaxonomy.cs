@@ -188,6 +188,18 @@ public static class AuditTaxonomy
 
         /// <summary>The privilege conflict report was downloaded as CSV through the gateway (E13-T02).</summary>
         public const string ConflictReportExported = "ConflictReportExported";
+
+        /// <summary>A privilege log version was generated, or a generation found the latest version unchanged (E13-T03).</summary>
+        public const string LogGenerated = "LogGenerated";
+
+        /// <summary>A privilege log version was downloaded (CSV or XLSX) through the gateway (E13-T03).</summary>
+        public const string LogDownloaded = "LogDownloaded";
+
+        public const string LogTemplateCreated = "LogTemplate.Created";
+        public const string LogTemplateModified = "LogTemplate.Modified";
+
+        public const string LogResourceType = "PrivilegeLog";
+        public const string LogTemplateResourceType = "PrivilegeLogTemplate";
     }
 
     /// <summary>Productions (E12-T02/T03, ADR-013 §5, Q-54).</summary>
@@ -401,7 +413,8 @@ public static class AuditTaxonomy
             "HighlightSet.Created", "HighlightSet.Modified", "HighlightSet.Deleted"),
         .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled",
             "ReviewBatchSet.Created", "ReviewBatch.CheckedOut", "ReviewBatch.CheckedIn", "ReviewBatch.Assigned"),
-        .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded", "ConflictReportExported"),
+        .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded", "ConflictReportExported", "LogDownloaded",
+            "LogTemplate.Created", "LogTemplate.Modified"),
         .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",

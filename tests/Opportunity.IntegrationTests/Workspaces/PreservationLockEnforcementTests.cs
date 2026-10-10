@@ -27,7 +27,8 @@ public sealed class PreservationLockEnforcementTests(MigrationPostgresFixture po
     public static readonly string[] Guarded =
     [
         "bates_range", "coding_event", "document", "document_overlay_event", "document_set_snapshot", "document_set_snapshot_page",
-        "export", "export_document", "export_file", "import_batch", "page", "page_image", "page_set", "production", "redaction_revision",
+        "export", "export_document", "export_file", "import_batch", "page", "page_image", "page_set", "privilege_log", "privilege_log_entry", "production",
+        "redaction_revision",
         "review_batch", "review_batch_checkout", "review_batch_document", "review_batch_set", "search_term_report", "stored_object",
         "workspace_data_key",
     ];
@@ -85,6 +86,7 @@ public sealed class PreservationLockEnforcementTests(MigrationPostgresFixture po
         ["grid_layout"] = Configuration,
         ["highlight_set"] = Configuration,
         ["highlight_set_selection"] = Configuration,
+        ["privilege_log_template"] = Configuration,
         ["query_history"] = Configuration,
         ["job"] = Operational,
         ["job_chunk"] = Operational,

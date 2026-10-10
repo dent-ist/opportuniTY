@@ -1048,6 +1048,18 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
          ORDER BY c.choice_id LIMIT 1
         """;
 
+    /// <summary>
+    /// A query of (document_id, system_key) for every document of workspace <c>@ws</c> whose built-in choice of field
+    /// <c>@status</c> is set, for set-based readers of privilege calls such as the privilege log (E13-T03).
+    /// </summary>
+    internal const string BuiltInChoiceKeysSql =
+        """
+        SELECT cc.document_id, ch.system_key
+          FROM opportunity.document_coding_choice cc
+          JOIN opportunity.choice ch ON ch.workspace_id = cc.workspace_id AND ch.field_id = cc.field_id AND ch.choice_id = cc.choice_id
+         WHERE cc.workspace_id = @ws AND cc.field_id = @status AND ch.system_key IS NOT NULL
+        """;
+
     internal static async Task<bool> AnyProductionMemberWithheldAsync(WorkspaceTransaction tx, Guid productionId, CancellationToken cancellationToken)
     {
         await using var command = tx.Command(
