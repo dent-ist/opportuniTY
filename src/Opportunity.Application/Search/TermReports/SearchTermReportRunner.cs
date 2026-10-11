@@ -192,7 +192,7 @@ public sealed class SearchTermReportRunner(
             }
 
             var reading = await freshness.ReadAsync(ws, cancellationToken).ConfigureAwait(false);
-            await store.MarkRunningAsync(ws, report.ReportId, job.JobId, reading.IndexedThroughGeneration, reading.IsCurrent, time.GetUtcNow(), cancellationToken)
+            await store.MarkRunningAsync(ws, report.ReportId, job.JobId, SearchTermReportIndexState.From(reading), time.GetUtcNow(), cancellationToken)
                 .ConfigureAwait(false);
             var plans = DocumentSetSnapshotService.PlanChunks(snapshot, options.DocumentsPerChunk)
                 .Select(m => new ChunkPlan(m, checked((int)m.KnownCount!.Value)))
@@ -421,6 +421,8 @@ public sealed class SearchTermReportRunner(
                 ["documentsWithoutHits"] = Invariant(report.DocumentsWithoutHits ?? 0),
                 ["excludedNoAccess"] = Invariant(report.ExcludedNoAccess ?? 0),
                 ["indexCurrent"] = report.IndexCurrent == true ? "true" : "false",
+                ["indexPendingChanges"] = report.IndexPendingChanges is { } pending ? Invariant(pending) : null,
+                ["indexLagMs"] = report.IndexLag is { } lag ? Invariant((long)lag.TotalMilliseconds) : null,
             }.Where(d => d.Value is not null).ToDictionary(),
             RestrictedDetails = new Dictionary<string, string?> { ["terms"] = restricted.ToString() },
         };

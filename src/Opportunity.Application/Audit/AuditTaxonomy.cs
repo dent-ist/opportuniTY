@@ -394,6 +394,9 @@ public static class AuditTaxonomy
     {
         public const string Category = "Integrity";
 
+        /// <summary>A stored object's bytes no longer match the SHA-256 registered when it was written (ADR-011 §2.5).</summary>
+        public const string HashMismatch = "HashMismatch";
+
         /// <summary>A worker rejected a message whose envelope disagrees with PostgreSQL (ADR-013 §5, ADR-015 D9.3).</summary>
         public const string EnvelopeMismatch = "EnvelopeMismatch";
 
@@ -443,6 +446,12 @@ public static class AuditTaxonomy
 
         /// <summary><c>audit verify</c> checked the chain (Outcome Failure when it found tampering; E14-T03).</summary>
         public const string Verified = "Verified";
+
+        /// <summary>
+        /// A defensibility report or report pack was generated (E14-T05): the report, its format, its as-of point and the
+        /// fingerprint (SHA-256) of its as-of content.
+        /// </summary>
+        public const string DefensibilityReportGenerated = "DefensibilityReportGenerated";
     }
 
     /// <summary>Every allowed (Category, Action) pair.</summary>
@@ -477,7 +486,7 @@ public static class AuditTaxonomy
             "HoldReleaseCancelled", "DeletionBlocked"),
         .. Expand("Admin", "ConfigChanged", "UserProvisioned", "UserDeactivated", "KeyCreated", "KeyRotated", "KeyDestroyed",
             "SecretRotated"),
-        .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged", "ExportDownloaded"),
+        .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged", "ExportDownloaded", "DefensibilityReportGenerated"),
         .. Expand("Job", "Created", "Cancelled", "Failed", "CompletedWithErrors", "Replayed"),
         .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict",
             "MessageRejected"),

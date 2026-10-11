@@ -14,6 +14,8 @@ export interface SearchTermReportResource {
   executedAt?: any;
   executedBy: SearchTermReportUser;
   indexCurrent?: boolean | null;
+  indexLagSeconds?: number | string | null;
+  indexPendingChanges?: number | string | null;
   job: JobResource;
   jobId: string;
   name: string;

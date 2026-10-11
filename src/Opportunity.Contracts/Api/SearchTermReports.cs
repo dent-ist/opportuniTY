@@ -106,6 +106,15 @@ public sealed record SearchTermReportResource
     /// </summary>
     public bool? IndexCurrent { get; init; }
 
+    /// <summary>
+    /// Index lag when the run started (E14-T05): committed changes search did not reflect yet. Null until the run has
+    /// started, and for runs recorded before the lag was kept.
+    /// </summary>
+    public long? IndexPendingChanges { get; init; }
+
+    /// <summary>Index lag when the run started: age in seconds of the oldest change search did not reflect yet (0 when current).</summary>
+    public double? IndexLagSeconds { get; init; }
+
     /// <summary>Who ran the current run (the creator, or whoever reran it) and when it started.</summary>
     public required SearchTermReportUser ExecutedBy { get; init; }
 

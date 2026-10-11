@@ -3,7 +3,9 @@
 Evidence for counsel, auditors and the operator's own control reviews (E14-T06, #120; legal finding 12, SEC-13). Every
 report is generated on request from the live database, under the caller's permissions, and **its generation is
 audited** before anything is returned. How the reports support SOC 2 and ISO 27001 controls is in
-[control-mapping.md](control-mapping.md).
+[control-mapping.md](control-mapping.md). The defensibility reports (review summary, production history, hit reports,
+chain of custody) and the report pack that bundles them with these reports are in
+[defensibility-reports.md](defensibility-reports.md).
 
 | Report | API (`/api/v1/workspaces/{ws}`) | Permission | Audit event |
 |---|---|---|---|

@@ -25,13 +25,14 @@ namespace Opportunity.Data.Search;
 /// </summary>
 public sealed class SearchTermReportStore(NpgsqlDataSource dataSource) : ISearchTermReportStore
 {
-    private const string Columns =
+    internal const string Columns =
         """
         r.workspace_id, r.report_id, r.name, r.scope_kind, r.scope_id, r.scope_name, r.status, r.status_reason, r.job_id, r.run_count,
         r.snapshot_id, r.search_generation, r.index_current, r.documents_in_scope, r.documents_with_hits, r.documents_with_hits_family,
         r.documents_without_hits, r.excluded_no_access, r.created_by, r.created_by_display, r.created_at, r.executed_by,
         r.executed_by_display, r.executed_by_groups, r.executed_at, r.completed_at,
-        (SELECT count(*)::int FROM opportunity.search_term_report_term t WHERE t.workspace_id = r.workspace_id AND t.report_id = r.report_id)
+        (SELECT count(*)::int FROM opportunity.search_term_report_term t WHERE t.workspace_id = r.workspace_id AND t.report_id = r.report_id),
+        r.index_pending_changes, r.index_lag_ms
         """;
 
     public async Task<SearchTermReportCreation> CreateAsync(NewSearchTermReport report, CancellationToken cancellationToken = default)
@@ -136,17 +137,7 @@ public sealed class SearchTermReportStore(NpgsqlDataSource dataSource) : ISearch
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                terms.Add(new SearchTermRecord(
-                    reader.GetInt16(0),
-                    reader.GetGuid(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.IsDBNull(4) ? null : new SearchTermError(reader.GetString(4), reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
-                        reader.IsDBNull(6) ? null : reader.GetInt32(6)),
-                    Long(reader, 7),
-                    Long(reader, 8),
-                    Long(reader, 9),
-                    Long(reader, 10)));
+                terms.Add(ReadTerm(reader, 0));
             }
         }
 
@@ -225,7 +216,7 @@ public sealed class SearchTermReportStore(NpgsqlDataSource dataSource) : ISearch
             """
             UPDATE opportunity.search_term_report
                SET status = 'Queued', status_reason = NULL, job_id = @job, run_count = run_count + 1, search_generation = NULL,
-                   index_current = NULL, documents_in_scope = NULL, documents_with_hits = NULL, documents_with_hits_family = NULL,
+                   index_current = NULL, index_pending_changes = NULL, index_lag_ms = NULL, documents_in_scope = NULL, documents_with_hits = NULL, documents_with_hits_family = NULL,
                    documents_without_hits = NULL, excluded_no_access = NULL, executed_by = @by, executed_by_display = @display,
                    executed_by_groups = @groups, executed_at = NULL, completed_at = NULL, claimed_by = NULL, claimed_until = NULL
              WHERE workspace_id = @ws AND report_id = @id;
@@ -355,22 +346,28 @@ public sealed class SearchTermReportStore(NpgsqlDataSource dataSource) : ISearch
             }, cancellationToken);
 
     public Task MarkRunningAsync(
-        Guid workspaceId, Guid reportId, Guid jobId, long searchGeneration, bool indexCurrent, DateTimeOffset executedAt,
-        CancellationToken cancellationToken = default) =>
-        ExecuteAsync(workspaceId,
+        Guid workspaceId, Guid reportId, Guid jobId, SearchTermReportIndexState index, DateTimeOffset executedAt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        return ExecuteAsync(workspaceId,
             """
             UPDATE opportunity.search_term_report
-               SET status = 'Running', search_generation = @generation, index_current = @current, executed_at = @at
+               SET status = 'Running', search_generation = @generation, index_current = @current, index_pending_changes = @pending,
+                   index_lag_ms = @lag, executed_at = @at
              WHERE workspace_id = @ws AND report_id = @id AND job_id = @job AND status IN ('Queued', 'Running')
             """,
             c =>
             {
                 c.Parameters.AddWithValue("id", reportId);
                 c.Parameters.AddWithValue("job", jobId);
-                c.Parameters.AddWithValue("generation", searchGeneration);
-                c.Parameters.AddWithValue("current", indexCurrent);
+                c.Parameters.AddWithValue("generation", index.SearchGeneration);
+                c.Parameters.AddWithValue("current", index.IndexCurrent);
+                c.Parameters.AddWithValue("pending", index.PendingChanges);
+                c.Parameters.AddWithValue("lag", (long)index.Lag.TotalMilliseconds);
                 c.Parameters.AddWithValue("at", executedAt);
             }, cancellationToken);
+    }
 
     public Task SetTermErrorAsync(Guid workspaceId, Guid reportId, int termNo, SearchTermError termError, CancellationToken cancellationToken = default)
     {
@@ -576,7 +573,7 @@ public sealed class SearchTermReportStore(NpgsqlDataSource dataSource) : ISearch
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? Read(reader) : null;
     }
 
-    private static SearchTermReportRecord Read(NpgsqlDataReader reader) => new()
+    internal static SearchTermReportRecord Read(NpgsqlDataReader reader) => new()
     {
         WorkspaceId = reader.GetGuid(0),
         ReportId = reader.GetGuid(1),
@@ -605,7 +602,24 @@ public sealed class SearchTermReportStore(NpgsqlDataSource dataSource) : ISearch
         ExecutedAt = reader.IsDBNull(24) ? null : reader.GetFieldValue<DateTimeOffset>(24),
         CompletedAt = reader.IsDBNull(25) ? null : reader.GetFieldValue<DateTimeOffset>(25),
         TermCount = reader.GetInt32(26),
+        IndexPendingChanges = Long(reader, 27),
+        IndexLag = reader.IsDBNull(28) ? null : TimeSpan.FromMilliseconds(reader.GetInt64(28)),
     };
+
+    /// <summary>The term columns of <c>GetTermsAsync</c> (term_no … unique_hits_family) starting at <paramref name="first"/>.</summary>
+    internal static SearchTermRecord ReadTerm(NpgsqlDataReader reader, int first) => new(
+        reader.GetInt16(first),
+        reader.GetGuid(first + 1),
+        reader.GetString(first + 2),
+        reader.GetString(first + 3),
+        reader.IsDBNull(first + 4)
+            ? null
+            : new SearchTermError(reader.GetString(first + 4), reader.IsDBNull(first + 5) ? string.Empty : reader.GetString(first + 5),
+                reader.IsDBNull(first + 6) ? null : reader.GetInt32(first + 6)),
+        Long(reader, first + 7),
+        Long(reader, first + 8),
+        Long(reader, first + 9),
+        Long(reader, first + 10));
 
     private static long? Long(NpgsqlDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetInt64(ordinal);
 

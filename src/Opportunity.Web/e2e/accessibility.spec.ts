@@ -58,6 +58,8 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/acknowledgment',
   // Compliance reports (E14-T06); the generated reports are checked in compliance.spec.ts.
   '/w/ws-1/admin/compliance',
+  // Defensibility reports (E14-T05); the generated reports are checked in defensibility.spec.ts.
+  '/w/ws-1/admin/defensibility',
   // A requester sees only their own deletions (none yet) (E20-T02).
   '/workspace-deletions',
 ];

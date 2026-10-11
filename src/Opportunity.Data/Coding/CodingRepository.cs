@@ -8,6 +8,7 @@ using NpgsqlTypes;
 
 using Opportunity.Application.Audit;
 using Opportunity.Application.Coding;
+using Opportunity.Application.Defensibility;
 using Opportunity.Application.Import;
 using Opportunity.Application.Jobs;
 using Opportunity.Application.ReviewBatches;
@@ -768,6 +769,122 @@ public sealed class CodingRepository(NpgsqlDataSource dataSource, IRestrictionCl
         }
 
         return result.ToDictionary(r => r.Key, r => (IReadOnlyDictionary<int, FieldCodingState>)r.Value);
+    }
+
+    /// <summary>
+    /// E14-T05 review population and coding by reviewer and UTC day, from coding events at or before <paramref name="asOf"/>
+    /// (append-only, so the same point gives the same summary); the population is a snapshot's members or every document
+    /// the workspace held at the point.
+    /// </summary>
+    public async Task<ReviewSummaryData> ReadReviewSummaryAsync(
+        Guid workspaceId, DateTimeOffset asOf, Guid? snapshotId, int maxDays, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxDays, 1);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, System.Data.IsolationLevel.RepeatableRead, cancellationToken)
+            .ConfigureAwait(false);
+
+        // The population: a snapshot's members, or every document the workspace held at the point. Coding events of a
+        // document created after the point cannot be at or before it, so the workspace scope needs no join.
+        var population = snapshotId is null
+            ? "SELECT d.document_id FROM opportunity.document d WHERE d.workspace_id = @ws AND d.created_at <= @asOf"
+            : """
+              SELECT DISTINCT u.document_id
+                FROM opportunity.document_set_snapshot_page p
+               CROSS JOIN LATERAL unnest(p.document_ids) AS u(document_id)
+               WHERE p.workspace_id = @ws AND p.snapshot_id = @snapshot
+              """;
+        var scoped = snapshotId is null ? string.Empty : "AND e.document_id IN (SELECT document_id FROM population)";
+
+        ReviewPopulation counts;
+        await using (var command = tx.Command(
+            $"""
+            WITH population AS ({population}),
+            coded AS (
+                SELECT e.document_id,
+                       bool_or(e.event_kind = 1 AND e.actor_type IN (1, 2)) AS person,
+                       bool_or(e.event_kind = 1 AND e.actor_type NOT IN (1, 2)) AS system,
+                       count(*) FILTER (WHERE e.event_kind = 2) AS skips
+                  FROM opportunity.coding_event e
+                 WHERE e.workspace_id = @ws AND e.occurred_at <= @asOf {scoped}
+                 GROUP BY e.document_id)
+            SELECT (SELECT count(*) FROM population),
+                   count(*) FILTER (WHERE c.person),
+                   count(*) FILTER (WHERE c.system AND NOT c.person),
+                   coalesce(sum(c.skips), 0)::bigint
+              FROM coded c
+            """))
+        {
+            BindReviewSummary(command, workspaceId, asOf, snapshotId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            var documents = reader.GetInt64(0);
+            var reviewed = reader.GetInt64(1);
+            counts = new ReviewPopulation(documents, reviewed, Math.Max(0, documents - reviewed), reader.GetInt64(2), reader.GetInt64(3));
+        }
+
+        var reviewers = new List<ReviewerCoding>();
+        await using (var command = tx.Command(
+            $"""
+            WITH population AS ({population})
+            SELECT e.actor_id, (SELECT coalesce(u.display_name, u.email) FROM opportunity.app_user u WHERE u.user_id = e.actor_id),
+                   count(DISTINCT e.document_id), count(*),
+                   count(*) FILTER (WHERE e.actor_type = 1), count(*) FILTER (WHERE e.actor_type = 2),
+                   count(*) FILTER (WHERE e.actor_type NOT IN (1, 2)), min(e.occurred_at), max(e.occurred_at)
+              FROM opportunity.coding_event e
+             WHERE e.workspace_id = @ws AND e.occurred_at <= @asOf AND e.event_kind = 1 {scoped}
+             GROUP BY e.actor_id
+             ORDER BY e.actor_id
+            """))
+        {
+            BindReviewSummary(command, workspaceId, asOf, snapshotId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                reviewers.Add(new ReviewerCoding(reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt64(2),
+                    reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5), reader.GetInt64(6), reader.GetFieldValue<DateTimeOffset>(7),
+                    reader.GetFieldValue<DateTimeOffset>(8)));
+            }
+        }
+
+        var names = reviewers.ToDictionary(r => r.ActorId, r => r.DisplayName);
+        var days = new List<ReviewerDayCoding>();
+        await using (var command = tx.Command(
+            $"""
+            WITH population AS ({population})
+            SELECT (e.occurred_at AT TIME ZONE 'UTC')::date AS day, e.actor_id, count(DISTINCT e.document_id), count(*),
+                   count(*) FILTER (WHERE e.actor_type = 1), count(*) FILTER (WHERE e.actor_type = 2),
+                   count(*) FILTER (WHERE e.actor_type NOT IN (1, 2))
+              FROM opportunity.coding_event e
+             WHERE e.workspace_id = @ws AND e.occurred_at <= @asOf AND e.event_kind = 1 {scoped}
+             GROUP BY 1, 2
+             ORDER BY 1, 2
+             LIMIT @limit
+            """))
+        {
+            BindReviewSummary(command, workspaceId, asOf, snapshotId);
+            command.Parameters.AddWithValue("limit", maxDays + 1);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var actor = reader.GetGuid(1);
+                days.Add(new ReviewerDayCoding(reader.GetFieldValue<DateOnly>(0), actor, names.GetValueOrDefault(actor), reader.GetInt64(2),
+                    reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5), reader.GetInt64(6)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        var truncated = days.Count > maxDays;
+        return new ReviewSummaryData(counts, reviewers, truncated ? days[..maxDays] : days, truncated);
+    }
+
+    private static void BindReviewSummary(NpgsqlCommand command, Guid workspaceId, DateTimeOffset asOf, Guid? snapshotId)
+    {
+        command.Parameters.AddWithValue("ws", workspaceId);
+        command.Parameters.AddWithValue("asOf", asOf);
+        if (snapshotId is { } snapshot)
+        {
+            command.Parameters.AddWithValue("snapshot", snapshot);
+        }
     }
 
     private static async Task<(CodingWriteResult Result, WritePlan Plan)> ApplyInTransactionAsync(

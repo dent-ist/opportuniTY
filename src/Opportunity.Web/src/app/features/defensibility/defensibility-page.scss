@@ -1,0 +1,177 @@
+// Admin › Defensibility Reports (E14-T05). opportuniTY tokens only.
+
+:host(.dfn-page) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 80rem;
+  padding: var(--opp-space-5);
+}
+
+.dfn__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+}
+
+.dfn__title {
+  margin: 0;
+  font-size: var(--opp-font-size-2xl);
+  line-height: var(--opp-line-height-tight);
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.dfn__lead,
+.dfn__muted {
+  margin: 0;
+  max-width: 52rem;
+  color: var(--opp-color-text-muted);
+}
+
+.dfn__muted {
+  font-size: var(--opp-font-size-sm);
+}
+
+.dfn__error {
+  margin: 0;
+  color: var(--opp-color-danger-text);
+  font-size: var(--opp-font-size-sm);
+}
+
+.dfn__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-4);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  background: var(--opp-color-surface);
+}
+
+.dfn__card-title {
+  margin: 0;
+  font-size: var(--opp-font-size-lg);
+}
+
+.dfn__subtitle {
+  margin: 0;
+  font-size: var(--opp-font-size-md);
+}
+
+.dfn__card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dfn__actions,
+.dfn__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-3);
+  align-items: flex-end;
+}
+
+.dfn__row > opp-text-field {
+  min-inline-size: 16rem;
+}
+
+.dfn__statement {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2) var(--opp-space-5);
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border-inline-start: calc(var(--opp-border-width) * 3) solid var(--opp-color-border-strong);
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+
+  dt {
+    color: var(--opp-color-text-muted);
+  }
+
+  dd {
+    margin: 0;
+  }
+}
+
+.dfn__verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+  align-items: center;
+}
+
+.dfn__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2) var(--opp-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--opp-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.dfn__list {
+  margin: 0;
+  padding-inline-start: var(--opp-space-5);
+  font-size: var(--opp-font-size-sm);
+}
+
+.dfn__table-wrap {
+  overflow-x: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+}
+
+.dfn__table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-sm);
+
+  th,
+  td {
+    padding: var(--opp-space-1) var(--opp-space-3);
+    border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+    text-align: start;
+    vertical-align: middle;
+  }
+
+  thead th {
+    background: var(--opp-color-surface-sunken);
+    color: var(--opp-color-text-muted);
+    font-weight: var(--opp-font-weight-semibold);
+  }
+
+  tbody th {
+    font-weight: var(--opp-font-weight-regular);
+  }
+
+  tbody tr:last-child > * {
+    border-block-end: none;
+  }
+
+  tbody tr:hover > * {
+    background: var(--opp-color-hover);
+  }
+
+  .dfn__num {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.dfn__mono {
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-xs);
+}
+
+.dfn__hash {
+  overflow-wrap: anywhere;
+}

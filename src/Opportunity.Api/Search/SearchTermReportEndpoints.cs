@@ -234,6 +234,8 @@ public sealed class SearchTermReportEndpoints : IApiEndpointModule
             SnapshotId = report.SnapshotId,
             SearchGeneration = report.SearchGeneration,
             IndexCurrent = report.IndexCurrent,
+            IndexPendingChanges = report.IndexPendingChanges,
+            IndexLagSeconds = report.IndexLag is { } lag ? Math.Round(lag.TotalSeconds, 3) : null,
             ExecutedBy = new SearchTermReportUser(report.ExecutedBy, report.ExecutedByDisplay),
             ExecutedAt = report.ExecutedAt,
             Totals = completed
