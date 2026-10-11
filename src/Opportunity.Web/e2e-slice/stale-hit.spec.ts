@@ -23,19 +23,25 @@ test('a hit walled off between search and open shows the no-access state and req
   const run = loadRun();
   await page.goto(documentsPath);
   await expect(page.getByRole('heading', { level: 1, name: 'Documents' })).toBeVisible();
-  // Read the hits as the response arrives: the list updates the URL right after, and Chromium then no longer has the
-  // body of a response from before that navigation.
+  // Capture the hits in the test process before the browser gets the response: the list updates the URL right after,
+  // and Chromium then no longer has the body of a response from before that navigation.
   let hits: SearchPage | undefined;
-  const searched = page.waitForResponse(async (r) => {
-    if (r.request().method() !== 'POST' || !r.url().endsWith('/searches') || !r.ok()) return false;
-    hits = (await r.json()) as SearchPage;
-    return true;
+  const searches = (url: URL) => url.pathname.endsWith('/searches');
+  await page.route(searches, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const response = await route.fetch();
+    if (response.ok()) hits = (await response.json()) as SearchPage;
+    await route.fulfill({ response });
   });
   await runSearch(page, scope(run));
-  await searched;
-  const target = hits!.items[2];
   const rows = page.getByRole('grid', { name: 'Documents' }).locator('.grid__body [role="row"]');
-  await expect(rows.nth(2)).toContainText(target.controlNumber);
+  // The last search answered is the one the grid shows.
+  await expect(async () => {
+    expect(hits).toBeDefined();
+    await expect(rows.nth(2)).toContainText(hits!.items[2].controlNumber, { timeout: 1000 });
+  }).toPass();
+  await page.unroute(searches);
+  const target = hits!.items[2];
 
   const me = (await (await page.request.get(`${baseURL}/api/v1/me`)).json()) as { userId: string };
   const adminContext = await browser.newContext({ storageState: storageState('admin') });
