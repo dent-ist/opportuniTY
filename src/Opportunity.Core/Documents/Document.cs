@@ -66,6 +66,9 @@ public sealed class Document
 
     public EmailThreadSource? EmailThreadSource { get; set; }
 
+    /// <summary>The imported folder the document is filed under (#179, Q-55); read-only, derived from its Folder Path.</summary>
+    public Guid? FolderId { get; set; }
+
     public byte[]? Md5 { get; set; }
 
     public byte[]? Sha1 { get; set; }

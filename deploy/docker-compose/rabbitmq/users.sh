@@ -8,7 +8,8 @@
 #                area's queue, a *.dlq or a *.parking queue (those stay with the operator's user, RABBITMQ_USER)
 # The API has no broker user (its work goes through the PostgreSQL outbox). Passwords come from the environment
 # (RABBITMQ_<NAME>_PASSWORD, generated into .env by `./opportunity.sh init`); rabbitmqctl takes them as arguments inside
-# the container, which already holds them in its environment. A user whose password variable is empty is skipped.
+# the container, which already holds them in its environment. A user whose password variable is empty is skipped. The
+# Full profile passes files instead (RABBITMQ_<NAME>_PASSWORD_FILE, Docker secrets, ADR-015 D10.1).
 set -eu
 
 vhost="${OPPORTUNITY_RABBITMQ_VHOST:-/}"
@@ -16,12 +17,17 @@ prefix="${OPPORTUNITY_RABBITMQ_USER_PREFIX:-opportunity-}"
 
 user() {
   # $1 name (without prefix), $2 password, $3 configure, $4 write, $5 read
-  [ -n "$2" ] || return 0
+  password="$2"
+  if [ -z "$password" ]; then
+    eval "file=\${RABBITMQ_$(echo "$1" | tr 'a-z' 'A-Z')_PASSWORD_FILE:-}"
+    [ -n "$file" ] && password="$(cat "$file")"
+  fi
+  [ -n "$password" ] || return 0
   name="$prefix$1"
   if rabbitmqctl -q list_users | cut -f1 | grep -qx "$name"; then
-    rabbitmqctl -q change_password "$name" "$2"
+    rabbitmqctl -q change_password "$name" "$password"
   else
-    rabbitmqctl -q add_user "$name" "$2"
+    rabbitmqctl -q add_user "$name" "$password"
   fi
   rabbitmqctl -q set_user_tags "$name"
   rabbitmqctl -q set_permissions -p "$vhost" "$name" "$3" "$4" "$5"

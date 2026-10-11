@@ -1,0 +1,37 @@
+# Full profile OpenSearch node (E19-T06, ADR-015 D14.2/D14.3): three cluster-manager-eligible data nodes, the security
+# plugin on, TLS on the transport and REST layers with certificates from the installation CA (`./opportunity.sh
+# --profile full init`), no demo configuration, no anonymous access. ${NODE_NAME} comes from the container environment.
+cluster.name: opportunity
+node.name: ${NODE_NAME}
+network.host: 0.0.0.0
+discovery.seed_hosts: ["opensearch-1", "opensearch-2", "opensearch-3"]
+cluster.initial_cluster_manager_nodes: ["opensearch-1", "opensearch-2", "opensearch-3"]
+# Locks the heap in RAM (needs the memlock ulimit). Set OPENSEARCH_MEMORY_LOCK=false where the kernel refuses it
+# (rootless Docker, some VMs) and disable swap on the host instead.
+bootstrap.memory_lock: ${OPENSEARCH_MEMORY_LOCK}
+
+# ADR-008 R7: wildcards inside W/n expand to at most Search:MaxWildcardExpansion terms.
+indices.query.bool.max_clause_count: 4096
+
+plugins.security.ssl.transport.pemcert_filepath: certs/node.crt
+plugins.security.ssl.transport.pemkey_filepath: certs/node.key
+plugins.security.ssl.transport.pemtrustedcas_filepath: certs/ca.crt
+plugins.security.ssl.transport.enforce_hostname_verification: true
+plugins.security.ssl.http.enabled: true
+plugins.security.ssl.http.pemcert_filepath: certs/node.crt
+plugins.security.ssl.http.pemkey_filepath: certs/node.key
+plugins.security.ssl.http.pemtrustedcas_filepath: certs/ca.crt
+plugins.security.ssl.http.enabled_protocols: ["TLSv1.3", "TLSv1.2"]
+plugins.security.ssl.transport.enabled_protocols: ["TLSv1.3", "TLSv1.2"]
+
+# Node certificates are recognised by subject; the admin certificate (securityadmin only) is held by the operator and
+# mounted into the one-shot opensearch-security service, never into a node or an application container.
+plugins.security.nodes_dn: ["CN=opensearch-*,OU=Full,O=opportuniTY"]
+plugins.security.authcz.admin_dn: ["CN=opensearch-admin,OU=Full,O=opportuniTY"]
+plugins.security.allow_default_init_securityindex: false
+plugins.security.allow_unsafe_democertificates: false
+plugins.security.enable_snapshot_restore_privilege: true
+plugins.security.check_snapshot_restore_write_privileges: true
+plugins.security.restapi.roles_enabled: []
+plugins.security.system_indices.enabled: true
+plugins.security.audit.type: noop

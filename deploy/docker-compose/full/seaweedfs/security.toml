@@ -1,0 +1,27 @@
+# Full profile SeaweedFS (E19-T06): mutual TLS on every gRPC link between masters, volume servers, the filer and the S3
+# gateways, with one certificate from the installation CA (`./opportunity.sh --profile full init`) that names every
+# SeaweedFS host. Mounted as /etc/seaweedfs/security.toml in every SeaweedFS container.
+[grpc]
+ca = "/etc/seaweedfs/tls/ca.crt"
+# Only peers holding this CN may connect (the certificate below).
+allowed_commonNames = "seaweedfs"
+
+[grpc.master]
+cert = "/etc/seaweedfs/tls/server.crt"
+key = "/etc/seaweedfs/tls/server.key"
+
+[grpc.volume]
+cert = "/etc/seaweedfs/tls/server.crt"
+key = "/etc/seaweedfs/tls/server.key"
+
+[grpc.filer]
+cert = "/etc/seaweedfs/tls/server.crt"
+key = "/etc/seaweedfs/tls/server.key"
+
+[grpc.s3]
+cert = "/etc/seaweedfs/tls/server.crt"
+key = "/etc/seaweedfs/tls/server.key"
+
+[grpc.client]
+cert = "/etc/seaweedfs/tls/server.crt"
+key = "/etc/seaweedfs/tls/server.key"

@@ -13,6 +13,7 @@ export interface ListPrivilegeLogs$Params {
   workspaceId: string;
   productionId?: string;
   snapshotId?: string;
+  savedSearchId?: string;
   limit?: number | string;
   cursor?: string;
 }
@@ -28,6 +29,7 @@ export function listPrivilegeLogs(
     rb.path('workspaceId', params.workspaceId, {});
     rb.query('productionId', params.productionId, {});
     rb.query('snapshotId', params.snapshotId, {});
+    rb.query('savedSearchId', params.savedSearchId, {});
     rb.query('limit', params.limit, {});
     rb.query('cursor', params.cursor, {});
   }

@@ -58,6 +58,7 @@ public static partial class ImportRowBuilder
         var overlays = profile.Mode != ImportMode.Append;
         var clearBlanks = overlays && overlay.BlankValuesOverwrite;
         var mergeChoices = overlays && overlay.MultiValue == OverlayMultiValue.Merge;
+        IReadOnlyList<string> folder = [];
         foreach (var cell in mapped.Cells)
         {
             var column = cell.Column.Column;
@@ -101,6 +102,11 @@ public static partial class ImportRowBuilder
                 // also stored normalized (E09-T01) and duplicate/thread identifiers are applied to the document below.
                 raw[StructuralRawPrefix + structural] = new JsonObject { ["raw"] = value.GetValue<string>(), ["batch"] = importBatchId.ToString() };
                 SetFamilySource(mapping, document, structural, value.GetValue<string>(), cell.Column.Settings.MultiValueDelimiter, supplied, issues, column);
+                if (structural == StructuralTarget.FolderPath)
+                {
+                    folder = Folder(value.GetValue<string>(), supplied, issues, column);
+                }
+
                 continue;
             }
 
@@ -189,6 +195,7 @@ public static partial class ImportRowBuilder
             ClearedMetadataKeys = cleared,
             MergedMetadataKeys = merged,
             DuplicateGroup = failed ? null : relationships.DuplicateGroup,
+            FolderPath = failed ? [] : folder,
             EmailThread = failed ? null : relationships.EmailThread,
             Issues = issues,
         };
@@ -343,6 +350,26 @@ public static partial class ImportRowBuilder
 
                 break;
         }
+    }
+
+    /// <summary>
+    /// #179: the folder a Folder Path names (Q-55). A path that cannot be a folder (too deep or long, control characters)
+    /// is a warning and the document loads without a folder; a blank one names none.
+    /// </summary>
+    private static IReadOnlyList<string> Folder(string value, HashSet<string> supplied, List<ImportRowIssue> issues, string column)
+    {
+        if (!FolderPath.TryParse(value, out var segments, out var error))
+        {
+            issues.Add(new ImportRowIssue(ImportIssueSeverity.Warning, "folder-path-ignored", Truncate($"Folder Path: {error}; the document has no folder."), column));
+            return [];
+        }
+
+        if (segments.Count > 0)
+        {
+            supplied.Add("folder_id");
+        }
+
+        return segments;
     }
 
     /// <summary>Mode A sources: BegAttach/EndAttach name control numbers, so they take the import prefix and normalization.</summary>

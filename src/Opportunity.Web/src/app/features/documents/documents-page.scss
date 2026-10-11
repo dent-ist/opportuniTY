@@ -15,7 +15,7 @@
   font-size: var(--opp-font-size-2xl);
 }
 
-// List mode: the browser pane (saved searches) beside the search panel and the list.
+// List mode: the browser pane (saved searches, folders) beside the search panel and the list.
 .documents__list {
   display: grid;
   grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
@@ -51,6 +51,18 @@
 
 .documents__browser-toggle {
   align-self: flex-start;
+}
+
+// Saved Searches above Folders; a long folder level scrolls inside its section.
+.documents__browser-section + .documents__browser-section {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-block-start: var(--opp-space-3);
+  border-block-start: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.documents__folder-path {
+  overflow-wrap: anywhere;
 }
 
 .documents__main {

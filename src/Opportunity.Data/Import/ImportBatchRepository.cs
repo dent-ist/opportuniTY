@@ -793,6 +793,9 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
             return d;
         }).ToList();
 
+        // #179: the folders the rows' Folder Paths name, before the documents that reference them.
+        await FileInFoldersAsync(tx, plan.Inserts.Concat(plan.Overlays.Select(o => o.Row)), cancellationToken).ConfigureAwait(false);
+
         // Natives and text first (E08-T04): a document references registry rows of its own (ADR-011 §2.4).
         await LinkObjectsAsync(tx, chunk, plan.Inserts.Select(r => (r, r.Document!.DocumentId)).Concat(plan.Overlays), cancellationToken).ConfigureAwait(false);
         var inserted = await DocumentRepository.InsertNewAsync(tx, documents, cancellationToken).ConfigureAwait(false);
@@ -956,6 +959,22 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
         derive.Parameters.AddWithValue("ids", documentIds);
         derive.Parameters.AddWithValue("upstream", (short)DocumentDateSource.Upstream);
         await derive.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Creates the folders the rows name (Q-55, read-only tree) and sets each row's <see cref="Document.FolderId"/>.</summary>
+    private static async Task FileInFoldersAsync(WorkspaceTransaction tx, IEnumerable<ImportRow> rows, CancellationToken cancellationToken)
+    {
+        var filed = rows.Where(r => r.FolderPath.Count > 0 && r.Document is not null).ToList();
+        if (filed.Count == 0)
+        {
+            return;
+        }
+
+        var folders = await DocumentFolderSql.EnsureAsync(tx, filed.Select(r => r.FolderPath), cancellationToken).ConfigureAwait(false);
+        foreach (var row in filed)
+        {
+            row.Document!.FolderId = folders[FolderPath.Key(FolderPath.Join(row.FolderPath))];
+        }
     }
 
     /// <summary>

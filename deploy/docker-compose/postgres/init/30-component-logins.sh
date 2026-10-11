@@ -6,12 +6,25 @@
 #                                process and so holds their union (accepted risk AR-04); split worker hosts each get a
 #                                login of their own (opportunity_worker_<type>, see docs/operations/message-trust.md)
 #   OPPORTUNITY_DB_MONITOR_USER  postgres-exporter: pg_monitor only, no access to application tables
+#   OPPORTUNITY_DB_WORKER_<TYPE>_USER  Full profile (E19-T06): one login per worker type (DISPATCHER, IMPORT, INDEX,
+#                                RENDER, EXPORT, PRODUCTION, BULKCODING), each a member of opportunity_app
+# Every password may instead come from a file, <NAME>_PASSWORD_FILE (Full passes Docker secrets, ADR-015 D10.1).
 # Idempotent, as superuser: runs on first start (after 10-opportunity.sh and 20-group-roles.sql) and again before every
 # `./opportunity.sh up`, so a password changed in .env is applied and data volumes created before this script get the
 # logins. A login whose password variable is empty is left alone.
 set -eu
 
 db="${OPPORTUNITY_DB:-opportunity}"
+
+# The value of variable $1, or else the content of the file named by $1_FILE (empty when neither is set).
+secret() {
+  eval "value=\${$1:-}"
+  eval "file=\${$1_FILE:-}"
+  if [ -z "$value" ] && [ -n "$file" ]; then
+    value="$(cat "$file")"
+  fi
+  printf '%s' "$value"
+}
 
 login() {
   # $1 role name, $2 password, $3 group role to join
@@ -26,6 +39,10 @@ SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'db', :'name') \gexec
 SQL
 }
 
-login "${OPPORTUNITY_DB_API_USER:-opportunity_api}" "${OPPORTUNITY_DB_API_PASSWORD:-}" opportunity_app
-login "${OPPORTUNITY_DB_WORKER_USER:-opportunity_worker}" "${OPPORTUNITY_DB_WORKER_PASSWORD:-}" opportunity_app
-login "${OPPORTUNITY_DB_MONITOR_USER:-opportunity_monitor}" "${OPPORTUNITY_DB_MONITOR_PASSWORD:-}" pg_monitor
+login "${OPPORTUNITY_DB_API_USER:-opportunity_api}" "$(secret OPPORTUNITY_DB_API_PASSWORD)" opportunity_app
+login "${OPPORTUNITY_DB_WORKER_USER:-opportunity_worker}" "$(secret OPPORTUNITY_DB_WORKER_PASSWORD)" opportunity_app
+login "${OPPORTUNITY_DB_MONITOR_USER:-opportunity_monitor}" "$(secret OPPORTUNITY_DB_MONITOR_PASSWORD)" pg_monitor
+for type in DISPATCHER IMPORT INDEX RENDER EXPORT PRODUCTION BULKCODING; do
+  eval "name=\${OPPORTUNITY_DB_WORKER_${type}_USER:-opportunity_worker_$(echo "$type" | tr 'A-Z' 'a-z')}"
+  login "$name" "$(secret "OPPORTUNITY_DB_WORKER_${type}_PASSWORD")" opportunity_app
+done

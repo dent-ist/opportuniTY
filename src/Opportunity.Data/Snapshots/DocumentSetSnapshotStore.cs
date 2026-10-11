@@ -582,6 +582,9 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
                       -- discarded draft lets it go.
                       AND NOT EXISTS (SELECT 1 FROM opportunity.production p
                                        WHERE p.workspace_id = @ws AND p.snapshot_id = c.snapshot_id AND p.status <> 4)
+                      -- A privilege log's frozen sets stay with the log, a preserved record (E13-T03, #182).
+                      AND NOT EXISTS (SELECT 1 FROM opportunity.privilege_log l
+                                       WHERE l.workspace_id = @ws AND (l.snapshot_id = c.snapshot_id OR l.scope_snapshot_id = c.snapshot_id))
                       -- A Batch Set's source stays for the life of the matter (E10-T05).
                       AND NOT EXISTS (SELECT 1 FROM opportunity.review_batch_set r
                                        WHERE r.workspace_id = @ws AND r.snapshot_id = c.snapshot_id)

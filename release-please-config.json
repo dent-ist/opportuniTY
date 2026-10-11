@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "b641820b79e1196f0d05bd775585f154d80cc945",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "pull-request-title-pattern": "chore: release ${version}",
+  "pull-request-header": "Merging this pull request releases opportuniTY. The release workflow then runs the N-1 → N upgrade test, publishes the signed images and creates the GitHub release with the Compose bundle (docs/releasing.md).",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "opportunity",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
+      "draft": false,
+      "prerelease": false,
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug fixes" },
+        { "type": "perf", "section": "Performance" },
+        { "type": "revert", "section": "Reverts" },
+        { "type": "deps", "section": "Dependencies" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "refactor", "section": "Code refactoring", "hidden": true },
+        { "type": "test", "section": "Tests", "hidden": true },
+        { "type": "build", "section": "Build system", "hidden": true },
+        { "type": "ci", "section": "Continuous integration", "hidden": true },
+        { "type": "chore", "section": "Miscellaneous", "hidden": true },
+        { "type": "style", "section": "Style", "hidden": true }
+      ]
+    }
+  }
+}

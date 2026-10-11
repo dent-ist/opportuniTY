@@ -51,6 +51,13 @@ internal sealed class CandidateAProjectionBuilder : IProjectionBuilder
         body["securityTags"] = new JsonArray([.. source.SecurityTags.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
             .Select(t => (JsonNode)JsonValue.Create(t))]);
 
+        if (source.FolderIds.Count > 0)
+        {
+            // #179: the document's folder, and every folder it is in counting subfolders (outermost first).
+            body[ProjectionFieldPaths.FolderId] = source.FolderIds[^1].ToString("D");
+            body[ProjectionFieldPaths.FolderIds] = new JsonArray([.. source.FolderIds.Select(f => (JsonNode)JsonValue.Create(f.ToString("D")))]);
+        }
+
         var dropped = new List<int>();
         var metadata = ParseMetadata(document.Metadata);
         var slots = new JsonObject();

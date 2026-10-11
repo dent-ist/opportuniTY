@@ -1,9 +1,11 @@
 # Docker Compose: developer profile (Lite)
 
 > **Evaluation and development only. Do not load real client data.**
-> This profile has no TLS, runs OpenSearch with its security plugin **disabled** (no authentication on port 9200),
-> has no malware scanning and no sandboxed renderers, and keeps secrets in a local `.env` file. Full is the only
-> supported production profile (decision Q-01); it arrives with `E19-T06`.
+> This profile runs one node of everything, OpenSearch with its security plugin **disabled** (no authentication on
+> port 9200), TLS only between the browser and the web container, and keeps secrets in a local `.env` file. Full is the
+> only supported production profile (decision Q-01): `./opportunity.sh --profile full …`, see
+> [Full profile](#full-profile) and [docs/operations/deployment-profiles.md](../../docs/operations/deployment-profiles.md)
+> (trust model, topology, credentials).
 
 One machine, one of everything (architecture baseline §16/§29 developer regression profile):
 
@@ -16,7 +18,7 @@ One machine, one of everything (architecture baseline §16/§29 developer regres
 | `migrator` | built from `deploy/docker/dotnet.Dockerfile` (`migrator`) | One-shot: applies migrations and bootstrap steps, then exits 0 | — |
 | `api` | `…` (`api`) | REST API; healthy = `/health/ready` (includes the schema version check) | 8081 |
 | `worker` | `…` (`worker`), `Workers__Enabled=all` | Combined worker: every worker type in one process | — |
-| `web` | `deploy/docker/web.Dockerfile` | Angular UI served by nginx | 8080 |
+| `web` | `deploy/docker/web.Dockerfile` | Angular UI served by nginx; also HTTPS with the local CA (`tls/`, created by `init`) | 8080, 8443 (HTTPS) |
 | `seaweedfs` | `chrislusf/seaweedfs:$SEAWEEDFS@…` | **Optional** (`--profile s3`): S3-compatible store | 8333 |
 | `otel-collector`, `prometheus`, `jaeger`, `loki`, `grafana`, `postgres-exporter`, `opensearch-exporter` | see [Observability profile](#observability-profile) | **Optional** (`--profile observability`): telemetry backends | 3000 (Grafana), 9090, 16686, 4317/4318 |
 
@@ -94,7 +96,7 @@ Run from this directory (`deploy/docker-compose`). `make <target>` does the same
 
 | Command | What it does |
 |---|---|
-| `./opportunity.sh init` | Creates `.env` from [`.env.example`](.env.example) with random passwords (mode 600, git-ignored). Keeps an existing `.env`, adding only secrets that are new in `.env.example` |
+| `./opportunity.sh init` | Creates `.env` from [`.env.example`](.env.example) with random passwords (mode 600, git-ignored), and the local CA and `localhost` certificate in `tls/`. Keeps an existing `.env`, adding only secrets that are new in `.env.example` |
 | `./opportunity.sh preflight` | Fails on Docker Engine < 25, Compose < 2.24, < 6 GB memory for Docker or free on a Linux host, or `vm.max_map_count` < 262144; warns below 16 GB |
 | `./opportunity.sh up` | `init` + `preflight` + build the four images + start + wait until every service is healthy (default timeout 10 min, `OPPORTUNITY_WAIT_TIMEOUT`) |
 | `./opportunity.sh seed` | Creates the demo workspace `00000000-0000-4000-8000-00000000d3e0` with demo coding fields (Responsiveness, Issues, Key Document, Reviewer Comments) in its default coding layout (idempotent) |
@@ -103,7 +105,10 @@ Run from this directory (`deploy/docker-compose`). `make <target>` does the same
 | `./opportunity.sh logs [service]` | Follows logs (`make logs SERVICE=api`) |
 | `./opportunity.sh down` | Stops and removes the containers; data volumes are kept |
 | `./opportunity.sh reset [-y]` | Removes containers **and all volumes** (database, index, queues, objects) |
+| `./opportunity.sh verify` | Store health: OpenSearch status, the queues with their consumer counts (Full adds node count, replication and RabbitMQ cluster members) |
+| `./opportunity.sh build` | Builds the four application images as `opportunity-local/opportunity-<name>:dev` (Full uses them) |
 | `./opportunity.sh compose …` | Any other Compose command with the right files, e.g. `compose config`, `compose build api` |
+| `./opportunity.sh --profile full <command>` | The same commands for the [Full profile](#full-profile) (`compose.full.yaml`, `full/`) |
 
 **Import share owned by root?** If `demo-documents` says the import share is not writable, Docker created `import-share/` before the script did (older versions of this script): run `sudo chown -R "$USER": deploy/docker-compose/import-share` once. The script now creates the folder itself before starting containers.
 
@@ -135,18 +140,18 @@ The tag must be immutable (`sha-<commit>` or a release `X.Y.Z`); `latest`/`edge`
 
 ### Ports and settings
 
-Every host port is published on `127.0.0.1` only and can be changed in `.env` (`WEB_PORT`, `API_PORT`,
+Every host port is published on `127.0.0.1` only and can be changed in `.env` (`WEB_PORT`, `WEB_TLS_PORT`, `API_PORT`,
 `POSTGRES_PORT`, `OPENSEARCH_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT`, `S3_PORT`, and for the observability
 profile `GRAFANA_PORT`, `PROMETHEUS_PORT`, `JAEGER_UI_PORT`, `OTLP_GRPC_PORT`, `OTLP_HTTP_PORT`). Do not set
 `OPPORTUNITY_BIND=0.0.0.0` on a shared network: OpenSearch has no authentication in this profile.
 
-- Web UI: <http://localhost:8080/> (sign in from here; use `localhost`, not `127.0.0.1`)
+- Web UI: <http://localhost:8080/> (sign in from here; use `localhost`, not `127.0.0.1`), or
+  <https://localhost:8443/> after importing `tls/ca.crt` into your browser and setting
+  `OPPORTUNITY_PUBLIC_ORIGIN=https://localhost:8443` in `.env` (the BFF checks the `Origin` against it)
 - API readiness: <http://127.0.0.1:8081/health/ready> (`/health/live` for liveness)
 - RabbitMQ management: <http://127.0.0.1:15672/> (user `opportunity`, password `RABBITMQ_PASSWORD` from `.env`)
 - PostgreSQL: `psql -h 127.0.0.1 -U opportunity_owner opportunity` (password `OPPORTUNITY_DB_OWNER_PASSWORD`)
 - OpenSearch: `curl http://127.0.0.1:9200/_cluster/health`
-
-The web container serves the UI only; there is no edge proxy routing `/api` in this profile yet.
 
 Local tweaks that should not be committed (extra ports, a build proxy) go in `compose.override.yaml` next to
 `compose.yaml`. It is git-ignored and the helper script includes it automatically.
@@ -220,6 +225,27 @@ To send telemetry from an API or worker started from the IDE (`dotnet run`), set
   JSON is generated by `observability/grafana/generate-dashboard.py` (`python3 generate-dashboard.py dashboards` in
   `observability/grafana`); edit the script, not the JSON.
 - `./opportunity.sh reset` also deletes the `prometheus-data`, `loki-data` and `grafana-data` volumes.
+
+## Full profile
+
+The production topology (E19-T06, Q-01): API replicas behind the web edge, one scalable container per worker type,
+three OpenSearch nodes with the security plugin, PostgreSQL primary and streaming replica, a three-node RabbitMQ
+cluster, a SeaweedFS cluster with its filer on its own PostgreSQL, TLS on every link and Docker secrets instead of
+`.env` values. Every service carries the Compose profile `full`.
+
+```bash
+./opportunity.sh --profile full init      # full/.env, full/secrets/ (one file per secret), full/tls/ (internal CA)
+# set OPPORTUNITY_HOSTNAME, OPPORTUNITY_PUBLIC_ORIGIN and OIDC_AUTHORITY in full/.env; IdP client secret into
+# full/secrets/oidc-client-secret
+./opportunity.sh --profile full up --scale worker-index=4
+./opportunity.sh --profile full verify    # OpenSearch green with 3 nodes, replication lag, queue consumers
+```
+
+It needs 16 GB at the very least (32 GB recommended) and `vm.max_map_count ≥ 262144`. Where Docker may not raise
+rlimits (rootless Docker, some VMs), set `OPENSEARCH_MEMORY_LOCK=false` in `full/.env` and reset the nodes' `ulimits`
+in a git-ignored `compose.full.override.yaml` (`services: { opensearch-1: { ulimits: !reset {} }, … }`), which the
+helper picks up; the host then needs at least 65535 open files per process for OpenSearch's bootstrap checks. Details, the credential matrix, rotation and
+the known gaps: [docs/operations/deployment-profiles.md](../../docs/operations/deployment-profiles.md).
 
 ## Job operations
 

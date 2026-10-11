@@ -6,14 +6,19 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Opportunity.Api.Conventions;
 using Opportunity.Application.Fields;
 using Opportunity.Application.PrivilegeLogs;
+using Opportunity.Application.Search;
+using Opportunity.Application.Snapshots;
 using Opportunity.Contracts.Api;
+using Opportunity.Contracts.Search;
 using Opportunity.Core.Security;
+using Opportunity.Core.Snapshots;
 using Opportunity.Data.Exports;
 using Opportunity.Data.Fields;
 using Opportunity.Data.PrivilegeLogs;
 using Opportunity.Data.Productions;
 using Opportunity.Data.Snapshots;
 using Opportunity.Production.PrivilegeLogs;
+using Opportunity.Security.Authentication;
 using Opportunity.Security.Authorization;
 
 namespace Opportunity.Api.Productions;
@@ -21,8 +26,9 @@ namespace Opportunity.Api.Productions;
 /// <summary>
 /// Privilege logs (E13-T03) under <c>/api/v1/workspaces/{workspaceId}</c>, all with <c>PrivilegeLog.Generate</c>:
 /// column templates (<c>…/privilege-log-templates</c>, If-Match on replace, audited), generation
-/// (<c>POST …/privilege-logs</c>: a new version, or the latest one when nothing changed; audited
-/// <c>Privilege.LogGenerated</c>), versions and their rows. The CSV and XLSX files are protected-content endpoints
+/// (<c>POST …/privilege-logs</c> from a production, a frozen set or a saved search: a new version, or the latest one when
+/// nothing changed; audited <c>Privilege.LogGenerated</c>), versions, their rows and what changed since the previous
+/// version (<c>…/changes</c>, #182). The CSV and XLSX files are protected-content endpoints
 /// (<see cref="Content.PrivilegeLogContentEndpoints"/>). A version listing a document or reading a field the caller may
 /// not see answers like a missing one (Q-52).
 /// </summary>
@@ -86,12 +92,14 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
         ws.MapPost(LogsPath, GenerateAsync)
             .WithName("GeneratePrivilegeLog")
             .WithTags(Tag)
-            .WithSummary("Generate a privilege log from a finalized production or a frozen set: 201 with a new version, or 200 with the unchanged latest one.")
+            .WithSummary("Generate a privilege log from a finalized production, a frozen set or a saved search: 201 with a new version, or 200 with the unchanged latest one.")
             .WithDescription(
                 "Lists every document withheld or redacted for privilege exactly once: production members produced as a placeholder and coded " +
                 "Withhold (their Bates is their Priv ID), members produced with redactions (privilege reasons or coded Redact; privacy-only ones " +
                 "only when the template includes them) and documents coded Withhold that were not produced (members' families and the optional " +
-                "review set snapshotId). A frozen-set log lists members coded Withhold or Redact. Documents produced in full never appear; " +
+                "review set snapshotId). A frozen-set log lists members coded Withhold or Redact; a saved-search log (savedSearchId alone) " +
+                "freezes the saved search as you see it now (Search.Execute) and lists the same, and its versions form one log whatever " +
+                "was frozen each time. Documents produced in full never appear; " +
                 "documents you may not see are neither listed nor counted. Recorded exclusion rules are written into the metadata with their " +
                 "counts. Needs Production.Create for a production. At most 50,000 documents per log.")
             .RequirePermission(Permission.PrivilegeLogGenerate)
@@ -106,7 +114,7 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
         ws.MapGet(LogsPath, ListAsync)
             .WithName("ListPrivilegeLogs")
             .WithTags(Tag)
-            .WithSummary("Privilege log versions newest first, optionally of one production or frozen set.")
+            .WithSummary("Privilege log versions newest first, optionally of one production, frozen set or saved search.")
             .RequirePermission(Permission.PrivilegeLogGenerate)
             .Produces<CursorPage<PrivilegeLogResource>>()
             .ProducesValidationProblem()
@@ -128,6 +136,20 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
             .WithSummary("The rows of a privilege log version in log order, their cells in column order.")
             .RequirePermission(Permission.PrivilegeLogGenerate)
             .Produces<CursorPage<PrivilegeLogEntryResource>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        ws.MapGet(LogsPath + "/{logId}/changes", ChangesAsync)
+            .WithName("GetPrivilegeLogChanges")
+            .WithTags(Tag)
+            .WithSummary("What changed in a privilege log version since the previous version (or the version `against`): added, removed and changed entries.")
+            .WithDescription(
+                "Entries are matched by document and their cells compared by column header; a changed entry names each changed cell with " +
+                "its value before and after. Added and changed entries come in log order, then removed ones. Without an earlier version " +
+                "you may read, previousLogId is null and nothing is listed. Pages with cursor and limit.")
+            .RequirePermission(Permission.PrivilegeLogGenerate)
+            .Produces<PrivilegeLogChangesResource>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -218,10 +240,31 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
             return Problems.NotFound();
         }
 
-        var outcome = await service.GenerateAsync(access.Principal, access.WorkspaceId, request, cancellationToken).ConfigureAwait(false);
+        PrivilegeLogSavedSearch? savedSearch = null;
+        if (request?.SavedSearchId is { } savedSearchId)
+        {
+            if (request.ProductionId is not null || request.SnapshotId is not null)
+            {
+                return Problems.Validation(new Dictionary<string, string[]>
+                {
+                    ["savedSearchId"] = ["Give a production, a frozen set or a saved search, not several."],
+                });
+            }
+
+            var frozen = await FreezeSavedSearchAsync(context, access.Principal, access.WorkspaceId, savedSearchId, cancellationToken).ConfigureAwait(false);
+            if (frozen.Problem is { } problem)
+            {
+                return problem;
+            }
+
+            savedSearch = frozen.SavedSearch;
+            request = request with { SnapshotId = frozen.SnapshotId };
+        }
+
+        var outcome = await service.GenerateAsync(access.Principal, access.WorkspaceId, request!, savedSearch, cancellationToken).ConfigureAwait(false);
         if (outcome.Status != PrivilegeLogStatus.Ok)
         {
-            return Problem(outcome.Status, outcome.Errors, outcome.Reason, "No such production or frozen set.");
+            return Problem(outcome.Status, outcome.Errors, outcome.Reason, "No such production, frozen set or saved search.");
         }
 
         var creation = outcome.Value!;
@@ -233,7 +276,8 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
 
     internal static async Task<IResult> ListAsync(
         string workspaceId, [FromQuery(Name = "productionId")] Guid? productionId, [FromQuery(Name = "snapshotId")] Guid? snapshotId,
-        [AsParameters] PageQuery page, HttpContext context, PrivilegeLogService service, CancellationToken cancellationToken)
+        [FromQuery(Name = "savedSearchId")] Guid? savedSearchId, [AsParameters] PageQuery page, HttpContext context, PrivilegeLogService service,
+        CancellationToken cancellationToken)
     {
         _ = workspaceId;
         if (page.Validate() is { } invalid)
@@ -258,8 +302,8 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
             after = (new DateTimeOffset(ticks, TimeSpan.Zero), logId);
         }
 
-        var (items, next) = await service.ListAsync(access.Principal, access.WorkspaceId, productionId, snapshotId, after, page.EffectiveLimit, cancellationToken)
-            .ConfigureAwait(false);
+        var (items, next) = await service.ListAsync(access.Principal, access.WorkspaceId, productionId, snapshotId, savedSearchId, after, page.EffectiveLimit,
+            cancellationToken).ConfigureAwait(false);
         var nextCursor = next is { } n
             ? PageCursor.Encode(access.Principal.UserId, access.WorkspaceId, n.At.UtcTicks.ToString(CultureInfo.InvariantCulture), n.LogId.ToString("N"))
             : null;
@@ -307,6 +351,106 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
         return TypedResults.Ok(new CursorPage<PrivilegeLogEntryResource>(items, next, new TotalCount(log.EntryCount, TotalRelation.Eq)));
     }
 
+    internal static async Task<IResult> ChangesAsync(
+        string workspaceId, string logId, [FromQuery(Name = "against")] Guid? against, [AsParameters] PageQuery page, HttpContext context,
+        PrivilegeLogService service, CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (page.Validate() is { } invalid)
+        {
+            return invalid;
+        }
+
+        if (await ReadableAsync(context, logId, service, cancellationToken).ConfigureAwait(false) is not { } log)
+        {
+            return Problems.NotFound(NoLog);
+        }
+
+        var access = context.GetWorkspaceAccess()!;
+        var againstKey = against?.ToString("N") ?? "-";
+        var offset = 0;
+        if (page.Cursor is { } cursor
+            && (PageCursor.Decode(cursor, access.Principal.UserId, access.WorkspaceId, 3) is not [var id, var other, var position]
+                || id != log.LogId.ToString("N") || other != againstKey
+                || !int.TryParse(position, NumberStyles.None, CultureInfo.InvariantCulture, out offset)))
+        {
+            return PageCursor.Invalid();
+        }
+
+        var outcome = await service.CompareAsync(access.Principal, log, against, cancellationToken).ConfigureAwait(false);
+        if (outcome.Status != PrivilegeLogStatus.Ok)
+        {
+            return Problem(outcome.Status, outcome.Errors, outcome.Reason, NoLog);
+        }
+
+        var (current, previous, comparison) = outcome.Value!;
+        if (previous is null || comparison is null)
+        {
+            return TypedResults.Ok(new PrivilegeLogChangesResource(current.LogId, current.Version, null, null, 0, 0, 0, 0, [], [], [], null));
+        }
+
+        var limit = page.EffectiveLimit;
+        var items = comparison.Differences.Skip(offset).Take(limit).Select(ToChange).ToList();
+        var next = offset + items.Count < comparison.Differences.Count
+            ? PageCursor.Encode(access.Principal.UserId, access.WorkspaceId, log.LogId.ToString("N"), againstKey,
+                (offset + items.Count).ToString(CultureInfo.InvariantCulture))
+            : null;
+        return TypedResults.Ok(new PrivilegeLogChangesResource(current.LogId, current.Version, previous.LogId, previous.Version, comparison.Added,
+            comparison.Removed, comparison.Changed, comparison.Unchanged, comparison.ColumnsAdded, comparison.ColumnsRemoved, items, next));
+    }
+
+    private static PrivilegeLogEntryChange ToChange(PrivilegeLogEntryDifference difference)
+    {
+        var row = difference.Current ?? difference.Previous!;
+        var kind = difference.Current is null ? PrivilegeLogChangeKind.Removed
+            : difference.Previous is null ? PrivilegeLogChangeKind.Added
+            : PrivilegeLogChangeKind.Changed;
+        return new PrivilegeLogEntryChange(kind, row.DocumentId, difference.Current?.Ordinal, difference.Previous?.Ordinal, Treatment(row.Treatment), row.Cells,
+            [.. difference.ChangedCells.Select(c => new PrivilegeLogCellChange(c.Column, c.Before, c.After))]);
+    }
+
+    private sealed record SavedSearchFreeze(Guid SnapshotId, PrivilegeLogSavedSearch? SavedSearch, IResult? Problem);
+
+    /// <summary>
+    /// Freezes a saved search the caller can see, as they see it now, into a Report frozen set (Search.Execute; members
+    /// authorized with Document.View), as <c>POST …/snapshots</c> does. A selection too large to freeze in the request
+    /// is refused: a log holds at most <see cref="PrivilegeLogService.MaxEntries"/> documents.
+    /// </summary>
+    private static async Task<SavedSearchFreeze> FreezeSavedSearchAsync(
+        HttpContext context, Application.Authorization.SecurityPrincipal principal, Guid workspaceId, Guid savedSearchId, CancellationToken cancellationToken)
+    {
+        var services = context.RequestServices;
+        if (services.GetService<ISavedSearchQueries>() is not { } savedSearches
+            || await savedSearches.FindForRunAsync(principal, workspaceId, savedSearchId, cancellationToken).ConfigureAwait(false) is not { } saved)
+        {
+            return new SavedSearchFreeze(Guid.Empty, null, Problems.NotFound("No such saved search."));
+        }
+
+        var session = Guid.TryParse(context.User.FindFirst(OpportunityClaimTypes.SessionId)?.Value, out var sid) ? sid : (Guid?)null;
+        var snapshots = services.GetRequiredService<DocumentSetSnapshotService>();
+        var name = "Privilege log: " + saved.Name;
+        var outcome = await snapshots.CreateAsync(new SearchCaller(principal, workspaceId, session), new SnapshotCreateRequest(
+            SnapshotPurpose.Report,
+            name.Length > 200 ? name[..200] : name,
+            $"{SavedSearchQuerySyntax.FieldName}:{savedSearchId:D}",
+            Expansion: saved.Expansion), cancellationToken).ConfigureAwait(false);
+        return outcome.Status switch
+        {
+            SnapshotCreateStatus.Ready => new SavedSearchFreeze(outcome.Snapshot!.SnapshotId, new PrivilegeLogSavedSearch(saved.SavedSearchId, saved.Name), null),
+            SnapshotCreateStatus.InvalidRequest or SnapshotCreateStatus.InvalidQuery => new SavedSearchFreeze(Guid.Empty, null,
+                Problems.Validation(new Dictionary<string, string[]> { ["savedSearchId"] = ["The saved search cannot be run; open it to see why."] })),
+            SnapshotCreateStatus.Forbidden => new SavedSearchFreeze(Guid.Empty, null,
+                Problems.Create(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "You do not have permission for this operation.")),
+            SnapshotCreateStatus.Accepted or SnapshotCreateStatus.TooLarge => new SavedSearchFreeze(Guid.Empty, null,
+                Problems.Create(StatusCodes.Status422UnprocessableEntity, ProblemCodes.UnprocessableContent,
+                    $"The saved search selects more than {PrivilegeLogService.MaxEntries.ToString("N0", CultureInfo.InvariantCulture)} documents; " +
+                    "narrow it or generate the log from a frozen set.")),
+            SnapshotCreateStatus.Failed => new SavedSearchFreeze(Guid.Empty, null,
+                Problems.Create(StatusCodes.Status503ServiceUnavailable, ProblemCodes.ServiceUnavailable, "The selection changed while it was being frozen; try again.")),
+            _ => new SavedSearchFreeze(Guid.Empty, null, Problems.NotFound("No such saved search.")),
+        };
+    }
+
     /// <summary>The version named by the route when the caller may read it (Q-52), else null.</summary>
     internal static async Task<PrivilegeLogRecord?> ReadableAsync(HttpContext context, string logId, PrivilegeLogService service, CancellationToken cancellationToken)
     {
@@ -324,7 +468,7 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
         return new PrivilegeLogResource(
             log.LogId,
             log.Version,
-            log.Source == PrivilegeLogSource.Production ? PrivilegeLogSourceKind.Production : PrivilegeLogSourceKind.Snapshot,
+            PrivilegeLogService.SourceKind(log.Source),
             log.ProductionId,
             log.SnapshotId,
             log.ScopeSnapshotId,
@@ -337,7 +481,9 @@ public sealed class PrivilegeLogEndpoints : IApiEndpointModule
             ],
             PrivilegeLogFiles.DeserializeMetadata(log.Metadata),
             new ReviewerResource(log.GeneratedBy, log.GeneratedByDisplay),
-            log.GeneratedAt);
+            log.GeneratedAt,
+            log.SavedSearchId,
+            PrivilegeLogService.DescriptionColumn(log));
     }
 
     internal static PrivilegeLogTemplateResource ToResource(PrivilegeLogTemplateRecord template)

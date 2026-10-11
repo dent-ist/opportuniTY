@@ -130,7 +130,7 @@ test('runs a saved search from the Documents pane and saves the current search, 
   mock,
 }) => {
   await openPage(page, '/w/ws-1/documents');
-  const pane = page.getByRole('complementary', { name: 'Saved Searches' });
+  const pane = page.getByRole('complementary', { name: 'Browser' });
   const tree = pane.getByRole('tree', { name: 'Saved searches' });
   await tabTo(page, tree.getByRole('treeitem', { name: 'First pass' }));
   await page.keyboard.press('ArrowDown'); // Hot documents (folder)

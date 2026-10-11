@@ -33,7 +33,7 @@ public sealed class PrivilegeLogRepository(NpgsqlDataSource dataSource) : IPrivi
         """
         log_id, series_key, version, source_kind, production_id, snapshot_id, scope_snapshot_id, template_id, template_name,
         template_definition, metadata, content_sha256, csv_sha256, csv_bytes, xlsx_sha256, xlsx_bytes, entry_count, withheld_count,
-        redacted_count, excluded_count, field_ids, generated_by, generated_by_display, generated_at
+        redacted_count, excluded_count, field_ids, generated_by, generated_by_display, generated_at, saved_search_id
         """;
 
     public async Task<IReadOnlyList<PrivilegeLogTemplateRecord>> ListTemplatesAsync(Guid workspaceId, CancellationToken cancellationToken = default)
@@ -249,9 +249,10 @@ public sealed class PrivilegeLogRepository(NpgsqlDataSource dataSource) : IPrivi
             INSERT INTO opportunity.privilege_log
                 (workspace_id, log_id, series_key, version, source_kind, production_id, snapshot_id, scope_snapshot_id, template_id,
                  template_name, template_definition, metadata, content_sha256, csv_sha256, csv_bytes, xlsx_sha256, xlsx_bytes, entry_count,
-                 withheld_count, redacted_count, excluded_count, field_ids, generated_by, generated_by_display, generated_at)
+                 withheld_count, redacted_count, excluded_count, field_ids, generated_by, generated_by_display, generated_at, saved_search_id)
             VALUES (@ws, @id, @series, @version, @source, @production, @snapshot, @scope, @template, @templateName, @definition, @metadata,
-                    @content, @csv, @csvBytes, @xlsx, @xlsxBytes, @entries, @withheld, @redacted, @excluded, @fields, @by, @display, @at)
+                    @content, @csv, @csvBytes, @xlsx, @xlsxBytes, @entries, @withheld, @redacted, @excluded, @fields, @by, @display, @at,
+                    @savedSearch)
             """))
         {
             insert.Parameters.AddWithValue("ws", version.WorkspaceId);
@@ -279,6 +280,7 @@ public sealed class PrivilegeLogRepository(NpgsqlDataSource dataSource) : IPrivi
             insert.Parameters.AddWithValue("by", version.GeneratedBy);
             insert.Parameters.AddWithValue("display", version.GeneratedByDisplay);
             insert.Parameters.AddWithValue("at", version.GeneratedAt);
+            insert.Parameters.Add(new NpgsqlParameter("savedSearch", NpgsqlDbType.Uuid) { Value = (object?)version.SavedSearchId ?? DBNull.Value });
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -321,8 +323,23 @@ public sealed class PrivilegeLogRepository(NpgsqlDataSource dataSource) : IPrivi
         return list.SingleOrDefault();
     }
 
+    public async Task<PrivilegeLogRecord?> GetVersionAsync(Guid workspaceId, string seriesKey, int version, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seriesKey);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var list = await ReadLogsAsync(tx,
+            $"SELECT {LogColumns} FROM opportunity.privilege_log WHERE workspace_id = @ws AND series_key = @series AND version = @version",
+            p =>
+            {
+                p.AddWithValue("series", seriesKey);
+                p.AddWithValue("version", version);
+            }, cancellationToken).ConfigureAwait(false);
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return list.SingleOrDefault();
+    }
+
     public async Task<IReadOnlyList<PrivilegeLogRecord>> ListAsync(
-        Guid workspaceId, Guid? productionId, Guid? snapshotId, (DateTimeOffset At, Guid LogId)? after, int limit,
+        Guid workspaceId, Guid? productionId, Guid? snapshotId, Guid? savedSearchId, (DateTimeOffset At, Guid LogId)? after, int limit,
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
@@ -333,6 +350,7 @@ public sealed class PrivilegeLogRepository(NpgsqlDataSource dataSource) : IPrivi
              WHERE workspace_id = @ws
                AND (@production::uuid IS NULL OR production_id = @production)
                AND (@snapshot::uuid IS NULL OR snapshot_id = @snapshot OR scope_snapshot_id = @snapshot)
+               AND (@savedSearch::uuid IS NULL OR saved_search_id = @savedSearch)
                AND (@afterAt::timestamptz IS NULL OR (generated_at, log_id) < (@afterAt, @afterId))
              ORDER BY generated_at DESC, log_id DESC
              LIMIT @limit
@@ -341,6 +359,7 @@ public sealed class PrivilegeLogRepository(NpgsqlDataSource dataSource) : IPrivi
             {
                 p.Add(new NpgsqlParameter("production", NpgsqlDbType.Uuid) { Value = (object?)productionId ?? DBNull.Value });
                 p.Add(new NpgsqlParameter("snapshot", NpgsqlDbType.Uuid) { Value = (object?)snapshotId ?? DBNull.Value });
+                p.Add(new NpgsqlParameter("savedSearch", NpgsqlDbType.Uuid) { Value = (object?)savedSearchId ?? DBNull.Value });
                 p.Add(new NpgsqlParameter("afterAt", NpgsqlDbType.TimestampTz) { Value = after is { } a ? a.At : DBNull.Value });
                 p.Add(new NpgsqlParameter("afterId", NpgsqlDbType.Uuid) { Value = after is { } b ? b.LogId : Guid.Empty });
                 p.AddWithValue("limit", limit);
@@ -498,6 +517,7 @@ public sealed class PrivilegeLogRepository(NpgsqlDataSource dataSource) : IPrivi
                 GeneratedBy = reader.GetGuid(21),
                 GeneratedByDisplay = reader.GetString(22),
                 GeneratedAt = reader.GetFieldValue<DateTimeOffset>(23),
+                SavedSearchId = reader.IsDBNull(24) ? null : reader.GetGuid(24),
             });
         }
 

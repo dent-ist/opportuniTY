@@ -16,6 +16,7 @@ recorder copies every dead-lettered or parked message into PostgreSQL (`jobs dlq
 | [Metrics, dashboards and alerts](metrics.md) | finding the metric, dashboard panel or alert threshold for a pipeline signal |
 | [Message and worker trust](message-trust.md) | a message was rejected (`Integrity.MessageRejected`); configuring or rotating envelope signing, broker users or database logins; the Q-15 policy for jobs whose initiator lost access |
 | [Secrets, keys and envelope encryption](keys-and-secrets.md) | supplying secrets, rotating KEKs and data keys (rewrap job), backing up keys, giving a workspace its own key, crypto-shredding (`keys …` CLI) |
+| [Deployment profiles: Lite and Full](deployment-profiles.md) | choosing and running a Compose profile; the Lite trust model; the Full topology (replicas, clustered stores, TLS, Docker secrets), scaling workers, rotating its certificates and secrets, the credential matrix |
 | [Audit hash chain and `audit verify`](audit-chain.md) | proving the audit trail was not modified, deleted or reordered; exporting signed checkpoints for an exhibit; verifying an audit export offline (`audit verify-export`); sealing before an audit purge or deletion run (`audit …` CLI) |
 
 ## Tools

@@ -16,6 +16,8 @@ export interface PrivilegeLogMetadata {
   redacted: number | string;
   redactedPrivacy: number | string;
   reviewSetSnapshotId: string | null;
+  savedSearchId?: string | null;
+  savedSearchName?: string | null;
   snapshotId: string;
   source: PrivilegeLogSourceKind;
   templateId: string | null;

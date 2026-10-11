@@ -42,6 +42,11 @@ namespace Opportunity.Contracts.Search;
 /// (empty: the whole batch) narrows it, and only documents the caller may see are listed (Q-52). Not combined with a
 /// saved search, a report term or Include options.
 /// </param>
+/// <param name="Folder">
+/// #179 (Q-55): search within one imported folder, optionally with its subfolders (the Folders tree of the Documents
+/// browser). <see cref="Query"/> (empty: the whole folder) narrows it; only documents the caller may see are listed. Not
+/// combined with a saved search, a report term or a review batch. An unknown folder simply holds nothing.
+/// </param>
 public sealed record SearchRequest(
     string? Query,
     IReadOnlyList<SearchSortKey>? Sort = null,
@@ -54,7 +59,13 @@ public sealed record SearchRequest(
     Guid? TermId = null,
     SearchExpand? Expand = null,
     IReadOnlyList<string>? Fields = null,
-    Guid? ReviewBatchId = null);
+    Guid? ReviewBatchId = null,
+    SearchFolderFilter? Folder = null);
+
+/// <summary>An imported folder to search within (#179).</summary>
+/// <param name="FolderId">The folder (<c>GET …/document-folders</c>).</param>
+/// <param name="IncludeSubfolders">Also the documents of every folder below it (default true).</param>
+public sealed record SearchFolderFilter(Guid FolderId, bool? IncludeSubfolders = null);
 
 /// <summary>
 /// Which related documents to add to a document set (E09-T03): used by searches, snapshots ("frozen sets", the targets of

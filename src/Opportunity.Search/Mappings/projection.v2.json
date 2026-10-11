@@ -37,6 +37,8 @@
       "isDuplicatePrimary": {"type": "boolean"},
       "emailThreadId": {"type": "keyword"},
       "securityTags": {"type": "keyword"},
+      "folderId": {"type": "keyword"},
+      "folderIds": {"type": "keyword"},
       "fileName": {
         "type": "text",
         "analyzer": "opp_ident",

@@ -74,6 +74,10 @@ public sealed class ProjectionMappingTests
         { "nativeMissing", "boolean" },
         { "imagesIncomplete", "boolean" },
         { "textLength", "long" },
+
+        // #179 imported folders.
+        { "folderId", "keyword" },
+        { "folderIds", "keyword" },
     };
 
     [Theory]

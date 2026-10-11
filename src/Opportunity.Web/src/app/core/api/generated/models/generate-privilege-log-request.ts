@@ -5,6 +5,7 @@ import { PrivilegeLogPreset } from '../models/privilege-log-preset';
 export interface GeneratePrivilegeLogRequest {
   preset?: null | PrivilegeLogPreset;
   productionId?: string | null;
+  savedSearchId?: string | null;
   snapshotId?: string | null;
   templateId?: string | null;
 }

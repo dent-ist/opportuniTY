@@ -10,6 +10,10 @@
 # `--profile observability` (COMPOSE_PROFILES=observability) adds the OpenTelemetry Collector, Prometheus, Jaeger, Loki
 # and Grafana (ADR-017, Q-42); set OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 to make api/worker export.
 # No Redis/Valkey (architecture baseline §16, §34).
+# Lite hardening (E19-T06): every secret comes from .env (init generates them; Compose refuses to start without them),
+# every port is published on 127.0.0.1, memory limits keep the stack inside the 8 GB minimum (Q-39), and `web` also
+# serves HTTPS on WEB_TLS_PORT with a certificate from the local CA that init creates (tls/). The production profile is
+# compose.full.yaml (`./opportunity.sh --profile full ...`); trust model: docs/operations/deployment-profiles.md.
 
 name: ${COMPOSE_PROJECT_NAME:-opportunity-dev}
 
@@ -34,7 +38,7 @@ x-app-environment: &app-environment
   ObjectStorage__S3__ServiceUrl: http://seaweedfs:8333
   ObjectStorage__S3__Bucket: opportunity
   ObjectStorage__S3__AccessKey: ${S3_ACCESS_KEY:-opportunity}
-  ObjectStorage__S3__SecretKey: ${S3_SECRET_KEY:-}
+  ObjectStorage__S3__SecretKey: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (./opportunity.sh init)}
   # Envelope encryption of workspace objects with per-workspace data keys (E05-T09). The local key store generates the
   # installation KEK on first use in the `keys` volume, which api and worker share; back it up separately from the
   # objects (docs/operations/keys-and-secrets.md). Set OPPORTUNITY_OBJECT_ENCRYPTION=ProviderSse to switch it off.
@@ -95,6 +99,7 @@ services:
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     shm_size: 256m
+    mem_limit: ${POSTGRES_MEMORY:-1g}
     # TCP, not the socket: the entrypoint's temporary init server listens on the socket only, so this stays
     # unhealthy until roles and the database exist.
     healthcheck:
@@ -126,6 +131,8 @@ services:
     # the bootstrap checks that need them. Fine for development; Full (E19-T06) sets them.
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+    # Heap plus off-heap and the page cache it relies on; raise both together (OPENSEARCH_HEAP about half of this).
+    mem_limit: ${OPENSEARCH_MEMORY:-2g}
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${OPENSEARCH_PORT:-9200}:9200"
     healthcheck:
@@ -157,6 +164,8 @@ services:
       - rabbitmq-data:/var/lib/rabbitmq
       - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
       - ./rabbitmq/users.sh:/etc/opportunity/rabbitmq-users.sh:ro
+    # RabbitMQ's memory alarm (40 % of this limit) blocks publishers before the container can be killed.
+    mem_limit: 512m
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${RABBITMQ_PORT:-5672}:5672"
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
@@ -202,6 +211,7 @@ services:
       dockerfile: deploy/docker/dotnet.Dockerfile
       target: migrator
     restart: "no"
+    mem_limit: 512m
     environment:
       DOTNET_ENVIRONMENT: Development
       ConnectionStrings__Migrator: >-
@@ -216,7 +226,7 @@ services:
       ObjectStorage__S3__ServiceUrl: http://seaweedfs:8333
       ObjectStorage__S3__Bucket: opportunity
       ObjectStorage__S3__AccessKey: ${S3_ACCESS_KEY:-opportunity}
-      ObjectStorage__S3__SecretKey: ${S3_SECRET_KEY:-}
+      ObjectStorage__S3__SecretKey: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env (./opportunity.sh init)}
     depends_on:
       postgres:
         condition: service_healthy
@@ -298,6 +308,7 @@ services:
       - ${OPPORTUNITY_IMPORT_SHARE:-./import-share}:/var/lib/opportunity/import:ro
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${API_PORT:-8081}:8080"
+    mem_limit: ${API_MEMORY:-1g}
     healthcheck: *ready-healthcheck
     depends_on: *app-depends-on
 
@@ -342,6 +353,8 @@ services:
     # Landlock and its own seccomp filter on top of Docker's default seccomp profile (never run this service with
     # seccomp=unconfined) and the hardening above. Page files pass through the /tmp tmpfs, one page at a time.
     pids_limit: 1024
+    # Every worker type plus the render sandbox's child processes (each capped by its own rlimits).
+    mem_limit: ${WORKER_MEMORY:-2g}
     volumes:
       - objects:/var/lib/opportunity/objects
       - keys:/var/lib/opportunity/keys
@@ -359,10 +372,16 @@ services:
       args:
         APK_UPGRADE: ${WEB_APK_UPGRADE:-1}
     # The SPA forwards /api and /bff to the api service: one origin for the app and its BFF session (ADR-015 D4).
+    # Local TLS (E19-T06): api-proxy.conf includes /etc/nginx/tls/*.conf, which `./opportunity.sh init` generates
+    # (tls/web: a listener on 8443 with a localhost certificate from the local CA in tls/ca.crt). Without it the folder
+    # is empty and only plain HTTP on 8080 is served. To use HTTPS, set OPPORTUNITY_PUBLIC_ORIGIN=https://localhost:8443.
     volumes:
       - ./web/api-proxy.conf:/etc/nginx/api-proxy.d/api-proxy.conf:ro
+      - ./tls/web:/etc/nginx/tls:ro
     ports:
       - "${OPPORTUNITY_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+      - "${OPPORTUNITY_BIND:-127.0.0.1}:${WEB_TLS_PORT:-8443}:8443"
+    mem_limit: 128m
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 10s
@@ -519,7 +538,7 @@ services:
 configs:
   seaweedfs-s3:
     content: |
-      {"identities":[{"name":"opportunity","credentials":[{"accessKey":"${S3_ACCESS_KEY:-opportunity}","secretKey":"${S3_SECRET_KEY:-}"}],
+      {"identities":[{"name":"opportunity","credentials":[{"accessKey":"${S3_ACCESS_KEY:-opportunity}","secretKey":"${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}"}],
         "actions":["Admin","Read","List","Tagging","Write"]}]}
 
 volumes:

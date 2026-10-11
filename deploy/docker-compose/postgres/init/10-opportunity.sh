@@ -9,6 +9,11 @@
 # an existing volume: run `./opportunity.sh reset` (or ALTER ROLE ... PASSWORD).
 set -eu
 
+# Full passes the owner password as a Docker secret file (ADR-015 D10.1).
+if [ -z "${OPPORTUNITY_DB_OWNER_PASSWORD:-}" ] && [ -n "${OPPORTUNITY_DB_OWNER_PASSWORD_FILE:-}" ]; then
+  OPPORTUNITY_DB_OWNER_PASSWORD="$(cat "$OPPORTUNITY_DB_OWNER_PASSWORD_FILE")"
+fi
+
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres \
   -v db="$OPPORTUNITY_DB" \
   -v owner="$OPPORTUNITY_DB_OWNER_USER" -v owner_password="$OPPORTUNITY_DB_OWNER_PASSWORD" <<'SQL'

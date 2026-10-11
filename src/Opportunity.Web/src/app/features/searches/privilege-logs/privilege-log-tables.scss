@@ -1,0 +1,156 @@
+// Privilege log version entries and changes (#182): dense tables inside the version's detail.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+  min-width: 0;
+}
+
+.plt__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--opp-space-2);
+}
+
+.plt__subhead {
+  margin: 0;
+  font-size: var(--opp-font-size-md);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.plt__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.plt__small,
+.plt__hint {
+  display: block;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-xs);
+}
+
+.plt__notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--opp-space-2);
+  align-items: start;
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-info-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-info-bg);
+  color: var(--opp-color-info-text);
+  font-size: var(--opp-font-size-sm);
+}
+
+.plt__summary {
+  margin: 0;
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.plt__wrap {
+  max-block-size: 32rem;
+  overflow: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-sm);
+  background: var(--opp-color-surface);
+}
+
+.plt__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-sm);
+}
+
+.plt__table th,
+.plt__table td {
+  padding: var(--opp-space-1) var(--opp-cell-padding-x);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.plt__table thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--opp-color-surface-sunken);
+  font-weight: var(--opp-font-weight-semibold);
+  white-space: nowrap;
+}
+
+.plt__table tbody tr:last-child > * {
+  border-block-end: 0;
+}
+
+.plt__desc {
+  min-inline-size: 16rem;
+}
+
+.plt__text {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.plt__desc opp-badge {
+  margin-inline-start: var(--opp-space-1);
+}
+
+.plt__id {
+  font-family: var(--opp-font-family-mono);
+  white-space: nowrap;
+}
+
+.plt__row-actions {
+  white-space: nowrap;
+}
+
+.plt__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+}
+
+.plt__textarea {
+  min-block-size: 4.5rem;
+  padding: var(--opp-space-1) var(--opp-control-padding-x);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.plt__editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+.plt__history-row > td {
+  background: var(--opp-color-surface-sunken);
+}
+
+.plt__history,
+.plt__cells {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  margin: 0;
+  padding-inline-start: var(--opp-space-4);
+}
+
+.plt__before {
+  color: var(--opp-color-danger-text);
+}
+
+.plt__after {
+  color: var(--opp-color-success-text);
+  text-decoration: none;
+}

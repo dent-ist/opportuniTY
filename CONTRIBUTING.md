@@ -26,10 +26,20 @@ Thanks for helping build an open-source eDiscovery review platform.
 ## Pull requests
 
 - One issue per PR where practical; reference it with `Closes #N`.
+- The PR title is a [Conventional Commits](https://www.conventionalcommits.org/) header, e.g.
+  `feat(review): add batch check-in` or `fix(import)!: reject load files without a control number column`. PRs are
+  squash-merged, so the title drives the next version and the changelog ([releasing](docs/releasing.md)).
 - Follow the [test strategy](docs/testing/test-strategy.md): integration tests use real dependencies via
   Testcontainers, not store mocks.
 - Never commit real client documents or data. Use synthetic data from `tools/Opportunity.DataGenerator`.
 - Security issues: report privately via GitHub Security Advisories, not public issues.
+
+## Sign-off (DCO)
+
+Proposed, pending product-owner confirmation: contributions are accepted under the project's MIT license with a
+[Developer Certificate of Origin](https://developercertificate.org/) sign-off, and there is no Contributor License
+Agreement. Sign each commit with `git commit -s`, which adds `Signed-off-by: Your Name <you@example.com>`. Sign-off is
+not enforced by a check yet ([releasing](docs/releasing.md#contributions-dco-not-a-cla)).
 
 ## Legal disclaimer
 

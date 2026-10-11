@@ -18,6 +18,9 @@ public enum PrivilegeLogSource : short
 {
     Production = 1,
     Snapshot = 2,
+
+    /// <summary>A saved search, frozen anew at each generation (its frozen set is the version's snapshot).</summary>
+    SavedSearch = 3,
 }
 
 public sealed record PrivilegeLogTemplateRecord(
@@ -89,6 +92,8 @@ public sealed record NewPrivilegeLogVersion
 
     public Guid? ScopeSnapshotId { get; init; }
 
+    public Guid? SavedSearchId { get; init; }
+
     public Guid? TemplateId { get; init; }
 
     public required string TemplateName { get; init; }
@@ -143,6 +148,8 @@ public sealed record PrivilegeLogRecord
     public required Guid SnapshotId { get; init; }
 
     public Guid? ScopeSnapshotId { get; init; }
+
+    public Guid? SavedSearchId { get; init; }
 
     public Guid? TemplateId { get; init; }
 
@@ -217,10 +224,15 @@ public interface IPrivilegeLogStore
 
     Task<PrivilegeLogRecord?> GetAsync(Guid workspaceId, Guid logId, CancellationToken cancellationToken = default);
 
-    /// <summary>Versions newest first, optionally of one production or frozen set, after the (generated at, id) position.</summary>
+    /// <summary>
+    /// Versions newest first, optionally of one production, frozen set or saved search, after the (generated at, id) position.
+    /// </summary>
     Task<IReadOnlyList<PrivilegeLogRecord>> ListAsync(
-        Guid workspaceId, Guid? productionId, Guid? snapshotId, (DateTimeOffset At, Guid LogId)? after, int limit,
+        Guid workspaceId, Guid? productionId, Guid? snapshotId, Guid? savedSearchId, (DateTimeOffset At, Guid LogId)? after, int limit,
         CancellationToken cancellationToken = default);
+
+    /// <summary>The version of a series with the given number, if any.</summary>
+    Task<PrivilegeLogRecord?> GetVersionAsync(Guid workspaceId, string seriesKey, int version, CancellationToken cancellationToken = default);
 
     /// <summary>Entries after <paramref name="afterOrdinal"/> in log order.</summary>
     Task<IReadOnlyList<PrivilegeLogEntryRow>> ReadEntriesAsync(

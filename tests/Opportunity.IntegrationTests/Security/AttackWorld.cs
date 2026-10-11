@@ -88,7 +88,8 @@ internal sealed record WorkspaceResources(
     Guid PrivilegeLogTemplateId,
     Guid PrivilegeLogId,
     Guid AuditExportId,
-    Guid ListExportId)
+    Guid ListExportId,
+    Guid DocumentFolderId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -101,7 +102,7 @@ internal sealed record WorkspaceResources(
         "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -114,7 +115,7 @@ internal sealed record WorkspaceResources(
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
             WallId, SpareWallId, BreakGlassActivationId, RedactionSetId, PreservationLockId, ReviewBatchSnapshotId, FirstPassBatchSetId,
             QcBatchSetId, ReviewBatchId, ProductionVolumeId, ProductionVolumeFileId, PrivilegeLogTemplateId, PrivilegeLogId, AuditExportId,
-            ListExportId,
+            ListExportId, DocumentFolderId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -244,10 +245,10 @@ internal sealed class AttackWorld : IAsyncDisposable
 
         // An imported, indexed load file (control numbers unique to the workspace) for the search handle and the import routes.
         var dat = ImportHarness.Dat(
-            ["ControlNumber", "FileName"],
-            [$"{name}-0000001", $"{name} memo one.txt"],
-            [$"{name}-0000002", $"{name} memo two.txt"],
-            [$"{name}-0000003", $"{name} memo three.txt"]);
+            ["ControlNumber", "FileName", "FolderPath"],
+            [$"{name}-0000001", $"{name} memo one.txt", $@"\Custodian {name}\Inbox"],
+            [$"{name}-0000002", $"{name} memo two.txt", $@"\Custodian {name}\Inbox"],
+            [$"{name}-0000003", $"{name} memo three.txt", $@"\Custodian {name}"]);
         var batch = await Import.StartAsync(ws, ImportHarness.Utf8Bom(dat), name: $"{name}.dat");
         (await Import.RunAsync(batch)).Status.Should().Be(JobStatus.Completed);
         await _index.DeliverAllAsync(ws, batch.JobId);
@@ -520,7 +521,9 @@ internal sealed class AttackWorld : IAsyncDisposable
             logTemplate.GetProperty("templateId").GetGuid(),
             privilegeLog.GetProperty("log").GetProperty("logId").GetGuid(),
             auditExportId,
-            listExportId);
+            listExportId,
+            await Db.Core.ScalarAsync<Guid>(
+                "SELECT folder_id FROM opportunity.document_folder WHERE workspace_id = @ws AND parent_folder_id IS NULL", ("ws", ws)));
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>

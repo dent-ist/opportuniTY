@@ -2,41 +2,70 @@
   <div class="pl__heading-group">
     <h1 class="pl__title">Privilege Logs</h1>
     <p class="pl__muted">
-      Generate the log of documents withheld or redacted for privilege in a finalized production.
-      Each version is kept with its SHA-256 and downloads byte for byte the same every time.
-      Descriptions come from the Privilege Description field.
+      Generate the log of documents withheld or redacted for privilege in a finalized production or
+      a saved search. Each version is kept with its SHA-256 and downloads byte for byte the same
+      every time. Descriptions come from the Privilege Description field and can be edited here.
     </p>
   </div>
 </div>
 
 <section class="pl__panel" aria-labelledby="pl-generate">
   <h2 id="pl-generate">Generate</h2>
-  @if (canProduce && productions().length > 0) {
+  @if (sourceOptions.length > 0) {
     <div class="pl__options">
-      <opp-select
-        class="pl__field"
-        label="Production"
-        hint="Finalized productions only: their documents, Bates numbers and redactions are frozen."
-        [options]="productionOptions()"
-        [(value)]="production"
-      />
-      <opp-select
-        class="pl__field"
-        label="Template"
-        [options]="templateOptions()"
-        [(value)]="template"
-      />
-      <button type="button" oppButton="primary" [busy]="generating()" (click)="generate()">
-        <opp-icon name="play" />
-        Generate log
-      </button>
+      @if (sourceOptions.length > 1) {
+        <opp-select
+          class="pl__field pl__field--narrow"
+          label="Source"
+          [options]="sourceOptions"
+          [(value)]="sourceKind"
+        />
+      }
+      @if (sourceKind() === 'production') {
+        @if (productions().length > 0) {
+          <opp-select
+            class="pl__field"
+            label="Production"
+            hint="Finalized productions only: their documents, Bates numbers and redactions are frozen."
+            [options]="productionOptions()"
+            [(value)]="production"
+          />
+        }
+      } @else if (savedSearches().length > 0) {
+        <opp-select
+          class="pl__field"
+          label="Saved search"
+          hint="Run now as you see it and frozen; lists its documents coded Withhold or Redact."
+          [options]="savedSearchOptions()"
+          [(value)]="savedSearch"
+        />
+      }
+      @if (source()) {
+        <opp-select
+          class="pl__field"
+          label="Template"
+          [options]="templateOptions()"
+          [(value)]="template"
+        />
+        <button type="button" oppButton="primary" [busy]="generating()" (click)="generate()">
+          <opp-icon name="play" />
+          Generate log
+        </button>
+      }
     </div>
-    @if (templateColumns().length > 0) {
+    @if (!source()) {
+      <p class="pl__muted">
+        {{
+          sourceKind() === 'production'
+            ? 'There is no finalized production to log yet.'
+            : 'There is no saved search to log yet.'
+        }}
+      </p>
+    } @else if (templateColumns().length > 0) {
       <p class="pl__muted">Columns: {{ templateColumns().join(', ') }}</p>
     }
-  } @else if (canProduce) {
-    <p class="pl__muted">There is no finalized production to log yet.</p>
-  } @else {
+  }
+  @if (!canProduce) {
     <p class="pl__muted">
       Generating a log from a production needs permission to create productions.
     </p>
@@ -73,7 +102,7 @@
         <table class="pl__table">
           <thead>
             <tr>
-              <th scope="col">Production</th>
+              <th scope="col">Source</th>
               <th scope="col">Version</th>
               <th scope="col">Template</th>
               <th scope="col">Listed</th>
@@ -86,7 +115,10 @@
           <tbody>
             @for (v of list; track v.logId) {
               <tr [class.pl__row--selected]="v.logId === selectedLog()">
-                <td class="pl__name">{{ v.productionName ?? 'Frozen set' }}</td>
+                <td>
+                  <span class="pl__name">{{ sourceName(v) }}</span>
+                  <span class="pl__small">{{ sourceKindText(v) }}</span>
+                </td>
                 <td>{{ v.version }}</td>
                 <td>{{ v.templateName }}</td>
                 <td>
@@ -111,10 +143,7 @@
                     oppButton="ghost"
                     [attr.aria-pressed]="v.logId === selectedLog()"
                     [attr.aria-label]="
-                      'Show details of version ' +
-                      v.version +
-                      ' of ' +
-                      (v.productionName ?? 'the frozen set')
+                      'Show details of version ' + v.version + ' of ' + sourceName(v)
                     "
                     (click)="select(v)"
                   >
@@ -131,9 +160,20 @@
         <article class="pl__detail" aria-labelledby="pl-detail">
           <div class="pl__detail-head">
             <h3 id="pl-detail" class="pl__detail-title">
-              {{ s.productionName ?? 'Frozen set' }} · version {{ s.version }}
+              {{ sourceName(s) }} · version {{ s.version }}
             </h3>
             <div class="pl__actions">
+              @if (canRegenerate(s)) {
+                <button
+                  type="button"
+                  oppButton="primary"
+                  [busy]="generating()"
+                  (click)="regenerate(s)"
+                >
+                  <opp-icon name="refresh" />
+                  Generate new version
+                </button>
+              }
               <a oppButton="secondary" [href]="downloadUrl(s, 'csv')" download>
                 <opp-icon name="download" />
                 Download CSV
@@ -145,6 +185,8 @@
             </div>
           </div>
           <dl class="pl__facts">
+            <dt>Source</dt>
+            <dd>{{ sourceKindText(s) }}: {{ sourceName(s) }}</dd>
             <dt>Template</dt>
             <dd>{{ s.templateName }}</dd>
             <dt>Columns</dt>
@@ -191,6 +233,8 @@
               }
             </ul>
           }
+          <opp-privilege-log-changes [version]="s" />
+          <opp-privilege-log-entries [version]="s" [canEdit]="canCode" />
         </article>
       }
     }

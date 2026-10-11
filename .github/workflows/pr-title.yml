@@ -1,0 +1,31 @@
+# Conventional Commits pull-request titles (#26, E01-T06). Pull requests are squash-merged, so the title is the commit
+# release-please reads for the version bump and CHANGELOG.md. See docs/releasing.md#conventional-commits.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    name: Conventional Commits title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/release
+      # The title is untrusted input: passed through the environment, never interpolated into the script.
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python3 tools/release/check-conventional-title.py

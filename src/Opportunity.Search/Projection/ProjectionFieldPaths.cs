@@ -14,6 +14,12 @@ internal static class ProjectionFieldPaths
     public const string Coding = "coding";
     public const string CodingOverflow = "codingOverflow";
 
+    /// <summary>#179: the imported folder a document is filed under (keyword, folder id).</summary>
+    public const string FolderId = "folderId";
+
+    /// <summary>#179: the document's folder and all folders above it (keyword, folder ids): "with subfolders" matches here.</summary>
+    public const string FolderIds = "folderIds";
+
     /// <summary>System column fields → structural property (only fields that are searchable as such).</summary>
     public static readonly IReadOnlyDictionary<int, string> Structural = new Dictionary<int, string>
     {

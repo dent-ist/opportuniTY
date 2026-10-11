@@ -1,0 +1,96 @@
+# Full profile OpenSearch roles (E19-T06, ADR-015 D9.6/D14.3): one internal user per component, each limited to the
+# product indexes and aliases (`opp-*`, OpenSearch:IndexPrefix "opp"; change the patterns with the prefix). No runtime
+# role has cluster administration, security, snapshot or template rights; only the one-shot migrator writes templates.
+# Deviation from the D9.6 matrix, recorded in docs/operations/deployment-profiles.md: workspace placement
+# (IWorkspaceSearchPlacement.PlaceAsync, run by the API at workspace creation) and alias reindexing (index worker) create
+# indexes and move aliases, so those two roles may create indexes and manage aliases on `opp-*`.
+_meta:
+  type: "roles"
+  config_version: 2
+
+# API (BFF): search, PIT, analyze, count and the index metadata reads of the planner; workspace placement creates the
+# workspace's index or alias. No document writes.
+opportunity_api:
+  cluster_permissions:
+    - "cluster_composite_ops_ro"
+    - "cluster:monitor/health"
+    - "indices:data/read/point_in_time/*"
+    - "cluster:admin/point_in_time/*"
+    - "indices:admin/analyze"
+  index_permissions:
+    - index_patterns: ["opp-*"]
+      allowed_actions:
+        - "read"
+        - "indices:data/read/point_in_time/*"
+        - "indices:admin/analyze"
+        - "indices:admin/get"
+        - "indices:admin/aliases/get"
+        - "indices:admin/mappings/get"
+        - "indices:admin/refresh*"
+        - "indices:monitor/*"
+        - "indices:admin/create"
+        - "indices:admin/aliases"
+    # The planner's text analysis calls `_analyze` without an index (built-in analyzers only); the security plugin
+    # resolves that against every index. It returns tokens of the given text, never stored data.
+    - index_patterns: ["*"]
+      allowed_actions:
+        - "indices:admin/analyze"
+
+# Index workers (interactive and chunk index workers, alias reindex coordinator, workspace purge): write and delete
+# documents, create product indexes, move aliases, change replica/refresh settings around a reindex, delete retired
+# indexes. No cluster administration.
+opportunity_indexer:
+  cluster_permissions:
+    - "cluster_composite_ops"
+    - "cluster:monitor/health"
+    - "cluster:monitor/task/get"
+    - "indices:data/write/reindex"
+    - "indices:data/read/point_in_time/*"
+    - "cluster:admin/point_in_time/*"
+  index_permissions:
+    - index_patterns: ["opp-*"]
+      allowed_actions:
+        - "crud"
+        - "indices:data/read/point_in_time/*"
+        - "indices:admin/create"
+        - "indices:admin/delete"
+        - "indices:admin/aliases"
+        - "indices:admin/aliases/get"
+        - "indices:admin/get"
+        - "indices:admin/mapping/put"
+        - "indices:admin/mappings/get"
+        - "indices:admin/settings/update"
+        - "indices:admin/refresh*"
+        - "indices:monitor/*"
+        - "indices:data/write/reindex"
+
+# Dispatcher: the refresh-aware search watermark refreshes indexes with applied work and reads placements.
+opportunity_dispatcher:
+  cluster_permissions:
+    - "cluster_composite_ops_ro"
+    - "cluster:monitor/health"
+  index_permissions:
+    - index_patterns: ["opp-*"]
+      allowed_actions:
+        - "indices:admin/refresh*"
+        - "indices:admin/get"
+        - "indices:admin/aliases/get"
+        - "indices:monitor/*"
+
+# One-shot migrator: installs the versioned projection index templates (ADR-007 R2).
+opportunity_migrator:
+  cluster_permissions:
+    - "cluster:monitor/health"
+    - "cluster:monitor/main"
+    - "indices:admin/index_template/*"
+    - "indices:admin/template/*"
+    - "cluster:admin/component_template/*"
+
+# Health checks and opensearch-exporter: cluster, node and index statistics only, no document reads.
+opportunity_monitor:
+  cluster_permissions:
+    - "cluster_monitor"
+  index_permissions:
+    - index_patterns: ["*"]
+      allowed_actions:
+        - "indices_monitor"

@@ -22,7 +22,7 @@ public static class PrivilegeLogRules
     /// full); redacted for privilege when a reason is in the Privilege category or it is coded Redact; otherwise privacy
     /// only, listed as such when <paramref name="includePrivacyRedactions"/>.</item>
     /// <item>Not produced (a production's family member or review-set document): withheld when coded Withhold.</item>
-    /// <item>Frozen-set log: Withhold → withheld, Redact → redacted.</item>
+    /// <item>Frozen-set or saved-search log: Withhold → withheld, Redact → redacted.</item>
     /// </list>
     /// </summary>
     public static PrivilegeLogEntryTreatment? Classify(PrivilegeLogCandidate candidate, PrivilegeLogSource source, bool includePrivacyRedactions)
@@ -30,7 +30,7 @@ public static class PrivilegeLogRules
         ArgumentNullException.ThrowIfNull(candidate);
         var withhold = candidate.StatusKey == PrivilegeFields.Keys.Withhold;
         var redact = candidate.StatusKey == PrivilegeFields.Keys.Redact;
-        if (source == PrivilegeLogSource.Snapshot)
+        if (source != PrivilegeLogSource.Production)
         {
             return withhold ? PrivilegeLogEntryTreatment.Withheld : redact ? PrivilegeLogEntryTreatment.Redacted : null;
         }

@@ -39,6 +39,10 @@ export type { ListQueryHistory$Params as ListQueryHistory$Params } from './fn/se
 export { listQueryHistory as listQueryHistory } from './fn/search/list-query-history';
 export type { RecordQueryHistory$Params as RecordQueryHistory$Params } from './fn/search/record-query-history';
 export { recordQueryHistory as recordQueryHistory } from './fn/search/record-query-history';
+export type { ListDocumentFolders$Params as ListDocumentFolders$Params } from './fn/search/list-document-folders';
+export { listDocumentFolders as listDocumentFolders } from './fn/search/list-document-folders';
+export type { GetDocumentFolder$Params as GetDocumentFolder$Params } from './fn/search/get-document-folder';
+export { getDocumentFolder as getDocumentFolder } from './fn/search/get-document-folder';
 export type { GetSearchIndexStatus$Params as GetSearchIndexStatus$Params } from './fn/search/get-search-index-status';
 export { getSearchIndexStatus as getSearchIndexStatus } from './fn/search/get-search-index-status';
 export type { StartSearchReindex$Params as StartSearchReindex$Params } from './fn/search/start-search-reindex';
@@ -375,6 +379,8 @@ export type { GetPrivilegeLog$Params as GetPrivilegeLog$Params } from './fn/priv
 export { getPrivilegeLog as getPrivilegeLog } from './fn/privilege-logs/get-privilege-log';
 export type { ListPrivilegeLogEntries$Params as ListPrivilegeLogEntries$Params } from './fn/privilege-logs/list-privilege-log-entries';
 export { listPrivilegeLogEntries as listPrivilegeLogEntries } from './fn/privilege-logs/list-privilege-log-entries';
+export type { GetPrivilegeLogChanges$Params as GetPrivilegeLogChanges$Params } from './fn/privilege-logs/get-privilege-log-changes';
+export { getPrivilegeLogChanges as getPrivilegeLogChanges } from './fn/privilege-logs/get-privilege-log-changes';
 export type { DownloadPrivilegeLog$CsvCharsetUtf8$Params as DownloadPrivilegeLog$CsvCharsetUtf8$Params } from './fn/privilege-logs/download-privilege-log-csv-charset-utf-8';
 export { downloadPrivilegeLog$CsvCharsetUtf8 as downloadPrivilegeLog$CsvCharsetUtf8 } from './fn/privilege-logs/download-privilege-log-csv-charset-utf-8';
 export type { DownloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet$Params as DownloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet$Params } from './fn/privilege-logs/download-privilege-log-vnd-openxmlformats-officedocument-spreadsheetml-sheet';

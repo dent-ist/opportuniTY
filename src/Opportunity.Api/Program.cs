@@ -43,6 +43,7 @@ builder.Services.AddApiConventions();
 builder.Services.AddQueryValidation();
 builder.Services.AddSearchEndpoints();
 builder.Services.AddQueryHistoryEndpoints();
+builder.Services.AddDocumentFolderEndpoints();
 builder.Services.AddSavedSearchEndpoints();
 builder.Services.AddGridViewEndpoints();
 builder.Services.AddHighlightSetEndpoints();

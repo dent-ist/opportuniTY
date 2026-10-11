@@ -58,12 +58,18 @@ public static class PrivilegeLogOutcome
 /// <summary>A rendered log file, verified against its version's SHA-256.</summary>
 public sealed record PrivilegeLogFile(PrivilegeLogRecord Log, string Format, byte[] Content, string ContentType, string FileName);
 
+/// <summary>The saved search a log is generated from; its frozen set is the request's <c>SnapshotId</c>.</summary>
+public sealed record PrivilegeLogSavedSearch(Guid SavedSearchId, string Name);
+
+/// <summary>A version compared with an earlier one (none when <see cref="Previous"/> is null).</summary>
+public sealed record PrivilegeLogVersionComparison(PrivilegeLogRecord Current, PrivilegeLogRecord? Previous, PrivilegeLogComparison? Comparison);
+
 /// <summary>Templates with the presets resolved for the caller.</summary>
 public sealed record PrivilegeLogTemplates(IReadOnlyList<PrivilegeLogTemplateRecord> Templates, IReadOnlyList<(PrivilegeLogPreset Preset, PrivilegeLogTemplateDefinition Definition)> Presets);
 
 /// <summary>
 /// Privilege logs (E13-T03; §14; FRCP 26(b)(5)(A); Q-19, Q-20): generated, versioned artifacts tied to a finalized
-/// production (and its frozen set) or to a frozen set.
+/// production (and its frozen set), to a frozen set or to a saved search (frozen anew at each generation, #182).
 /// <list type="bullet">
 /// <item>Which documents: <see cref="PrivilegeLogRules.Classify"/> over the candidates the store reads set-based in
 /// PostgreSQL; each appears at most once (the entry table's unique key) and only documents the generator may see take
@@ -164,13 +170,24 @@ public sealed class PrivilegeLogService(
 
     // ------------------------------------------------------------------------------------------------ generation
 
+    /// <param name="savedSearch">
+    /// A saved-search log (#182): the saved search, already frozen for the caller into <c>request.SnapshotId</c>. Its
+    /// versions form one series whatever frozen set each generation used.
+    /// </param>
     public async Task<PrivilegeLogOutcome<PrivilegeLogCreation>> GenerateAsync(
-        SecurityPrincipal principal, Guid workspaceId, GeneratePrivilegeLogRequest request, CancellationToken cancellationToken = default)
+        SecurityPrincipal principal, Guid workspaceId, GeneratePrivilegeLogRequest request, PrivilegeLogSavedSearch? savedSearch = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(principal);
         if (request is null || (request.ProductionId is null && request.SnapshotId is null))
         {
-            return PrivilegeLogOutcome.Invalid<PrivilegeLogCreation>("productionId", "Name a finalized production (productionId) or a frozen set (snapshotId).");
+            return PrivilegeLogOutcome.Invalid<PrivilegeLogCreation>("productionId",
+                "Name a finalized production (productionId), a frozen set (snapshotId) or a saved search (savedSearchId).");
+        }
+
+        if (savedSearch is not null && request.ProductionId is not null)
+        {
+            return PrivilegeLogOutcome.Invalid<PrivilegeLogCreation>("savedSearchId", "Give a production, a frozen set or a saved search, not several.");
         }
 
         if (request.TemplateId is not null && request.Preset is not null)
@@ -265,7 +282,9 @@ public sealed class PrivilegeLogService(
             return PrivilegeLogOutcome.Invalid<PrivilegeLogCreation>(errors.ToDictionary(e => "template." + e.Key, e => e.Value, StringComparer.Ordinal));
         }
 
-        var source = production is null ? PrivilegeLogSource.Snapshot : PrivilegeLogSource.Production;
+        var source = production is not null ? PrivilegeLogSource.Production
+            : savedSearch is not null ? PrivilegeLogSource.SavedSearch
+            : PrivilegeLogSource.Snapshot;
         var candidates = await store.ReadCandidatesAsync(
             new PrivilegeLogCandidateQuery(workspaceId, production?.ProductionId, snapshotId, reviewSet?.SnapshotId, MaxEntries + 1), cancellationToken)
             .ConfigureAwait(false);
@@ -334,7 +353,7 @@ public sealed class PrivilegeLogService(
 
         var metadata = new PrivilegeLogMetadata(
             PrivilegeLogFiles.FormatVersion,
-            source == PrivilegeLogSource.Production ? PrivilegeLogSourceKind.Production : PrivilegeLogSourceKind.Snapshot,
+            SourceKind(source),
             production?.ProductionId,
             production?.Name,
             production?.Version,
@@ -349,16 +368,23 @@ public sealed class PrivilegeLogService(
             entries.Count(e => e.Treatment == PrivilegeLogEntryTreatment.Withheld),
             entries.Count(e => e.Treatment == PrivilegeLogEntryTreatment.Redacted),
             entries.Count(e => e.Treatment == PrivilegeLogEntryTreatment.RedactedPrivacy),
-            excludedBy.Sum());
+            excludedBy.Sum(),
+            savedSearch?.SavedSearchId,
+            savedSearch?.Name);
         var metadataJson = PrivilegeLogFiles.SerializeMetadata(metadata);
         // Render from the stored forms exactly as a download will.
         var stored = PrivilegeLogFiles.DeserializeMetadata(metadataJson);
         var csv = PrivilegeLogFiles.Csv(stored, entries.Select(e => e.Cells));
         var xlsx = PrivilegeLogFiles.Xlsx(stored, entries.Select(e => e.Cells));
-        var content = PrivilegeLogFiles.ContentSha256(metadataJson, csv);
+        // A saved search is frozen anew at each generation: its content leaves out which frozen set, so a generation that
+        // lists the same rows is the unchanged latest version.
+        var content = PrivilegeLogFiles.ContentSha256(
+            savedSearch is null ? metadataJson : PrivilegeLogFiles.SerializeMetadata(metadata with { SnapshotId = Guid.Empty }), csv);
 
         var seriesKey = string.Join('|',
-            production is null ? "snapshot:" + snapshotId.ToString("N") : "production:" + production.ProductionId.ToString("N"),
+            production is not null ? "production:" + production.ProductionId.ToString("N")
+                : savedSearch is not null ? "savedsearch:" + savedSearch.SavedSearchId.ToString("N")
+                : "snapshot:" + snapshotId.ToString("N"),
             reviewSet is null ? "-" : "review:" + reviewSet.SnapshotId.ToString("N"),
             template is null ? "preset:" + definition.Preset!.Value.ToString() : "template:" + template.TemplateId.ToString("N"));
         var audit = Event(principal, workspaceId, AuditTaxonomy.Privilege.LogGenerated) with
@@ -369,6 +395,7 @@ public sealed class PrivilegeLogService(
             {
                 ["ProductionId"] = production?.ProductionId.ToString(),
                 ["ReviewSetSnapshotId"] = reviewSet?.SnapshotId.ToString(),
+                ["SavedSearchId"] = savedSearch?.SavedSearchId.ToString(),
                 ["TemplateId"] = template?.TemplateId.ToString(),
                 ["Template"] = metadata.TemplateName,
                 ["Entries"] = Invariant(metadata.Entries),
@@ -387,6 +414,7 @@ public sealed class PrivilegeLogService(
             ProductionId = production?.ProductionId,
             SnapshotId = snapshotId,
             ScopeSnapshotId = reviewSet?.SnapshotId,
+            SavedSearchId = savedSearch?.SavedSearchId,
             TemplateId = template?.TemplateId,
             TemplateName = metadata.TemplateName,
             TemplateDefinition = PrivilegeLogTemplateRules.Serialize(definition),
@@ -420,11 +448,11 @@ public sealed class PrivilegeLogService(
 
     /// <summary>A page of versions the caller may read, newest first, and the raw position after the page when there are more.</summary>
     public async Task<(IReadOnlyList<PrivilegeLogRecord> Items, (DateTimeOffset At, Guid LogId)? Next)> ListAsync(
-        SecurityPrincipal principal, Guid workspaceId, Guid? productionId, Guid? snapshotId, (DateTimeOffset At, Guid LogId)? after, int limit,
-        CancellationToken cancellationToken = default)
+        SecurityPrincipal principal, Guid workspaceId, Guid? productionId, Guid? snapshotId, Guid? savedSearchId, (DateTimeOffset At, Guid LogId)? after,
+        int limit, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(principal);
-        var rows = await store.ListAsync(workspaceId, productionId, snapshotId, after, limit + 1, cancellationToken).ConfigureAwait(false);
+        var rows = await store.ListAsync(workspaceId, productionId, snapshotId, savedSearchId, after, limit + 1, cancellationToken).ConfigureAwait(false);
         var page = rows.Take(limit).ToList();
         var items = new List<PrivilegeLogRecord>(page.Count);
         foreach (var log in page)
@@ -457,20 +485,7 @@ public sealed class PrivilegeLogService(
             return PrivilegeLogOutcome.Invalid<PrivilegeLogFile>("format", "Use csv or xlsx.");
         }
 
-        var rows = new List<IReadOnlyList<string>>(log.EntryCount);
-        var after = 0;
-        while (true)
-        {
-            var page = await store.ReadEntriesAsync(log.WorkspaceId, log.LogId, after, Batch, cancellationToken).ConfigureAwait(false);
-            rows.AddRange(page.Select(e => e.Cells));
-            if (page.Count < Batch)
-            {
-                break;
-            }
-
-            after = page[^1].Ordinal;
-        }
-
+        var rows = (await ReadAllEntriesAsync(log, cancellationToken).ConfigureAwait(false)).Select(e => e.Cells).ToList();
         var metadata = PrivilegeLogFiles.DeserializeMetadata(log.Metadata);
         var bytes = csv ? PrivilegeLogFiles.Csv(metadata, rows) : PrivilegeLogFiles.Xlsx(metadata, rows);
         var expected = csv ? log.CsvSha256 : log.XlsxSha256;
@@ -485,17 +500,97 @@ public sealed class PrivilegeLogService(
             csv ? PrivilegeLogFiles.CsvContentType : PrivilegeLogFiles.XlsxContentType, FileName(log, metadata, extension)));
     }
 
+    /// <summary>
+    /// Compares a version the caller may read with an earlier one (#182): <paramref name="againstLogId"/>, or by default
+    /// the previous version of the same series. An explicit version the caller may not read is not found; a previous
+    /// version they may not read is treated as absent (Q-52: it is not described).
+    /// </summary>
+    public async Task<PrivilegeLogOutcome<PrivilegeLogVersionComparison>> CompareAsync(
+        SecurityPrincipal principal, PrivilegeLogRecord log, Guid? againstLogId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+        ArgumentNullException.ThrowIfNull(log);
+        PrivilegeLogRecord? previous;
+        if (againstLogId is { } against)
+        {
+            previous = await GetAsync(principal, log.WorkspaceId, against, cancellationToken).ConfigureAwait(false);
+            if (previous is null)
+            {
+                return PrivilegeLogOutcome.Of<PrivilegeLogVersionComparison>(PrivilegeLogStatus.NotFound, "No such privilege log to compare with.");
+            }
+        }
+        else
+        {
+            previous = log.Version <= 1 ? null : await store.GetVersionAsync(log.WorkspaceId, log.SeriesKey, log.Version - 1, cancellationToken).ConfigureAwait(false);
+            if (previous is not null && !await ReadableAsync(principal, previous, cancellationToken).ConfigureAwait(false))
+            {
+                previous = null;
+            }
+        }
+
+        if (previous is null)
+        {
+            return PrivilegeLogOutcome.Ok(new PrivilegeLogVersionComparison(log, null, null));
+        }
+
+        var current = await ReadAllEntriesAsync(log, cancellationToken).ConfigureAwait(false);
+        var earlier = await ReadAllEntriesAsync(previous, cancellationToken).ConfigureAwait(false);
+        var comparison = PrivilegeLogChanges.Compare(
+            PrivilegeLogFiles.DeserializeMetadata(log.Metadata).Columns, current, PrivilegeLogFiles.DeserializeMetadata(previous.Metadata).Columns, earlier);
+        return PrivilegeLogOutcome.Ok(new PrivilegeLogVersionComparison(log, previous, comparison));
+    }
+
+    public static PrivilegeLogSourceKind SourceKind(PrivilegeLogSource source) => source switch
+    {
+        PrivilegeLogSource.Production => PrivilegeLogSourceKind.Production,
+        PrivilegeLogSource.SavedSearch => PrivilegeLogSourceKind.SavedSearch,
+        _ => PrivilegeLogSourceKind.Snapshot,
+    };
+
+    /// <summary>The column of a version that holds Privilege Description (the per-document description, Q-20), if any.</summary>
+    public static int? DescriptionColumn(PrivilegeLogRecord log)
+    {
+        ArgumentNullException.ThrowIfNull(log);
+        var columns = PrivilegeLogTemplateRules.Deserialize(log.TemplateDefinition).Columns ?? [];
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (columns[i] is { Kind: PrivilegeLogColumnKind.Field, FieldId: PrivilegeFields.Description })
+            {
+                return i;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>A download file name: letters, digits, space, dot, dash and underscore only.</summary>
     public static string FileName(PrivilegeLogRecord log, PrivilegeLogMetadata metadata, string extension)
     {
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(metadata);
-        var name = (metadata.ProductionName ?? "Frozen set") + " privilege log v" + log.Version.ToString(CultureInfo.InvariantCulture);
+        var name = (metadata.ProductionName ?? metadata.SavedSearchName ?? "Frozen set") + " privilege log v" + log.Version.ToString(CultureInfo.InvariantCulture);
         var safe = new string([.. name.Select(c => char.IsLetterOrDigit(c) || c is ' ' or '-' or '_' or '.' ? c : '_')]).Trim();
         return (safe.Length > 120 ? safe[..120] : safe) + "." + extension;
     }
 
     // ------------------------------------------------------------------------------------------------ helpers
+
+    private async Task<List<PrivilegeLogEntryRow>> ReadAllEntriesAsync(PrivilegeLogRecord log, CancellationToken cancellationToken)
+    {
+        var rows = new List<PrivilegeLogEntryRow>(log.EntryCount);
+        var after = 0;
+        while (true)
+        {
+            var page = await store.ReadEntriesAsync(log.WorkspaceId, log.LogId, after, Batch, cancellationToken).ConfigureAwait(false);
+            rows.AddRange(page);
+            if (page.Count < Batch)
+            {
+                return rows;
+            }
+
+            after = page[^1].Ordinal;
+        }
+    }
 
     private async Task<bool> ReadableAsync(SecurityPrincipal principal, PrivilegeLogRecord log, CancellationToken cancellationToken)
     {

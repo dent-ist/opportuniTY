@@ -122,6 +122,11 @@ export interface GridSearch {
    * filters narrow it within the batch.
    */
   readonly reviewBatchId?: string | null;
+  /**
+   * An imported folder (#179, Q-55): the list holds the folder's documents (with its subfolders unless
+   * `includeSubfolders` is false), filtered for the caller; `query` and the filters narrow it within the folder.
+   */
+  readonly folder?: { readonly folderId: string; readonly includeSubfolders: boolean } | null;
   /** The page is still loading what to search (a saved search): show the loading state, run nothing yet. */
   readonly deferred?: boolean;
   /** "Include: Family / Duplicates / Email thread" (E09-T03); null: the hits only (or a saved search's stored choice). */
@@ -772,6 +777,7 @@ export class ReviewGrid implements CursorSource {
         ...(fields.length > 0 ? { fields } : {}),
         ...(search.expand ? { expand: search.expand } : {}),
         ...(search.reviewBatchId ? { reviewBatchId: search.reviewBatchId } : {}),
+        ...(search.folder ? { folder: { ...search.folder } } : {}),
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
         // The hits' snippets carry the search terms Review mode highlights in the extracted text (#130).
@@ -1915,11 +1921,15 @@ export class ReviewGrid implements CursorSource {
     this.selectPage(true);
   }
 
-  /** The list shows a frozen set no query names: a report term's hits (not narrowed by filters) or a review batch. */
+  /**
+   * The list shows a set no query names: a report term's hits (not narrowed by filters), a review batch or an imported
+   * folder.
+   */
   private termHits(): boolean {
     return (
       (!!this.search().termReport && this.compiled().query === this.search().query) ||
-      !!this.search().reviewBatchId
+      !!this.search().reviewBatchId ||
+      !!this.search().folder
     );
   }
 
@@ -1933,7 +1943,9 @@ export class ReviewGrid implements CursorSource {
       this.announcer.announce(
         this.search().reviewBatchId
           ? 'All results of a review batch cannot be selected. Select documents on the loaded pages.'
-          : 'All results of a Search Terms Report term cannot be selected. Select documents on the loaded pages.',
+          : this.search().folder
+            ? 'All results of a folder cannot be selected. Select documents on the loaded pages.'
+            : 'All results of a Search Terms Report term cannot be selected. Select documents on the loaded pages.',
       );
       return;
     }

@@ -77,6 +77,23 @@ public sealed class ProjectionBuilderTests
     }
 
     [Fact]
+    public void A_filed_document_carries_its_folder_and_every_folder_above_it()
+    {
+        Guid[] folders = [Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7()];
+        var body = new CandidateAProjectionBuilder()
+            .Build(ProjectionSamples.Live() with { FolderIds = folders }, ProjectionSamples.Catalog(), SampleText).Writes[0].Body!;
+
+        body["folderId"]!.GetValue<string>().Should().Be(folders[2].ToString("D"));
+        body["folderIds"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal(folders.Select(f => f.ToString("D")));
+        ProjectionMappingTests.Resolve("folderId").Should().NotBeNull();
+        ProjectionMappingTests.Resolve("folderIds").Should().NotBeNull();
+
+        var unfiled = new CandidateAProjectionBuilder().Build(ProjectionSamples.Live(), ProjectionSamples.Catalog(), SampleText).Writes[0].Body!;
+        unfiled.ContainsKey("folderId").Should().BeFalse();
+        unfiled.ContainsKey("folderIds").Should().BeFalse();
+    }
+
+    [Fact]
     public void Values_that_do_not_fit_their_slot_are_dropped_and_reported()
     {
         var source = ProjectionSamples.Live();

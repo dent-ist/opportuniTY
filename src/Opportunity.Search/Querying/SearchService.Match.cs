@@ -7,6 +7,7 @@ using Opportunity.Application.Authorization;
 using Opportunity.Application.Search;
 using Opportunity.Contracts.Search;
 using Opportunity.Search.Indexing;
+using Opportunity.Search.Projection;
 
 using static Opportunity.Search.Indexing.JsonBodies;
 
@@ -105,6 +106,27 @@ internal sealed partial class SearchService
     private static JsonObject BatchScoped(JsonObject userClause, IReadOnlyList<Guid> members) => Obj(("bool", Obj(
         ("filter", new JsonArray(IdsFilter(members))),
         ("must", new JsonArray(userClause.DeepClone())))));
+
+    /// <summary>The user clause of a search within an imported folder (#179): the folder (with subfolders) is the filter.</summary>
+    private static JsonObject FolderScoped(JsonObject userClause, FolderScope folder) => Obj(("bool", Obj(
+        ("filter", new JsonArray(Obj(("term", Obj((folder.IncludeSubfolders ? ProjectionFieldPaths.FolderIds : ProjectionFieldPaths.FolderId,
+            folder.FolderId.ToString("D"))))))),
+        ("must", new JsonArray(userClause.DeepClone())))));
+
+    private sealed record FolderScope(Guid FolderId, bool IncludeSubfolders)
+    {
+        public string Json => JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["folderId"] = FolderId.ToString("D"),
+            ["includeSubfolders"] = IncludeSubfolders,
+        });
+
+        public static FolderScope? Parse(string? json) =>
+            json is not null && JsonNode.Parse(json) is JsonObject node && node["folderId"] is JsonValue value
+                && Guid.TryParse(value.GetValue<string>(), out var id)
+                ? new FolderScope(id, node["includeSubfolders"]?.GetValue<bool>() != false)
+                : null;
+    }
 
     private sealed record BatchScope(Guid BatchId, IReadOnlyList<Guid> DocumentIds)
     {

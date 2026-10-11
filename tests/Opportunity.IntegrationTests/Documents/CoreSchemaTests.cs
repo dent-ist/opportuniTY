@@ -343,15 +343,18 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
         var pageSetId = await db.InsertPageSetAsync(ws, document.DocumentId);
         var instant = new DateTimeOffset(2025, 3, 1, 14, 5, 0, TimeSpan.FromHours(-5));
 
-        // Group and thread rows exist before a document references them (V0016 foreign keys).
+        // Group, thread and folder rows exist before a document references them (V0016 and V0068 foreign keys).
         var groupId = Guid.NewGuid();
         var threadId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
         await db.ExecuteAsync(
             """
             INSERT INTO opportunity.duplicate_group (workspace_id, duplicate_group_id, source, hash_kind, hash_value) VALUES (@ws, @g, 1, 1, 'DG-1');
             INSERT INTO opportunity.email_thread (workspace_id, email_thread_id, source, thread_key) VALUES (@ws, @t, 1, 'T-1');
+            INSERT INTO opportunity.document_folder (workspace_id, folder_id, parent_folder_id, name, path, path_key, depth, ancestor_ids)
+            VALUES (@ws, @f, NULL, 'Inbox', 'Inbox', 'inbox', 1, ARRAY[@f]::uuid[]);
             """,
-            ("ws", ws), ("g", groupId), ("t", threadId));
+            ("ws", ws), ("g", groupId), ("t", threadId), ("f", folderId));
 
         var changes = new (string Field, Action<Document> Change)[]
         {
@@ -394,6 +397,7 @@ public sealed class CoreSchemaTests(MigrationPostgresFixture postgres)
             ("TextEncodingWarning", d => d.TextEncodingWarning = true),
             ("Metadata", d => d.Metadata = """{"f1001": "x"}"""),
             ("Metadata value", d => d.Metadata = """{"f1001": "y"}"""),
+            ("FolderId", d => d.FolderId = folderId),
             ("Family", d => AttachTo(d, parent, parent, 1)),
             ("Clear a value", d => d.BegBates = null),
         };

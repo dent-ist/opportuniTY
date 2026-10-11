@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 using Opportunity.Application.Bootstrap;
+using Opportunity.Application.Documents;
 #if OPPORTUNITY_FAILPOINTS
 using Opportunity.Application.Faults;
 #endif
@@ -77,6 +78,7 @@ public static class SearchServiceCollectionExtensions
             sp.GetRequiredService<ILogger<SearchQueryBinder>>()));
         services.TryAddSingleton<ISearchSortFields>(sp => new SearchSortFieldCatalog(sp.GetRequiredService<ISearchFieldCatalogSource>()));
         services.TryAddScoped<ISearchService, SearchService>();
+        services.TryAddScoped<IDocumentFolderCounts>(sp => (SearchService)sp.GetRequiredService<ISearchService>());
         return services;
     }
 

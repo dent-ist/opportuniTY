@@ -108,6 +108,8 @@ export class Tree {
   /** Groups open at first render; afterwards the user's toggles are kept. */
   readonly initiallyExpanded = input<readonly string[]>([]);
   readonly activate = output<TreeNode>();
+  /** A group was opened or closed by the user (e.g. to load its children lazily on first open). */
+  readonly expandedChange = output<{ readonly id: string; readonly expanded: boolean }>();
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly prefix = inject(_IdGenerator).getId('opp-tree-');
@@ -170,6 +172,7 @@ export class Tree {
   }
 
   expand(id: string, open = true): void {
+    if (this.isExpanded(id) !== open) this.expandedChange.emit({ id, expanded: open });
     this.expanded.update((set) => {
       const next = new Set(set);
       if (open) next.add(id);

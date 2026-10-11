@@ -11,6 +11,7 @@ import { PrivilegeLogsMock } from './mock-privilege-logs';
 import { ProductionsMock } from './mock-productions';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
+import { FoldersMock } from './mock-folders';
 import { SearchTermReportsMock } from './mock-search-term-reports';
 import { GridViewsMock } from './mock-grid-views';
 import { HighlightsMock } from './mock-highlights';
@@ -157,6 +158,8 @@ export interface MockControl {
   readonly auditLog: AuditLogMock;
   /** Export List (CSV) (#181): exports requested. */
   readonly listExports: ListExportsMock;
+  /** The read-only Folders tree (#179): levels requested. */
+  readonly folders: FoldersMock;
 }
 
 /**
@@ -497,6 +500,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     lookup: (id) => imports.job(id) ?? termReports.job(id),
   });
   const savedSearches = new SavedSearchesMock();
+  const folders = new FoldersMock();
   const gridViews = new GridViewsMock(permissions.includes('View.ManageShared'));
   let lastSearch: Record<string, unknown> | null = null;
   let lastFields: string[] = [];
@@ -522,6 +526,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const compliance = new ComplianceMock();
   const defensibility = new DefensibilityMock();
   const control: MockControl = {
+    folders,
     reviewBatches,
     acknowledgments,
     auditLog,
@@ -694,6 +699,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         highlight?: boolean | null;
         fields?: string[];
         reviewBatchId?: string;
+        folder?: { folderId: string; includeSubfolders?: boolean | null };
       };
       lastSearch = { ...body };
       lastFields = body?.fields ?? [];
@@ -716,6 +722,18 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         // A review batch's documents (#178): the first N of the list; unknown → 404.
         const size = reviewBatches.size(body.reviewBatchId);
         if (size === null) return route.fulfill(problem(404, 'Not found'));
+        total = Math.min(documents, size);
+        expired = false;
+        lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
+        return json(
+          route,
+          searchPage(matching(), pageSize, 1, lastQuery, freshness.served(), lastFields),
+        );
+      }
+      if (body?.folder) {
+        // An imported folder's documents (#179): the first N of the list; an unknown folder holds nothing.
+        const size =
+          folders.size(body.folder.folderId, body.folder.includeSubfolders !== false) ?? 0;
         total = Math.min(documents, size);
         expired = false;
         lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
@@ -764,6 +782,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Search freshness (E16-T07): ./mock-freshness.ts.
     const freshnessRoute = signedIn ? freshness.handle(route, method, path) : undefined;
     if (freshnessRoute) return freshnessRoute;
+    // Folders (#179): ./mock-folders.ts.
+    const foldered = signedIn ? folders.handle(route, method, path, url) : undefined;
+    if (foldered) return foldered;
     // Saved searches (E16-T11): ./mock-saved-searches.ts.
     const savedSearch = signedIn ? savedSearches.handle(route, method, path, url) : undefined;
     if (savedSearch) return savedSearch;

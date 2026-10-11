@@ -1,0 +1,24 @@
+# Full profile (E19-T06): each component's internal user gets exactly its role. `admin` (operator break-glass, password
+# in full/secrets/opensearch-admin-password) gets all_access; the admin certificate is only for securityadmin.
+_meta:
+  type: "rolesmapping"
+  config_version: 2
+
+all_access:
+  reserved: true
+  users: ["admin"]
+
+opportunity_api:
+  users: ["opportunity-api"]
+
+opportunity_indexer:
+  users: ["opportunity-indexer"]
+
+opportunity_dispatcher:
+  users: ["opportunity-dispatcher"]
+
+opportunity_migrator:
+  users: ["opportunity-migrator"]
+
+opportunity_monitor:
+  users: ["opportunity-monitor"]
