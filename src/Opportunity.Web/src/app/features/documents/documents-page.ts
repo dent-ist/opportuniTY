@@ -75,6 +75,7 @@ import {
   toExpand,
 } from './search/include-related';
 import { BulkCodingApi, HttpBulkCodingApi } from './mass-edit/bulk-coding-api';
+import { HttpListExportApi, ListExportApi } from './list-export/list-export-api';
 import { MassActions } from './mass-edit/mass-actions';
 import { MassEditJobs } from './mass-edit/mass-edit-jobs';
 import { FreshnessMonitor } from './freshness/freshness-monitor';
@@ -98,6 +99,10 @@ import {
   HighlightState,
   HttpHighlightSetsApi,
 } from '../../core/highlights/highlight-sets';
+import type { ReviewBatchResource } from '../../core/api/generated/models';
+import { BatchActions } from '../review-batches/batch-actions';
+import { HttpReviewBatchApi, ReviewBatchApi } from '../review-batches/review-batch-api';
+import { BATCH_PARAM, BATCH_STATUS, batchErrorText } from '../review-batches/review-batch-model';
 
 /**
  * Documents: the default landing page of a workspace (familiarity guide §2.1, §3), with two modes on one route.
@@ -130,6 +135,10 @@ import {
  *
  * Families and duplicate groups (E13-T02 "Open in Documents"): `?related=family|duplicates&relatedId=&relatedOf=` shows
  * the relation as the list's search, like the duplicate marker does.
+ *
+ * Review batches (#178, familiarity guide §5.3): `?batch=<batchId>` binds the list to one batch's frozen members
+ * (filtered for the caller, Q-52) and opens its first document in Review mode, so Save & Next stays inside the batch.
+ * The search panel names the batch; "Check in…" (also in Review mode) returns to Review Batches.
  *
  * Keyboard (guide §4, command registry E15-T03): "Focus keyword search" (Alt+Shift+K, or `/` while single-key
  * shortcuts are on) and the region cycle (Alt+Shift+G / Alt+Shift+B) between the search panel, the list and the
@@ -221,6 +230,34 @@ const BROWSER_KEY = 'pane.documentsBrowser';
               </button>
             </div>
           }
+          @if (batchView(); as b) {
+            <div class="documents__saved" role="group" aria-label="Review batch">
+              <opp-badge tone="info" icon="batches">Review batch</opp-badge>
+              <span class="opp-visually-hidden">: </span>
+              <strong>{{ b.name }}</strong>
+              <opp-badge [tone]="batchStatus[b.status].tone">{{
+                batchStatus[b.status].label
+              }}</opp-badge>
+              <span class="documents__saved-note">
+                {{ b.batchSetName }}. Documents of this batch you may see; searches and filters stay
+                within it.
+              </span>
+              @if (b.status === 'checkedOut' && b.assignee?.userId === myId()) {
+                <button type="button" oppButton="secondary" (click)="checkInBatch()">
+                  <opp-icon name="check" />
+                  Check in…
+                </button>
+              }
+              <a oppButton="ghost" [routerLink]="['/w', workspaceId, 'review-batches']">
+                <opp-icon name="batches" />
+                Review Batches
+              </a>
+              <button type="button" oppButton="ghost" (click)="clearBatch()">
+                <opp-icon name="close" />
+                Leave batch
+              </button>
+            </div>
+          }
           @if (termView(); as tv) {
             <div class="documents__saved" role="group" aria-label="Search Terms Report term">
               <opp-badge tone="neutral" icon="report">Search Terms Report</opp-badge>
@@ -251,7 +288,9 @@ const BROWSER_KEY = 'pane.documentsBrowser';
             </div>
           }
           <opp-query-bar (search)="onSearch($event)" />
-          <opp-include-related [value]="include()" (valueChange)="onInclude($event)" />
+          @if (!batchView()) {
+            <opp-include-related [value]="include()" (valueChange)="onInclude($event)" />
+          }
         </section>
         <opp-search-job-banner />
         <section aria-labelledby="documents-list-heading" oppCommandRegion>
@@ -269,6 +308,8 @@ const BROWSER_KEY = 'pane.documentsBrowser';
               [target]="grid().selectionTarget()"
               [listCount]="grid().countText()"
               [fields]="grid().fieldCatalogue()"
+              [wholeList]="wholeList"
+              [viewColumns]="grid().viewQueryNames()"
               [returnFocus]="listElement"
             />
           </opp-review-grid>
@@ -279,6 +320,9 @@ const BROWSER_KEY = 'pane.documentsBrowser';
       <opp-review-workspace
         [cursor]="cursor"
         [fields]="grid().fieldCatalogue()"
+        [batchName]="batchView()?.name ?? null"
+        [canCheckIn]="ownsBatch()"
+        (checkIn)="checkInBatch()"
         (back)="closeReview()"
         (pivot)="onPivot($event)"
       />
@@ -294,6 +338,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     { provide: RedactionApi, useClass: HttpRedactionApi },
     PendingCoding,
     { provide: BulkCodingApi, useClass: HttpBulkCodingApi },
+    { provide: ListExportApi, useClass: HttpListExportApi },
     MassEditJobs,
     { provide: SearchFreshnessApi, useClass: HttpSearchFreshnessApi },
     FreshnessMonitor,
@@ -302,6 +347,8 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     { provide: SearchTermReportApi, useClass: HttpSearchTermReportApi },
     { provide: HighlightSetsApi, useClass: HttpHighlightSetsApi },
     HighlightState,
+    { provide: ReviewBatchApi, useClass: HttpReviewBatchApi },
+    BatchActions,
   ],
   host: { '[class.is-reviewing]': 'reviewing()' },
 })
@@ -313,7 +360,8 @@ export class DocumentsPage {
       inject(ActivatedRoute).snapshot.queryParamMap.has(SAVED_SEARCH_PARAM) ||
       inject(ActivatedRoute).snapshot.queryParamMap.has(TERM_REPORT_PARAM) ||
       !!relatedFromParams(inject(ActivatedRoute).snapshot.queryParamMap) ||
-      !!listQueryFromParams(inject(ActivatedRoute).snapshot.queryParamMap),
+      !!listQueryFromParams(inject(ActivatedRoute).snapshot.queryParamMap) ||
+      inject(ActivatedRoute).snapshot.queryParamMap.has(BATCH_PARAM),
   });
   protected readonly reviewing = signal(false);
   private readonly queryBar = viewChild.required(QueryBar);
@@ -342,6 +390,8 @@ export class DocumentsPage {
   );
   /** Mass Actions dialogs return focus to the list. */
   protected readonly listElement = () => this.grid().focusTarget();
+  /** The whole list as its query, for Export List without a selection (#181). */
+  protected readonly wholeList = () => this.grid().wholeList();
 
   // Saved searches (E16-T11)
   private readonly savedApi = inject(SavedSearchApi);
@@ -377,6 +427,21 @@ export class DocumentsPage {
     return !!tv && this.grid().effectiveQuery() !== tv.term.expression;
   });
 
+  // Review batches (#178)
+  private readonly batchApi = inject(ReviewBatchApi);
+  private readonly batchActions = inject(BatchActions);
+  protected readonly batchStatus = BATCH_STATUS;
+  /** The review batch the list is bound to (`?batch=`). */
+  protected readonly batchView = signal<ReviewBatchResource | null>(null);
+  /** The `?batch=` id applied (or being applied), so the URL echo of our own change is ignored. */
+  private appliedBatch: string | null = null;
+  /** Open the batch's first document in Review mode once its list has loaded. */
+  private pendingBatchReview: string | null = null;
+  protected readonly ownsBatch = computed(() => {
+    const b = this.batchView();
+    return !!b && b.status === 'checkedOut' && b.assignee?.userId === this.myId();
+  });
+
   protected readonly browserOpen = linkedSignal(
     () => this.storage.read<{ open?: boolean }>(BROWSER_KEY)?.open !== false,
   );
@@ -394,7 +459,23 @@ export class DocumentsPage {
       const termId = params.get(TERM_PARAM);
       const related = relatedFromParams(params);
       const listQuery = listQueryFromParams(params);
+      const batchId = params.get(BATCH_PARAM);
       untracked(() => {
+        // `?batch=<batchId>` (Review Batches, #178): the list holds the batch's documents.
+        if (batchId) {
+          if (batchId !== this.appliedBatch) void this.applyBatch(batchId);
+          return;
+        }
+        if (this.appliedBatch) {
+          // Back from a batch to the plain list.
+          this.batchView.set(null);
+          this.appliedBatch = null;
+          this.pendingBatchReview = null;
+          if (!id && !listQuery && !related && !reportId) {
+            this.queryBar().clear();
+            this.search.set({ query: '' });
+          }
+        }
         // `?listQuery=&listLabel=` ("Open in Documents" from a production or its QC, E12-T08): the query becomes the
         // list's search once the view exists, and the parameters leave the URL.
         if (listQuery) {
@@ -496,6 +577,8 @@ export class DocumentsPage {
 
   /** What the list runs: a query (or a saved search by id) with the Include choice, always explicit for a saved search. */
   private searchFor(query: string, savedSearchId: string | null = null): GridSearch {
+    const batch = this.batchView();
+    if (batch) return { query, reviewBatchId: batch.batchId };
     const expand = toExpand(this.include(), savedSearchId !== null);
     return savedSearchId ? { query, savedSearchId, expand } : { query, expand };
   }
@@ -573,10 +656,91 @@ export class DocumentsPage {
     });
   }
 
+  // ── Review batches ──────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Applies `?batch=`: loads the batch, names it in the search panel, lists its documents and opens the first. */
+  private async applyBatch(batchId: string): Promise<void> {
+    this.appliedBatch = batchId;
+    let batch: ReviewBatchResource;
+    try {
+      batch = await this.batchApi.batch(batchId);
+    } catch (e) {
+      if (this.appliedBatch !== batchId) return;
+      this.appliedBatch = null;
+      this.toasts.show(batchErrorText(toApiError(e)) ?? 'The batch could not be opened.', {
+        tone: 'error',
+      });
+      this.setBatchInUrl(true);
+      if (this.search().deferred) this.search.set({ query: '' });
+      return;
+    }
+    if (this.appliedBatch !== batchId) return;
+    if (this.reviewing()) this.closeReview();
+    this.saved.set(null);
+    this.appliedId = null;
+    this.termView.set(null);
+    this.appliedTerm = null;
+    this.batchView.set(batch);
+    this.include.set(NO_RELATED);
+    this.queryBar().clear();
+    this.grid().resetFilters();
+    this.pendingBatchReview = batchId;
+    this.search.set(this.searchFor(''));
+  }
+
+  /** "Leave batch": back to the whole workspace's list. */
+  protected clearBatch(): void {
+    this.forgetBatch();
+    this.queryBar().clear();
+    this.search.set({ query: '' });
+  }
+
+  /** The list no longer shows the batch (another search source was chosen, or it was left). */
+  private forgetBatch(updateUrl = true): void {
+    if (!this.batchView() && !this.appliedBatch) return;
+    this.batchView.set(null);
+    this.appliedBatch = null;
+    this.pendingBatchReview = null;
+    if (updateUrl) this.setBatchInUrl(true);
+  }
+
+  private setBatchInUrl(replaceUrl: boolean): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { [BATCH_PARAM]: null },
+      queryParamsHandling: 'merge',
+      replaceUrl,
+    });
+  }
+
+  /** "Check in…" (search panel or Review mode): completed or returned; then back to Review Batches. */
+  protected async checkInBatch(): Promise<void> {
+    const shown = this.batchView();
+    if (!shown) return;
+    let current = shown;
+    try {
+      current = await this.batchApi.batch(shown.batchId);
+    } catch {
+      // The check-in reports the problem.
+    }
+    const checkedIn = await this.batchActions.checkIn(current);
+    if (!checkedIn) {
+      this.batchView.set(current);
+      return;
+    }
+    this.batchView.set(checkedIn);
+    if (this.reviewing()) {
+      this.reviewing.set(false);
+      this.grid().restoreView();
+    }
+    void this.router.navigate(['/w', this.workspaceId, 'review-batches']);
+  }
+
   // ── Saved searches ──────────────────────────────────────────────────────────────────────────────────────────
 
   /** Runs a saved search from the browser pane: a history entry, like following a link to it. */
   protected runSaved(summary: SavedSearchSummary): void {
+    this.forgetBatch(false);
     if (summary.savedSearchId === this.appliedId) {
       const saved = this.saved();
       if (saved) this.search.set(this.searchFor(saved.query, saved.savedSearchId));
@@ -586,6 +750,7 @@ export class DocumentsPage {
       relativeTo: this.route,
       queryParams: {
         [SAVED_SEARCH_PARAM]: summary.savedSearchId,
+        [BATCH_PARAM]: null,
         [THEN_PARAM]: null,
         [TERM_REPORT_PARAM]: null,
         [TERM_PARAM]: null,
@@ -681,6 +846,13 @@ export class DocumentsPage {
   }
 
   protected onLoaded(search: GridSearch): void {
+    if (search.reviewBatchId && search.reviewBatchId === this.pendingBatchReview) {
+      this.pendingBatchReview = null;
+      const first = this.grid().rows()[0];
+      if (first) this.onOpen({ hit: first, index: 0 });
+      else this.toasts.show('This batch has no documents you may see.', { tone: 'info' });
+      return;
+    }
     const id = this.pendingMassEdit;
     if (!id || search.savedSearchId !== id) return;
     this.pendingMassEdit = null;
@@ -753,6 +925,7 @@ export class DocumentsPage {
    */
   protected onPivot(pivot: RelationshipPivot): void {
     if (this.reviewing()) this.closeReview();
+    this.forgetBatch();
     if (this.saved()) this.forgetSaved();
     if (this.termView()) this.forgetTerm();
     const query = pivotQuery(pivot);
@@ -765,6 +938,7 @@ export class DocumentsPage {
   /** A query another section links to (E12-T08 "Open in Documents"): an ordinary search of the list. */
   private showQuery(query: string, label: string): void {
     if (this.reviewing()) this.closeReview();
+    this.forgetBatch();
     if (this.saved()) this.forgetSaved();
     if (this.termView()) this.forgetTerm();
     this.grid().resetFilters();

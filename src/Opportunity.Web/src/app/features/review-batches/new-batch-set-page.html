@@ -1,0 +1,110 @@
+<a class="dl__back-link" routerLink="..">
+  <opp-icon name="chevron-left" />
+  Review Batches
+</a>
+<div class="dl__heading-group">
+  <h1 class="dl__title">New Batch Set</h1>
+  <p class="dl__muted">
+    Cuts the documents into batches that reviewers check out one at a time. Membership is frozen
+    when the set is created.
+  </p>
+</div>
+
+<section class="dl__panel" aria-labelledby="new-batch-set-source">
+  <h2 id="new-batch-set-source">Source</h2>
+  <div class="dl__row">
+    <opp-text-field
+      class="dl__grow"
+      label="Batch Set name"
+      hint="For example the issue or custodian the reviewers work on."
+      [required]="true"
+      [error]="fieldErrors()['name']"
+      [value]="name()"
+      (valueChange)="name.set($event)"
+    />
+  </div>
+  <opp-frozen-set-source
+    purpose="reviewBatch"
+    legend="Documents to review"
+    [initialSavedSearch]="initialSavedSearch"
+    [(frozen)]="frozen"
+  />
+</section>
+
+<section class="dl__panel" aria-labelledby="new-batch-set-batches">
+  <h2 id="new-batch-set-batches">Batches</h2>
+  <div class="rb__options">
+    <opp-text-field
+      label="Batch name prefix"
+      hint="Batches are named prefix_0001, prefix_0002, …"
+      [required]="true"
+      [error]="fieldErrors()['batchPrefix']"
+      [value]="prefix()"
+      (valueChange)="prefix.set($event)"
+    />
+    <opp-text-field
+      label="Maximum batch size"
+      hint="Documents per batch. A family larger than this stays whole in one batch."
+      [required]="true"
+      [error]="fieldErrors()['maxBatchSize']"
+      [value]="size()"
+      (valueChange)="size.set($event)"
+    />
+    <opp-select
+      label="Order"
+      hint="Which documents go to the first batches."
+      [options]="sortOptions"
+      [value]="sort()"
+      (valueChange)="setSort($event)"
+    />
+    @if (sort() !== 'controlNumber') {
+      <opp-select
+        label="Direction"
+        [options]="directionOptions"
+        [value]="descending()"
+        (valueChange)="descending.set($event)"
+      />
+    }
+    <opp-text-field
+      label="Reviewer group (optional)"
+      hint="Only members of this sign-in group may check batches out."
+      [error]="fieldErrors()['reviewerGroup']"
+      [value]="group()"
+      (valueChange)="group.set($event)"
+    />
+  </div>
+  <div class="dl__row" role="group" aria-label="Keep together">
+    <opp-checkbox
+      [checked]="families() || threads()"
+      [disabled]="threads()"
+      (checkedChange)="families.set($event)"
+    >
+      Keep families together
+    </opp-checkbox>
+    <opp-checkbox [checked]="threads()" (checkedChange)="threads.set($event)">
+      Keep email threads together
+    </opp-checkbox>
+  </div>
+</section>
+
+@if (problems().length > 0) {
+  <div class="dl__blocked" role="alert">
+    <opp-icon name="warning" />
+    <span>
+      @for (p of problems(); track $index) {
+        <span class="dl__radio-text">{{ p }}</span>
+      }
+    </span>
+  </div>
+}
+@if (error(); as e) {
+  <opp-error-state [error]="e" />
+}
+
+<div class="dl__actions">
+  <a oppButton="ghost" routerLink="..">Cancel</a>
+  <button type="button" oppButton="primary" [busy]="busy()" (click)="create()">
+    <opp-icon name="batches" />
+    Create Batch Set
+  </button>
+</div>

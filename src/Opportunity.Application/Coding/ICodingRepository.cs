@@ -124,6 +124,14 @@ public interface ICodingRepository
     Task<IReadOnlyList<ReviewBatches.ReviewConflict>> GetReviewConflictsAsync(
         Guid workspaceId, Guid qcSetId, Guid firstPassSetId, IReadOnlyCollection<int> excludedFieldIds, ReviewBatches.ReviewConflictCursor? after,
         int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// E14-T05 review population and coding summary as of <paramref name="asOf"/>: the documents in scope (the members of
+    /// snapshot <paramref name="snapshotId"/>, or every document the workspace held at the point), those a person coded,
+    /// and value changes by reviewer and by reviewer and UTC day (at most <paramref name="maxDays"/> day rows).
+    /// </summary>
+    Task<Defensibility.ReviewSummaryData> ReadReviewSummaryAsync(
+        Guid workspaceId, DateTimeOffset asOf, Guid? snapshotId, int maxDays, CancellationToken cancellationToken = default);
 }
 
 public sealed record CodingActor(Guid ActorId, CodingActorType Type);

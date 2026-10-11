@@ -51,6 +51,9 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
     ),
   // Ethical-wall proof, access review and audit export (E14-T06).
   compliance: () => import('./features/compliance/compliance-page').then((m) => m.CompliancePage),
+  // Defensibility reports and the report pack (E14-T05).
+  defensibility: () =>
+    import('./features/defensibility/defensibility-page').then((m) => m.DefensibilityPage),
   // The audit log viewer and audit exports (E14-T04).
   audit: () => import('./features/audit/audit-log-page').then((m) => m.AuditLogPage),
 };
@@ -136,6 +139,35 @@ export const workspaceChildren: Routes = [
           };
         return { ...base, title: a.label, loadComponent: sectionPage };
       }),
+    ],
+  },
+  {
+    // Review Batches (#178): the reviewer's batches and the Batch Sets, New Batch Set, and one set's batches.
+    path: 'review-batches',
+    canActivate: [requirePermission(PERMISSIONS.codingWrite)],
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        title: 'Review Batches',
+        loadComponent: () =>
+          import('./features/review-batches/review-batches-page').then((m) => m.ReviewBatchesPage),
+      },
+      {
+        path: 'new',
+        title: 'New Batch Set',
+        canActivate: [requirePermission(PERMISSIONS.reviewBatchManage)],
+        loadComponent: () =>
+          import('./features/review-batches/new-batch-set-page').then((m) => m.NewBatchSetPage),
+      },
+      {
+        path: ':batchSetId',
+        title: 'Batch Set',
+        loadComponent: () =>
+          import('./features/review-batches/review-batch-set-page').then(
+            (m) => m.ReviewBatchSetPage,
+          ),
+      },
     ],
   },
   {
@@ -229,7 +261,16 @@ export const workspaceChildren: Routes = [
     ],
   },
   ...WORKSPACE_SECTIONS.filter(
-    (s) => !['documents', 'searches', 'imports', 'jobs', 'productions', 'exports'].includes(s.path),
+    (s) =>
+      ![
+        'documents',
+        'review-batches',
+        'searches',
+        'imports',
+        'jobs',
+        'productions',
+        'exports',
+      ].includes(s.path),
   ).map((s): Route => ({
     path: s.path,
     title: s.label,

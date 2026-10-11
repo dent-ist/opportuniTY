@@ -85,7 +85,7 @@ public sealed class SnapshotEndpoints : IApiEndpointModule
 
         if (request is null || !Enum.IsDefined(request.Purpose))
         {
-            return Problems.Validation(new Dictionary<string, string[]> { ["purpose"] = ["Purpose must be BulkCoding, Export, Production, Report or ReviewBatch."] });
+            return Problems.Validation(new Dictionary<string, string[]> { ["purpose"] = ["Purpose must be BulkCoding, Export, Production, Report, ReviewBatch or ListExport."] });
         }
 
         var query = request.Query;

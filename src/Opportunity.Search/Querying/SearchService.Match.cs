@@ -101,6 +101,35 @@ internal sealed partial class SearchService
         ("filter", new JsonArray(IdsFilter(hits))),
         ("should", new JsonArray(userClause.DeepClone())))));
 
+    /// <summary>The user clause of a search within a review batch (#178): only the batch's members, matching the query.</summary>
+    private static JsonObject BatchScoped(JsonObject userClause, IReadOnlyList<Guid> members) => Obj(("bool", Obj(
+        ("filter", new JsonArray(IdsFilter(members))),
+        ("must", new JsonArray(userClause.DeepClone())))));
+
+    private sealed record BatchScope(Guid BatchId, IReadOnlyList<Guid> DocumentIds)
+    {
+        public string Json => JsonSerializer.Serialize(new Dictionary<string, string> { ["reviewBatchId"] = BatchId.ToString("D") });
+
+        public static Guid? Parse(string json) =>
+            JsonNode.Parse(json) is JsonObject node && node["reviewBatchId"] is JsonValue value && Guid.TryParse(value.GetValue<string>(), out var id)
+                ? id
+                : null;
+    }
+
+    private async Task<(SearchOutcome? Outcome, BatchScope? Scope)> ResolveBatchAsync(SearchCaller caller, Guid batchId, CancellationToken cancellationToken)
+    {
+        if (batches is null
+            || await batches.GetMembersAsync(caller, batchId, SearchTermHitSet.MaxDocuments + 1, cancellationToken).ConfigureAwait(false) is not { } members)
+        {
+            return (SearchOutcome.NotFound, null);
+        }
+
+        return members.Count > SearchTermHitSet.MaxDocuments
+            ? (SearchOutcome.InvalidRequest("reviewBatchId",
+                $"The batch holds more than {SearchTermHitSet.MaxDocuments.ToString("N0", CultureInfo.InvariantCulture)} documents, too many to open as a search."), null)
+            : (null, new BatchScope(batchId, members));
+    }
+
     private sealed record TermScope(Guid ReportId, Guid TermId, string Expression, IReadOnlyList<Guid> DocumentIds)
     {
         public string Json => JsonSerializer.Serialize(new Dictionary<string, string>

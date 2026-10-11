@@ -82,6 +82,12 @@ export class ReviewWorkspace {
   readonly back = output<void>();
   /** "Show … in the list" from Related Items: leave Review mode and search the relation (after unsaved edits). */
   readonly pivot = output<RelationshipPivot>();
+  /** The review batch the cursor walks (#178): named in the bar; its end is the end of the list. */
+  readonly batchName = input<string | null>(null);
+  /** The reviewer holds the batch, so Review mode offers "Check in…". */
+  readonly canCheckIn = input(false);
+  /** "Check in…" (after unsaved edits were saved or discarded). */
+  readonly checkIn = output<void>();
 
   private readonly loader = inject(DocumentLoader);
   private readonly content = inject(DocumentContentApi);
@@ -243,6 +249,11 @@ export class ReviewWorkspace {
     if (await this.confirmLeave()) this.back.emit();
   }
 
+  /** "Check in…" of the review batch: unsaved edits first, like leaving the document. */
+  protected async checkInBatch(): Promise<void> {
+    if (await this.confirmLeave()) this.checkIn.emit();
+  }
+
   /** A Related Items member: shown in the viewer and coding pane; the review cursor stays where it is. */
   protected async openRelated(hit: SearchHit): Promise<void> {
     if (!(await this.confirmLeave())) return;
@@ -278,10 +289,17 @@ export class ReviewWorkspace {
         this.announcer.announce(`${this.positionText()}: ${hit?.controlNumber ?? ''}`);
         break;
       }
-      case 'end':
-        this.notice.set({ kind: 'end', message: 'End of list. There are no more documents.' });
-        this.announcer.announce('End of list.');
+      case 'end': {
+        const batch = this.batchName();
+        this.notice.set({
+          kind: 'end',
+          message: batch
+            ? `End of batch ${batch}. There are no more documents in it.`
+            : 'End of list. There are no more documents.',
+        });
+        this.announcer.announce(batch ? `End of batch ${batch}.` : 'End of list.');
         break;
+      }
       case 'start':
         this.notice.set({ kind: 'start', message: 'Start of list.' });
         this.announcer.announce('Start of list.');

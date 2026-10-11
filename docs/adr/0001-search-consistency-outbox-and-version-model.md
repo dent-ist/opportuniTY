@@ -230,6 +230,11 @@ While a generation switch dual-writes, a projection goes only to the index of it
 not written (its strict mapping may reject the new body) and serves its last state until the switch — the watermark
 then over-states the old index's freshness for the window; same-generation rebuilds and moves are unaffected.
 
+*Note 2026-10-11 (E19-T07, #163):* a restore is the one sanctioned exception to "the watermark never moves
+backwards": before any writer starts, the restore catch-up lowers `workspace_search_watermark` to the OpenSearch
+snapshot's anchor and re-pends the work above it ([ADR-016](0016-backup-dr-and-restore-consistency.md) §3.4,
+[restore-consistency.md](../architecture/restore-consistency.md) §4.3; proposed amendment B-4 there).
+
 ### 8. Interim position and what the ADR-004b spike must measure (*Proposed — pending spike*)
 
 Interim: full-document external `index` everywhere (§3), explicit-refresh ticker (§7.3). `E18-T04` must measure, per

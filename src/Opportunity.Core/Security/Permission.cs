@@ -45,6 +45,7 @@ public enum Permission
     WorkspaceManageAcknowledgments = 33,
     ComplianceReport = 35,
     AuditExport = 36,
+    DocumentExportList = 37,
 }
 
 /// <summary>Catalogue entry: the dotted wire name used in docs, audit details and the API, and what it allows.</summary>
@@ -77,6 +78,7 @@ public static class PermissionCatalog
         new(Permission.ImportOverlay, "Import.Overlay", "Run overlay imports, including coding and privilege overlays (Q-31)."),
         new(Permission.ExportCreate, "Export.Create", "Create exports."),
         new(Permission.ExportDownload, "Export.Download", "Download export packages."),
+        new(Permission.DocumentExportList, "Document.ExportList", "Export the document list (the current view's columns for a search or selection) to CSV; documents are re-authorized when the export runs (Q-15)."),
         new(Permission.ProductionCreate, "Production.Create", "Create and run productions."),
         new(Permission.ProductionFinalize, "Production.Finalize", "Finalize productions."),
         new(Permission.PrivilegeLogGenerate, "PrivilegeLog.Generate", "Generate privilege logs."),
@@ -86,7 +88,7 @@ public static class PermissionCatalog
         new(Permission.AuditRead, "Audit.Read", "Read the workspace audit trail."),
         new(Permission.AuditReadSearchText, "Audit.ReadSearchText", "Read search query text in the audit trail (Q-16)."),
         new(Permission.AuditExport, "Audit.Export", "Download the workspace audit trail as a verifiable export: events, hash chain and signed checkpoints (search text only with Audit.ReadSearchText)."),
-        new(Permission.ComplianceReport, "Compliance.Report", "Generate the ethical-wall proof and the workspace access review (users, roles, walls, last access)."),
+        new(Permission.ComplianceReport, "Compliance.Report", "Generate the ethical-wall proof and the workspace access review (users, roles, walls, last access), and the defensibility reports and report pack (review summary, production history, search term hit reports, chain of custody; E14-T05)."),
         new(Permission.WorkspaceManageUsers, "Workspace.ManageUsers", "Assign and revoke workspace roles."),
         new(Permission.WorkspaceManageSecurity, "Workspace.ManageSecurity", "Manage restriction classes, class grants and ethical walls."),
         new(Permission.WorkspaceManageFields, "Workspace.ManageFields", "Manage fields, choices and coding layouts."),

@@ -117,6 +117,11 @@ export interface GridSearch {
    * frozen set (filtered for the caller); `query` is the term's expression, run live once filters narrow it.
    */
   readonly termReport?: { readonly reportId: string; readonly termId: string } | null;
+  /**
+   * A review batch (#178): the list holds only the batch's frozen members (filtered for the caller); `query` and the
+   * filters narrow it within the batch.
+   */
+  readonly reviewBatchId?: string | null;
   /** The page is still loading what to search (a saved search): show the loading state, run nothing yet. */
   readonly deferred?: boolean;
   /** "Include: Family / Duplicates / Email thread" (E09-T03); null: the hits only (or a saved search's stored choice). */
@@ -337,6 +342,8 @@ export class ReviewGrid implements CursorSource {
     () => this.adjustedColumns() ?? this.activeView()?.columns ?? DEFAULT_VIEW,
   );
   protected readonly columns = computed(() => buildColumns(this.fields(), this.columnSpecs()));
+  /** Query names of the shown columns after Control Number, in order (Export List, #181). */
+  readonly viewQueryNames = computed(() => this.columns().view.map((c) => c.queryName));
   /** The sort levels of the list (at most three; Control Number then breaks ties server-side). */
   readonly sortKeys = signal<readonly SortSpec[]>([]);
   /** The list's columns or sort differ from the View's. */
@@ -764,6 +771,7 @@ export class ReviewGrid implements CursorSource {
         sort: sort.length > 0 ? [...sort] : null,
         ...(fields.length > 0 ? { fields } : {}),
         ...(search.expand ? { expand: search.expand } : {}),
+        ...(search.reviewBatchId ? { reviewBatchId: search.reviewBatchId } : {}),
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
         // The hits' snippets carry the search terms Review mode highlights in the extracted text (#130).
@@ -1907,9 +1915,12 @@ export class ReviewGrid implements CursorSource {
     this.selectPage(true);
   }
 
-  /** The list shows a report term's hits in its frozen set (not narrowed by filters). */
+  /** The list shows a frozen set no query names: a report term's hits (not narrowed by filters) or a review batch. */
   private termHits(): boolean {
-    return !!this.search().termReport && this.compiled().query === this.search().query;
+    return (
+      (!!this.search().termReport && this.compiled().query === this.search().query) ||
+      !!this.search().reviewBatchId
+    );
   }
 
   /** Selects every result of the search, loaded or not, as the query and the generation it was served at. */
@@ -1920,14 +1931,28 @@ export class ReviewGrid implements CursorSource {
       // A report term's hits are a frozen set that no query names, so they cannot be selected as "all results".
       this.offerAll.set(false);
       this.announcer.announce(
-        'All results of a Search Terms Report term cannot be selected. Select documents on the loaded pages.',
+        this.search().reviewBatchId
+          ? 'All results of a review batch cannot be selected. Select documents on the loaded pages.'
+          : 'All results of a Search Terms Report term cannot be selected. Select documents on the loaded pages.',
       );
       return;
     }
     this._selected.set(new Set());
     this.controlNumbers.clear();
     this.offerAll.set(false);
-    this._allResults.set({
+    this._allResults.set(this.wholeList());
+    this.selectionChange.emit(this._selected());
+    this.announceSelection();
+  }
+
+  /**
+   * Every result of the list as its query, the generation it was served at and its expansion, without selecting it;
+   * null before the list is ready or when no query names it (a report term's hits).
+   */
+  wholeList(): AllResultsSelection | null {
+    const r = this.result();
+    if (!r || this.status() !== 'ready' || this.termHits()) return null;
+    return {
       kind: 'all',
       query: this.compiled().query,
       generation:
@@ -1935,9 +1960,7 @@ export class ReviewGrid implements CursorSource {
       total: r.total,
       countText: this.countText(),
       expand: this.search().expand ?? null,
-    });
-    this.selectionChange.emit(this._selected());
-    this.announceSelection();
+    };
   }
 
   /** The rows selected one by one; leaving "all results" keeps the loaded rows selected, so a row can be unchecked. */

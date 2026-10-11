@@ -1,0 +1,180 @@
+<a class="dl__back-link" routerLink="..">
+  <opp-icon name="chevron-left" />
+  Review Batches
+</a>
+
+@if (loading()) {
+  <opp-loading-state label="Loading the Batch Set…" />
+} @else if (!set()) {
+  <h1 class="dl__title">Batch Set</h1>
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else {
+  @let s = set()!;
+  <div class="dl__header">
+    <div class="dl__heading-group">
+      <h1 class="dl__title">{{ s.name }}</h1>
+      <p class="dl__muted">
+        {{ num(s.batchCount) }} batches · {{ num(s.documentCount) }} documents ·
+        {{ num(s.statusCounts.available) }} pending · {{ num(s.statusCounts.checkedOut) }} in
+        progress · {{ num(s.statusCounts.completed) }} completed
+      </p>
+    </div>
+    @if (canCode) {
+      <button
+        type="button"
+        oppButton="primary"
+        [busy]="busy() === 'next'"
+        [disabled]="!!busy()"
+        (click)="checkOutNext()"
+      >
+        <opp-icon name="batches" />
+        Check out next batch
+      </button>
+    }
+  </div>
+
+  <section class="dl__panel" aria-labelledby="batch-set-settings">
+    <h2 id="batch-set-settings">Settings</h2>
+    <dl class="dl__facts">
+      <dt>Batch names</dt>
+      <dd>
+        <code class="dl__code">{{ s.batchPrefix }}_0001</code>,
+        <code class="dl__code">{{ s.batchPrefix }}_0002</code>, …
+      </dd>
+      <dt>Maximum batch size</dt>
+      <dd>{{ num(s.maxBatchSize) }} documents</dd>
+      <dt>Families</dt>
+      <dd>
+        {{ s.keepFamiliesTogether ? 'Kept together (never split)' : 'May be split' }}
+        @if (s.keepThreadsTogether) {
+          · email threads kept together
+        }
+      </dd>
+      <dt>Order</dt>
+      <dd>
+        {{ order(s) }}
+      </dd>
+      @if (s.reviewerGroup) {
+        <dt>Reviewer group</dt>
+        <dd>{{ s.reviewerGroup }}</dd>
+      }
+      <dt>Frozen set ID</dt>
+      <dd>
+        <code class="dl__code">{{ s.snapshotId }}</code>
+      </dd>
+      <dt>Created</dt>
+      <dd>{{ date(s.createdAt) }} by {{ s.createdBy.displayName ?? 'Unknown user' }}</dd>
+    </dl>
+  </section>
+
+  <section class="dl__section">
+    <h2 id="batch-set-batches">Batches</h2>
+    @if (error(); as e) {
+      <opp-error-state [error]="e" (retry)="load()" />
+    }
+    <div class="dl__table-wrap" tabindex="0" role="region" aria-label="Batches">
+      <table class="dl__table">
+        <caption class="opp-visually-hidden">
+          Batches of
+          {{
+            s.name
+          }}, by number
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Batch</th>
+            <th scope="col">Status</th>
+            <th scope="col">Reviewer</th>
+            <th scope="col" class="dl__num">Documents</th>
+            <th scope="col">Last change</th>
+            <th scope="col"><span class="opp-visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (b of batches(); track b.batchId) {
+            <tr>
+              <th scope="row" class="dl__name rb__batch">{{ b.name }}</th>
+              <td>
+                <opp-badge [tone]="status[b.status].tone" [icon]="status[b.status].icon">
+                  {{ status[b.status].label }}
+                </opp-badge>
+              </td>
+              <td>{{ assignee(b) }}</td>
+              <td class="dl__num">{{ num(b.documentCount) }}</td>
+              <td class="dl__nowrap">{{ date(b.statusChangedAt) }}</td>
+              <td>
+                <div class="rb__actions">
+                  @if (isMine(b)) {
+                    <button
+                      type="button"
+                      oppButton="primary"
+                      [attr.aria-label]="'Review ' + b.name"
+                      (click)="review(b)"
+                    >
+                      <opp-icon name="play" />
+                      Review
+                    </button>
+                  }
+                  @if (canCode && b.status === 'available') {
+                    <button
+                      type="button"
+                      oppButton="secondary"
+                      [attr.aria-label]="'Check out ' + b.name"
+                      [busy]="busy() === b.batchId"
+                      [disabled]="!!busy()"
+                      (click)="checkOut(b)"
+                    >
+                      Check out
+                    </button>
+                  }
+                  @if (b.status === 'checkedOut' && (isMine(b) || canManage)) {
+                    <button
+                      type="button"
+                      oppButton="secondary"
+                      [attr.aria-label]="'Check in ' + b.name"
+                      [disabled]="!!busy()"
+                      (click)="checkIn(b)"
+                    >
+                      Check in…
+                    </button>
+                  }
+                  @if (canManage) {
+                    <button
+                      type="button"
+                      oppButton="ghost"
+                      [attr.aria-label]="'Assign ' + b.name"
+                      [disabled]="!!busy()"
+                      (click)="assign(b)"
+                    >
+                      <opp-icon name="share" />
+                      Assign…
+                    </button>
+                    @if (b.status !== 'available') {
+                      <button
+                        type="button"
+                        oppButton="ghost"
+                        [attr.aria-label]="'Release ' + b.name"
+                        [disabled]="!!busy()"
+                        (click)="release(b)"
+                      >
+                        <opp-icon name="undo" />
+                        Release
+                      </button>
+                    }
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (nextCursor()) {
+      <div>
+        <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+          Load more batches
+        </button>
+      </div>
+    }
+  </section>
+}

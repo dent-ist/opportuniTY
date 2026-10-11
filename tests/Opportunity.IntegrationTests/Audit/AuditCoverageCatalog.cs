@@ -350,6 +350,22 @@ internal static class AuditCoverageCatalog
         NoneWs("GET", "/review-batch-sets", ListRead),
         NoneWs("GET", "/review-batch-sets/{batchSetId}", ListRead),
         NoneWs("GET", "/review-batch-sets/{batchSetId}/conflicts", DocumentDataRead),
+        Custom("POST", "/review-batch-sets/{batchSetId}/check-out-next", "Coding.ReviewBatch.CheckedOut", async w =>
+        {
+            // A fresh set, so the probe checks a batch out instead of returning one the actor already holds.
+            var snapshot = await w.JsonAsync(HttpMethod.Post, $"{W(w.A.WorkspaceId)}/snapshots", w.Attacker, HttpStatusCode.Created,
+                new JsonObject { ["purpose"] = "ReviewBatch", ["documentIds"] = new JsonArray(w.A.DocumentId.ToString()) });
+            var set = await w.JsonAsync(HttpMethod.Post, $"{W(w.A.WorkspaceId)}/review-batch-sets", w.Attacker, HttpStatusCode.Created, new JsonObject
+            {
+                ["name"] = Unique("Audit probe "),
+                ["snapshotId"] = snapshot.GetProperty("snapshotId").GetString(),
+                ["batchPrefix"] = Unique("AP"),
+                ["maxBatchSize"] = 10,
+            });
+            return new AuditRequest(HttpMethod.Post,
+                $"{W(w.A.WorkspaceId)}/review-batch-sets/{set.GetProperty("batchSetId").GetGuid()}/check-out-next", w.Attacker);
+        }),
+        NoneWs("GET", "/review-batch-sets/{batchSetId}/assignee-candidates", ConfigurationRead),
         NoneWs("GET", "/review-batches", ListRead),
         NoneWs("GET", "/review-batches/{batchId}", ListRead),
         NoneWs("GET", "/review-batches/{batchId}/documents", ListRead),
@@ -435,6 +451,15 @@ internal static class AuditCoverageCatalog
         Audited("GET", "/compliance/access-review", "Security.AccessReviewGenerated"),
         Audited("GET", "/compliance/access-review/export", "Security.AccessReviewGenerated"),
         Audited("GET", "/compliance/audit-export", "Audit.Exported"),
+        Audited("GET", "/defensibility/review-summary", "Audit.DefensibilityReportGenerated"),
+        Audited("GET", "/defensibility/review-summary/export", "Audit.DefensibilityReportGenerated"),
+        Audited("GET", "/defensibility/production-history", "Audit.DefensibilityReportGenerated"),
+        Audited("GET", "/defensibility/production-history/export", "Audit.DefensibilityReportGenerated"),
+        Audited("GET", "/defensibility/search-term-hits", "Audit.DefensibilityReportGenerated"),
+        Audited("GET", "/defensibility/search-term-hits/export", "Audit.DefensibilityReportGenerated"),
+        Audited("GET", "/documents/{documentId}/chain-of-custody", "Audit.DefensibilityReportGenerated"),
+        Audited("GET", "/documents/{documentId}/chain-of-custody/export", "Audit.DefensibilityReportGenerated"),
+        Audited("GET", "/defensibility/pack", "Audit.DefensibilityReportGenerated"),
         // Audit log (E14-T04, ADR-013 §8.4): who reads or exports the audit trail is itself audited.
         Audited("GET", "/audit-events", "Audit.Queried"),
         NoneWs("GET", "/audit-actions", "reads the closed audit taxonomy; no audit events"),
@@ -442,6 +467,10 @@ internal static class AuditCoverageCatalog
         NoneWs("GET", "/audit-exports", ListRead),
         NoneWs("GET", "/audit-exports/{exportId}", ListRead),
         Audited("GET", "/audit-exports/{exportId}/content", "Audit.ExportDownloaded", probe: "audit export file"),
+        Audited("POST", "/list-exports", "Export.ListRequested"),
+        NoneWs("GET", "/list-exports", ListRead),
+        NoneWs("GET", "/list-exports/{exportId}", ListRead),
+        Audited("GET", "/list-exports/{exportId}/content", "Export.ListDownloaded", probe: "list export file"),
         NoneWs("GET", "/privilege-log-templates", ConfigurationRead),
         Audited("POST", "/privilege-log-templates", "Privilege.LogTemplate.Created"),
         NoneWs("GET", "/privilege-log-templates/{templateId}", ConfigurationRead),

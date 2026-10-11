@@ -174,8 +174,17 @@ public static class AuditTaxonomy
 
         public const string Downloaded = "Downloaded";
 
+        /// <summary>A document list export to CSV was requested (#181): columns, frozen selection and job.</summary>
+        public const string ListRequested = "ListRequested";
+
+        /// <summary>A document list export's CSV was downloaded through the gateway (#181): rows, bytes and SHA-256.</summary>
+        public const string ListDownloaded = "ListDownloaded";
+
         /// <summary>The audit resource type of export events.</summary>
         public const string ResourceType = "Export";
+
+        /// <summary>The audit resource type of document list export events (#181).</summary>
+        public const string ListResourceType = "ListExport";
     }
 
     /// <summary>Privilege review (E13): conflict overrides and reports.</summary>
@@ -385,6 +394,9 @@ public static class AuditTaxonomy
     {
         public const string Category = "Integrity";
 
+        /// <summary>A stored object's bytes no longer match the SHA-256 registered when it was written (ADR-011 §2.5).</summary>
+        public const string HashMismatch = "HashMismatch";
+
         /// <summary>A worker rejected a message whose envelope disagrees with PostgreSQL (ADR-013 §5, ADR-015 D9.3).</summary>
         public const string EnvelopeMismatch = "EnvelopeMismatch";
 
@@ -434,6 +446,12 @@ public static class AuditTaxonomy
 
         /// <summary><c>audit verify</c> checked the chain (Outcome Failure when it found tampering; E14-T03).</summary>
         public const string Verified = "Verified";
+
+        /// <summary>
+        /// A defensibility report or report pack was generated (E14-T05): the report, its format, its as-of point and the
+        /// fingerprint (SHA-256) of its as-of content.
+        /// </summary>
+        public const string DefensibilityReportGenerated = "DefensibilityReportGenerated";
     }
 
     /// <summary>Every allowed (Category, Action) pair.</summary>
@@ -451,7 +469,7 @@ public static class AuditTaxonomy
         .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded", "ConflictReportExported", "LogDownloaded",
             "LogTemplate.Created", "LogTemplate.Modified"),
         .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
-        .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
+        .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded", "ListRequested", "ListDownloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
             "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted",
@@ -468,7 +486,7 @@ public static class AuditTaxonomy
             "HoldReleaseCancelled", "DeletionBlocked"),
         .. Expand("Admin", "ConfigChanged", "UserProvisioned", "UserDeactivated", "KeyCreated", "KeyRotated", "KeyDestroyed",
             "SecretRotated"),
-        .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged", "ExportDownloaded"),
+        .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged", "ExportDownloaded", "DefensibilityReportGenerated"),
         .. Expand("Job", "Created", "Cancelled", "Failed", "CompletedWithErrors", "Replayed"),
         .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict",
             "MessageRejected"),

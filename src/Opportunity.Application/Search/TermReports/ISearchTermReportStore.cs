@@ -34,6 +34,12 @@ public sealed record SearchTermReportRecord
 
     public bool? IndexCurrent { get; init; }
 
+    /// <summary>Committed changes search did not reflect yet when the run started (null for runs before V0066).</summary>
+    public long? IndexPendingChanges { get; init; }
+
+    /// <summary>The index lag when the run started: age of the oldest change search did not reflect yet (zero when current).</summary>
+    public TimeSpan? IndexLag { get; init; }
+
     public long? DocumentsInScope { get; init; }
 
     public long? DocumentsWithHits { get; init; }
@@ -79,6 +85,19 @@ public sealed record SearchTermError(string Code, string Message, int? Position)
 
 /// <summary>A term to store: its name, expression and the error found when it was validated (if any).</summary>
 public sealed record NewSearchTerm(string Name, string Expression, SearchTermError? Error);
+
+/// <summary>
+/// The index state a run starts on (ADR-001 §7.3): the refresh-aware watermark, whether it was current, and the index lag
+/// at execution (pending changes and the age of the oldest of them), which the report must note (E14-T05).
+/// </summary>
+public sealed record SearchTermReportIndexState(long SearchGeneration, bool IndexCurrent, long PendingChanges, TimeSpan Lag)
+{
+    public static SearchTermReportIndexState From(SearchFreshnessReading reading)
+    {
+        ArgumentNullException.ThrowIfNull(reading);
+        return new(reading.IndexedThroughGeneration, reading.IsCurrent, reading.PendingChanges, reading.Lag);
+    }
+}
 
 /// <summary>Who runs a report: the executor every chunk is authorized as (ADR-010 §9).</summary>
 public sealed record SearchTermReportExecutor(Guid UserId, string DisplayName, IReadOnlyList<string> Groups, string? CorrelationId);
@@ -160,9 +179,9 @@ public interface ISearchTermReportStore
     /// <summary>Records the run's snapshot (on the report and as the job's target, so the snapshot is kept).</summary>
     Task SetSnapshotAsync(Guid workspaceId, Guid reportId, Guid jobId, Guid snapshotId, CancellationToken cancellationToken = default);
 
-    /// <summary>Queued → Running for <paramref name="jobId"/>, with the watermark and index state at the start.</summary>
+    /// <summary>Queued → Running for <paramref name="jobId"/>, with the watermark, index state and index lag at the start.</summary>
     Task MarkRunningAsync(
-        Guid workspaceId, Guid reportId, Guid jobId, long searchGeneration, bool indexCurrent, DateTimeOffset executedAt,
+        Guid workspaceId, Guid reportId, Guid jobId, SearchTermReportIndexState index, DateTimeOffset executedAt,
         CancellationToken cancellationToken = default);
 
     /// <summary>Records a term's error unless it already has one (the first error found wins).</summary>

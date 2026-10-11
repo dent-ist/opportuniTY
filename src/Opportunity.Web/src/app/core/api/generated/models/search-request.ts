@@ -11,6 +11,7 @@ export interface SearchRequest {
   highlight?: boolean | null;
   pageSize?: number | string | null;
   query: string | null;
+  reviewBatchId?: string | null;
   savedSearchId?: string | null;
   searchTermReportId?: string | null;
   sort?: Array<SearchSortKey> | null;

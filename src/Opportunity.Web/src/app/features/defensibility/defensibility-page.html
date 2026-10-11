@@ -1,0 +1,611 @@
+<header class="dfn__header">
+  <h1 class="dfn__title" tabindex="-1">Defensibility Reports</h1>
+  <p class="dfn__lead">
+    Reports to support how review and production were carried out. Each report is generated when you
+    ask for it, as of the point you choose, and states that point with a fingerprint: generating it
+    again for the same point gives the same fingerprint. Generating a report is recorded in the
+    audit trail.
+  </p>
+</header>
+
+<ng-template #statementTpl let-s>
+  <dl class="dfn__statement">
+    <div>
+      <dt>As of</dt>
+      <dd>{{ statementTime(s) }}</dd>
+    </div>
+    @if (s.snapshotId) {
+      <div>
+        <dt>Snapshot</dt>
+        <dd>
+          <span class="dfn__mono" [title]="s.snapshotId">{{ short(s.snapshotId, 8) }}…</span>
+        </dd>
+      </div>
+    }
+    @if (s.searchGeneration !== null) {
+      <div>
+        <dt>Search generation</dt>
+        <dd>{{ n(s.searchGeneration) }}</dd>
+      </div>
+    }
+    <div>
+      <dt>Fingerprint (SHA-256)</dt>
+      <dd>
+        <span class="dfn__mono dfn__hash">{{ s.fingerprint }}</span>
+      </dd>
+    </div>
+  </dl>
+</ng-template>
+
+<section class="dfn__card" aria-labelledby="dfn-point">
+  <h2 id="dfn-point" class="dfn__card-title">Report point</h2>
+  <p class="dfn__muted">
+    Leave the date empty to report as of now. Reports read only what was recorded at or before the
+    point, so a report as of an earlier point can be reproduced exactly later.
+  </p>
+  <div class="dfn__row">
+    <opp-text-field
+      label="As of (optional)"
+      type="datetime-local"
+      [(value)]="asOfInput"
+      [error]="asOfError() ?? undefined"
+      [invalid]="!!asOfError()"
+    />
+    <opp-text-field
+      label="Review population snapshot ID (optional)"
+      hint="Limits the review summary to a frozen set of documents."
+      [(value)]="snapshotInput"
+      [error]="snapshotError() ?? undefined"
+      [invalid]="!!snapshotError()"
+    />
+  </div>
+</section>
+
+<section class="dfn__card" aria-labelledby="dfn-review">
+  <div class="dfn__card-head">
+    <h2 id="dfn-review" class="dfn__card-title">Review population and coding</h2>
+    <div class="dfn__actions">
+      <button
+        type="button"
+        oppButton="primary"
+        [busy]="review.loading()"
+        [disabled]="blocked() || !!snapshotError()"
+        (click)="generateReview()"
+      >
+        <opp-icon name="report" />
+        Generate summary
+      </button>
+      <a
+        oppButton="secondary"
+        [attr.href]="blocked() || snapshotError() ? null : reviewCsvUrl()"
+        [attr.aria-disabled]="blocked() || snapshotError() ? 'true' : null"
+        download
+      >
+        <opp-icon name="download" />
+        Download summary (CSV)
+      </a>
+    </div>
+  </div>
+  <p class="dfn__muted">
+    The documents in scope, how many a person coded, and coding by reviewer and by day, from the
+    coding history.
+  </p>
+  @if (review.loading()) {
+    <opp-loading-state label="Generating the review summary…" />
+  } @else if (review.error(); as error) {
+    <opp-error-state [error]="error" (retry)="generateReview()" />
+  } @else if (review.value(); as r) {
+    <ng-container *ngTemplateOutlet="statementTpl; context: { $implicit: r.statement }" />
+    <ul class="dfn__summary" aria-label="Review population">
+      <li>
+        <strong>{{ n(r.population.documents) }}</strong> documents in scope
+      </li>
+      <li>
+        <strong>{{ n(r.population.reviewed) }}</strong> reviewed
+      </li>
+      <li>
+        <strong>{{ n(r.population.notReviewed) }}</strong> not reviewed
+      </li>
+      <li>
+        <strong>{{ n(r.population.systemCodedOnly) }}</strong> coded by system rules only
+      </li>
+    </ul>
+    @if (r.reviewers.length) {
+      <div class="dfn__table-wrap">
+        <table class="dfn__table">
+          <caption class="opp-visually-hidden">
+            Coding by reviewer
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Reviewer</th>
+              <th scope="col" class="dfn__num">Documents coded</th>
+              <th scope="col" class="dfn__num">Field changes</th>
+              <th scope="col" class="dfn__num">Interactive</th>
+              <th scope="col" class="dfn__num">Mass edit</th>
+              <th scope="col" class="dfn__num">System rule</th>
+              <th scope="col">First coding</th>
+              <th scope="col">Last coding</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (x of r.reviewers; track x.userId) {
+              <tr>
+                <th scope="row">{{ x.displayName || x.userId }}</th>
+                <td class="dfn__num">{{ n(x.documents) }}</td>
+                <td class="dfn__num">{{ n(x.changes) }}</td>
+                <td class="dfn__num">{{ n(x.interactive) }}</td>
+                <td class="dfn__num">{{ n(x.bulk) }}</td>
+                <td class="dfn__num">{{ n(x.systemRule) }}</td>
+                <td>{{ date(x.firstAt) }}</td>
+                <td>{{ date(x.lastAt) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <h3 class="dfn__subtitle">By day (UTC)</h3>
+      <div class="dfn__table-wrap">
+        <table class="dfn__table">
+          <caption class="opp-visually-hidden">
+            Coding by reviewer and day
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Reviewer</th>
+              <th scope="col" class="dfn__num">Documents coded</th>
+              <th scope="col" class="dfn__num">Field changes</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (d of shownDayRows(); track d.date + d.userId) {
+              <tr>
+                <td>{{ d.date }}</td>
+                <th scope="row">{{ d.displayName || d.userId }}</th>
+                <td class="dfn__num">{{ n(d.documents) }}</td>
+                <td class="dfn__num">{{ n(d.changes) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (r.days.length > shownDays || r.daysTruncated) {
+        <p class="dfn__muted">
+          The first {{ shownDays }} days are shown. Download the CSV for every day.
+        </p>
+      }
+    } @else {
+      <opp-empty-state
+        icon="info"
+        title="No coding by this point"
+        message="Nobody had coded a document in scope at or before this point."
+      />
+    }
+  }
+</section>
+
+<section class="dfn__card" aria-labelledby="dfn-productions">
+  <div class="dfn__card-head">
+    <h2 id="dfn-productions" class="dfn__card-title">Production history</h2>
+    <div class="dfn__actions">
+      <button
+        type="button"
+        oppButton="primary"
+        [busy]="productions.loading()"
+        [disabled]="blocked()"
+        (click)="generateProductions()"
+      >
+        <opp-icon name="report" />
+        Generate history
+      </button>
+      <a
+        oppButton="secondary"
+        [attr.href]="blocked() ? null : productionsCsvUrl()"
+        [attr.aria-disabled]="blocked() ? 'true' : null"
+        download
+      >
+        <opp-icon name="download" />
+        Download history (CSV)
+      </a>
+    </div>
+  </div>
+  <p class="dfn__muted">
+    Every production finalized by this point with its Bates range, counts, volumes, QC result and
+    the SHA-256 of its finalization manifest.
+  </p>
+  @if (productions.loading()) {
+    <opp-loading-state label="Generating the production history…" />
+  } @else if (productions.error(); as error) {
+    <opp-error-state [error]="error" (retry)="generateProductions()" />
+  } @else if (productions.value(); as h) {
+    <ng-container *ngTemplateOutlet="statementTpl; context: { $implicit: h.statement }" />
+    @if (h.productions.length) {
+      <div class="dfn__table-wrap">
+        <table class="dfn__table">
+          <caption class="opp-visually-hidden">
+            Productions
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Production</th>
+              <th scope="col">Status</th>
+              <th scope="col">Finalized</th>
+              <th scope="col">Bates range</th>
+              <th scope="col" class="dfn__num">Documents</th>
+              <th scope="col" class="dfn__num">Pages</th>
+              <th scope="col">QC</th>
+              <th scope="col" class="dfn__num">Volumes</th>
+              <th scope="col">Manifest SHA-256</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of h.productions; track p.productionId) {
+              <tr>
+                <th scope="row">{{ p.name }} (v{{ p.version }})</th>
+                <td>
+                  @if (p.status === 'Voided') {
+                    <opp-badge tone="warning" icon="warning">Voided</opp-badge>
+                  } @else {
+                    <opp-badge tone="success" icon="check">Finalized</opp-badge>
+                  }
+                </td>
+                <td>{{ date(p.finalizedAt) }}</td>
+                <td>{{ p.batesBegin ? p.batesBegin + ' – ' + p.batesEnd : '–' }}</td>
+                <td class="dfn__num">{{ n(p.documents) }}</td>
+                <td class="dfn__num">{{ n(p.pages) }}</td>
+                <td>{{ p.qc ? p.qc.outcome : 'Not recorded' }}</td>
+                <td class="dfn__num">{{ p.volumes.length }}</td>
+                <td>
+                  <span class="dfn__mono" [title]="p.manifestSha256"
+                    >{{ short(p.manifestSha256) }}…</span
+                  >
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <opp-empty-state
+        icon="production"
+        title="No productions by this point"
+        message="No production had been finalized at or before this point."
+      />
+    }
+  }
+</section>
+
+<section class="dfn__card" aria-labelledby="dfn-hits">
+  <div class="dfn__card-head">
+    <h2 id="dfn-hits" class="dfn__card-title">Search term hit reports</h2>
+    <div class="dfn__actions">
+      <button
+        type="button"
+        oppButton="primary"
+        [busy]="hits.loading()"
+        [disabled]="blocked()"
+        (click)="generateHits()"
+      >
+        <opp-icon name="report" />
+        Generate hit reports
+      </button>
+      <a
+        oppButton="secondary"
+        [attr.href]="blocked() ? null : hitsCsvUrl()"
+        [attr.aria-disabled]="blocked() ? 'true' : null"
+        download
+      >
+        <opp-icon name="download" />
+        Download hit reports (CSV)
+      </a>
+    </div>
+  </div>
+  <p class="dfn__muted">
+    Search Terms Reports completed by this point, each with the frozen set and search generation it
+    was counted over and how far the index lagged when it ran.
+  </p>
+  @if (hits.loading()) {
+    <opp-loading-state label="Generating the hit reports…" />
+  } @else if (hits.error(); as error) {
+    <opp-error-state [error]="error" (retry)="generateHits()" />
+  } @else if (hits.value(); as t) {
+    <ng-container *ngTemplateOutlet="statementTpl; context: { $implicit: t.statement }" />
+    @if (t.reports.length) {
+      <div class="dfn__table-wrap">
+        <table class="dfn__table">
+          <caption class="opp-visually-hidden">
+            Search term hit reports
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Report</th>
+              <th scope="col" class="dfn__num">Terms</th>
+              <th scope="col">Snapshot</th>
+              <th scope="col" class="dfn__num">Search generation</th>
+              <th scope="col">Index when run</th>
+              <th scope="col">Index lag at execution</th>
+              <th scope="col" class="dfn__num">Documents with hits</th>
+              <th scope="col">Completed</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of t.reports; track r.reportId) {
+              <tr>
+                <th scope="row">{{ r.name }} (run {{ r.run }})</th>
+                <td class="dfn__num">{{ r.terms.length }}</td>
+                <td>
+                  @if (r.snapshotId) {
+                    <span class="dfn__mono" [title]="r.snapshotId"
+                      >{{ short(r.snapshotId, 8) }}…</span
+                    >
+                  }
+                </td>
+                <td class="dfn__num">{{ n(r.searchGeneration) }}</td>
+                <td>
+                  @if (r.indexCurrent === false) {
+                    <opp-badge tone="warning" icon="warning">Catching up</opp-badge>
+                  } @else {
+                    <opp-badge tone="success" icon="check">Current</opp-badge>
+                  }
+                </td>
+                <td>{{ lag(r) }}</td>
+                <td class="dfn__num">{{ n(r.totals.documentsWithHits) }}</td>
+                <td>{{ date(r.completedAt) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (t.truncated) {
+        <p class="dfn__muted">The oldest {{ t.reports.length }} reports are shown.</p>
+      }
+    } @else {
+      <opp-empty-state
+        icon="report"
+        title="No hit reports by this point"
+        message="No Search Terms Report had completed at or before this point."
+      />
+    }
+  }
+</section>
+
+<section class="dfn__card" aria-labelledby="dfn-custody">
+  <div class="dfn__card-head">
+    <h2 id="dfn-custody" class="dfn__card-title">Chain of custody</h2>
+    @if (custodyCsvUrl(); as url) {
+      <a
+        oppButton="secondary"
+        [attr.href]="blocked() ? null : url"
+        [attr.aria-disabled]="blocked() ? 'true' : null"
+        download
+      >
+        <opp-icon name="download" />
+        Download chain of custody (CSV)
+      </a>
+    }
+  </div>
+  <p class="dfn__muted">
+    Where a document came from, the hashes recorded when it was imported next to the hashes of the
+    files read back from storage now, the images and renditions made from it, and the productions it
+    was produced in.
+  </p>
+  <form class="dfn__row" (submit)="$event.preventDefault(); generateCustody()">
+    <opp-text-field
+      label="Document ID"
+      [(value)]="documentInput"
+      [error]="documentError() ?? undefined"
+      [invalid]="!!documentError()"
+    />
+    <button
+      type="submit"
+      oppButton="primary"
+      [busy]="custody.loading()"
+      [disabled]="blocked() || !custodyCsvUrl()"
+    >
+      <opp-icon name="report" />
+      Trace document
+    </button>
+  </form>
+  @if (custody.loading()) {
+    <opp-loading-state label="Reading the document's files back from storage…" />
+  } @else if (custody.error(); as error) {
+    <opp-error-state [error]="error" (retry)="generateCustody()" />
+  } @else if (custody.value(); as c) {
+    <ng-container *ngTemplateOutlet="statementTpl; context: { $implicit: c.statement }" />
+    <div class="dfn__verdict" role="status">
+      @if (c.mismatches === 0) {
+        <opp-badge tone="success" icon="check">Files match</opp-badge>
+        <span
+          >{{ c.controlNumber }}: {{ c.verified }} stored
+          {{ c.verified === 1 ? 'file was' : 'files were' }} read back and match the hashes recorded
+          for them.</span
+        >
+      } @else {
+        <opp-badge tone="danger" icon="error">Files do not match</opp-badge>
+        <span
+          >{{ c.controlNumber }}: {{ c.mismatches }} of {{ c.verified }} stored files no longer
+          match the hashes recorded for them. This has been recorded in the audit trail.</span
+        >
+      }
+    </div>
+    <dl class="dfn__statement">
+      <div>
+        <dt>Native SHA-256 at import</dt>
+        <dd>
+          <span class="dfn__mono dfn__hash">{{ c.importHashes.sha256 || '–' }}</span>
+        </dd>
+      </div>
+      @if (c.importHashes.upstream) {
+        <div>
+          <dt>Hash in the load file</dt>
+          <dd>
+            <span class="dfn__mono dfn__hash">{{ c.importHashes.upstream }}</span>
+          </dd>
+        </div>
+      }
+    </dl>
+
+    <h3 class="dfn__subtitle">Imports</h3>
+    @if (c.imports.length) {
+      <div class="dfn__table-wrap">
+        <table class="dfn__table">
+          <caption class="opp-visually-hidden">
+            Imports of the document
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Import</th>
+              <th scope="col">Load file</th>
+              <th scope="col" class="dfn__num">Row</th>
+              <th scope="col">Result</th>
+              <th scope="col">Load file SHA-256 at upload</th>
+              <th scope="col">Read back now</th>
+              <th scope="col">Imported</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (i of c.imports; track i.importId + i.rowNumber) {
+              <tr>
+                <th scope="row">{{ i.name }}</th>
+                <td>{{ i.loadFileName }}</td>
+                <td class="dfn__num">{{ n(i.rowNumber) }}</td>
+                <td>{{ i.action }}</td>
+                <td>
+                  <span class="dfn__mono" [title]="i.loadFileSha256"
+                    >{{ short(i.loadFileSha256) }}…</span
+                  >
+                </td>
+                <td>
+                  <opp-badge
+                    [tone]="verification(i.loadFileVerification).tone"
+                    [icon]="verification(i.loadFileVerification).icon"
+                    >{{ verification(i.loadFileVerification).label }}</opp-badge
+                  >
+                </td>
+                <td>{{ date(i.startedAt) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <p class="dfn__muted">No import recorded for this document by this point.</p>
+    }
+
+    <h3 class="dfn__subtitle">Stored files</h3>
+    @if (c.objects.length) {
+      <div class="dfn__table-wrap">
+        <table class="dfn__table">
+          <caption class="opp-visually-hidden">
+            Stored files of the document with their recorded and read-back hashes
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">File</th>
+              <th scope="col" class="dfn__num">Size (bytes)</th>
+              <th scope="col">Stored</th>
+              <th scope="col">SHA-256 recorded</th>
+              <th scope="col">SHA-256 read back now</th>
+              <th scope="col">Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (o of c.objects; track o.objectId) {
+              <tr>
+                <th scope="row">
+                  {{ o.area }}{{ o.page ? ', page ' + o.page : ''
+                  }}{{ o.current ? '' : ' (earlier)' }}
+                </th>
+                <td class="dfn__num">{{ n(o.sizeBytes) }}</td>
+                <td>{{ date(o.storedAt) }}</td>
+                <td>
+                  <span class="dfn__mono" [title]="o.recordedSha256"
+                    >{{ short(o.recordedSha256) }}…</span
+                  >
+                </td>
+                <td>
+                  @if (o.verification.sha256) {
+                    <span class="dfn__mono" [title]="o.verification.sha256"
+                      >{{ short(o.verification.sha256) }}…</span
+                    >
+                  } @else {
+                    –
+                  }
+                </td>
+                <td>
+                  <opp-badge
+                    [tone]="verification(o.verification).tone"
+                    [icon]="verification(o.verification).icon"
+                    >{{ verification(o.verification).label }}</opp-badge
+                  >
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (c.objectsTruncated) {
+        <p class="dfn__muted">
+          The first {{ c.objects.length }} stored files are listed. Download the CSV for the full
+          record.
+        </p>
+      }
+    } @else {
+      <p class="dfn__muted">No stored file recorded for this document by this point.</p>
+    }
+
+    <h3 class="dfn__subtitle">Productions</h3>
+    @if (c.productions.length) {
+      <ul class="dfn__list">
+        @for (p of c.productions; track p.productionId) {
+          <li>
+            {{ p.name }} (v{{ p.version }}): {{ p.begBates
+            }}{{ p.endBates && p.endBates !== p.begBates ? ' – ' + p.endBates : '' }},
+            {{ p.output }}, finalized {{ date(p.finalizedAt)
+            }}{{ p.voidedAt ? ', voided ' + date(p.voidedAt) : '' }}
+          </li>
+        }
+      </ul>
+    } @else {
+      <p class="dfn__muted">Not produced by this point.</p>
+    }
+  }
+</section>
+
+<section class="dfn__card" aria-labelledby="dfn-pack">
+  <h2 id="dfn-pack" class="dfn__card-title">Report pack</h2>
+  <p class="dfn__muted">
+    One ZIP file with the reports above as of the report point, each production's finalization
+    manifest and QC report, the ethical wall proof and access review, and a manifest listing every
+    file with its SHA-256.
+    @if (canExportAudit) {
+      It also holds the audit trail for the period, which can be verified without opportuniTY.
+    }
+  </p>
+  <div class="dfn__row">
+    <opp-text-field
+      label="Period start (optional)"
+      hint="Start of the ethical wall proof and audit trail; 30 days before the report point if empty."
+      type="datetime-local"
+      [(value)]="packFromInput"
+    />
+    <opp-text-field
+      label="Documents to trace (optional)"
+      [hint]="'Document IDs separated by commas or spaces, at most ' + maxPackDocuments + '.'"
+      [(value)]="packDocumentsInput"
+    />
+    <a
+      oppButton="primary"
+      [attr.href]="blocked() || packError() || snapshotError() ? null : packUrl()"
+      [attr.aria-disabled]="blocked() || packError() || snapshotError() ? 'true' : null"
+      download
+    >
+      <opp-icon name="download" />
+      Download report pack
+    </a>
+  </div>
+  @if (packError(); as message) {
+    <p class="dfn__error" role="alert">{{ message }}</p>
+  }
+</section>

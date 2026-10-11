@@ -29,6 +29,7 @@ permissions in the Break-glass column (Q-45).
 | `Import.Overlay` | ✔ | | | | | | |
 | `Export.Create` | ✔ | | | | ✔ | | |
 | `Export.Download` | ✔ | | | | ✔ | | |
+| `Document.ExportList` | ✔ | | | | ✔ | | |
 | `Production.Create` | ✔ | | | | ✔ | | |
 | `Production.Finalize` | ✔ | | | | ✔ | | |
 | `PrivilegeLog.Generate` | ✔ | | | ✔ | ✔ | | |
@@ -73,6 +74,7 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Import.Overlay` | Run overlay imports, including coding and privilege overlays (Q-31). |
 | `Export.Create` | Create exports. |
 | `Export.Download` | Download export packages. |
+| `Document.ExportList` | Export the document list (the current view's columns for a search or selection) to CSV; documents are re-authorized when the export runs (Q-15). |
 | `Production.Create` | Create and run productions. |
 | `Production.Finalize` | Finalize productions. |
 | `PrivilegeLog.Generate` | Generate privilege logs. |
@@ -82,7 +84,7 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Audit.Read` | Read the workspace audit trail. |
 | `Audit.ReadSearchText` | Read search query text in the audit trail (Q-16). |
 | `Audit.Export` | Download the workspace audit trail as a verifiable export: events, hash chain and signed checkpoints (search text only with Audit.ReadSearchText). |
-| `Compliance.Report` | Generate the ethical-wall proof and the workspace access review (users, roles, walls, last access). |
+| `Compliance.Report` | Generate the ethical-wall proof and the workspace access review (users, roles, walls, last access), and the defensibility reports and report pack (review summary, production history, search term hit reports, chain of custody; E14-T05). |
 | `Workspace.ManageUsers` | Assign and revoke workspace roles. |
 | `Workspace.ManageSecurity` | Manage restriction classes, class grants and ethical walls. |
 | `Workspace.ManageFields` | Manage fields, choices and coding layouts. |

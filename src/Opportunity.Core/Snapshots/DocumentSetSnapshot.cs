@@ -33,6 +33,12 @@ public enum SnapshotPurpose
 
     /// <summary>Membership of a review Batch Set (E10-T05); retained for the life of the matter once a Batch Set uses it.</summary>
     ReviewBatch,
+
+    /// <summary>
+    /// Rows of a document list export to CSV (#181; Q-15 re-check at execution); retained like bulk coding snapshots, a
+    /// retention period after its jobs end.
+    /// </summary>
+    ListExport,
 }
 
 /// <summary>Where the candidate set came from. Stored as text.</summary>
@@ -103,6 +109,7 @@ public static class SnapshotRules
         SnapshotPurpose.Production => Permission.ProductionCreate,
         SnapshotPurpose.Report => Permission.SearchExecute,
         SnapshotPurpose.ReviewBatch => Permission.ReviewBatchManage,
+        SnapshotPurpose.ListExport => Permission.DocumentExportList,
         _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "Unknown snapshot purpose."),
     };
 
@@ -118,7 +125,7 @@ public static class SnapshotRules
     /// ADR-002 §9: once referenced, export, production and report snapshots stay for the life of the matter; bulk
     /// coding snapshots expire a retention period after their jobs finished.
     /// </summary>
-    public static bool RetainedForMatter(SnapshotPurpose purpose) => purpose is not SnapshotPurpose.BulkCoding;
+    public static bool RetainedForMatter(SnapshotPurpose purpose) => purpose is not (SnapshotPurpose.BulkCoding or SnapshotPurpose.ListExport);
 
     /// <summary>A default display name such as "Mass Edit 2026-10-03 10:42" (UX note on E10-T02: a named "Frozen set").</summary>
     public static string DefaultName(SnapshotPurpose purpose, DateTimeOffset createdAt) =>
@@ -129,6 +136,7 @@ public static class SnapshotRules
             SnapshotPurpose.Production => "Production",
             SnapshotPurpose.Report => "Search Terms Report",
             SnapshotPurpose.ReviewBatch => "Batch Set",
+            SnapshotPurpose.ListExport => "Export List",
             _ => "Frozen set",
         }) + " " + createdAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + " UTC";
 }

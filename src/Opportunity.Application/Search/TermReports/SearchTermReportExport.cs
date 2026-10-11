@@ -48,6 +48,7 @@ public static class SearchTermReportExport
                 false => "No: changes were still being made searchable while the report ran; hits may not reflect them.",
                 null => null,
             }),
+            Row("Index lag at execution", IndexLag(report)),
             Row("Executed by", report.ExecutedByDisplay),
             Row("Executed at (UTC)", Time(report.ExecutedAt)),
             Row("Completed at (UTC)", Time(report.CompletedAt)),
@@ -67,6 +68,24 @@ public static class SearchTermReportExport
         rows.Add(Row("Documents with hits, including family", null, report.DocumentsWithHitsIncludingFamily));
         rows.Add(Row("Documents without hits", null, report.DocumentsWithoutHits));
         return rows;
+    }
+
+    /// <summary>
+    /// The index lag when the run started (E14-T05): the committed changes search did not reflect yet and the age of the
+    /// oldest; null for runs recorded before the lag was kept.
+    /// </summary>
+    public static string? IndexLag(SearchTermReportRecord report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        if (report.IndexPendingChanges is not { } pending || report.IndexLag is not { } lag)
+        {
+            return null;
+        }
+
+        return pending == 0
+            ? "None: every committed change was searchable."
+            : string.Create(CultureInfo.InvariantCulture,
+                $"{pending} change(s) not yet searchable; the oldest was {Math.Round(lag.TotalSeconds, 1)} s old.");
     }
 
     /// <summary>RFC 4180 CSV in UTF-8 with a byte-order mark; text a spreadsheet would run as a formula gets a leading apostrophe.</summary>

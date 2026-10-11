@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
+using Opportunity.Application.ListExports;
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Application.Search.TermReports;
 using Opportunity.Core.Jobs;
@@ -26,6 +27,7 @@ using Opportunity.IntegrationTests.Import;
 using Opportunity.IntegrationTests.Migrations;
 using Opportunity.IntegrationTests.Productions;
 using Opportunity.IntegrationTests.Search;
+using Opportunity.Production.ListExports;
 using Opportunity.Search;
 using Opportunity.Search.Projection;
 using Opportunity.Testing.OpenSearch;
@@ -85,7 +87,8 @@ internal sealed record WorkspaceResources(
     Guid ProductionVolumeFileId,
     Guid PrivilegeLogTemplateId,
     Guid PrivilegeLogId,
-    Guid AuditExportId)
+    Guid AuditExportId,
+    Guid ListExportId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -97,7 +100,8 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+        Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -110,6 +114,7 @@ internal sealed record WorkspaceResources(
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
             WallId, SpareWallId, BreakGlassActivationId, RedactionSetId, PreservationLockId, ReviewBatchSnapshotId, FirstPassBatchSetId,
             QcBatchSetId, ReviewBatchId, ProductionVolumeId, ProductionVolumeFileId, PrivilegeLogTemplateId, PrivilegeLogId, AuditExportId,
+            ListExportId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -192,6 +197,7 @@ internal sealed class AttackWorld : IAsyncDisposable
             builder.UseSetting("Snapshots:BackgroundEnabled", "false");
             builder.UseSetting("SearchTermReports:BackgroundEnabled", "false");
             builder.UseSetting("AuditExports:BackgroundEnabled", "false");
+            builder.UseSetting("ListExports:BackgroundEnabled", "false");
             builder.UseSetting("Jobs:Events:MaxStreamDuration", "00:00:01");
             // Audit envelopes (E14-T02): a session hash key (obviously fake) and a client address, as behind a real listener.
             builder.UseSetting("Authentication:Session:AuditHashKey", Convert.ToBase64String(new byte[32]));
@@ -450,6 +456,16 @@ internal sealed class AttackWorld : IAsyncDisposable
                 .Should().Be(AuditExportStatus.Completed);
         }
 
+        // Document list export (#181): the document's row as CSV, run by the API host's runner.
+        var listExport = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/list-exports", owner, HttpStatusCode.Accepted,
+            new JsonObject { ["fieldIds"] = new JsonArray(), ["documentIds"] = new JsonArray(document.DocumentId.ToString()) });
+        var listExportId = listExport.GetProperty("exportId").GetGuid();
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<ListExportRunner>().RunToEndAsync(ws, listExportId, cancellationToken: Ct))
+                .Should().Be(ListExportStatus.Completed);
+        }
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -503,7 +519,8 @@ internal sealed class AttackWorld : IAsyncDisposable
             volumeFiles.GetProperty("items")[0].GetProperty("fileId").GetGuid(),
             logTemplate.GetProperty("templateId").GetGuid(),
             privilegeLog.GetProperty("log").GetProperty("logId").GetGuid(),
-            auditExportId);
+            auditExportId,
+            listExportId);
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>
