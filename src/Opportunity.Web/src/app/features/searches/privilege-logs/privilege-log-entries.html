@@ -1,0 +1,175 @@
+<div class="plt__head">
+  <h4 class="plt__subhead" [id]="'pl-entries-' + version().logId">Entries</h4>
+  @if (rows(); as list) {
+    <span class="plt__muted">Showing {{ count(list.length) }} of {{ count(total()) }}</span>
+  }
+</div>
+@if (editable()) {
+  <p class="plt__muted">
+    The description is the Privilege Description field of each document. Edits are saved on the
+    document (recorded in its coding history) and appear in the next version you generate; this
+    version stays as it was.
+  </p>
+}
+@if (editedCount() > 0) {
+  <p class="plt__notice" role="status">
+    <opp-icon name="info" />
+    <span>
+      {{ editedCount() === 1 ? '1 description was' : count(editedCount()) + ' descriptions were' }}
+      edited since this version. Generate a new version to include
+      {{ editedCount() === 1 ? 'it' : 'them' }}.
+    </span>
+  </p>
+}
+
+@if (rows(); as list) {
+  @if (list.length === 0) {
+    <p class="plt__muted">This version lists no documents.</p>
+  } @else {
+    <div
+      class="plt__wrap"
+      tabindex="0"
+      role="region"
+      [attr.aria-labelledby]="'pl-entries-' + version().logId"
+    >
+      <table class="plt__table">
+        <thead>
+          <tr>
+            @for (column of version().columns; track $index) {
+              <th scope="col">{{ column }}</th>
+            }
+            @if (editable()) {
+              <th scope="col"><span class="opp-visually-hidden">Description actions</span></th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of list; track row.documentId) {
+            <tr>
+              @for (column of version().columns; track $index; let i = $index) {
+                <td [class.plt__desc]="i === descriptionColumn()">
+                  @if (i === descriptionColumn() && editor()?.documentId === row.documentId) {
+                    <div class="plt__editor">
+                      <textarea
+                        class="plt__textarea"
+                        rows="3"
+                        [id]="'pl-desc-' + row.documentId"
+                        [attr.aria-label]="'Description of ' + label(row)"
+                        [attr.aria-describedby]="'pl-desc-hint-' + row.documentId"
+                        [value]="editor()!.draft"
+                        [disabled]="editor()!.saving"
+                        (input)="onDraft($event)"
+                        (keydown)="keydown($event, row)"
+                      ></textarea>
+                      <span class="plt__hint" [id]="'pl-desc-hint-' + row.documentId">
+                        Ctrl+Enter saves, Escape cancels.
+                      </span>
+                      <div class="plt__editor-actions">
+                        <button
+                          type="button"
+                          oppButton="primary"
+                          [busy]="editor()!.saving"
+                          (click)="save(row)"
+                        >
+                          <opp-icon name="save" />
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          oppButton="secondary"
+                          [disabled]="editor()!.saving"
+                          (click)="cancel(row)"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  } @else {
+                    <span class="plt__text">{{ cell(row, i) }}</span>
+                    @if (isEdited(row, i)) {
+                      {{ ' '
+                      }}<opp-badge tone="info" icon="pencil">Edited · next version</opp-badge>
+                    }
+                  }
+                </td>
+              }
+              @if (editable()) {
+                <td class="plt__row-actions">
+                  <button
+                    type="button"
+                    oppButton="ghost"
+                    [id]="'pl-edit-' + row.documentId"
+                    [busy]="opening() === row.documentId"
+                    [disabled]="editor()?.documentId === row.documentId"
+                    [attr.aria-label]="'Edit description of ' + label(row)"
+                    (click)="edit(row)"
+                  >
+                    <opp-icon name="pencil" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    oppButton="ghost"
+                    [attr.aria-expanded]="history()?.documentId === row.documentId"
+                    [attr.aria-controls]="'pl-history-' + row.documentId"
+                    [attr.aria-label]="'Description history of ' + label(row)"
+                    (click)="toggleHistory(row)"
+                  >
+                    <opp-icon name="clock" />
+                    History
+                  </button>
+                </td>
+              }
+            </tr>
+            @if (history(); as h) {
+              @if (h.documentId === row.documentId) {
+                <tr class="plt__history-row">
+                  <td [attr.colspan]="span()" [id]="'pl-history-' + row.documentId">
+                    @if (h.items; as items) {
+                      @if (items.length === 0) {
+                        <p class="plt__muted">
+                          The description of {{ label(row) }} has not been changed by coding.
+                        </p>
+                      } @else {
+                        <ol
+                          class="plt__history"
+                          [attr.aria-label]="'Description history of ' + label(row)"
+                        >
+                          @for (item of items; track $index) {
+                            <li>
+                              <span class="plt__small">{{ when(item.at) }} · {{ item.by }}</span>
+                              <span>
+                                <del class="plt__before">{{ item.before || '(empty)' }}</del>
+                                <span aria-hidden="true"> → </span>
+                                <span class="opp-visually-hidden"> changed to </span>
+                                <ins class="plt__after">{{ item.after || '(empty)' }}</ins>
+                              </span>
+                            </li>
+                          }
+                        </ol>
+                      }
+                    } @else {
+                      <opp-loading-state label="Loading description history…" />
+                    }
+                  </td>
+                </tr>
+              }
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (next()) {
+      <div>
+        <button type="button" oppButton="secondary" [busy]="loading()" (click)="more()">
+          Show more entries
+        </button>
+      </div>
+    }
+  }
+}
+@if (error(); as e) {
+  <opp-error-state [error]="e" (retry)="retry()" />
+} @else if (!rows()) {
+  <opp-loading-state label="Loading entries…" />
+}

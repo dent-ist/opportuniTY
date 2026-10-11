@@ -7,6 +7,7 @@ import { PrivilegeLogSourceKind } from '../models/privilege-log-source-kind';
 import { ReviewerResource } from '../models/reviewer-resource';
 export interface PrivilegeLogResource {
   contentSha256: string;
+  descriptionColumn?: number | string | null;
   files: Array<PrivilegeLogFileResource>;
   generatedAt: any;
   generatedBy: ReviewerResource;
@@ -14,6 +15,7 @@ export interface PrivilegeLogResource {
   metadata: PrivilegeLogMetadata;
   productionId: string | null;
   reviewSetSnapshotId: string | null;
+  savedSearchId?: string | null;
   snapshotId: string;
   source: PrivilegeLogSourceKind;
   templateId: string | null;

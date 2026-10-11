@@ -246,7 +246,10 @@ describe('Admin › Defensibility Reports (E14-T05)', () => {
 
   it('traces a document: import hashes next to the hashes read back from storage', async () => {
     await setup([PERMISSIONS.complianceReport]);
-    expect(button('Trace document').disabled).toBe(true);
+    // Submitting without a valid ID does nothing; the button stays enabled so Enter right after typing submits.
+    button('Trace document').click();
+    await settle();
+    expect(text()).not.toContain('Files do not match');
     await type('Document ID', DOC);
     button('Trace document').click();
     await settle();

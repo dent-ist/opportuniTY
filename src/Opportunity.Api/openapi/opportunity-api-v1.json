@@ -847,6 +847,153 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/document-folders": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "One level of the imported folder tree, in name order, with the documents the caller may see in each folder.",
+        "description": "Without parentId the top-level folders; with it the folder's subfolders (load the tree lazily, one level at a time). Restricted and walled documents are not counted and a folder holding none the caller may see is not listed. Counts follow the search index (countsApproximate while it catches up).",
+        "operationId": "ListDocumentFolders",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parentId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentFolderPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/document-folders/{documentFolderId}": {
+      "get": {
+        "tags": [
+          "Search"
+        ],
+        "summary": "One imported folder with its counts and the folders above it (to restore a selection or a link).",
+        "operationId": "GetDocumentFolder",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentFolderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentFolderResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/saved-search-folders": {
       "get": {
         "tags": [
@@ -10260,8 +10407,8 @@
         "tags": [
           "Privilege logs"
         ],
-        "summary": "Generate a privilege log from a finalized production or a frozen set: 201 with a new version, or 200 with the unchanged latest one.",
-        "description": "Lists every document withheld or redacted for privilege exactly once: production members produced as a placeholder and coded Withhold (their Bates is their Priv ID), members produced with redactions (privilege reasons or coded Redact; privacy-only ones only when the template includes them) and documents coded Withhold that were not produced (members' families and the optional review set snapshotId). A frozen-set log lists members coded Withhold or Redact. Documents produced in full never appear; documents you may not see are neither listed nor counted. Recorded exclusion rules are written into the metadata with their counts. Needs Production.Create for a production. At most 50,000 documents per log.",
+        "summary": "Generate a privilege log from a finalized production, a frozen set or a saved search: 201 with a new version, or 200 with the unchanged latest one.",
+        "description": "Lists every document withheld or redacted for privilege exactly once: production members produced as a placeholder and coded Withhold (their Bates is their Priv ID), members produced with redactions (privilege reasons or coded Redact; privacy-only ones only when the template includes them) and documents coded Withhold that were not produced (members' families and the optional review set snapshotId). A frozen-set log lists members coded Withhold or Redact; a saved-search log (savedSearchId alone) freezes the saved search as you see it now (Search.Execute) and lists the same, and its versions form one log whatever was frozen each time. Documents produced in full never appear; documents you may not see are neither listed nor counted. Recorded exclusion rules are written into the metadata with their counts. Needs Production.Create for a production. At most 50,000 documents per log.",
         "operationId": "GeneratePrivilegeLog",
         "parameters": [
           {
@@ -10360,7 +10507,7 @@
         "tags": [
           "Privilege logs"
         ],
-        "summary": "Privilege log versions newest first, optionally of one production or frozen set.",
+        "summary": "Privilege log versions newest first, optionally of one production, frozen set or saved search.",
         "operationId": "ListPrivilegeLogs",
         "parameters": [
           {
@@ -10381,6 +10528,14 @@
           },
           {
             "name": "snapshotId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "savedSearchId",
             "in": "query",
             "schema": {
               "type": "string",
@@ -10561,6 +10716,103 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CursorPageOfPrivilegeLogEntryResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/privilege-logs/{logId}/changes": {
+      "get": {
+        "tags": [
+          "Privilege logs"
+        ],
+        "summary": "What changed in a privilege log version since the previous version (or the version `against`): added, removed and changed entries.",
+        "description": "Entries are matched by document and their cells compared by column header; a changed entry names each changed cell with its value before and after. Added and changed entries come in log order, then removed ones. Without an earlier version you may read, previousLogId is null and nothing is listed. Pages with cursor and limit.",
+        "operationId": "GetPrivilegeLogChanges",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "against",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivilegeLogChangesResource"
                 }
               }
             }
@@ -22944,6 +23196,110 @@
           }
         }
       },
+      "DocumentFolderPage": {
+        "required": [
+          "parent",
+          "items",
+          "nextCursor",
+          "countsApproximate"
+        ],
+        "type": "object",
+        "properties": {
+          "parent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentFolderResource"
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentFolderResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "countsApproximate": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DocumentFolderResource": {
+        "required": [
+          "folderId",
+          "parentFolderId",
+          "name",
+          "path",
+          "depth",
+          "documentCount",
+          "totalCount",
+          "hasSubfolders"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentFolderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "depth": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "documentCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "totalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "hasSubfolders": {
+            "type": "boolean"
+          },
+          "ancestors": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DocumentFolderResource"
+            }
+          }
+        }
+      },
       "DocumentImagesInfo": {
         "required": [
           "available",
@@ -24681,6 +25037,13 @@
                 "$ref": "#/components/schemas/PrivilegeLogPreset"
               }
             ]
+          },
+          "savedSearchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -27974,6 +28337,135 @@
           }
         }
       },
+      "PrivilegeLogCellChange": {
+        "required": [
+          "column",
+          "before",
+          "after"
+        ],
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          }
+        }
+      },
+      "PrivilegeLogChangeKind": {
+        "enum": [
+          "added",
+          "removed",
+          "changed"
+        ]
+      },
+      "PrivilegeLogChangesResource": {
+        "required": [
+          "logId",
+          "version",
+          "previousLogId",
+          "previousVersion",
+          "added",
+          "removed",
+          "changed",
+          "unchanged",
+          "columnsAdded",
+          "columnsRemoved",
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "logId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "previousLogId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "previousVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "added": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "removed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "changed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "unchanged": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "columnsAdded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "columnsRemoved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogEntryChange"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PrivilegeLogColumn": {
         "required": [
           "kind"
@@ -28013,6 +28505,60 @@
           "redactionReasons",
           "field"
         ]
+      },
+      "PrivilegeLogEntryChange": {
+        "required": [
+          "kind",
+          "documentId",
+          "ordinal",
+          "previousOrdinal",
+          "treatment",
+          "cells",
+          "changedCells"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/PrivilegeLogChangeKind"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ordinal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "previousOrdinal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "treatment": {
+            "$ref": "#/components/schemas/PrivilegeLogTreatment"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "changedCells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeLogCellChange"
+            }
+          }
+        }
       },
       "PrivilegeLogEntryResource": {
         "required": [
@@ -28272,6 +28818,19 @@
               "string"
             ],
             "format": "int32"
+          },
+          "savedSearchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "savedSearchName": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -28379,13 +28938,30 @@
           },
           "generatedAt": {
             "format": "date-time"
+          },
+          "savedSearchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "descriptionColumn": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
       "PrivilegeLogSourceKind": {
         "enum": [
           "production",
-          "snapshot"
+          "snapshot",
+          "savedSearch"
         ]
       },
       "PrivilegeLogTemplateDefinition": {
@@ -32788,6 +33364,24 @@
           }
         }
       },
+      "SearchFolderFilter": {
+        "required": [
+          "folderId"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "includeSubfolders": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
       "SearchFreshness": {
         "required": [
           "servedGeneration",
@@ -33496,6 +34090,16 @@
               "string"
             ],
             "format": "uuid"
+          },
+          "folder": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchFolderFilter"
+              }
+            ]
           }
         }
       },

@@ -138,6 +138,10 @@ internal static class AuditCoverageCatalog
 
     private static AuditCase None(string method, string pattern, string reason) => new(method, pattern, AuditCoverage.NotAudited, Note: reason);
 
+    /// <summary>#179: the read-only Folders tree.</summary>
+    private const string FolderBrowse =
+        "folder names and counts of documents the caller may see (no document content); listing a folder's documents is a search (Search.Executed with folderId)";
+
     private static AuditCase NoneWs(string method, string suffix, string reason) => None(method, Ws + suffix, reason);
 
     private static string W(Guid workspaceId) => $"{V1}/workspaces/{workspaceId}";
@@ -157,6 +161,8 @@ internal static class AuditCoverageCatalog
         NoneWs("GET", "/query-history", Personal),
         NoneWs("POST", "/query-history", Personal),
         NoneWs("GET", "/search-freshness", "reads the index watermark; no documents"),
+        NoneWs("GET", "/document-folders", FolderBrowse),
+        NoneWs("GET", "/document-folders/{documentFolderId}", FolderBrowse),
 
         // Document security administration (E05-T06).
         NoneWs("GET", "/security/restriction-classes", ConfigurationRead),
@@ -480,6 +486,7 @@ internal static class AuditCoverageCatalog
         NoneWs("GET", "/privilege-logs", ListRead),
         NoneWs("GET", "/privilege-logs/{logId}", ListRead),
         NoneWs("GET", "/privilege-logs/{logId}/entries", ListRead),
+        NoneWs("GET", "/privilege-logs/{logId}/changes", ListRead),
         Audited("GET", "/privilege-logs/{logId}/content", "Privilege.LogDownloaded", probe: "privilege log"),
         NoneWs("GET", "/productions/{productionId}/designations", ListRead),
         Audited("PUT", "/productions/{productionId}/designation-overrides/{documentId}", "Production.DesignationOverridden"),

@@ -52,12 +52,37 @@ public class ImportRowBuilderTests
         Convert.ToHexStringLower(d.Md5!).Should().Be("d41d8cd98f00b204e9800998ecf8427e");
         d.UpstreamDedupeHash.Should().Be("abcdef");
         row.SuppliedColumns.Should().BeEquivalentTo(
-            ["beg_bates", "end_bates", "document_date", "document_date_source", "file_size", "md5", "upstream_dedupe_hash", "upstream_dedupe_hash_kind"]);
+            ["beg_bates", "end_bates", "document_date", "document_date_source", "file_size", "md5", "upstream_dedupe_hash", "upstream_dedupe_hash_kind",
+                "folder_id"]);
+        row.FolderPath.Should().Equal("Mail", "Inbox");
         JsonNode.Parse(d.Metadata)![FieldKey.For(custodian.FieldId)]!.GetValue<string>().Should().Be("Smith");
         var raw = JsonNode.Parse(d.MetadataRaw!)!;
         raw[FieldKey.For(SystemFields.FileSize)]!["raw"]!.GetValue<string>().Should().Be("1,000");
         raw[FieldKey.For(SystemFields.FileSize)]!["batch"]!.GetValue<string>().Should().Be(Batch.ToString());
         raw["s:FolderPath"]!["raw"]!.GetValue<string>().Should().Be(@"\Mail\Inbox");
+    }
+
+    [Fact]
+    public async Task A_folder_path_that_cannot_be_a_folder_is_a_warning_and_a_blank_one_names_none()
+    {
+        var deep = string.Join('\\', Enumerable.Range(1, FolderPath.MaxDepth + 1).Select(i => "f" + i));
+        var (mapping, records) = await ParseAsync(Concordance(
+            ["BEGDOC", "Folder Path"],
+            ["ABC-1", deep],
+            ["ABC-2", @"\\"],
+            ["ABC-3", " /Mail // Sent / "]), Catalog());
+
+        var tooDeep = ImportRowBuilder.Build(mapping, records[0], 1, 2, Workspace, Batch, new HashSet<int>());
+        tooDeep.HasErrors.Should().BeFalse("the document still loads");
+        tooDeep.FolderPath.Should().BeEmpty();
+        tooDeep.SuppliedColumns.Should().NotContain("folder_id");
+        tooDeep.Issues.Should().ContainSingle(i => i.Code == "folder-path-ignored" && i.Severity == ImportIssueSeverity.Warning);
+
+        var none = ImportRowBuilder.Build(mapping, records[1], 2, 3, Workspace, Batch, new HashSet<int>());
+        none.FolderPath.Should().BeEmpty();
+        none.Issues.Should().BeEmpty();
+
+        ImportRowBuilder.Build(mapping, records[2], 3, 4, Workspace, Batch, new HashSet<int>()).FolderPath.Should().Equal("Mail", "Sent");
     }
 
     [Fact]

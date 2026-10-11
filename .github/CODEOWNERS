@@ -8,3 +8,6 @@
 /tools/ci/security/     @plogramer
 /SECURITY.md            @plogramer
 /.config/dotnet-tools.json @plogramer
+# Release automation (#26): the release workflow publishes what these produce.
+/tools/release/          @plogramer
+/release-please-config.json @plogramer

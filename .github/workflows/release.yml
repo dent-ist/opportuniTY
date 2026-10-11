@@ -1,21 +1,190 @@
-# Release images (#25, E01-T05): a v* tag publishes vX.Y.Z / X.Y / sha-<short> images to GHCR, signed and attested.
-# Release notes, the Compose bundle and release-please automation come with #26 (E01-T06). See docs/ci.md#container-images.
+# Release (#26, E01-T06): Conventional Commits + release-please, fully automated from merging the release PR.
+#
+#   every push to main   -> `Release PR`: release-please opens or updates the release PR (version bump + CHANGELOG.md)
+#   merged release PR    -> `Upgrade test`: the N-1 -> N upgrade test (database and deployment tier) on the release commit
+#                        -> `Images`: build, scan, publish X.Y.Z / X.Y / sha-<short>, sign and attest (container-images.yml)
+#                        -> `GitHub release`: digests verified, compatibility matrix, third-party NOTICE, the Compose
+#                           bundle opportunity-compose-vX.Y.Z.tgz (images by digest), then the v tag and GitHub release
+# Nothing is published unless the upgrade test passed. See docs/releasing.md and docs/ci.md#container-images.
+#
+# The repository secret RELEASE_PLEASE_TOKEN (a GitHub App installation token or fine-grained PAT with contents and
+# pull-requests write) lets the release PR trigger CI; without it the workflow token is used and CI does not run on
+# the release PR (GitHub does not start workflows for events caused by GITHUB_TOKEN).
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
-# Never cancel a release in flight.
+# One release run at a time, never cancelled in flight.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 permissions: {}
 
+env:
+  IMAGE_PREFIX: ghcr.io/plogramer/opportunity-
+  CERTIFICATE_OIDC_ISSUER: https://token.actions.githubusercontent.com
+
 jobs:
+  release-please:
+    name: Release PR
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # release-please pushes the release branch
+      pull-requests: write # and opens/updates/labels the release PR
+    outputs:
+      release: ${{ steps.detect.outputs.release }}
+      version: ${{ steps.detect.outputs.version }}
+      tag: ${{ steps.detect.outputs.tag }}
+      previous-tag: ${{ steps.detect.outputs.previous-tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tags and history: was this commit the merged release PR?
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - name: Detect a merged release PR
+        id: detect
+        run: tools/release/detect-release.sh
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ steps.detect.outputs.release == 'false' && steps.detect.outputs.pending == 'false' }}
+        with:
+          node-version: ${{ env.NODE }}
+      # release-please CLI pinned by RELEASE_PLEASE in versions.env (no third-party action).
+      - name: Open or update the release PR
+        if: ${{ steps.detect.outputs.release == 'false' && steps.detect.outputs.pending == 'false' }}
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+        run: >-
+          npx --yes "release-please@${RELEASE_PLEASE}" release-pr
+          --token "$RELEASE_TOKEN" --repo-url "$GITHUB_REPOSITORY" --target-branch "$GITHUB_REF_NAME"
+          --config-file release-please-config.json --manifest-file .release-please-manifest.json
+
+  # Deploy N-1, load data, upgrade to N, smoke-test (docs/releasing.md#upgrade-test). N-1 is the previous release
+  # (its migration scripts from its tag, its signed migrator image by digest) or, before the first release, the
+  # baseline commit in tools/release/upgrade/baseline.env built from source.
+  upgrade-test:
+    name: Upgrade test (N-1 to N)
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read # pull the previous release's migrator image
+    env:
+      CONFIGURATION: Release
+      PREVIOUS_TAG: ${{ needs.release-please.outputs.previous-tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Previous release's migration scripts
+        if: ${{ env.PREVIOUS_TAG != '' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/previous"
+          git archive "$PREVIOUS_TAG" src/Opportunity.Data/Migrations/Scripts | tar -x -C "$RUNNER_TEMP/previous"
+          {
+            echo "OPPORTUNITY_UPGRADE_FROM=$PREVIOUS_TAG"
+            echo "OPPORTUNITY_UPGRADE_FROM_SCRIPTS=$RUNNER_TEMP/previous/src/Opportunity.Data/Migrations/Scripts"
+          } >> "$GITHUB_ENV"
+      - name: Build tests (warnings as errors)
+        run: dotnet build tests/Opportunity.IntegrationTests -c "$CONFIGURATION" -warnaserror
+      - name: Upgrade test, database tier (N-1 scripts, seed, N migrator and code)
+        run: >-
+          dotnet test --project tests/Opportunity.IntegrationTests -c "$CONFIGURATION" --no-build
+          --results-directory TestResults/upgrade
+          --report-xunit-trx --report-xunit-trx-filename upgrade.trx
+          --report-xunit-markdown --report-xunit-markdown-filename upgrade.md
+          --filter-class Opportunity.IntegrationTests.Migrations.UpgradeTests
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # N: the release commit's migrator and API, from the same layer cache the image workflow publishes from.
+      - name: Build N migrator image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/dotnet.Dockerfile
+          target: migrator
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: opportunity-migrator:upgrade-n
+          cache-from: type=gha,scope=image-migrator
+      - name: Build N API image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/dotnet.Dockerfile
+          target: api
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: opportunity-api:upgrade-n
+          cache-from: type=gha,scope=image-api
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: ${{ env.PREVIOUS_TAG != '' }}
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: ${{ env.PREVIOUS_TAG != '' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: N-1 migrator image (previous release, by digest, signature verified)
+        if: ${{ env.PREVIOUS_TAG != '' }}
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          ref="${IMAGE_PREFIX}migrator:${PREVIOUS_TAG#v}"
+          digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          cosign verify "${IMAGE_PREFIX}migrator@${digest}" \
+            --certificate-identity-regexp "^https://github.com/${REPO}/.github/workflows/container-images.yml@" \
+            --certificate-oidc-issuer "$CERTIFICATE_OIDC_ISSUER" > /dev/null
+          echo "FROM_MIGRATOR=image:${IMAGE_PREFIX}migrator@${digest}" >> "$GITHUB_ENV"
+      - name: N-1 migrator image (no previous release, built from the upgrade baseline)
+        if: ${{ env.PREVIOUS_TAG == '' }}
+        run: |
+          baseline="$(sed -n 's/^UPGRADE_BASELINE_REF=//p' tools/release/upgrade/baseline.env)"
+          git worktree add --detach "$RUNNER_TEMP/baseline" "$baseline"
+          docker buildx build --load --platform linux/amd64 -f "$RUNNER_TEMP/baseline/deploy/docker/dotnet.Dockerfile" \
+            --target migrator -t opportunity-migrator:upgrade-baseline "$RUNNER_TEMP/baseline"
+          echo "FROM_MIGRATOR=image:opportunity-migrator:upgrade-baseline" >> "$GITHUB_ENV"
+      - name: Upgrade test, deployment tier (N-1 migrator image, seed, N migrator and API images)
+        run: >-
+          tools/release/upgrade-test.sh --from "$FROM_MIGRATOR"
+          --to image:opportunity-migrator:upgrade-n --to-api image:opportunity-api:upgrade-n
+      - name: Append test results to the job summary
+        if: ${{ !cancelled() }}
+        run: cat TestResults/upgrade/*.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results-upgrade
+          path: TestResults/upgrade/
+          if-no-files-found: warn
+          retention-days: 90
+
   images:
     name: Images
+    needs: [release-please, upgrade-test]
     permissions:
       contents: read
       packages: write # push to GHCR
@@ -24,3 +193,115 @@ jobs:
     uses: ./.github/workflows/container-images.yml
     with:
       publish: true
+      version: ${{ needs.release-please.outputs.version }}
+
+  github-release:
+    name: GitHub release (Compose bundle, compatibility matrix, NOTICE)
+    needs: [release-please, images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # create the v tag and the GitHub release, upload assets
+      pull-requests: write # release-please labels the merged release PR `autorelease: tagged`
+      packages: read
+      id-token: write # attest the Compose bundle (Sigstore)
+      attestations: write
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
+      TAG: ${{ needs.release-please.outputs.tag }}
+      PREVIOUS_TAG: ${{ needs.release-please.outputs.previous-tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the bundle is archived from the release commit; its mtime is the commit time
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The bundle pins what was published and verified, never a tag.
+      - name: Resolve and verify the release image digests
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p dist
+          for name in api worker migrator web; do
+            digest="$(docker buildx imagetools inspect "${IMAGE_PREFIX}${name}:${VERSION}" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+            cosign verify "${IMAGE_PREFIX}${name}@${digest}" \
+              --certificate-identity-regexp "^https://github.com/${REPO}/.github/workflows/container-images.yml@" \
+              --certificate-oidc-issuer "$CERTIFICATE_OIDC_ISSUER" > /dev/null
+            echo "${name}=${IMAGE_PREFIX}${name}@${digest}" | tee -a dist/images.env
+          done
+      - name: Compatibility matrix (schema version, projection generation, message versions)
+        run: >-
+          dotnet run --project tools/Opportunity.Release -c Release --
+          compatibility --version "$VERSION" --commit "$GITHUB_SHA" --previous "$PREVIOUS_TAG"
+          --json dist/compatibility.json --markdown dist/COMPATIBILITY.md
+      - name: Restore .NET tools
+        run: dotnet tool restore
+      # Same SBOM inputs and license policy as the `Licenses and SBOM` CI gate.
+      - name: SBOMs of shipped code
+        run: |
+          dotnet CycloneDX Opportunity.slnx --exclude-test-projects --output-format Json \
+            --output dist/sbom --filename opportunity-dotnet.cdx.json --set-name opportuniTY
+          (cd src/Opportunity.Web && npx --yes "@cyclonedx/cyclonedx-npm@${CYCLONEDX_NPM}" --package-lock-only --omit dev \
+            --flatten-components --output-format JSON --output-file ../../dist/sbom/opportunity-web.cdx.json)
+          python3 tools/ci/security/check-licenses.py --report dist/sbom/license-report.md \
+            dist/sbom/opportunity-dotnet.cdx.json dist/sbom/opportunity-web.cdx.json
+      - name: Third-party NOTICE
+        run: >-
+          python3 tools/release/generate-notice.py --version "$VERSION"
+          --dockerfile deploy/docker/dotnet.Dockerfile --dockerfile deploy/docker/web.Dockerfile
+          --output dist/THIRD-PARTY-NOTICES.md dist/sbom/opportunity-dotnet.cdx.json dist/sbom/opportunity-web.cdx.json
+      - name: Compose bundle (images by digest)
+        run: >-
+          tools/release/build-compose-bundle.sh --version "$VERSION" --images dist/images.env
+          --compatibility-json dist/compatibility.json --compatibility-md dist/COMPATIBILITY.md
+          --notice dist/THIRD-PARTY-NOTICES.md --changelog CHANGELOG.md --ref "$GITHUB_SHA" --output-dir dist --verify
+      - name: Attest the Compose bundle (SLSA provenance)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/opportunity-compose-v${{ env.VERSION }}.tgz
+      # Creates the v tag on the release commit and the GitHub release with this version's changelog section.
+      - name: Tag and GitHub release (release-please)
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+        run: >-
+          npx --yes "release-please@${RELEASE_PLEASE}" github-release
+          --token "$RELEASE_TOKEN" --repo-url "$GITHUB_REPOSITORY" --target-branch "$GITHUB_REF_NAME"
+          --config-file release-please-config.json --manifest-file .release-please-manifest.json
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" > /dev/null
+          (cd dist && sha256sum "opportunity-compose-v${VERSION}.tgz" THIRD-PARTY-NOTICES.md COMPATIBILITY.md \
+            compatibility.json images.env sbom/*.cdx.json > SHA256SUMS)
+          gh release upload "$TAG" --clobber "dist/opportunity-compose-v${VERSION}.tgz" dist/THIRD-PARTY-NOTICES.md \
+            dist/COMPATIBILITY.md dist/compatibility.json dist/images.env dist/sbom/*.cdx.json dist/SHA256SUMS
+      - name: Summary
+        run: |
+          {
+            echo "### opportuniTY $TAG released"
+            echo "Upgrade-tested from: ${PREVIOUS_TAG:-the baseline in tools/release/upgrade/baseline.env}"
+            echo
+            echo '```'
+            cat dist/images.env
+            echo '```'
+            cat dist/COMPATIBILITY.md
+          } >> "$GITHUB_STEP_SUMMARY"

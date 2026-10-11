@@ -1,0 +1,98 @@
+@if (changes(); as c) {
+  <div class="plt__head">
+    <h4 class="plt__subhead" [id]="'pl-changes-' + version().logId">
+      @if (c.previousVersion !== null) {
+        Changes since version {{ c.previousVersion }}
+      } @else {
+        Changes
+      }
+    </h4>
+  </div>
+  @if (c.previousVersion === null) {
+    <p class="plt__muted">
+      This is the first version of this log, so there is nothing to compare it with. Generate the
+      log again after coding changes to see what changed.
+    </p>
+  } @else {
+    <p class="plt__summary">
+      {{ count(c.added) }} added · {{ count(c.removed) }} removed · {{ count(c.changed) }} changed ·
+      {{ count(c.unchanged) }} unchanged
+    </p>
+    @if (c.columnsAdded.length || c.columnsRemoved.length) {
+      <p class="plt__muted">
+        @if (c.columnsAdded.length) {
+          New columns: {{ c.columnsAdded.join(', ') }}.
+        }
+        @if (c.columnsRemoved.length) {
+          Columns no longer listed: {{ c.columnsRemoved.join(', ') }}.
+        }
+        Only columns both versions have are compared.
+      </p>
+    }
+    @if (c.items.length === 0) {
+      <p class="plt__muted">No entry changed.</p>
+    } @else {
+      <div
+        class="plt__wrap"
+        tabindex="0"
+        role="region"
+        [attr.aria-labelledby]="'pl-changes-' + version().logId"
+      >
+        <table class="plt__table">
+          <thead>
+            <tr>
+              <th scope="col">Change</th>
+              <th scope="col">{{ version().columns[0] ?? 'Entry' }}</th>
+              <th scope="col">What changed</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of c.items; track item.documentId) {
+              <tr>
+                <td>
+                  <opp-badge [tone]="kind(item).tone">{{ kind(item).text }}</opp-badge>
+                </td>
+                <td class="plt__id">{{ item.cells[0] }}</td>
+                <td>
+                  @switch (item.kind) {
+                    @case ('added') {
+                      Now listed as {{ treatment(item) }}.
+                    }
+                    @case ('removed') {
+                      No longer listed (was {{ treatment(item) }}).
+                    }
+                    @default {
+                      <ul class="plt__cells">
+                        @for (cell of item.changedCells; track $index) {
+                          <li>
+                            <strong>{{ cell.column }}: </strong>
+                            <del class="plt__before">{{ cell.before || '(empty)' }}</del>
+                            <span aria-hidden="true"> → </span>
+                            <span class="opp-visually-hidden"> changed to </span>
+                            <ins class="plt__after">{{ cell.after || '(empty)' }}</ins>
+                          </li>
+                        }
+                      </ul>
+                    }
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (c.nextCursor) {
+        <div>
+          <button type="button" oppButton="secondary" [busy]="loading()" (click)="more()">
+            Show more changes
+          </button>
+        </div>
+      }
+    }
+  }
+}
+@if (error(); as e) {
+  <opp-error-state [error]="e" (retry)="retry()" />
+} @else if (!changes()) {
+  <opp-loading-state label="Comparing with the previous version…" />
+}

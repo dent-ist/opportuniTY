@@ -83,6 +83,42 @@ public sealed class ComposeDatabaseLoginTests : IAsyncLifetime
         await stale.Should().ThrowAsync<PostgresException>();
     }
 
+    /// <summary>
+    /// E19-T06 (Full profile, compose.full.yaml): the same script creates one login per worker type from Docker secret
+    /// files (<c>OPPORTUNITY_DB_WORKER_&lt;TYPE&gt;_PASSWORD_FILE</c>), each a member of <c>opportunity_app</c> only.
+    /// </summary>
+    [Fact]
+    public async Task The_full_profile_gets_one_login_per_worker_type_from_secret_files()
+    {
+        string[] types = ["dispatcher", "import", "index", "render", "export", "production", "bulkcoding"];
+        var passwords = types.ToDictionary(t => t, _ => Random(), StringComparer.Ordinal);
+        var run = new List<string> { "env" };
+        foreach (var (type, password) in passwords)
+        {
+            var file = $"/tmp/db-worker-{type}-password";
+            var write = await _container!.ExecAsync(["sh", "-c", $"printf '%s\\n' '{password}' > {file}"], Ct);
+            write.ExitCode.Should().Be(0, write.Stderr);
+            run.Add($"OPPORTUNITY_DB_WORKER_{type.ToUpperInvariant()}_PASSWORD_FILE={file}");
+        }
+
+        run.AddRange(["sh", "/docker-entrypoint-initdb.d/30-component-logins.sh"]);
+        var result = await _container!.ExecAsync(run, Ct);
+        result.ExitCode.Should().Be(0, result.Stderr);
+
+        var roles = await ColumnAsync(Admin(),
+            """
+            SELECT r.rolname || '|' || r.rolsuper || '|' || r.rolbypassrls || '|' || r.rolcreaterole
+                   || '|' || coalesce((SELECT string_agg(g.rolname, ',') FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid
+                                      WHERE m.member = r.oid), '')
+            FROM pg_roles r WHERE r.rolname LIKE 'opportunity\_worker\_%' ORDER BY r.rolname
+            """);
+        roles.Should().BeEquivalentTo(types.Select(t => $"opportunity_worker_{t}|false|false|false|opportunity_app"));
+        foreach (var (type, password) in passwords)
+        {
+            (await ColumnAsync(Login($"opportunity_worker_{type}", password), "SELECT current_user::text")).Should().Equal($"opportunity_worker_{type}");
+        }
+    }
+
     private string Admin() => _container!.GetConnectionString();
 
     private string Login(string user, string password) =>

@@ -1,0 +1,47 @@
+# Prometheus for the Full profile's `observability` profile (E19-T06): the Lite configuration
+# (observability/prometheus.yaml) with every clustered node scraped. Application metrics arrive over OTLP from the
+# collector; alert rules are the shared observability/alerts.yaml (PostgresReplicationLagHigh reads the replica
+# exporter's pg_replication_lag_seconds).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+otlp:
+  promote_resource_attributes:
+    - service.name
+    - service.namespace
+    - service.instance.id
+    - service.version
+    - deployment.environment.name
+
+rule_files:
+  - alerts.yaml
+
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+
+scrape_configs:
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["rabbitmq-1:15692", "rabbitmq-2:15692", "rabbitmq-3:15692"]
+  - job_name: rabbitmq-queues
+    metrics_path: /metrics/detailed
+    params:
+      family: [queue_coarse_metrics]
+    static_configs:
+      - targets: ["rabbitmq-1:15692", "rabbitmq-2:15692", "rabbitmq-3:15692"]
+  # Primary and streaming replica: pg_replication_lag_seconds (replica) and pg_stat_replication_* (primary).
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187", "postgres-exporter-replica:9187"]
+  - job_name: opensearch
+    static_configs:
+      - targets: ["opensearch-exporter:9114"]
+  - job_name: seaweedfs
+    static_configs:
+      - targets: ["seaweedfs-master-1:9324", "seaweedfs-master-2:9324", "seaweedfs-master-3:9324",
+                  "seaweedfs-volume-1:9325", "seaweedfs-volume-2:9325", "seaweedfs-filer:9326"]
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]

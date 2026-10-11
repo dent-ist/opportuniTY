@@ -397,12 +397,7 @@
       [error]="documentError() ?? undefined"
       [invalid]="!!documentError()"
     />
-    <button
-      type="submit"
-      oppButton="primary"
-      [busy]="custody.loading()"
-      [disabled]="blocked() || !custodyCsvUrl()"
-    >
+    <button type="submit" oppButton="primary" [busy]="custody.loading()" [disabled]="blocked()">
       <opp-icon name="report" />
       Trace document
     </button>

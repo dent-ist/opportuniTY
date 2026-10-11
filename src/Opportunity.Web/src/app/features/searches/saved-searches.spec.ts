@@ -244,7 +244,7 @@ describe('Searches › Saved Searches and the Documents pane (E16-T11)', () => {
       'query of Privilege candidates',
     );
     // The browser pane lists folders and searches; the running one is selected.
-    const pane = root().querySelector('aside[aria-labelledby="documents-browser-heading"]')!;
+    const pane = root().querySelector('aside .documents__browser-section')!;
     expect(text(pane)).toContain('Save current search');
     const items = [...pane.querySelectorAll('[role="treeitem"]')];
     expect(items.map((i) => i.querySelector('.tree__label')?.textContent?.trim())).toEqual([

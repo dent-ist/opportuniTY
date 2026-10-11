@@ -33,6 +33,7 @@ internal static class DocumentColumns
         Projected("is_duplicate_primary", NpgsqlDbType.Boolean, d => d.IsDuplicatePrimary),
         Projected("email_thread_id", NpgsqlDbType.Uuid, d => d.EmailThreadId),
         Projected("email_thread_source", NpgsqlDbType.Smallint, d => (short?)d.EmailThreadSource),
+        Projected("folder_id", NpgsqlDbType.Uuid, d => d.FolderId),
         Projected("md5", NpgsqlDbType.Bytea, d => d.Md5),
         Projected("sha1", NpgsqlDbType.Bytea, d => d.Sha1),
         Projected("sha256", NpgsqlDbType.Bytea, d => d.Sha256),

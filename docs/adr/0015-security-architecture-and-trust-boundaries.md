@@ -457,6 +457,17 @@ and may relax it only through an amendment to this ADR.
    API has none. **Not yet done:** per-table grants per worker type (every runtime login is still a member of
    `opportunity_app`), per-worker-type storage credentials and AMQPS in a shipped profile — Full (E19-T06, #162).
 
+*Implementation note 2026-10-11 (E19-T06, #162):* the Full Compose profile (`deploy/docker-compose/compose.full.yaml`,
+   [docs/operations/deployment-profiles.md](../operations/deployment-profiles.md)) gives every component and worker type a
+   distinct database login, broker user (AMQPS only), OpenSearch user (security plugin on, D14.3) and SeaweedFS S3
+   identity; secrets are Docker secret files with `Secrets:AllowEnvironment=false` (D10.1); every client link uses TLS
+   with verification against an internal CA that `./opportunity.sh --profile full init` generates (D14.2); only the web
+   edge publishes a port and the data tier is on an internal network without egress (D14.1). **Deviations:** per-table
+   grants per worker type are still not narrowed (every runtime login is in `opportunity_app`); the API and the index
+   workers may create indexes and manage aliases on the product indexes (workspace placement, alias reindex), and the
+   dispatcher may refresh them; S3 identities scope by bucket and action, not by artifact class; RabbitMQ inter-node and
+   SeaweedFS volume data-plane traffic is not TLS (internal network only).
+
 ### D10. Secrets and keys
 
 1. All secrets come through `ISecretProvider` (`E05-T09`): Docker/Compose secrets via the `*_FILE` convention

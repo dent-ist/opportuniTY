@@ -102,7 +102,7 @@ These gates implement #24 (`E01-T04`) and threat-model entries T-57 and T-59 ([t
 | CodeQL SAST: C#, JavaScript/TypeScript, GitHub Actions (`security-extended`) | `codeql.yml` | every PR, `main`, merge queue, weekly | yes, once the code-scanning rule below is set |
 | OpenSSF Scorecard | `scorecard.yml` | `main`, weekly, branch-protection changes | no (tracked score) |
 | GitHub secret scanning + push protection | repository setting | every push | push protection blocks the push |
-| Image vulnerabilities (Trivy, OS + .NET/npm packages in each image) | `images.yml` › `Build and scan` | every PR, `main`, `v*` tags | blocks publishing; on PRs once the check is required |
+| Image vulnerabilities (Trivy, OS + .NET/npm packages in each image) | `images.yml` › `Build and scan` | every PR, `main`, releases | blocks publishing; on PRs once the check is required |
 
 ### Vulnerability policy and exceptions
 
@@ -176,17 +176,17 @@ Implements #25 (`E01-T05`), ADR-015 D17.2 and threat-model entries T-57/T-58. Fo
 
 ### Workflows
 
-[`container-images.yml`](../.github/workflows/container-images.yml) is a reusable workflow with three jobs. [`images.yml`](../.github/workflows/images.yml) calls it for pull requests (`publish: false`) and `main` (`publish: true`); [`release.yml`](../.github/workflows/release.yml) calls it for `v*` tags.
+[`container-images.yml`](../.github/workflows/container-images.yml) is a reusable workflow with three jobs. [`images.yml`](../.github/workflows/images.yml) calls it for pull requests (`publish: false`) and `main` (`publish: true`); [`release.yml`](../.github/workflows/release.yml) calls it for a merged release PR (`publish: true` with `version: X.Y.Z`), after the upgrade test ([Releasing](releasing.md)).
 
 | Job | Runs on | What it does | Permissions |
 |---|---|---|---|
-| `Build and scan (<image>)` | PRs, `main`, tags | Builds `linux/amd64` into the runner's Docker (GitHub Actions layer cache). Trivy (checksum-pinned release binary, `TRIVY`/`TRIVY_SHA256` in `versions.env`) writes a JSON vulnerability report and a CycloneDX SBOM. `check-vulnerabilities.py --trivy` fails on High/Critical without an exception. Then a smoke test: non-root user, `--read-only --cap-drop ALL`, `/health/live` (`/healthz` for web) answers, the migrator exits `2` without configuration | `contents: read` |
-| `Publish, sign and attest (<image>)` | `main`, tags | Rebuilds both architectures from the same cache and pushes. BuildKit adds an SPDX SBOM and SLSA provenance (`mode=max`) to the image index. `cosign sign` (keyless, GitHub OIDC) signs the digest. `actions/attest-build-provenance` and `actions/attest-sbom` (the CycloneDX SBOM from the scan job) add GitHub attestations, also pushed to the registry | inherited from the caller: `packages: write`, `id-token: write`, `attestations: write` |
-| `Verify and smoke-test (<arch>)` | `main`, tags | On `ubuntu-24.04` and `ubuntu-24.04-arm`: `cosign verify` and `gh attestation verify` (provenance and SBOM) for every image, then the hardened run as above against the published `sha-<short>` images | `contents/packages/attestations: read` |
+| `Build and scan (<image>)` | PRs, `main`, releases | Builds `linux/amd64` into the runner's Docker (GitHub Actions layer cache). Trivy (checksum-pinned release binary, `TRIVY`/`TRIVY_SHA256` in `versions.env`) writes a JSON vulnerability report and a CycloneDX SBOM. `check-vulnerabilities.py --trivy` fails on High/Critical without an exception. Then a smoke test: non-root user, `--read-only --cap-drop ALL`, `/health/live` (`/healthz` for web) answers, the migrator exits `2` without configuration | `contents: read` |
+| `Publish, sign and attest (<image>)` | `main`, releases | Rebuilds both architectures from the same cache and pushes. BuildKit adds an SPDX SBOM and SLSA provenance (`mode=max`) to the image index. `cosign sign` (keyless, GitHub OIDC) signs the digest. `actions/attest-build-provenance` and `actions/attest-sbom` (the CycloneDX SBOM from the scan job) add GitHub attestations, also pushed to the registry | inherited from the caller: `packages: write`, `id-token: write`, `attestations: write` |
+| `Verify and smoke-test (<arch>)` | `main`, releases | On `ubuntu-24.04` and `ubuntu-24.04-arm`: `cosign verify` and `gh attestation verify` (provenance and SBOM) for every image, then the hardened run as above against the published `sha-<short>` images | `contents/packages/attestations: read` |
 
 Pull-request builds never push. The callers set `permissions: {}` at workflow level and grant write scopes only to the publishing call. Images are published only after their scan passed. The publish job reuses the scanned amd64 layers from the cache. A cache miss rebuilds them (for web, that can pick up newer Alpine packages), which is why the verify job runs after publishing.
 
-**Tags.** Every publish gets the immutable `sha-<7-char commit>`. `main` moves `edge`; a `vX.Y.Z` tag publishes `X.Y.Z` and `X.Y`. `latest` is never published. Compose and Kubernetes manifests reference images **by digest** (`E01-T06` produces the release bundle).
+**Tags.** Every publish gets the immutable `sha-<7-char commit>`. `main` moves `edge`; a release publishes `X.Y.Z` and `X.Y`. `latest` is never published. Compose and Kubernetes manifests reference images **by digest** (the release Compose bundle, [Releasing](releasing.md)).
 
 **Image vulnerability waivers.** Same file and rules as above ([Vulnerability policy and exceptions](#vulnerability-policy-and-exceptions)), with the CVE id and the package name from the Trivy report, for example `{ "advisory": "CVE-2026-12345", "package": "libc6", ... }`. Prefer a base-image bump (Dependabot `docker` ecosystem on `deploy/docker`). The web image runs `apk upgrade` at build time, because Alpine usually ships a fix before the nginx image is rebuilt.
 
@@ -227,8 +227,8 @@ Approximate sizes (linux/amd64, compressed as pulled / unpacked): api 61 / 141 M
 
 ### Not covered yet
 
-- **Compose developer-profile smoke test on both architectures.** The verify job runs each published image on amd64 and arm64 runners with the Compose hardening flags. The developer-profile smoke test (the `Compose developer profile` job in `ci.yml`) runs on amd64 with locally built images on every PR; running it against the published images on both architectures remains open (`E01-T06`).
-- **Release notes, Compose bundle with digests, changelog.** These come with #26 (`E01-T06`), which builds on `release.yml`.
+- **Compose developer-profile smoke test on both architectures.** The verify job runs each published image on amd64 and arm64 runners with the Compose hardening flags. The developer-profile smoke test (the `Compose developer profile` job in `ci.yml`) runs on amd64 with locally built images on every PR; running it against the published images on both architectures remains open; the release upgrade test runs the published N-1 migrator against the new migrator and API images on amd64 ([Releasing](releasing.md#upgrade-test)).
+- **Release notes, Compose bundle with digests, changelog.** Implemented by #26 (`E01-T06`): see [Releasing](releasing.md).
 - **arm64 runners.** `ubuntu-24.04-arm` is free for public repositories. A private repository needs a larger-runner plan or a self-hosted arm64 runner.
 
 ## Branch protection and repository settings (manual, repository admin)
@@ -241,6 +241,9 @@ The security gates also need these settings:
 - **Secret scanning** and **push protection:** turn both on (Settings › Code security).
 - **Private vulnerability reporting:** turn it on (Settings › Code security), as [SECURITY.md](../SECURITY.md) requires.
 - **Pull request reviews:** require at least one approving review, and *Require review from Code Owners*. CODEOWNERS covers `src/Opportunity.Security/`, the workflows, `tools/ci/security/` and `SECURITY.md`. Add the auth and audit paths when that code lands.
+- **Releases (#26):** require `PR title / Conventional Commits title` once contributors use Conventional Commits
+  titles, use squash merging (the title becomes the commit), and add the `RELEASE_PLEASE_TOKEN` secret so the release
+  PR gets CI ([Releasing](releasing.md)).
 - **Scorecard:** `publish_results: true` publishes the score to the OpenSSF API for public repositories. Track it with the badge `https://api.securityscorecards.dev/projects/github.com/<owner>/<repo>/badge` and in the code-scanning view (category `scorecard`).
 
 ## Extension points

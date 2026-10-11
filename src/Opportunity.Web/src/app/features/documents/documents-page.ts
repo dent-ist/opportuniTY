@@ -20,7 +20,7 @@ import { CommandRegionDirective, CommandRegistry } from '../../core/commands';
 import { PreferenceStorage } from '../../core/preferences/preference-storage';
 import { SessionService } from '../../core/session/session';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
-import { Badge, Button, DialogService, Icon, IconButton, ToastService } from '../../ui';
+import { Badge, Button, Checkbox, DialogService, Icon, IconButton, ToastService } from '../../ui';
 import {
   HttpSavedSearchApi,
   SavedSearch,
@@ -35,6 +35,8 @@ import {
   THEN_PARAM,
   savedSearchErrorText,
 } from '../searches/saved-search-model';
+import { DocumentFolder, FolderApi, HttpFolderApi } from './browser/folder-api';
+import { FolderBrowser } from './browser/folder-browser';
 import { SavedSearchBrowser } from './browser/saved-search-browser';
 import {
   GridOpenEvent,
@@ -136,6 +138,11 @@ import { BATCH_PARAM, BATCH_STATUS, batchErrorText } from '../review-batches/rev
  * Families and duplicate groups (E13-T02 "Open in Documents"): `?related=family|duplicates&relatedId=&relatedOf=` shows
  * the relation as the list's search, like the duplicate marker does.
  *
+ * Folders (#179, Q-55): the browser pane also shows the read-only folder tree built from the imports' Folder Path;
+ * selecting a folder lists its documents (with its subfolders unless "Include subfolders" is cleared), and the query
+ * bar and filters narrow the list within the folder. Like a review batch, a folder is not a query, so "all results"
+ * of it cannot be selected.
+ *
  * Review batches (#178, familiarity guide §5.3): `?batch=<batchId>` binds the list to one batch's frozen members
  * (filtered for the caller, Q-52) and opens its first document in Review mode, so Save & Next stays inside the batch.
  * The search panel names the batch; "Check in…" (also in Review mode) returns to Review Batches.
@@ -154,7 +161,9 @@ const BROWSER_KEY = 'pane.documentsBrowser';
   imports: [
     Badge,
     Button,
+    Checkbox,
     CommandRegionDirective,
+    FolderBrowser,
     FreshnessStatus,
     Icon,
     IconButton,
@@ -173,15 +182,25 @@ const BROWSER_KEY = 'pane.documentsBrowser';
         <aside
           id="documents-browser"
           class="documents__browser"
-          aria-labelledby="documents-browser-heading"
+          aria-label="Browser"
           oppCommandRegion
         >
-          <opp-saved-search-browser
-            headingId="documents-browser-heading"
-            [activeId]="saved()?.savedSearchId ?? null"
-            (run)="runSaved($event)"
-            (save)="saveCurrent()"
-          />
+          <div class="documents__browser-section">
+            <opp-saved-search-browser
+              headingId="documents-browser-heading"
+              [activeId]="saved()?.savedSearchId ?? null"
+              (run)="runSaved($event)"
+              (save)="saveCurrent()"
+            />
+          </div>
+          <div class="documents__browser-section">
+            <opp-folder-browser
+              headingId="documents-folders-heading"
+              [activeId]="folderView()?.folderId ?? null"
+              [includeSubfolders]="includeSubfolders()"
+              (selectFolder)="runFolder($event)"
+            />
+          </div>
           <button
             type="button"
             oppButton="ghost"
@@ -191,7 +210,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
             (click)="toggleBrowser()"
           >
             <opp-icon name="sidebar-collapse" />
-            Hide saved searches
+            Hide browser
           </button>
         </aside>
       } @else {
@@ -199,7 +218,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
           <button
             type="button"
             oppIconButton
-            label="Show saved searches"
+            label="Show browser"
             aria-expanded="false"
             (click)="toggleBrowser()"
           >
@@ -227,6 +246,25 @@ const BROWSER_KEY = 'pane.documentsBrowser';
               <button type="button" oppButton="ghost" (click)="clearSaved()">
                 <opp-icon name="close" />
                 Clear saved search
+              </button>
+            </div>
+          }
+          @if (folderView(); as f) {
+            <div class="documents__saved" role="group" aria-label="Folder">
+              <opp-badge tone="info" icon="folder">Folder</opp-badge>
+              <span class="opp-visually-hidden">: </span>
+              <strong class="documents__folder-path">{{ f.path }}</strong>
+              <span class="documents__saved-note">
+                Imported folder (read-only). {{ filteredNotice }}
+              </span>
+              <opp-checkbox
+                [checked]="includeSubfolders()"
+                (checkedChange)="onIncludeSubfolders($event)"
+                >Include subfolders</opp-checkbox
+              >
+              <button type="button" oppButton="ghost" (click)="clearFolder()">
+                <opp-icon name="close" />
+                Clear folder
               </button>
             </div>
           }
@@ -344,6 +382,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     FreshnessMonitor,
     PendingSearchJobs,
     { provide: SavedSearchApi, useClass: HttpSavedSearchApi },
+    { provide: FolderApi, useClass: HttpFolderApi },
     { provide: SearchTermReportApi, useClass: HttpSearchTermReportApi },
     { provide: HighlightSetsApi, useClass: HttpHighlightSetsApi },
     HighlightState,
@@ -426,6 +465,12 @@ export class DocumentsPage {
     const tv = this.termView();
     return !!tv && this.grid().effectiveQuery() !== tv.term.expression;
   });
+
+  // Folders (#179)
+  /** The imported folder the list shows. */
+  protected readonly folderView = signal<DocumentFolder | null>(null);
+  /** "Include subfolders" of the folder the list shows. */
+  protected readonly includeSubfolders = signal(true);
 
   // Review batches (#178)
   private readonly batchApi = inject(ReviewBatchApi);
@@ -580,7 +625,47 @@ export class DocumentsPage {
     const batch = this.batchView();
     if (batch) return { query, reviewBatchId: batch.batchId };
     const expand = toExpand(this.include(), savedSearchId !== null);
-    return savedSearchId ? { query, savedSearchId, expand } : { query, expand };
+    if (savedSearchId) return { query, savedSearchId, expand };
+    const folder = this.folderView();
+    return folder
+      ? {
+          query,
+          expand,
+          folder: { folderId: folder.folderId, includeSubfolders: this.includeSubfolders() },
+        }
+      : { query, expand };
+  }
+
+  // ── Folders ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Lists a folder's documents (from the browser pane): the folder replaces any other source of the list. */
+  protected runFolder(folder: DocumentFolder): void {
+    this.forgetBatch();
+    if (this.saved()) this.forgetSaved();
+    if (this.termView()) this.forgetTerm();
+    this.folderView.set(folder);
+    this.queryBar().clear();
+    this.grid().resetFilters();
+    this.search.set(this.searchFor(''));
+  }
+
+  /** "Include subfolders" changed: the folder's list runs again. */
+  protected onIncludeSubfolders(include: boolean): void {
+    this.includeSubfolders.set(include);
+    const search = this.search();
+    if (this.folderView()) this.search.set(this.searchFor(search.query));
+  }
+
+  /** "Clear folder": back to the whole workspace's list. */
+  protected clearFolder(): void {
+    this.folderView.set(null);
+    this.queryBar().clear();
+    this.search.set(this.searchFor(''));
+  }
+
+  /** Another source of the list was chosen (a saved search, a term, a batch, a link). */
+  private forgetFolder(): void {
+    this.folderView.set(null);
   }
 
   // ── Search Terms Report terms ───────────────────────────────────────────────────────────────────────────────
@@ -589,6 +674,7 @@ export class DocumentsPage {
   private async applyTerm(reportId: string, termId: string): Promise<void> {
     const key = `${reportId}/${termId}`;
     this.appliedTerm = key;
+    this.forgetFolder();
     let report: SearchTermReport;
     try {
       report = await this.termApi.get(reportId);
@@ -661,6 +747,7 @@ export class DocumentsPage {
   /** Applies `?batch=`: loads the batch, names it in the search panel, lists its documents and opens the first. */
   private async applyBatch(batchId: string): Promise<void> {
     this.appliedBatch = batchId;
+    this.forgetFolder();
     let batch: ReviewBatchResource;
     try {
       batch = await this.batchApi.batch(batchId);
@@ -783,6 +870,7 @@ export class DocumentsPage {
    * with it from Documents, E16-T09) are applied to the list; a search saved without them keeps the current View.
    */
   private showSaved(saved: SavedSearch, applyView = true): void {
+    this.forgetFolder();
     this.termView.set(null);
     this.appliedTerm = null;
     this.appliedId = saved.savedSearchId;
@@ -926,6 +1014,7 @@ export class DocumentsPage {
   protected onPivot(pivot: RelationshipPivot): void {
     if (this.reviewing()) this.closeReview();
     this.forgetBatch();
+    this.forgetFolder();
     if (this.saved()) this.forgetSaved();
     if (this.termView()) this.forgetTerm();
     const query = pivotQuery(pivot);
@@ -939,6 +1028,7 @@ export class DocumentsPage {
   private showQuery(query: string, label: string): void {
     if (this.reviewing()) this.closeReview();
     this.forgetBatch();
+    this.forgetFolder();
     if (this.saved()) this.forgetSaved();
     if (this.termView()) this.forgetTerm();
     this.grid().resetFilters();

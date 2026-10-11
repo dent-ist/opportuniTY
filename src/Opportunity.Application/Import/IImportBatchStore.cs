@@ -322,6 +322,12 @@ public sealed record ImportRow
     /// <summary>The upstream duplicate group the row names (E09-T02); the chunk records it with its documents.</summary>
     public DuplicateGroupKey? DuplicateGroup { get; init; }
 
+    /// <summary>
+    /// The folder names of the row's mapped Folder Path, outermost first (#179, <see cref="Core.Documents.FolderPath"/>);
+    /// empty when the row names no folder. The chunk creates the folders it lacks and sets <see cref="Document.FolderId"/>.
+    /// </summary>
+    public IReadOnlyList<string> FolderPath { get; init; } = [];
+
     /// <summary>The upstream (or ConversationIndex) email thread the row names (E09-T02).</summary>
     public EmailThreadKey? EmailThread { get; init; }
 

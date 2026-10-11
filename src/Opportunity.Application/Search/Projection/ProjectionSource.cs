@@ -65,6 +65,12 @@ public sealed record ProjectionSource
     /// <summary>Object-storage logical key of the extracted text, when the document has text.</summary>
     public string? TextObjectKey { get; init; }
 
+    /// <summary>
+    /// The document's imported folder and every folder above it, outermost first (#179); empty without a folder. A
+    /// folder filter "with subfolders" matches any of them, "this folder only" the last.
+    /// </summary>
+    public IReadOnlyList<Guid> FolderIds { get; init; } = [];
+
     public static ProjectionSource Missing(Guid workspaceId, Guid documentId) =>
         new() { WorkspaceId = workspaceId, DocumentId = documentId, State = ProjectionSourceState.Missing };
 }

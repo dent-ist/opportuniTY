@@ -294,7 +294,11 @@ describe('Document viewer (E16-T04)', () => {
     const count = api.chunks[4].length;
     await show({ hit: hit(4), state: 'ready', content: loaded(4, documentResource(4)) });
 
-    expect(api.calls).toEqual(['text:doc-4:0:display']);
+    // The first chunk loads asynchronously; under load it can take more than the fixed settle turns.
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(api.calls).toEqual(['text:doc-4:0:display']);
+    });
     const scroller = () =>
       root.querySelector<HTMLElement>('[aria-label="Extracted text of ACM0000004"]')!;
     expect(scroller().textContent).toContain('Line 0 of the agreement.');

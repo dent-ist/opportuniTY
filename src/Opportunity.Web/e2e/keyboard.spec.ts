@@ -92,7 +92,7 @@ test('focuses the keyword search with Alt+Shift+K and /, cycles regions and open
   // Region cycle: search panel → document list → saved searches → search panel.
   const search = page.getByRole('region', { name: 'Search' });
   const list = page.getByRole('region', { name: 'Document list' });
-  const saved = page.getByRole('complementary', { name: 'Saved Searches' });
+  const saved = page.getByRole('complementary', { name: 'Browser' });
   await page.keyboard.press('Alt+Shift+KeyG');
   await expect(list).toBeFocused();
   await page.keyboard.press('Alt+Shift+KeyG');

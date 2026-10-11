@@ -1,0 +1,1082 @@
+# opportuniTY Full profile (E19-T06): the production topology on Docker Compose (Q-01: Full is the only supported
+# production profile; Q-41: Compose only for v1). See docs/operations/deployment-profiles.md and README.md.
+# Every service carries the `full` profile, so nothing starts unless it is asked for:
+#   ./opportunity.sh --profile full init                 # full/.env, full/secrets/ (random), full/tls/ (internal CA)
+#   ./opportunity.sh --profile full up                   # or, without the wrapper:
+#   docker compose -f compose.full.yaml --env-file ../../versions.env --env-file full/.env --profile full up -d --wait
+#   ./opportunity.sh --profile full up --scale worker-index=4 --scale api=3
+#   ./opportunity.sh --profile full verify               # cluster health, replication lag, queue consumers
+# Add `--profile observability` (COMPOSE_PROFILES=full,observability) for the collector, Prometheus, Jaeger, Loki and
+# Grafana.
+#
+# Topology:
+#   web (edge)       TLS for browsers on HTTPS_PORT, SPA, load balancer over the api replicas (HTTPS)
+#   api × N          API_REPLICAS (default 2), HTTPS on 8443 inside the app network
+#   worker-<type>    one scalable container per worker type, each with its own database login, broker user,
+#                    OpenSearch user and object-storage identity (ADR-015 D9.6)
+#   postgres         primary (TLS + SCRAM only) + postgres-replica (streaming, TLS) + exporters for both (replication lag)
+#   opensearch-1..3  security plugin on, TLS on transport and REST, one internal user per component
+#   rabbitmq-1..3    cluster, AMQPS only, quorum queues with three members
+#   seaweedfs        3 masters (Raft), 2 volume servers on two racks (replication 010), filer on its own PostgreSQL
+#                    cluster (filer-postgres), S3 gateways × 2 over HTTPS, gRPC with mutual TLS
+#   data-lb          TCP load balancer: opensearch:9200, rabbitmq:5671, s3:8333 (TLS passes through)
+# Secrets are Docker secrets (files in full/secrets/, mounted at /run/secrets), never plain environment variables
+# (ADR-015 D10.1). Only web publishes a port (D14.1); the data tier sits on an internal network without egress.
+
+name: ${COMPOSE_PROJECT_NAME:-opportunity-full}
+
+x-full: &full
+  profiles: [full]
+  restart: unless-stopped
+
+x-app-hardening: &app-hardening
+  profiles: [full]
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+  restart: unless-stopped
+
+x-ready-healthcheck: &ready-healthcheck
+  test: ["CMD", "dotnet", "/app/healthprobe/Opportunity.HealthProbe.dll", "http://127.0.0.1:8080/health/ready"]
+  interval: 10s
+  timeout: 5s
+  start_period: 60s
+  start_interval: 2s
+  retries: 6
+
+x-postgres-args: &postgres-args
+  - postgres
+  - -c
+  - ssl=on
+  - -c
+  - ssl_cert_file=/var/lib/postgresql/tls/server.crt
+  - -c
+  - ssl_key_file=/var/lib/postgresql/tls/server.key
+  - -c
+  - ssl_ca_file=/var/lib/postgresql/tls/ca.crt
+  - -c
+  - ssl_min_protocol_version=TLSv1.2
+  - -c
+  - password_encryption=scram-sha-256
+  - -c
+  - hba_file=/etc/opportunity/postgres/pg_hba.conf
+  - -c
+  - wal_level=replica
+  - -c
+  - max_wal_senders=10
+  - -c
+  - max_replication_slots=10
+  - -c
+  - hot_standby=on
+  - -c
+  - hot_standby_feedback=on
+  - -c
+  - shared_buffers=${POSTGRES_SHARED_BUFFERS:-1GB}
+  - -c
+  - max_connections=${POSTGRES_MAX_CONNECTIONS:-400}
+
+x-postgres-healthcheck: &postgres-healthcheck
+  test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d postgres"]
+  interval: 10s
+  timeout: 5s
+  start_period: 60s
+  start_interval: 2s
+  retries: 6
+
+# Shared by api and every worker. TLS: clients trust the installation CA (full/tls/ca.crt) through SSL_CERT_FILE, in
+# addition to the image's public roots in SSL_CERT_DIR; PostgreSQL connections verify it explicitly (VerifyFull).
+x-app-environment: &app-environment
+  DOTNET_ENVIRONMENT: Production
+  ASPNETCORE_ENVIRONMENT: Production
+  SSL_CERT_FILE: /etc/opportunity/tls/ca.crt
+  SSL_CERT_DIR: /etc/ssl/certs
+  # Health probes on loopback only; the api adds its HTTPS listener (below).
+  ASPNETCORE_URLS: http://127.0.0.1:8080
+  # ADR-006 §6: three primaries for shared indexes and one replica, so losing one of three nodes loses no data.
+  OpenSearch__SharedPrimaryShards: "3"
+  OpenSearch__Replicas: "1"
+  # Secrets only from Docker secrets (ADR-015 D10.1): no OPPORTUNITY_SECRET_* environment variables.
+  Secrets__AllowEnvironment: "false"
+  KeyManagement__Local__KeyDirectory: /var/lib/opportunity/keys
+  # ADR-016 §5.1 wants false once the key ring exists and is backed up (a missing key directory then fails loudly).
+  KeyManagement__Local__CreateMissingKeys: ${OPPORTUNITY_KEYS_CREATE_MISSING:-true}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL:-15000}
+  Logging__Console__FormatterName: json
+  Logging__Console__FormatterOptions__IncludeScopes: "true"
+
+# Workers only (the API has no broker user): HMAC envelope signing on, key from the Docker secret envelope-hmac-k1.
+x-message-signing: &message-signing
+  Messaging__RabbitMq__Signing__Enabled: "true"
+  Messaging__RabbitMq__Signing__KeyId: k1
+
+x-object-storage: &object-storage
+  ObjectStorage__Provider: S3
+  ObjectStorage__S3__ServiceUrl: https://s3:8333
+  ObjectStorage__S3__Bucket: opportunity
+  ObjectStorage__Encryption__Mode: Envelope
+
+x-app-depends-on: &app-depends-on
+  migrator:
+    condition: service_completed_successfully
+
+x-worker: &worker
+  <<: *app-hardening
+  image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-worker:${OPPORTUNITY_IMAGE_TAG:-dev}
+  healthcheck: *ready-healthcheck
+  depends_on: *app-depends-on
+  networks: [data]
+  mem_limit: ${WORKER_MEMORY:-2g}
+
+services:
+  # --- PostgreSQL: primary + streaming replica ---------------------------------------------------------------------
+  postgres:
+    <<: *full
+    image: postgres:${POSTGRES:?run with --env-file ../../versions.env}@${POSTGRES_DIGEST:?run with --env-file ../../versions.env}
+    hostname: postgres
+    entrypoint: ["/etc/opportunity/postgres/tls-entrypoint.sh", "docker-entrypoint.sh"]
+    command: *postgres-args
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+      POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: --data-checksums --auth-local=scram-sha-256 --auth-host=scram-sha-256
+      POSTGRES_SYNC_STANDBY: ${POSTGRES_SYNC_STANDBY:-}
+      OPPORTUNITY_DB: ${OPPORTUNITY_DB:-opportunity}
+      OPPORTUNITY_DB_OWNER_USER: opportunity_owner
+      OPPORTUNITY_DB_OWNER_PASSWORD_FILE: /run/secrets/db-owner-password
+      OPPORTUNITY_DB_API_PASSWORD_FILE: /run/secrets/db-api-password
+      OPPORTUNITY_DB_MONITOR_PASSWORD_FILE: /run/secrets/db-monitor-password
+      OPPORTUNITY_DB_WORKER_DISPATCHER_PASSWORD_FILE: /run/secrets/db-worker-dispatcher-password
+      OPPORTUNITY_DB_WORKER_IMPORT_PASSWORD_FILE: /run/secrets/db-worker-import-password
+      OPPORTUNITY_DB_WORKER_INDEX_PASSWORD_FILE: /run/secrets/db-worker-index-password
+      OPPORTUNITY_DB_WORKER_RENDER_PASSWORD_FILE: /run/secrets/db-worker-render-password
+      OPPORTUNITY_DB_WORKER_EXPORT_PASSWORD_FILE: /run/secrets/db-worker-export-password
+      OPPORTUNITY_DB_WORKER_PRODUCTION_PASSWORD_FILE: /run/secrets/db-worker-production-password
+      OPPORTUNITY_DB_WORKER_BULKCODING_PASSWORD_FILE: /run/secrets/db-worker-bulkcoding-password
+      REPLICATION_PASSWORD_FILE: /run/secrets/db-replication-password
+    secrets:
+      - postgres-password
+      - db-owner-password
+      - db-api-password
+      - db-monitor-password
+      - db-worker-dispatcher-password
+      - db-worker-import-password
+      - db-worker-index-password
+      - db-worker-render-password
+      - db-worker-export-password
+      - db-worker-production-password
+      - db-worker-bulkcoding-password
+      - db-replication-password
+      # Read by `./opportunity.sh --profile full up` to create or re-key the audit sealer login (E14-T03).
+      - db-sealer-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init/10-opportunity.sh:/docker-entrypoint-initdb.d/10-opportunity.sh:ro
+      - ./postgres/init/20-group-roles.sql:/docker-entrypoint-initdb.d/20-group-roles.sql:ro
+      - ./postgres/init/30-component-logins.sh:/docker-entrypoint-initdb.d/30-component-logins.sh:ro
+      - ./full/postgres/40-replication.sh:/docker-entrypoint-initdb.d/40-replication.sh:ro
+      - ./full/postgres/tls-entrypoint.sh:/etc/opportunity/postgres/tls-entrypoint.sh:ro
+      - ./full/postgres/pg_hba.conf:/etc/opportunity/postgres/pg_hba.conf:ro
+      - ./full/tls/postgres.crt:/etc/opportunity/tls-src/server.crt:ro
+      - ./full/tls/postgres.key:/etc/opportunity/tls-src/server.key:ro
+      - ./full/tls/ca.crt:/etc/opportunity/tls-src/ca.crt:ro
+    shm_size: 1g
+    mem_limit: ${POSTGRES_MEMORY:-4g}
+    healthcheck: *postgres-healthcheck
+    networks: [data]
+
+  postgres-replica:
+    <<: *full
+    image: postgres:${POSTGRES:?run with --env-file ../../versions.env}@${POSTGRES_DIGEST:?run with --env-file ../../versions.env}
+    hostname: postgres-replica
+    entrypoint: ["/etc/opportunity/postgres/tls-entrypoint.sh", "gosu", "postgres", "/etc/opportunity/postgres/replica-entrypoint.sh"]
+    command: *postgres-args
+    environment:
+      PRIMARY_HOST: postgres
+      PGDATA: /var/lib/postgresql/data
+      REPLICATION_PASSWORD_FILE: /run/secrets/db-replication-password
+    secrets: [db-replication-password]
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql/data
+      - ./full/postgres/tls-entrypoint.sh:/etc/opportunity/postgres/tls-entrypoint.sh:ro
+      - ./full/postgres/replica-entrypoint.sh:/etc/opportunity/postgres/replica-entrypoint.sh:ro
+      - ./full/postgres/pg_hba.conf:/etc/opportunity/postgres/pg_hba.conf:ro
+      - ./full/tls/postgres-replica.crt:/etc/opportunity/tls-src/server.crt:ro
+      - ./full/tls/postgres-replica.key:/etc/opportunity/tls-src/server.key:ro
+      - ./full/tls/ca.crt:/etc/opportunity/tls-src/ca.crt:ro
+    shm_size: 1g
+    mem_limit: ${POSTGRES_MEMORY:-4g}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d postgres && gosu postgres psql -d postgres -tAc 'select pg_is_in_recovery()' | grep -q t"]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      start_interval: 2s
+      retries: 6
+    networks: [data]
+
+  # Replication lag is exported by both: pg_replication_lag_seconds on the replica (alert PostgresReplicationLagHigh)
+  # and pg_stat_replication_* (sent/replayed LSN per standby) on the primary. Each uses the pg_monitor login over TLS.
+  postgres-exporter:
+    <<: *full
+    image: prometheuscommunity/postgres-exporter:${POSTGRES_EXPORTER:?run with --env-file ../../versions.env}@${POSTGRES_EXPORTER_DIGEST:?run with --env-file ../../versions.env}
+    command: ["--no-collector.wal"]
+    environment:
+      DATA_SOURCE_URI: postgres:5432/${OPPORTUNITY_DB:-opportunity}?sslmode=verify-full&sslrootcert=/etc/opportunity/tls/ca.crt
+      DATA_SOURCE_USER: opportunity_monitor
+      DATA_SOURCE_PASS_FILE: /run/secrets/db-monitor-password
+    secrets: [db-monitor-password]
+    volumes:
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+    mem_limit: 64m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [data]
+
+  postgres-exporter-replica:
+    <<: *full
+    image: prometheuscommunity/postgres-exporter:${POSTGRES_EXPORTER:?run with --env-file ../../versions.env}@${POSTGRES_EXPORTER_DIGEST:?run with --env-file ../../versions.env}
+    command: ["--no-collector.wal"]
+    environment:
+      DATA_SOURCE_URI: postgres-replica:5432/${OPPORTUNITY_DB:-opportunity}?sslmode=verify-full&sslrootcert=/etc/opportunity/tls/ca.crt
+      DATA_SOURCE_USER: opportunity_monitor
+      DATA_SOURCE_PASS_FILE: /run/secrets/db-monitor-password
+    secrets: [db-monitor-password]
+    volumes:
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+    mem_limit: 64m
+    depends_on:
+      postgres-replica:
+        condition: service_healthy
+    networks: [data]
+
+  # --- OpenSearch: three nodes, security plugin on ------------------------------------------------------------------
+  opensearch-1: &opensearch
+    <<: *full
+    image: opensearchproject/opensearch:${OPENSEARCH:?run with --env-file ../../versions.env}@${OPENSEARCH_DIGEST:?run with --env-file ../../versions.env}
+    hostname: opensearch-1
+    environment:
+      NODE_NAME: opensearch-1
+      OPENSEARCH_JAVA_OPTS: -Xms${OPENSEARCH_HEAP:-2g} -Xmx${OPENSEARCH_HEAP:-2g}
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_MEMORY_LOCK: ${OPENSEARCH_MEMORY_LOCK:-true}
+    secrets: [opensearch-monitor-password]
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-1-data:/usr/share/opensearch/data
+      - ./full/opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+      - ./full/tls/opensearch-1.crt:/usr/share/opensearch/config/certs/node.crt:ro
+      - ./full/tls/opensearch-1.key:/usr/share/opensearch/config/certs/node.key:ro
+      - ./full/tls/ca.crt:/usr/share/opensearch/config/certs/ca.crt:ro
+    mem_limit: ${OPENSEARCH_MEMORY:-4g}
+    # Healthy once the security configuration is loaded (opensearch-security) and this node serves authenticated reads.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --cacert config/certs/ca.crt -u \"opportunity-monitor:$$(cat /run/secrets/opensearch-monitor-password)\" \"https://$${NODE_NAME}:9200/_cluster/health?wait_for_status=yellow&timeout=5s\" >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      start_period: 300s
+      start_interval: 5s
+      retries: 12
+    networks: [data]
+
+  opensearch-2:
+    <<: *opensearch
+    hostname: opensearch-2
+    environment:
+      NODE_NAME: opensearch-2
+      OPENSEARCH_JAVA_OPTS: -Xms${OPENSEARCH_HEAP:-2g} -Xmx${OPENSEARCH_HEAP:-2g}
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_MEMORY_LOCK: ${OPENSEARCH_MEMORY_LOCK:-true}
+    volumes:
+      - opensearch-2-data:/usr/share/opensearch/data
+      - ./full/opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+      - ./full/tls/opensearch-2.crt:/usr/share/opensearch/config/certs/node.crt:ro
+      - ./full/tls/opensearch-2.key:/usr/share/opensearch/config/certs/node.key:ro
+      - ./full/tls/ca.crt:/usr/share/opensearch/config/certs/ca.crt:ro
+
+  opensearch-3:
+    <<: *opensearch
+    hostname: opensearch-3
+    environment:
+      NODE_NAME: opensearch-3
+      OPENSEARCH_JAVA_OPTS: -Xms${OPENSEARCH_HEAP:-2g} -Xmx${OPENSEARCH_HEAP:-2g}
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_MEMORY_LOCK: ${OPENSEARCH_MEMORY_LOCK:-true}
+    volumes:
+      - opensearch-3-data:/usr/share/opensearch/data
+      - ./full/opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+      - ./full/tls/opensearch-3.crt:/usr/share/opensearch/config/certs/node.crt:ro
+      - ./full/tls/opensearch-3.key:/usr/share/opensearch/config/certs/node.key:ro
+      - ./full/tls/ca.crt:/usr/share/opensearch/config/certs/ca.crt:ro
+
+  # One-shot: uploads the security configuration (roles, mappings, internal users hashed from the secrets) with the
+  # operator's admin certificate, then waits for a green cluster with three nodes. The migrator waits for it.
+  opensearch-security:
+    profiles: [full]
+    image: opensearchproject/opensearch:${OPENSEARCH:?run with --env-file ../../versions.env}@${OPENSEARCH_DIGEST:?run with --env-file ../../versions.env}
+    entrypoint: ["/bin/bash", "/etc/opportunity/opensearch/security-init.sh"]
+    restart: "no"
+    environment:
+      OPENSEARCH_HOST: opensearch-1
+      OPENSEARCH_NODES: "3"
+    secrets:
+      - opensearch-admin-password
+      - opensearch-api-password
+      - opensearch-indexer-password
+      - opensearch-dispatcher-password
+      - opensearch-migrator-password
+      - opensearch-monitor-password
+    volumes:
+      - ./full/opensearch:/etc/opportunity/opensearch:ro
+      - ./full/tls/opensearch-admin.crt:/etc/opportunity/opensearch-admin/admin.crt:ro
+      - ./full/tls/opensearch-admin.key:/etc/opportunity/opensearch-admin/admin.key:ro
+      - ./full/tls/ca.crt:/etc/opportunity/opensearch-admin/ca.crt:ro
+    depends_on:
+      opensearch-1:
+        condition: service_started
+      opensearch-2:
+        condition: service_started
+      opensearch-3:
+        condition: service_started
+    networks: [data]
+
+  # --- RabbitMQ: three-node cluster, AMQPS ---------------------------------------------------------------------------
+  rabbitmq-1: &rabbitmq
+    <<: *full
+    image: rabbitmq:${RABBITMQ:?run with --env-file ../../versions.env}@${RABBITMQ_DIGEST:?run with --env-file ../../versions.env}
+    hostname: rabbitmq-1
+    entrypoint: ["/etc/opportunity/rabbitmq/entrypoint.sh"]
+    command: ["rabbitmq-server"]
+    environment:
+      RABBITMQ_DEFAULT_USER: opportunity
+      # One user per component (rabbitmq/users.sh with RABBITMQ_<NAME>_PASSWORD_FILE), applied by `./opportunity.sh
+      # --profile full up` on rabbitmq-1; users replicate to the whole cluster.
+      RABBITMQ_DISPATCHER_PASSWORD_FILE: /run/secrets/rabbitmq-dispatcher-password
+      RABBITMQ_IMPORT_PASSWORD_FILE: /run/secrets/rabbitmq-import-password
+      RABBITMQ_INDEX_PASSWORD_FILE: /run/secrets/rabbitmq-index-password
+      RABBITMQ_RENDER_PASSWORD_FILE: /run/secrets/rabbitmq-render-password
+      RABBITMQ_EXPORT_PASSWORD_FILE: /run/secrets/rabbitmq-export-password
+      RABBITMQ_PRODUCTION_PASSWORD_FILE: /run/secrets/rabbitmq-production-password
+      RABBITMQ_BULKCODING_PASSWORD_FILE: /run/secrets/rabbitmq-bulkcoding-password
+    secrets:
+      - rabbitmq-erlang-cookie
+      - rabbitmq-admin-password
+      - rabbitmq-dispatcher-password
+      - rabbitmq-import-password
+      - rabbitmq-index-password
+      - rabbitmq-render-password
+      - rabbitmq-export-password
+      - rabbitmq-production-password
+      - rabbitmq-bulkcoding-password
+    volumes:
+      - rabbitmq-1-data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/users.sh:/etc/opportunity/rabbitmq-users.sh:ro
+      - ./full/rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/90-opportunity.conf:ro
+      - ./full/rabbitmq/entrypoint.sh:/etc/opportunity/rabbitmq/entrypoint.sh:ro
+      - ./full/tls/rabbitmq-1.crt:/etc/opportunity/tls-src/server.crt:ro
+      - ./full/tls/rabbitmq-1.key:/etc/opportunity/tls-src/server.key:ro
+      - ./full/tls/ca.crt:/etc/opportunity/tls-src/ca.crt:ro
+    mem_limit: ${RABBITMQ_MEMORY:-1g}
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_connectivity"]
+      interval: 10s
+      timeout: 15s
+      start_period: 90s
+      start_interval: 3s
+      retries: 6
+    networks: [data]
+
+  rabbitmq-2:
+    <<: *rabbitmq
+    hostname: rabbitmq-2
+    volumes:
+      - rabbitmq-2-data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/users.sh:/etc/opportunity/rabbitmq-users.sh:ro
+      - ./full/rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/90-opportunity.conf:ro
+      - ./full/rabbitmq/entrypoint.sh:/etc/opportunity/rabbitmq/entrypoint.sh:ro
+      - ./full/tls/rabbitmq-2.crt:/etc/opportunity/tls-src/server.crt:ro
+      - ./full/tls/rabbitmq-2.key:/etc/opportunity/tls-src/server.key:ro
+      - ./full/tls/ca.crt:/etc/opportunity/tls-src/ca.crt:ro
+
+  rabbitmq-3:
+    <<: *rabbitmq
+    hostname: rabbitmq-3
+    volumes:
+      - rabbitmq-3-data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/users.sh:/etc/opportunity/rabbitmq-users.sh:ro
+      - ./full/rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/90-opportunity.conf:ro
+      - ./full/rabbitmq/entrypoint.sh:/etc/opportunity/rabbitmq/entrypoint.sh:ro
+      - ./full/tls/rabbitmq-3.crt:/etc/opportunity/tls-src/server.crt:ro
+      - ./full/tls/rabbitmq-3.key:/etc/opportunity/tls-src/server.key:ro
+      - ./full/tls/ca.crt:/etc/opportunity/tls-src/ca.crt:ro
+
+  # --- SeaweedFS (ADR-020 rule 2, ADR-016 §2.7) ---------------------------------------------------------------------
+  filer-postgres:
+    <<: *full
+    image: postgres:${POSTGRES:?run with --env-file ../../versions.env}@${POSTGRES_DIGEST:?run with --env-file ../../versions.env}
+    hostname: filer-postgres
+    entrypoint: ["/etc/opportunity/postgres/tls-entrypoint.sh", "docker-entrypoint.sh"]
+    command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/var/lib/postgresql/tls/server.crt",
+              "-c", "ssl_key_file=/var/lib/postgresql/tls/server.key", "-c", "ssl_min_protocol_version=TLSv1.2",
+              "-c", "password_encryption=scram-sha-256", "-c", "hba_file=/etc/opportunity/postgres/pg_hba.conf"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/filer-postgres-password
+      POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: --data-checksums --auth-local=scram-sha-256 --auth-host=scram-sha-256
+      SEAWEEDFS_DB_PASSWORD_FILE: /run/secrets/seaweedfs-db-password
+    secrets: [filer-postgres-password, seaweedfs-db-password]
+    volumes:
+      - filer-postgres-data:/var/lib/postgresql/data
+      - ./full/postgres/filer-init.sh:/docker-entrypoint-initdb.d/10-filer.sh:ro
+      - ./full/postgres/tls-entrypoint.sh:/etc/opportunity/postgres/tls-entrypoint.sh:ro
+      - ./full/postgres/pg_hba.conf:/etc/opportunity/postgres/pg_hba.conf:ro
+      - ./full/tls/filer-postgres.crt:/etc/opportunity/tls-src/server.crt:ro
+      - ./full/tls/filer-postgres.key:/etc/opportunity/tls-src/server.key:ro
+      - ./full/tls/ca.crt:/etc/opportunity/tls-src/ca.crt:ro
+    mem_limit: 512m
+    healthcheck: *postgres-healthcheck
+    networks: [data]
+
+  seaweedfs-master-1: &seaweedfs-master
+    <<: *full
+    image: chrislusf/seaweedfs:${SEAWEEDFS:?run with --env-file ../../versions.env}@${SEAWEEDFS_DIGEST:?run with --env-file ../../versions.env}
+    hostname: seaweedfs-master-1
+    command: ["master", "-ip=seaweedfs-master-1", "-ip.bind=0.0.0.0", "-port=9333", "-metricsPort=9324",
+              "-peers=seaweedfs-master-1:9333,seaweedfs-master-2:9333,seaweedfs-master-3:9333",
+              "-defaultReplication=${SEAWEEDFS_REPLICATION:-010}"]
+    volumes:
+      - seaweedfs-master-1-data:/data
+      - &seaweedfs-security ./full/seaweedfs/security.toml:/etc/seaweedfs/security.toml:ro
+      - &seaweedfs-cert ./full/tls/seaweedfs.crt:/etc/seaweedfs/tls/server.crt:ro
+      - &seaweedfs-key ./full/tls/seaweedfs.key:/etc/seaweedfs/tls/server.key:ro
+      - &seaweedfs-ca ./full/tls/ca.crt:/etc/seaweedfs/tls/ca.crt:ro
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 2s
+      retries: 6
+    networks: [data]
+
+  seaweedfs-master-2:
+    <<: *seaweedfs-master
+    hostname: seaweedfs-master-2
+    command: ["master", "-ip=seaweedfs-master-2", "-ip.bind=0.0.0.0", "-port=9333", "-metricsPort=9324",
+              "-peers=seaweedfs-master-1:9333,seaweedfs-master-2:9333,seaweedfs-master-3:9333",
+              "-defaultReplication=${SEAWEEDFS_REPLICATION:-010}"]
+    volumes:
+      - seaweedfs-master-2-data:/data
+      - *seaweedfs-security
+      - *seaweedfs-cert
+      - *seaweedfs-key
+      - *seaweedfs-ca
+
+  seaweedfs-master-3:
+    <<: *seaweedfs-master
+    hostname: seaweedfs-master-3
+    command: ["master", "-ip=seaweedfs-master-3", "-ip.bind=0.0.0.0", "-port=9333", "-metricsPort=9324",
+              "-peers=seaweedfs-master-1:9333,seaweedfs-master-2:9333,seaweedfs-master-3:9333",
+              "-defaultReplication=${SEAWEEDFS_REPLICATION:-010}"]
+    volumes:
+      - seaweedfs-master-3-data:/data
+      - *seaweedfs-security
+      - *seaweedfs-cert
+      - *seaweedfs-key
+      - *seaweedfs-ca
+
+  # Two volume servers on two racks: replication 010 keeps every object on both, so one can be lost.
+  seaweedfs-volume-1: &seaweedfs-volume
+    <<: *full
+    image: chrislusf/seaweedfs:${SEAWEEDFS:?run with --env-file ../../versions.env}@${SEAWEEDFS_DIGEST:?run with --env-file ../../versions.env}
+    hostname: seaweedfs-volume-1
+    command: ["volume", "-ip=seaweedfs-volume-1", "-ip.bind=0.0.0.0", "-port=8080", "-metricsPort=9325",
+              "-mserver=seaweedfs-master-1:9333,seaweedfs-master-2:9333,seaweedfs-master-3:9333",
+              "-dataCenter=dc1", "-rack=rack1"]
+    volumes:
+      - seaweedfs-volume-1-data:/data
+      - *seaweedfs-security
+      - *seaweedfs-cert
+      - *seaweedfs-key
+      - *seaweedfs-ca
+    mem_limit: 1g
+    depends_on:
+      seaweedfs-master-1:
+        condition: service_healthy
+      seaweedfs-master-2:
+        condition: service_healthy
+      seaweedfs-master-3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/status"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 2s
+      retries: 6
+    networks: [data]
+
+  seaweedfs-volume-2:
+    <<: *seaweedfs-volume
+    hostname: seaweedfs-volume-2
+    command: ["volume", "-ip=seaweedfs-volume-2", "-ip.bind=0.0.0.0", "-port=8080", "-metricsPort=9325",
+              "-mserver=seaweedfs-master-1:9333,seaweedfs-master-2:9333,seaweedfs-master-3:9333",
+              "-dataCenter=dc1", "-rack=rack2"]
+    volumes:
+      - seaweedfs-volume-2-data:/data
+      - *seaweedfs-security
+      - *seaweedfs-cert
+      - *seaweedfs-key
+      - *seaweedfs-ca
+
+  seaweedfs-filer:
+    <<: *full
+    image: chrislusf/seaweedfs:${SEAWEEDFS:?run with --env-file ../../versions.env}@${SEAWEEDFS_DIGEST:?run with --env-file ../../versions.env}
+    hostname: seaweedfs-filer
+    entrypoint: ["/bin/sh", "/etc/opportunity/seaweedfs/run.sh"]
+    command: ["filer", "-ip=seaweedfs-filer", "-ip.bind=0.0.0.0", "-port=8888", "-metricsPort=9326",
+              "-master=seaweedfs-master-1:9333,seaweedfs-master-2:9333,seaweedfs-master-3:9333"]
+    secrets: [seaweedfs-db-password]
+    volumes:
+      - ./full/seaweedfs/run.sh:/etc/opportunity/seaweedfs/run.sh:ro
+      - ./full/seaweedfs/filer.toml:/etc/seaweedfs/filer.toml:ro
+      - *seaweedfs-security
+      - *seaweedfs-cert
+      - *seaweedfs-key
+      - *seaweedfs-ca
+    mem_limit: 512m
+    depends_on:
+      filer-postgres:
+        condition: service_healthy
+      seaweedfs-volume-1:
+        condition: service_healthy
+      seaweedfs-volume-2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8888/"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 2s
+      retries: 6
+    networks: [data]
+
+  # Stateless S3 gateways (HTTPS) behind data-lb (s3:8333); scale with --scale seaweedfs-s3=N.
+  seaweedfs-s3:
+    <<: *full
+    image: chrislusf/seaweedfs:${SEAWEEDFS:?run with --env-file ../../versions.env}@${SEAWEEDFS_DIGEST:?run with --env-file ../../versions.env}
+    entrypoint: ["/bin/sh", "/etc/opportunity/seaweedfs/run.sh"]
+    command: ["s3", "-filer=seaweedfs-filer:8888", "-ip.bind=0.0.0.0", "-port=8333", "-config=/tmp/s3.json",
+              "-iam=false", "-port.iceberg=0", "-port.lance=0"]
+    environment:
+      S3_CERT_FILE: /etc/seaweedfs/tls/server.crt
+      S3_KEY_FILE: /etc/seaweedfs/tls/server.key
+    deploy:
+      replicas: ${S3_GATEWAYS:-2}
+    secrets:
+      - s3-migrator-secret-key
+      - s3-api-secret-key
+      - s3-import-secret-key
+      - s3-index-secret-key
+      - s3-render-secret-key
+      - s3-export-secret-key
+      - s3-production-secret-key
+    volumes:
+      - ./full/seaweedfs/run.sh:/etc/opportunity/seaweedfs/run.sh:ro
+      - *seaweedfs-security
+      - *seaweedfs-cert
+      - *seaweedfs-key
+      - *seaweedfs-ca
+    tmpfs: [/tmp]
+    mem_limit: 512m
+    depends_on:
+      seaweedfs-filer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --no-check-certificate https://127.0.0.1:8333/status"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 2s
+      retries: 6
+    networks: [data]
+
+  # TCP load balancer for the clustered data tier (full/data-lb/nginx.conf); its aliases are the names clients use.
+  data-lb:
+    <<: *app-hardening
+    image: nginxinc/nginx-unprivileged:${NGINX:?run with --env-file ../../versions.env}@${NGINX_DIGEST:?run with --env-file ../../versions.env}
+    volumes:
+      - ./full/data-lb/nginx.conf:/etc/nginx/nginx.conf:ro
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8099"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      start_interval: 1s
+      retries: 3
+    networks:
+      data:
+        aliases: [opensearch, rabbitmq, s3]
+
+  # --- Application -----------------------------------------------------------------------------------------------
+  migrator:
+    <<: *app-hardening
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-migrator:${OPPORTUNITY_IMAGE_TAG:-dev}
+    restart: "no"
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      SSL_CERT_FILE: /etc/opportunity/tls/ca.crt
+      SSL_CERT_DIR: /etc/ssl/certs
+      ConnectionStrings__Migrator: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_owner;Passfile=/run/secrets/pgpass-owner;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq_FILE: /run/secrets/amqp-admin
+      ConnectionStrings__OpenSearch: https://opensearch:9200
+      OpenSearch__Username: opportunity-migrator
+      OpenSearch__Password_FILE: /run/secrets/opensearch-migrator-password
+      OpenSearch__SharedPrimaryShards: "3"
+      OpenSearch__Replicas: "1"
+      ObjectStorage__Provider: S3
+      ObjectStorage__S3__ServiceUrl: https://s3:8333
+      ObjectStorage__S3__Bucket: opportunity
+      ObjectStorage__S3__AccessKey: opportunity-migrator
+      ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-migrator-secret-key
+    secrets: [pgpass-owner, amqp-admin, opensearch-migrator-password, s3-migrator-secret-key]
+    volumes:
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+    mem_limit: 512m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch-security:
+        condition: service_completed_successfully
+      rabbitmq-1:
+        condition: service_healthy
+      rabbitmq-2:
+        condition: service_healthy
+      rabbitmq-3:
+        condition: service_healthy
+      seaweedfs-s3:
+        condition: service_healthy
+      data-lb:
+        condition: service_healthy
+    networks: [data]
+
+  api:
+    <<: *app-hardening
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-api:${OPPORTUNITY_IMAGE_TAG:-dev}
+    deploy:
+      replicas: ${API_REPLICAS:-2}
+    environment:
+      <<: [*app-environment, *object-storage]
+      # HTTPS for the web edge (full/tls/api.crt names `api`), plain HTTP on loopback for the health probe only.
+      ASPNETCORE_URLS: http://127.0.0.1:8080;https://+:8443
+      Kestrel__Certificates__Default__Path: /etc/opportunity/tls/api.crt
+      Kestrel__Certificates__Default__KeyPath: /etc/opportunity/tls/api.key
+      ConnectionStrings__App: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_api;Passfile=/run/secrets/pgpass-api;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__OpenSearch: https://opensearch:9200
+      OpenSearch__Username: opportunity-api
+      OpenSearch__Password_FILE: /run/secrets/opensearch-api-password
+      ObjectStorage__S3__AccessKey: opportunity-api
+      ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-api-secret-key
+      # The installation's own IdP (ADR-015 D3); full/.env holds the non-secret settings, the client secret is a file.
+      Authentication__PublicOrigin: ${OPPORTUNITY_PUBLIC_ORIGIN:?set OPPORTUNITY_PUBLIC_ORIGIN in full/.env}
+      Authentication__Oidc__Authority: ${OIDC_AUTHORITY:?set OIDC_AUTHORITY in full/.env}
+      Authentication__Oidc__ClientId: ${OIDC_CLIENT_ID:-opportunity-web}
+      Authentication__Oidc__ClientSecret_FILE: /run/secrets/oidc-client-secret
+      Authentication__Oidc__RequireHttpsMetadata: "true"
+      Authentication__Session__AuditHashKey_FILE: /run/secrets/audit-session-hash-key
+      Import__VolumeShareRoot: /var/lib/opportunity/import
+    secrets: [pgpass-api, opensearch-api-password, s3-api-secret-key, oidc-client-secret, audit-session-hash-key]
+    volumes:
+      - keys:/var/lib/opportunity/keys
+      - ${OPPORTUNITY_IMPORT_SHARE:-./import-share}:/var/lib/opportunity/import:ro
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+      - ./full/tls/api.crt:/etc/opportunity/tls/api.crt:ro
+      - ./full/tls/api.key:/etc/opportunity/tls/api.key:ro
+    mem_limit: ${API_MEMORY:-2g}
+    healthcheck: *ready-healthcheck
+    depends_on: *app-depends-on
+    # app: reached by web; data: the stores; egress: the installation's IdP (discovery, JWKS, tokens).
+    networks: [app, data, egress]
+
+  worker-dispatcher:
+    <<: *worker
+    environment:
+      <<: [*app-environment, *message-signing]
+      Workers__Enabled: dispatcher
+      ConnectionStrings__App: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_worker_dispatcher;Passfile=/run/secrets/pgpass-worker-dispatcher;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__AuditSealer: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_sealer;Passfile=/run/secrets/pgpass-sealer;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq_FILE: /run/secrets/amqp-dispatcher
+      ConnectionStrings__OpenSearch: https://opensearch:9200
+      OpenSearch__Username: opportunity-dispatcher
+      OpenSearch__Password_FILE: /run/secrets/opensearch-dispatcher-password
+    secrets: [pgpass-worker-dispatcher, pgpass-sealer, amqp-dispatcher, opensearch-dispatcher-password, envelope-hmac-k1]
+    volumes:
+      - keys:/var/lib/opportunity/keys
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+
+  worker-import:
+    <<: *worker
+    environment:
+      <<: [*app-environment, *message-signing, *object-storage]
+      Workers__Enabled: import
+      ConnectionStrings__App: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_worker_import;Passfile=/run/secrets/pgpass-worker-import;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq_FILE: /run/secrets/amqp-import
+      ObjectStorage__S3__AccessKey: opportunity-import
+      ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-import-secret-key
+      Import__VolumeShareRoot: /var/lib/opportunity/import
+    secrets: [pgpass-worker-import, amqp-import, s3-import-secret-key, envelope-hmac-k1]
+    volumes:
+      - keys:/var/lib/opportunity/keys
+      - ${OPPORTUNITY_IMPORT_SHARE:-./import-share}:/var/lib/opportunity/import:ro
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+
+  # `--scale worker-index=N`: every replica consumes the same quorum queues; RabbitMQ spreads deliveries over all
+  # consumers (prefetch-bounded), and index writes are idempotent by external version (ADR-001).
+  worker-index:
+    <<: *worker
+    environment:
+      <<: [*app-environment, *message-signing, *object-storage]
+      Workers__Enabled: indexing
+      ConnectionStrings__App: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_worker_index;Passfile=/run/secrets/pgpass-worker-index;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq_FILE: /run/secrets/amqp-index
+      ConnectionStrings__OpenSearch: https://opensearch:9200
+      OpenSearch__Username: opportunity-indexer
+      OpenSearch__Password_FILE: /run/secrets/opensearch-indexer-password
+      ObjectStorage__S3__AccessKey: opportunity-index
+      ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-index-secret-key
+    secrets: [pgpass-worker-index, amqp-index, opensearch-indexer-password, s3-index-secret-key, envelope-hmac-k1]
+    deploy:
+      replicas: ${INDEX_WORKERS:-2}
+    volumes:
+      - keys:/var/lib/opportunity/keys
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+
+  # Render sandbox (E11-T03): Landlock + seccomp child processes on top of Docker's default seccomp profile (never
+  # seccomp=unconfined); page files pass through the /tmp tmpfs.
+  worker-render:
+    <<: *worker
+    environment:
+      <<: [*app-environment, *message-signing, *object-storage]
+      Workers__Enabled: rendering
+      ConnectionStrings__App: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_worker_render;Passfile=/run/secrets/pgpass-worker-render;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq_FILE: /run/secrets/amqp-render
+      ObjectStorage__S3__AccessKey: opportunity-render
+      ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-render-secret-key
+    secrets: [pgpass-worker-render, amqp-render, s3-render-secret-key, envelope-hmac-k1]
+    pids_limit: 1024
+    volumes:
+      - keys:/var/lib/opportunity/keys
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+
+  worker-export:
+    <<: *worker
+    environment:
+      <<: [*app-environment, *message-signing, *object-storage]
+      Workers__Enabled: export
+      ConnectionStrings__App: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_worker_export;Passfile=/run/secrets/pgpass-worker-export;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq_FILE: /run/secrets/amqp-export
+      ObjectStorage__S3__AccessKey: opportunity-export
+      ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-export-secret-key
+    secrets: [pgpass-worker-export, amqp-export, s3-export-secret-key, envelope-hmac-k1]
+    volumes:
+      - keys:/var/lib/opportunity/keys
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+
+  worker-production:
+    <<: *worker
+    environment:
+      <<: [*app-environment, *message-signing, *object-storage]
+      Workers__Enabled: production
+      ConnectionStrings__App: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_worker_production;Passfile=/run/secrets/pgpass-worker-production;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq_FILE: /run/secrets/amqp-production
+      ObjectStorage__S3__AccessKey: opportunity-production
+      ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-production-secret-key
+    secrets: [pgpass-worker-production, amqp-production, s3-production-secret-key, envelope-hmac-k1]
+    pids_limit: 1024
+    volumes:
+      - keys:/var/lib/opportunity/keys
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+
+  worker-bulkcoding:
+    <<: *worker
+    environment:
+      <<: [*app-environment, *message-signing]
+      Workers__Enabled: bulk-coding
+      ConnectionStrings__App: >-
+        Host=postgres;Database=${OPPORTUNITY_DB:-opportunity};Username=opportunity_worker_bulkcoding;Passfile=/run/secrets/pgpass-worker-bulkcoding;SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable
+      ConnectionStrings__RabbitMq_FILE: /run/secrets/amqp-bulkcoding
+    secrets: [pgpass-worker-bulkcoding, amqp-bulkcoding, envelope-hmac-k1]
+    deploy:
+      replicas: ${BULKCODING_WORKERS:-1}
+    volumes:
+      - keys:/var/lib/opportunity/keys
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+
+  # The edge: TLS for browsers (full/tls/web: tls.conf and a certificate for OPPORTUNITY_HOSTNAME; replace it with the
+  # operator's own),
+  # the SPA, and HTTPS load balancing over the api replicas (full/web/api-proxy.conf). The only published port.
+  web:
+    <<: *app-hardening
+    image: ${OPPORTUNITY_IMAGE_PREFIX:-opportunity-local/}opportunity-web:${OPPORTUNITY_IMAGE_TAG:-dev}
+    volumes:
+      - ./full/web/api-proxy.conf:/etc/nginx/api-proxy.d/api-proxy.conf:ro
+      - ./full/tls/web:/etc/nginx/tls:ro
+    ports:
+      - "${OPPORTUNITY_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:8443"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      start_interval: 1s
+      retries: 3
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [edge, app]
+
+  # --- Observability (`--profile observability`, ADR-017, Q-42) ----------------------------------------------------
+  otel-collector:
+    profiles: [observability]
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR:?run with --env-file ../../versions.env}@${OTEL_COLLECTOR_DIGEST:?run with --env-file ../../versions.env}
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    mem_limit: 256m
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    restart: unless-stopped
+    networks: [data]
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:${PROMETHEUS:?run with --env-file ../../versions.env}@${PROMETHEUS_DIGEST:?run with --env-file ../../versions.env}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./full/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./observability/alerts.yaml:/etc/prometheus/alerts.yaml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      start_interval: 1s
+      retries: 6
+    restart: unless-stopped
+    networks: [data, ops]
+
+  jaeger:
+    profiles: [observability]
+    image: jaegertracing/jaeger:${JAEGER:?run with --env-file ../../versions.env}@${JAEGER_DIGEST:?run with --env-file ../../versions.env}
+    command: ["--config=/etc/jaeger/config.yaml"]
+    volumes:
+      - ./observability/jaeger.yaml:/etc/jaeger/config.yaml:ro
+    ports:
+      - "127.0.0.1:${JAEGER_UI_PORT:-16686}:16686"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:13133/status"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      start_interval: 1s
+      retries: 6
+    restart: unless-stopped
+    networks: [data, ops]
+
+  loki:
+    profiles: [observability]
+    image: grafana/loki:${LOKI:?run with --env-file ../../versions.env}@${LOKI_DIGEST:?run with --env-file ../../versions.env}
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    mem_limit: 512m
+    restart: unless-stopped
+    networks: [data]
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:${GRAFANA:?run with --env-file ../../versions.env}@${GRAFANA_DIGEST:?run with --env-file ../../versions.env}
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana-admin-password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/opportunity-overview.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    secrets: [grafana-admin-password]
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 2s
+      retries: 6
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+      loki:
+        condition: service_started
+    restart: unless-stopped
+    networks: [data, ops]
+
+  opensearch-exporter:
+    profiles: [observability]
+    image: prometheuscommunity/elasticsearch-exporter:${OPENSEARCH_EXPORTER:?run with --env-file ../../versions.env}@${OPENSEARCH_EXPORTER_DIGEST:?run with --env-file ../../versions.env}
+    entrypoint: ["/bin/sh", "-c", "ES_USERNAME=opportunity-monitor ES_PASSWORD=\"$$(cat /run/secrets/opensearch-monitor-password)\" exec /bin/elasticsearch_exporter --es.uri=https://opensearch:9200 --es.ca=/etc/opportunity/tls/ca.crt --es.timeout=10s"]
+    secrets: [opensearch-monitor-password]
+    volumes:
+      - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+    mem_limit: 64m
+    restart: unless-stopped
+    networks: [data]
+
+networks:
+  # Browsers reach web only.
+  edge: {}
+  # web -> api (HTTPS). Internal: no route out.
+  app:
+    internal: true
+  # api, workers and the migrator -> PostgreSQL, OpenSearch, RabbitMQ, S3. Internal: no component has general egress
+  # (ADR-015 D14.1).
+  data:
+    internal: true
+  # The api's route to the installation's IdP.
+  egress: {}
+  # Published observability UIs (127.0.0.1 only).
+  ops: {}
+
+secrets:
+  postgres-password: { file: ./full/secrets/postgres-password }
+  db-owner-password: { file: ./full/secrets/db-owner-password }
+  db-api-password: { file: ./full/secrets/db-api-password }
+  db-monitor-password: { file: ./full/secrets/db-monitor-password }
+  db-replication-password: { file: ./full/secrets/db-replication-password }
+  db-sealer-password: { file: ./full/secrets/db-sealer-password }
+  db-worker-dispatcher-password: { file: ./full/secrets/db-worker-dispatcher-password }
+  db-worker-import-password: { file: ./full/secrets/db-worker-import-password }
+  db-worker-index-password: { file: ./full/secrets/db-worker-index-password }
+  db-worker-render-password: { file: ./full/secrets/db-worker-render-password }
+  db-worker-export-password: { file: ./full/secrets/db-worker-export-password }
+  db-worker-production-password: { file: ./full/secrets/db-worker-production-password }
+  db-worker-bulkcoding-password: { file: ./full/secrets/db-worker-bulkcoding-password }
+  pgpass-owner: { file: ./full/secrets/pgpass-owner }
+  pgpass-api: { file: ./full/secrets/pgpass-api }
+  pgpass-sealer: { file: ./full/secrets/pgpass-sealer }
+  pgpass-worker-dispatcher: { file: ./full/secrets/pgpass-worker-dispatcher }
+  pgpass-worker-import: { file: ./full/secrets/pgpass-worker-import }
+  pgpass-worker-index: { file: ./full/secrets/pgpass-worker-index }
+  pgpass-worker-render: { file: ./full/secrets/pgpass-worker-render }
+  pgpass-worker-export: { file: ./full/secrets/pgpass-worker-export }
+  pgpass-worker-production: { file: ./full/secrets/pgpass-worker-production }
+  pgpass-worker-bulkcoding: { file: ./full/secrets/pgpass-worker-bulkcoding }
+  filer-postgres-password: { file: ./full/secrets/filer-postgres-password }
+  seaweedfs-db-password: { file: ./full/secrets/seaweedfs-db-password }
+  rabbitmq-erlang-cookie: { file: ./full/secrets/rabbitmq-erlang-cookie }
+  rabbitmq-admin-password: { file: ./full/secrets/rabbitmq-admin-password }
+  rabbitmq-dispatcher-password: { file: ./full/secrets/rabbitmq-dispatcher-password }
+  rabbitmq-import-password: { file: ./full/secrets/rabbitmq-import-password }
+  rabbitmq-index-password: { file: ./full/secrets/rabbitmq-index-password }
+  rabbitmq-render-password: { file: ./full/secrets/rabbitmq-render-password }
+  rabbitmq-export-password: { file: ./full/secrets/rabbitmq-export-password }
+  rabbitmq-production-password: { file: ./full/secrets/rabbitmq-production-password }
+  rabbitmq-bulkcoding-password: { file: ./full/secrets/rabbitmq-bulkcoding-password }
+  amqp-admin: { file: ./full/secrets/amqp-admin }
+  amqp-dispatcher: { file: ./full/secrets/amqp-dispatcher }
+  amqp-import: { file: ./full/secrets/amqp-import }
+  amqp-index: { file: ./full/secrets/amqp-index }
+  amqp-render: { file: ./full/secrets/amqp-render }
+  amqp-export: { file: ./full/secrets/amqp-export }
+  amqp-production: { file: ./full/secrets/amqp-production }
+  amqp-bulkcoding: { file: ./full/secrets/amqp-bulkcoding }
+  opensearch-admin-password: { file: ./full/secrets/opensearch-admin-password }
+  opensearch-api-password: { file: ./full/secrets/opensearch-api-password }
+  opensearch-indexer-password: { file: ./full/secrets/opensearch-indexer-password }
+  opensearch-dispatcher-password: { file: ./full/secrets/opensearch-dispatcher-password }
+  opensearch-migrator-password: { file: ./full/secrets/opensearch-migrator-password }
+  opensearch-monitor-password: { file: ./full/secrets/opensearch-monitor-password }
+  s3-migrator-secret-key: { file: ./full/secrets/s3-migrator-secret-key }
+  s3-api-secret-key: { file: ./full/secrets/s3-api-secret-key }
+  s3-import-secret-key: { file: ./full/secrets/s3-import-secret-key }
+  s3-index-secret-key: { file: ./full/secrets/s3-index-secret-key }
+  s3-render-secret-key: { file: ./full/secrets/s3-render-secret-key }
+  s3-export-secret-key: { file: ./full/secrets/s3-export-secret-key }
+  s3-production-secret-key: { file: ./full/secrets/s3-production-secret-key }
+  envelope-hmac-k1: { file: ./full/secrets/envelope-hmac-k1 }
+  audit-session-hash-key: { file: ./full/secrets/audit-session-hash-key }
+  # Supplied by the operator from the IdP's client registration (init leaves it empty; `up` refuses to start without it).
+  oidc-client-secret: { file: ./full/secrets/oidc-client-secret }
+  grafana-admin-password: { file: ./full/secrets/grafana-admin-password }
+
+volumes:
+  postgres-data:
+  postgres-replica-data:
+  filer-postgres-data:
+  opensearch-1-data:
+  opensearch-2-data:
+  opensearch-3-data:
+  rabbitmq-1-data:
+  rabbitmq-2-data:
+  rabbitmq-3-data:
+  seaweedfs-master-1-data:
+  seaweedfs-master-2-data:
+  seaweedfs-master-3-data:
+  seaweedfs-volume-1-data:
+  seaweedfs-volume-2-data:
+  # Local key store (E05-T09): KEKs and signing keys, shared by api and every worker on this host. Back it up apart
+  # from the data (ADR-016 §5).
+  keys:
+  prometheus-data:
+  loki-data:
+  grafana-data:

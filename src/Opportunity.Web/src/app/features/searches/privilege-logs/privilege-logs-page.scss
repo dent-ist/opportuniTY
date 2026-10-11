@@ -71,6 +71,10 @@
   min-width: 0;
 }
 
+.pl__field--narrow {
+  flex-basis: 14rem;
+}
+
 .pl__actions {
   display: flex;
   flex-wrap: wrap;

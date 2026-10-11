@@ -14,6 +14,7 @@ Organizations install and run opportuniTY in their own environment; it is not of
 - [Architecture decision records](docs/adr/README.md)
 - [Implementation plan](docs/plan/README.md), [product decisions](docs/plan/decisions.md)
 - [Test strategy](docs/testing/test-strategy.md)
+- [Releasing](docs/releasing.md) — versions, changelog, release workflow, Compose bundle and upgrade test
 - [Contributing](CONTRIBUTING.md)
 
 ## Repository layout

@@ -50,6 +50,44 @@ internal sealed class IndexTemplates(OpenSearchConnection connection, IndexNames
             await connection.SendAsync(
                 HttpMethod.Put, $"_index_template/{Escape(names.Template(generation))}", Build(generation), cancellationToken)
                 .ConfigureAwait(false);
+            await AddMissingPropertiesAsync(generation, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Additive mapping changes within a generation (e.g. #179's folder fields): top-level properties this build's
+    /// mapping has and an existing index of the generation lacks are added in place (a new field needs no reindex; its
+    /// documents carry it once re-projected). Changed or removed properties still need a new generation.
+    /// </summary>
+    private async Task AddMissingPropertiesAsync(int generation, CancellationToken cancellationToken)
+    {
+        var wanted = mappings.Load(generation)["mappings"]?["properties"] as JsonObject ?? [];
+        var patterns = string.Join(',', names.TemplatePatterns(generation).Select(Escape));
+        var response = await connection.SendAsync(
+            HttpMethod.Get, $"{patterns}/_mapping?ignore_unavailable=true&allow_no_indices=true", null, cancellationToken, HttpStatusCode.NotFound)
+            .ConfigureAwait(false);
+        if (response.Status != HttpStatusCode.OK || response.Body is not JsonObject indexes)
+        {
+            return;
+        }
+
+        foreach (var (index, value) in indexes)
+        {
+            var existing = value?["mappings"]?["properties"] as JsonObject;
+            var missing = new JsonObject();
+            foreach (var (name, definition) in wanted)
+            {
+                if (existing?.ContainsKey(name) != true)
+                {
+                    missing[name] = definition?.DeepClone();
+                }
+            }
+
+            if (missing.Count > 0)
+            {
+                await connection.SendAsync(HttpMethod.Put, $"{Escape(index)}/_mapping", Obj(("properties", missing)), cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
     }
 

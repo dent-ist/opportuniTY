@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    E01-T06 release tooling: writes the per-release compatibility matrix (database schema version, projection
+    generation and mapping checksums, message contract versions) from the code that ships. Tooling only: production
+    code under src/ must never reference this project (tests/Opportunity.ArchitectureTests). See docs/releasing.md.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>opportunity-release</AssemblyName>
+    <RootNamespace>Opportunity.Release</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Opportunity.Contracts\Opportunity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Data\Opportunity.Data.csproj" />
+    <ProjectReference Include="..\..\src\Opportunity.Search\Opportunity.Search.csproj" />
+  </ItemGroup>
+
+</Project>

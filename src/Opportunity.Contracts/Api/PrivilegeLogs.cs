@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Opportunity.Contracts.Api;
 
 /// <summary>What a privilege log column holds (E13-T03).</summary>
@@ -113,19 +115,22 @@ public sealed record PrivilegeLogTemplateList(IReadOnlyList<PrivilegeLogTemplate
 
 /// <summary>
 /// Body of <c>POST …/privilege-logs</c>: generate a log from a finalized production (<see cref="ProductionId"/>, with
-/// an optional review set <see cref="SnapshotId"/> whose withheld documents were not produced) or from a frozen set
-/// (<see cref="SnapshotId"/> alone), with a template (<see cref="TemplateId"/>) or a preset (default document-by-document).
+/// an optional review set <see cref="SnapshotId"/> whose withheld documents were not produced), from a frozen set
+/// (<see cref="SnapshotId"/> alone) or from a saved search (<see cref="SavedSearchId"/> alone: run now as you see it and
+/// frozen), with a template (<see cref="TemplateId"/>) or a preset (default document-by-document).
 /// </summary>
 public sealed record GeneratePrivilegeLogRequest(
     Guid? ProductionId = null,
     Guid? SnapshotId = null,
     Guid? TemplateId = null,
-    PrivilegeLogPreset? Preset = null);
+    PrivilegeLogPreset? Preset = null,
+    Guid? SavedSearchId = null);
 
 public enum PrivilegeLogSourceKind
 {
     Production,
     Snapshot,
+    SavedSearch,
 }
 
 public enum PrivilegeLogTreatment
@@ -166,7 +171,9 @@ public sealed record PrivilegeLogMetadata(
     int Withheld,
     int Redacted,
     int RedactedPrivacy,
-    int ExcludedByRules);
+    int ExcludedByRules,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? SavedSearchId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SavedSearchName = null);
 
 /// <summary>A log file's SHA-256 (hex) and size.</summary>
 public sealed record PrivilegeLogFileResource(string Format, string Sha256, long Bytes);
@@ -175,6 +182,11 @@ public sealed record PrivilegeLogFileResource(string Format, string Sha256, long
 /// One version of a privilege log. <see cref="ContentSha256"/> identifies its content (metadata and rows); the files'
 /// own SHA-256 are what a download is verified against before it is sent.
 /// </summary>
+/// <param name="SavedSearchId">The saved search of a saved-search log.</param>
+/// <param name="DescriptionColumn">
+/// The index of the column that holds the Privilege Description field (the reviewer-written per-document description,
+/// Q-20), if the version has one: what the description of an entry is edited through.
+/// </param>
 public sealed record PrivilegeLogResource(
     Guid LogId,
     int Version,
@@ -188,10 +200,62 @@ public sealed record PrivilegeLogResource(
     IReadOnlyList<PrivilegeLogFileResource> Files,
     PrivilegeLogMetadata Metadata,
     ReviewerResource GeneratedBy,
-    DateTimeOffset GeneratedAt);
+    DateTimeOffset GeneratedAt,
+    Guid? SavedSearchId = null,
+    int? DescriptionColumn = null);
 
 /// <summary>Response of <c>POST …/privilege-logs</c>: the version, and whether it is the unchanged latest one.</summary>
 public sealed record PrivilegeLogGenerationResource(PrivilegeLogResource Log, bool Unchanged);
 
 /// <summary>One row of a log version, its cells in column order.</summary>
 public sealed record PrivilegeLogEntryResource(int Ordinal, Guid DocumentId, PrivilegeLogTreatment Treatment, IReadOnlyList<string> Cells);
+
+public enum PrivilegeLogChangeKind
+{
+    /// <summary>Listed now, not in the earlier version.</summary>
+    Added,
+
+    /// <summary>In the earlier version, not listed now.</summary>
+    Removed,
+
+    /// <summary>Listed in both, with different cells or treatment.</summary>
+    Changed,
+}
+
+/// <summary>A cell of an entry that differs between the versions (by column header).</summary>
+public sealed record PrivilegeLogCellChange(string Column, string Before, string After);
+
+/// <summary>
+/// How one document's entry differs between two versions. <see cref="Cells"/> is the row as listed now (an added or
+/// changed entry) or as it was listed (a removed one); <see cref="Ordinal"/> and <see cref="PreviousOrdinal"/> are its
+/// positions in the two versions.
+/// </summary>
+public sealed record PrivilegeLogEntryChange(
+    PrivilegeLogChangeKind Kind,
+    Guid DocumentId,
+    int? Ordinal,
+    int? PreviousOrdinal,
+    PrivilegeLogTreatment Treatment,
+    IReadOnlyList<string> Cells,
+    IReadOnlyList<PrivilegeLogCellChange> ChangedCells);
+
+/// <summary>
+/// <c>GET …/privilege-logs/{logId}/changes</c>: what changed since an earlier version (by default the previous version
+/// of the same log), entry by entry and keyed by document: added, removed and changed entries in log order (removed
+/// ones after the others, in their earlier order). Cells are compared by column header; columns only one version has
+/// are named in <see cref="ColumnsAdded"/> and <see cref="ColumnsRemoved"/>. Without an earlier version
+/// <see cref="PreviousLogId"/> is null and nothing is listed.
+/// </summary>
+public sealed record PrivilegeLogChangesResource(
+    Guid LogId,
+    int Version,
+    Guid? PreviousLogId,
+    int? PreviousVersion,
+    int Added,
+    int Removed,
+    int Changed,
+    int Unchanged,
+    IReadOnlyList<string> ColumnsAdded,
+    IReadOnlyList<string> ColumnsRemoved,
+    IReadOnlyList<PrivilegeLogEntryChange> Items,
+    string? NextCursor);

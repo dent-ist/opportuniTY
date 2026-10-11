@@ -1,5 +1,6 @@
 # Container images (#25, E01-T05): build, scan, and (when publishing) push to GHCR, sign and attest.
-# Reusable: called by images.yml (pull requests: build + scan only; main: publish `edge`) and release.yml (v* tags).
+# Reusable: called by images.yml (pull requests: build + scan only; main: publish `edge`) and release.yml (a merged
+# release PR: publish X.Y.Z and X.Y after the upgrade test, E01-T06).
 # See docs/ci.md#container-images.
 #
 # Permissions: `build` and `smoke` declare read-only scopes. `publish` declares none, so it inherits exactly what the
@@ -13,6 +14,11 @@ on:
         description: Push to GHCR, sign, attest and smoke-test the published images
         type: boolean
         required: true
+      version:
+        description: Release version X.Y.Z (release.yml, E01-T06); adds the X.Y.Z and X.Y tags to the published images
+        type: string
+        required: false
+        default: ""
 
 env:
   REGISTRY: ghcr.io
@@ -174,6 +180,8 @@ jobs:
             type=edge,branch=main
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
       - name: Build and push (linux/amd64, linux/arm64)
         id: push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0

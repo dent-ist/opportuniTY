@@ -20,8 +20,10 @@ Accepted limits (Lite, AR-04): the combined worker holds every area's broker pas
 the union of the worker types' privileges. Database privileges are not yet narrowed per worker type: every runtime
 login is a member of `opportunity_app` (DML on application tables, RLS applies). Split worker hosts should each get a
 login of their own (for example `opportunity_worker_render`, created like the logins in `30-component-logins.sh`);
-per-table grants per worker type (the D9.6 matrix) are left to the Full profile (E19-T06, #162). AMQPS works by
-giving `amqps://` URIs; the Compose profile uses plain AMQP on the private Compose network.
+per-table grants per worker type (the D9.6 matrix) are still open. The Full profile (E19-T06,
+[deployment-profiles.md](deployment-profiles.md)) runs one container per worker type, each with its own login
+(`opportunity_worker_<type>`, created by the same script from `OPPORTUNITY_DB_WORKER_<TYPE>_PASSWORD_FILE`) and its own
+broker user over AMQPS; the Lite profile uses plain AMQP on the private Compose network.
 
 ## Configuration
 

@@ -99,6 +99,18 @@ internal sealed partial class SearchService(
         SavedSearchRunSource? saved = null;
         TermScope? termScope = null;
         BatchScope? batchScope = null;
+        FolderScope? folderScope = null;
+        if (request.Folder is { } folder)
+        {
+            if (request.SavedSearchId is not null || request.SearchTermReportId is not null || request.TermId is not null
+                || request.ReviewBatchId is not null)
+            {
+                return SearchOutcome.InvalidRequest("folder", "A folder is searched with query text only.");
+            }
+
+            folderScope = new FolderScope(folder.FolderId, folder.IncludeSubfolders != false);
+        }
+
         if (request.ReviewBatchId is { } batchId)
         {
             if (request.SavedSearchId is not null || request.SearchTermReportId is not null || request.TermId is not null)
@@ -261,7 +273,7 @@ internal sealed partial class SearchService(
             now + Settings.SearchIdleTimeout)
         {
             ServedGeneration = watermark.IndexedThroughGeneration,
-            ScopeJson = termScope?.Json ?? batchScope?.Json,
+            ScopeJson = termScope?.Json ?? batchScope?.Json ?? folderScope?.Json,
             Expansion = expansion,
             ResultFieldsJson = columns.Fields.Count > 0 ? SearchColumns.ToJson(columns.Fields) : null,
         };
@@ -284,15 +296,16 @@ internal sealed partial class SearchService(
 
         var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
         search = search with { PointInTimeOpenedAt = time.GetUtcNow() };
+        var baseClause = folderScope is not null ? FolderScoped(plan.Query!, folderScope) : plan.Query!;
         var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!,
             termScope is not null ? TermScoped(plan.Query!, termScope.DocumentIds)
             : batchScope is not null ? BatchScoped(plan.Query!, batchScope.DocumentIds)
-            : plan.Query!);
+            : baseClause);
         SearchResult result;
         try
         {
             result = await ExecuteAsync(placement, search with { PointInTimeId = pit }, query, sort, Navigation.First(), facets, cancellationToken,
-                Expander(placement, visibility.Filter!, plan.Query!, expansion)).ConfigureAwait(false);
+                Expander(placement, visibility.Filter!, baseClause, expansion)).ConfigureAwait(false);
         }
         catch (QueryRejectedException rejected)
         {
@@ -416,7 +429,12 @@ internal sealed partial class SearchService(
         }
 
         var userClause = plan.Query!;
-        if (search.ScopeJson is { } batchJson && BatchScope.Parse(batchJson) is { } scopedBatch)
+        if (FolderScope.Parse(search.ScopeJson) is { } folderScope)
+        {
+            // An imported folder (#179): a filter on the projection, so it needs nothing re-read.
+            userClause = FolderScoped(userClause, folderScope);
+        }
+        else if (search.ScopeJson is { } batchJson && BatchScope.Parse(batchJson) is { } scopedBatch)
         {
             // A review batch (#178): its frozen membership, re-read for every page.
             if (await ResolveBatchAsync(caller, scopedBatch, cancellationToken).ConfigureAwait(false) is not { Scope: { } batch })
@@ -444,7 +462,8 @@ internal sealed partial class SearchService(
         try
         {
             result = await ExecuteAsync(placement, search, query, sort, navigation, [], cancellationToken,
-                Expander(placement, visibility.Filter!, plan.Query!, search.Expansion)).ConfigureAwait(false);
+                Expander(placement, visibility.Filter!, FolderScope.Parse(search.ScopeJson) is not null ? userClause : plan.Query!,
+                    search.Expansion)).ConfigureAwait(false);
         }
         catch (QueryRejectedException rejected)
         {
@@ -1135,6 +1154,13 @@ internal sealed partial class SearchService(
             // E09-T03: the expansion and what it added (the base hits are "total").
             details["expand"] = search.Expansion.ToString();
             details["expandedTotal"] = expanded is null ? null : Invariant(expanded.Total);
+        }
+
+        if (FolderScope.Parse(search.ScopeJson) is { } folder)
+        {
+            // #179: the imported folder the search ran within.
+            details["folderId"] = folder.FolderId.ToString();
+            details["includeSubfolders"] = folder.IncludeSubfolders ? "true" : "false";
         }
 
         if (savedSearchId is { } saved)

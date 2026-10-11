@@ -32,10 +32,11 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
                d.file_size, d.page_count, d.date_sent, d.date_received, d.date_created, d.date_last_modified,
                d.document_date, d.document_date_source, d.family_date, d.native_object_id, d.text_object_id,
                d.text_length, d.active_page_set_id, d.text_truncated, d.text_missing, d.native_missing,
-               d.images_incomplete, d.text_encoding_warning, d.metadata::text, o.logical_key
+               d.images_incomplete, d.text_encoding_warning, d.metadata::text, o.logical_key, d.folder_id, f.ancestor_ids
         FROM opportunity.document_projection_state s
         JOIN opportunity.document d ON d.workspace_id = s.workspace_id AND d.document_id = s.document_id
         LEFT JOIN opportunity.stored_object o ON o.workspace_id = d.workspace_id AND o.object_id = d.text_object_id
+        LEFT JOIN opportunity.document_folder f ON f.workspace_id = d.workspace_id AND f.folder_id = d.folder_id
         WHERE s.workspace_id = @ws AND s.document_id = ANY(@ids)
         """;
 
@@ -51,7 +52,7 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
         var catalog = await FieldCatalogRepository.LoadCatalogAsync(tx, workspaceId, includeDeleted: false, cancellationToken)
             .ConfigureAwait(false);
 
-        var rows = new Dictionary<Guid, (long Version, bool Deleted, Document Document, string? TextKey)>();
+        var rows = new Dictionary<Guid, (long Version, bool Deleted, Document Document, string? TextKey, Guid[]? Folders)>();
         await using (var command = tx.Command(DocumentSql))
         {
             command.Parameters.AddWithValue("ws", workspaceId);
@@ -60,7 +61,8 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 var document = ReadDocument(reader, workspaceId);
-                rows[document.DocumentId] = (reader.GetInt64(1), reader.GetBoolean(2), document, NullableString(reader, 45));
+                rows[document.DocumentId] = (reader.GetInt64(1), reader.GetBoolean(2), document, NullableString(reader, 45),
+                    reader.IsDBNull(47) ? null : reader.GetFieldValue<Guid[]>(47));
             }
         }
 
@@ -121,6 +123,7 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
                     Coding = coding.GetValueOrDefault(id) ?? [],
                     SecurityTags = tags.GetValueOrDefault(id) ?? [],
                     TextObjectKey = row.Document.TextObjectId is null ? null : row.TextKey,
+                    FolderIds = row.Folders ?? [],
                 });
             }
         }
@@ -174,6 +177,7 @@ public sealed class ProjectionSourceReader(NpgsqlDataSource dataSource) : IProje
         ImagesIncomplete = r.GetBoolean(42),
         TextEncodingWarning = r.GetBoolean(43),
         Metadata = r.GetString(44),
+        FolderId = Value<Guid>(r, 46),
     };
 
     private static string? NullableString(NpgsqlDataReader r, int ordinal) => r.IsDBNull(ordinal) ? null : r.GetString(ordinal);

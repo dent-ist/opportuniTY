@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\src\Opportunity.Rendering\Opportunity.Rendering.csproj" />
     <!-- The render sandbox entry point (E11-T03) is started as a child process from the output directory. -->
     <ProjectReference Include="..\..\src\Opportunity.Rendering.Sandbox\Opportunity.Rendering.Sandbox.csproj" />
+    <ProjectReference Include="..\..\tools\Opportunity.Release\Opportunity.Release.csproj" />
   </ItemGroup>
 
   <ItemGroup>

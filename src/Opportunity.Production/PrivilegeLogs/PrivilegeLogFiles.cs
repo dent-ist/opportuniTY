@@ -116,13 +116,21 @@ public static class PrivilegeLogFiles
         static string D(DateOnly? day) => day?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
         var rows = new List<(string, string)>
         {
-            ("Privilege Log", metadata.Source == PrivilegeLogSourceKind.Production
-                ? $"Production: {metadata.ProductionName} (version {N(metadata.ProductionVersion ?? 1)})"
-                : "Frozen set"),
+            ("Privilege Log", metadata.Source switch
+            {
+                PrivilegeLogSourceKind.Production => $"Production: {metadata.ProductionName} (version {N(metadata.ProductionVersion ?? 1)})",
+                PrivilegeLogSourceKind.SavedSearch => $"Saved search: {metadata.SavedSearchName}",
+                _ => "Frozen set",
+            }),
         };
         if (metadata.ProductionId is { } production)
         {
             rows.Add(("Production ID", production.ToString("D")));
+        }
+
+        if (metadata.SavedSearchId is { } savedSearch)
+        {
+            rows.Add(("Saved search ID", savedSearch.ToString("D")));
         }
 
         rows.Add(("Snapshot ID", metadata.SnapshotId.ToString("D")));
