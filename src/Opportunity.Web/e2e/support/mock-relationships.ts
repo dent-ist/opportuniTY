@@ -1,7 +1,7 @@
 import type { Route } from '@playwright/test';
 import type { CodingMock } from './mock-coding';
 
-// The mock API's relationships and coding propagation (wave-12 shared contract "Relationships and propagation", #88
+// The mock API's relationships, where-produced lookup (E13-T04) and coding propagation (wave-12 shared contract "Relationships and propagation", #88
 // backend, #136 UI): `GET …/documents/{id}/relationships`, `POST …/coding-propagations/preview` and
 // `POST …/coding-propagations`. Families follow the document list of ./mock-api.ts (n % 4 === 3 is the parent of
 // n + 1); documents n % 10 === 5 and 6 are duplicates (5 is the Primary); emails (not attachments) form threads of
@@ -76,6 +76,12 @@ export class RelationshipsMock {
       const fields = (url.searchParams.get('fields') ?? '').split(',').filter(Boolean);
       return route.fulfill({ json: this.relationships(Number(rel[1]), fields) });
     }
+    const produced = /^\/api\/v1\/workspaces\/[^/]+\/documents\/doc-(\d+)\/where-produced$/.exec(
+      path,
+    );
+    if (produced && method === 'GET') {
+      return route.fulfill({ json: this.whereProduced(Number(produced[1])) });
+    }
     if (method !== 'POST') return undefined;
     if (/^\/api\/v1\/workspaces\/[^/]+\/coding-propagations\/preview$/.test(path)) {
       const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -130,6 +136,40 @@ export class RelationshipsMock {
         members: thread.length > 1 ? thread.map(m) : [],
         total: thread.length > 1 ? thread.length : 0,
       },
+    };
+  }
+
+  /** E13-T04: the document and its family were produced in one finalized production (one Bates number each). */
+  private whereProduced(n: number) {
+    const family = familyOf(n, this.total());
+    const members = family.length > 1 ? family : [n];
+    const bates = (d: number) => `PROD${String(d).padStart(7, '0')}`;
+    return {
+      documentId: `doc-${n}`,
+      documents: members.map((d) => ({
+        documentId: `doc-${d}`,
+        controlNumber: pad(d),
+        relations: [d === n ? 'self' : 'family'],
+        productions: 1,
+      })),
+      truncated: false,
+      items: members.map((d) => ({
+        productionId: 'prod-1',
+        productionName: 'First production',
+        productionVersion: 1,
+        productionStatus: 'finalized',
+        producedAt: '2026-05-04T10:00:00Z',
+        voidedAt: null,
+        volumes: ['PROD_VOL001'],
+        documentId: `doc-${d}`,
+        controlNumber: pad(d),
+        relations: [d === n ? 'self' : 'family'],
+        output: 'image',
+        prodBegBates: bates(d),
+        prodEndBates: bates(d),
+        prodBegAttach: bates(members[0]),
+        prodEndAttach: bates(members[members.length - 1]),
+      })),
     };
   }
 

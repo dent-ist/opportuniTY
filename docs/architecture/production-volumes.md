@@ -98,3 +98,17 @@ The run resource has `verification` (status, counts, report SHA-256), and its in
 the gateway (`GET …/volumes/{volumeId}/verification-report`, `Production.Create`, audited `Production.Downloaded`) for a
 passed or a failed run. Tests seed each leak (original text, native, unburned pages) through test-only switches of the
 writer (`FaultFlags`, compiled out of release builds) and assert that the verification blocks the volume.
+
+## Where produced and the Bates cross-reference (E13-T04)
+
+`GET …/documents/{documentId}/where-produced` (`Production.Create`; the document itself needs `Document.View`) lists
+every **produced** production — finalized, or voided after it was produced — that gave the document, its family
+members (`family_id`) or its duplicates (`duplicate_group_id`) Bates numbers: production and version, status,
+finalization and void times, the names of its completed volume runs, the relation, ProdBegBates/ProdEndBates/
+ProdBegAttach/ProdEndAttach and the output kind. Drafts never issued numbers (Q-54) and are not listed. Related
+documents the caller may not view are omitted entirely (Q-52); at most 5,000 related documents are looked up
+(`truncated`). The same rows, the whole matter or one production download as CSV through the protected-content
+gateway (`GET …/productions/bates-cross-reference[?documentId=|?productionId=]`, formula-neutralized, UTF-8 with BOM);
+the matter-wide file is built page by page (1,000 rows, each page re-authorized) and every download writes
+`Production.CrossReferenceExported` with its scope and row count before the first byte. Review mode shows the lookup
+as the **Produced in** tab of Related Items to `Production.Create` holders.

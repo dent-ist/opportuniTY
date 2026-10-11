@@ -1,0 +1,78 @@
+@switch (state()) {
+  @case ('loading') {
+    <opp-loading-state label="Looking up where this document was produced…" />
+  }
+  @case ('unavailable') {
+    <p class="produced__muted">Where this document was produced could not be looked up.</p>
+  }
+  @default {
+    @if (rows().length === 0) {
+      <p class="produced__muted">
+        Neither this document nor its family members or duplicates were produced in a finalized
+        production.
+      </p>
+    } @else {
+      <div class="produced__note">
+        <span>{{ summary() }} Includes the family and duplicates you can see.</span>
+        <a oppButton="ghost" [href]="exportUrl()" download>
+          <opp-icon name="download" />Download cross-reference (CSV)
+        </a>
+      </div>
+      <div class="produced__scroll">
+        <table class="produced__table">
+          <caption class="opp-visually-hidden">
+            Productions of
+            {{
+              controlNumber()
+            }}, its family and its duplicates
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Production</th>
+              <th scope="col">Status</th>
+              <th scope="col">Volume</th>
+              <th scope="col">Relation</th>
+              <th scope="col">Control Number</th>
+              <th scope="col">Bates range</th>
+              <th scope="col">Attachment range</th>
+              <th scope="col">Produced as</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of rows(); track row.key) {
+              <tr [class.is-self]="row.isSelf">
+                <td>{{ row.production }}</td>
+                <td>
+                  @if (row.item.voided) {
+                    <opp-badge tone="warning">{{ row.status }}</opp-badge>
+                  } @else {
+                    {{ row.status }}
+                  }
+                </td>
+                <td>{{ row.volumes }}</td>
+                <td>{{ row.relation }}</td>
+                <td>
+                  @if (row.isSelf) {
+                    <strong>{{ row.item.controlNumber }}</strong>
+                  } @else {
+                    <button type="button" class="produced__open" (click)="open(row)">
+                      {{ row.item.controlNumber }}
+                    </button>
+                  }
+                </td>
+                <td class="produced__bates">{{ row.bates }}</td>
+                <td class="produced__bates">{{ row.attachment }}</td>
+                <td>{{ outputLabels[row.item.output] }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+    @if (truncated()) {
+      <p class="produced__muted">
+        This document has more than 5,000 related documents; only the first 5,000 were looked up.
+      </p>
+    }
+  }
+}

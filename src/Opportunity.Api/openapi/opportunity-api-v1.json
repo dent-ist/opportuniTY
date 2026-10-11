@@ -8048,6 +8048,142 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/where-produced": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "Where a document, its family and its duplicates were produced: every finalized or voided production, volume and Bates range.",
+        "description": "Drafts never issued numbers and are not listed. Related documents you may not view are omitted entirely (never listed or counted). Download the same rows as CSV with GET …/productions/bates-cross-reference?documentId=.",
+        "operationId": "GetWhereProduced",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhereProducedResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/productions/bates-cross-reference": {
+      "get": {
+        "tags": [
+          "Productions"
+        ],
+        "summary": "The Bates cross-reference as CSV (UTF-8 with BOM): every produced production's documents with their Bates ranges and volumes. Audited.",
+        "description": "Without parameters the whole matter; productionId= one finalized or voided production; documentId= the where-produced lookup of a document, its family and its duplicates (with a Relation column). Documents you may not view are omitted entirely.",
+        "operationId": "DownloadBatesCrossReference",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "productionId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/dedupe-policy": {
       "get": {
         "tags": [
@@ -30648,6 +30784,168 @@
           }
         }
       },
+      "WhereProducedDocumentResource": {
+        "required": [
+          "documentId",
+          "controlNumber",
+          "relations",
+          "productions"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhereProducedRelationResource"
+            }
+          },
+          "productions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "WhereProducedItemResource": {
+        "required": [
+          "productionId",
+          "productionName",
+          "productionVersion",
+          "productionStatus",
+          "producedAt",
+          "voidedAt",
+          "volumes",
+          "documentId",
+          "controlNumber",
+          "relations",
+          "output",
+          "prodBegBates",
+          "prodEndBates",
+          "prodBegAttach",
+          "prodEndAttach"
+        ],
+        "type": "object",
+        "properties": {
+          "productionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productionName": {
+            "type": "string"
+          },
+          "productionVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "productionStatus": {
+            "$ref": "#/components/schemas/ProductionStatusResource"
+          },
+          "producedAt": {
+            "format": "date-time"
+          },
+          "voidedAt": {
+            "format": "date-time"
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhereProducedRelationResource"
+            }
+          },
+          "output": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProductionOutputResource"
+              }
+            ]
+          },
+          "prodBegBates": {
+            "type": "string"
+          },
+          "prodEndBates": {
+            "type": "string"
+          },
+          "prodBegAttach": {
+            "type": "string"
+          },
+          "prodEndAttach": {
+            "type": "string"
+          }
+        }
+      },
+      "WhereProducedRelationResource": {
+        "enum": [
+          "self",
+          "family",
+          "duplicate"
+        ]
+      },
+      "WhereProducedResource": {
+        "required": [
+          "documentId",
+          "documents",
+          "items",
+          "truncated"
+        ],
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhereProducedDocumentResource"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WhereProducedItemResource"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
       "WithheldDocumentsResource": {
         "enum": [
           "block",
@@ -31232,6 +31530,9 @@
       "name": "Coding"
     },
     {
+      "name": "Productions"
+    },
+    {
       "name": "Relationships"
     },
     {
@@ -31251,9 +31552,6 @@
     },
     {
       "name": "Exports"
-    },
-    {
-      "name": "Productions"
     },
     {
       "name": "Search Term Reports"

@@ -81,6 +81,11 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
   let harness: RouterTestingHarness;
   let applyResponse: () => FakeResponse;
   let previewMode: 'interactive' | 'job';
+  let extraPermissions: string[] = [];
+
+  beforeEach(() => {
+    extraPermissions = [];
+  });
 
   async function setup(): Promise<void> {
     previewMode = 'interactive';
@@ -98,6 +103,7 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
             PERMISSIONS.documentView,
             PERMISSIONS.searchExecute,
             PERMISSIONS.codingWrite,
+            ...extraPermissions,
           ],
         },
       })
@@ -126,7 +132,33 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
           threshold: 1000,
         },
       }))
-      .on('POST', `${WS}/coding-propagations`, () => applyResponse());
+      .on('POST', `${WS}/coding-propagations`, () => applyResponse())
+      .on('GET', `${WS}/documents/doc-1/where-produced`, {
+        body: {
+          documentId: 'doc-1',
+          documents: [],
+          truncated: false,
+          items: [
+            {
+              productionId: 'prod-1',
+              productionName: 'First production',
+              productionVersion: 1,
+              productionStatus: 'finalized',
+              producedAt: '2026-05-04T10:00:00Z',
+              voidedAt: null,
+              volumes: ['ACM_VOL001'],
+              documentId: 'doc-4',
+              controlNumber: 'ACM0000004',
+              relations: ['duplicate'],
+              output: 'image',
+              prodBegBates: 'PROD0000001',
+              prodEndBates: 'PROD0000002',
+              prodBegAttach: 'PROD0000001',
+              prodEndAttach: 'PROD0000002',
+            },
+          ],
+        },
+      });
     for (let n = 1; n <= 4; n++) {
       api
         .on('GET', `${WS}/documents/doc-${n}`, { body: documentResource(n) })
@@ -218,6 +250,7 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
       ['Attachment 2', 'ACM0000003', 'Message 3.msg', '03/01/2024, 02:30 PM UTC', 'Not set'],
     ]);
     expect(related().textContent).not.toMatch(/restricted|hidden/i);
+    expect(tab('Produced in')).toBeUndefined();
 
     tab('Duplicates').click();
     await settle();
@@ -229,6 +262,22 @@ describe('Related Items and Apply to Family / Duplicates (E16-T10)', () => {
     await settle();
     expect(related().textContent).toContain('This document is not part of an email thread.');
     await expectNoAxeViolations(root());
+  }, 30_000);
+
+  it('shows where the document, its family and duplicates were produced to production managers (E13-T04)', async () => {
+    extraPermissions = [PERMISSIONS.productionCreate];
+    await setup();
+    tab('Produced in').click();
+    await settle();
+    expect(tab('Produced in').getAttribute('aria-selected')).toBe('true');
+    expect(tableRows().map((r) => [r[0], r[3], r[4], r[5]])).toEqual([
+      ['First production (v1)', 'Duplicate', 'ACM0000004', 'PROD0000001 – PROD0000002'],
+    ]);
+    await expectNoAxeViolations(root());
+    buttonIn(related(), 'ACM0000004').click();
+    await settle();
+    expect(bar()).toContain('Doc 1 of 4');
+    expect(bar()).toContain('Viewing related item ACM0000004');
   }, 30_000);
 
   it('opens a member without moving the review cursor', async () => {

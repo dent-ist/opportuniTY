@@ -404,6 +404,8 @@ internal static class AuditCoverageCatalog
         Audited("POST", "/productions", "Production.Created"),
         NoneWs("GET", "/productions", ListRead),
         NoneWs("GET", "/productions/bates-lookup", ListRead),
+        NoneWs("GET", "/documents/{documentId}/where-produced", ListRead),
+        Audited("GET", "/productions/bates-cross-reference", "Production.CrossReferenceExported"),
         NoneWs("GET", "/productions/{productionId}", ListRead),
         Audited("PUT", "/productions/{productionId}", "Production.Modified"),
         Audited("POST", "/productions/{productionId}/bates-allocation", "Job.Created"),

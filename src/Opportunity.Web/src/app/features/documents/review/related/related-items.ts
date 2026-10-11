@@ -14,8 +14,10 @@ import {
 import type { FieldResource, SearchHit } from '../../../../core/api/generated/models';
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
 import { UiPreferences } from '../../../../core/preferences/ui-preferences';
+import { PERMISSIONS } from '../../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
 import { Button, Icon, LoadingState, MENU } from '../../../../ui';
+import { ProducedIn } from '../../../where-produced/produced-in';
 import type { RelationshipPivot } from '../../grid/review-grid';
 import { CellFormatter } from '../../grid/grid-format';
 import {
@@ -25,7 +27,7 @@ import {
   RelationshipsApi,
 } from '../../relationships/relationships-api';
 
-export type RelatedTab = 'family' | 'duplicates' | 'thread';
+export type RelatedTab = 'family' | 'duplicates' | 'thread' | 'produced';
 
 /** A coding column of the Related Items tables. */
 interface CodingColumn {
@@ -43,7 +45,7 @@ interface MemberRow {
 }
 
 interface TabView {
-  readonly tab: RelatedTab;
+  readonly tab: Exclude<RelatedTab, 'produced'>;
   readonly label: string;
   readonly count: number;
   readonly rows: readonly MemberRow[];
@@ -66,11 +68,12 @@ export const MAX_RELATED_COLUMNS = 6;
  * coding columns the reviewer picks (their current values: who is coded how). Opening a member shows it in the viewer
  * without moving the review cursor. Members the reviewer may not see are omitted entirely (Q-52): neither listed
  * nor counted, so nothing reveals that they exist. "Show … in the list" runs the relation as a new
- * search in Documents.
+ * search in Documents. Production managers also get "Produced in" (E13-T04): every production, volume and Bates
+ * range of the document, its family and its duplicates.
  */
 @Component({
   selector: 'opp-related-items',
-  imports: [Button, CdkMenuItemCheckbox, Icon, LoadingState, ...MENU],
+  imports: [Button, CdkMenuItemCheckbox, Icon, LoadingState, ProducedIn, ...MENU],
   templateUrl: './related-items.html',
   styleUrl: './related-items.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -94,6 +97,8 @@ export class RelatedItems {
   protected readonly uid = inject(_IdGenerator).getId('opp-related-');
 
   protected readonly tab = signal<RelatedTab>('family');
+  /** "Produced in" needs Production.Create, like every production route (E13-T04). */
+  protected readonly canSeeProductions = this.context.can(PERMISSIONS.productionCreate);
   protected readonly state = signal<DocumentRelationships | 'loading' | 'unavailable'>('loading');
   private readonly reloads = signal(0);
   private seq = 0;
@@ -196,6 +201,7 @@ export class RelatedItems {
 
   protected choose(tab: string | undefined): void {
     if (tab === 'family' || tab === 'duplicates' || tab === 'thread') this.tab.set(tab);
+    else if (tab === 'produced' && this.canSeeProductions) this.tab.set(tab);
   }
 
   /** Left/Right, Home/End between the tabs; Enter or Space selects (APG tabs, manual activation). */
@@ -247,6 +253,26 @@ export class RelatedItems {
       parentDocumentId: inFamily && !m.isParent && family?.parent ? family.parent.documentId : null,
       isFamilyParent: inFamily && m.isParent,
       fileName: m.fileName,
+      fileExtension: null,
+      fileSize: null,
+      fileType: null,
+      mimeType: null,
+      pageCount: null,
+      snippets: [],
+    });
+  }
+
+  /** Shows a document from "Produced in" in the viewer (the review cursor stays). */
+  protected openProduced(document: { documentId: string; controlNumber: string }): void {
+    this.openItem.emit({
+      documentId: document.documentId,
+      controlNumber: document.controlNumber,
+      documentDate: null,
+      familyId: null,
+      familySequence: null,
+      parentDocumentId: null,
+      isFamilyParent: false,
+      fileName: null,
       fileExtension: null,
       fileSize: null,
       fileType: null,
