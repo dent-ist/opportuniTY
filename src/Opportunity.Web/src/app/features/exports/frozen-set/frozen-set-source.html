@@ -1,0 +1,111 @@
+<fieldset class="dl__fieldset">
+  <legend class="dl__legend">Documents to send</legend>
+  <div class="dl__radios">
+    <label class="dl__radio">
+      <input
+        type="radio"
+        name="frozen-set-source"
+        value="savedSearch"
+        [checked]="kind() === 'savedSearch'"
+        (change)="setKind('savedSearch')"
+      />
+      <span class="dl__radio-text">
+        Saved search
+        <span class="dl__muted">Its results are frozen now, with the options below.</span>
+      </span>
+    </label>
+    <label class="dl__radio">
+      <input
+        type="radio"
+        name="frozen-set-source"
+        value="frozenSet"
+        [checked]="kind() === 'frozenSet'"
+        (change)="setKind('frozenSet')"
+      />
+      <span class="dl__radio-text">
+        Frozen set
+        <span class="dl__muted">An existing frozen set, by its ID.</span>
+      </span>
+    </label>
+  </div>
+</fieldset>
+
+@if (kind() === 'savedSearch') {
+  @if (searchesError(); as e) {
+    <opp-error-state [error]="e" />
+  } @else if (searches() !== null && searchOptions().length === 0) {
+    <p class="dl__muted">There is no saved search yet. Save a search in Documents first.</p>
+  } @else {
+    <div class="dl__row">
+      <opp-select
+        class="dl__grow"
+        label="Saved search"
+        [options]="searchOptions()"
+        [value]="savedSearch()"
+        (valueChange)="savedSearch.set($event); changed()"
+      />
+    </div>
+    <div class="dl__row" role="group" aria-label="Include">
+      <opp-checkbox [checked]="family()" (checkedChange)="family.set($event); changed()">
+        Include: Family
+      </opp-checkbox>
+      <opp-checkbox [checked]="duplicates()" (checkedChange)="duplicates.set($event); changed()">
+        Include: Duplicates
+      </opp-checkbox>
+    </div>
+  }
+} @else {
+  <div class="dl__row">
+    <opp-text-field
+      class="dl__grow"
+      label="Frozen set ID"
+      hint="Shown on the page of the job or mass action that froze it."
+      [value]="snapshotId()"
+      (valueChange)="snapshotId.set($event); changed()"
+    />
+  </div>
+}
+
+<div class="dl__row">
+  <button
+    type="button"
+    oppButton="secondary"
+    [busy]="busy()"
+    [disabled]="kind() === 'savedSearch' ? !savedSearch() : !snapshotId().trim()"
+    (click)="freeze()"
+  >
+    <opp-icon name="snapshot" />
+    {{ kind() === 'savedSearch' ? 'Freeze set' : 'Use frozen set' }}
+  </button>
+  @if (waiting()) {
+    <span class="dl__muted" role="status">Freezing a large set…</span>
+  }
+</div>
+
+@if (error(); as e) {
+  <opp-error-state [error]="e" />
+}
+@if (mismatch(); as m) {
+  <p class="dl__blocked" role="alert">
+    <opp-icon name="warning" />
+    {{ m }}
+  </p>
+}
+@if (frozen(); as f) {
+  <div class="dl__frozen" role="status" aria-label="Frozen set">
+    <opp-badge tone="info" icon="snapshot">Frozen set</opp-badge>
+    <dl class="dl__facts">
+      <dt>Frozen set ID</dt>
+      <dd>
+        <code class="dl__code">{{ f.snapshotId }}</code>
+      </dd>
+      <dt>Documents</dt>
+      <dd>
+        {{ num(f.documentCount ?? 0) }}
+        @if (f.related > 0) {
+          <span class="dl__muted">({{ num(f.related) }} added by Include)</span>
+        }
+      </dd>
+    </dl>
+  </div>
+}

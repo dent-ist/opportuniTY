@@ -1,0 +1,232 @@
+<section class="dl__section" aria-labelledby="spec-numbering">
+  <h2 id="spec-numbering" class="dl__h2">Numbering</h2>
+  <div class="dl__row">
+    <opp-text-field
+      class="dl__narrow"
+      label="Bates prefix"
+      [value]="form().prefix"
+      (valueChange)="patch({ prefix: $event })"
+    />
+    <opp-text-field
+      class="dl__narrow"
+      label="Start number"
+      [value]="form().startNumber"
+      (valueChange)="patch({ startNumber: $event })"
+    />
+    <opp-text-field
+      class="dl__narrow"
+      label="Padding (digits)"
+      [value]="form().padding"
+      (valueChange)="patch({ padding: $event })"
+    />
+    <opp-text-field
+      class="dl__narrow"
+      label="Suffix"
+      [value]="form().suffix"
+      (valueChange)="patch({ suffix: $event })"
+    />
+  </div>
+  @if (suggestedStart(); as next) {
+    @if (form().startNumber !== '' + next) {
+      <p class="dl__muted">
+        The next available number for this prefix is {{ num(next) }}.
+        <button type="button" class="spec__link" (click)="useSuggested()">
+          Use {{ num(next) }}
+        </button>
+      </p>
+    }
+  }
+  <fieldset class="dl__fieldset">
+    <legend class="dl__legend">Numbering level</legend>
+    <div class="dl__radios">
+      <label class="dl__radio">
+        <input
+          type="radio"
+          name="bates-level"
+          [checked]="form().level === 'page'"
+          (change)="patch({ level: 'page' })"
+        />
+        <span class="dl__radio-text">
+          Page level
+          <span class="dl__muted">Every produced page takes a number.</span>
+        </span>
+      </label>
+      <label class="dl__radio">
+        <input
+          type="radio"
+          name="bates-level"
+          [checked]="form().level === 'document'"
+          (change)="patch({ level: 'document' })"
+        />
+        <span class="dl__radio-text">
+          Document level
+          <span class="dl__muted">One number per document, pages get a suffix.</span>
+        </span>
+      </label>
+    </div>
+  </fieldset>
+  @if (preview(); as p) {
+    <div class="dl__preview" role="status" aria-label="Bates preview">
+      <dl class="dl__facts">
+        <dt>First number</dt>
+        <dd>
+          <code class="dl__code">{{ p.first }}</code>
+        </dd>
+        <dt>Last number</dt>
+        <dd>
+          @if (p.last) {
+            <code class="dl__code">{{ p.atLeast ? 'at least ' : '' }}{{ p.last }}</code>
+          } @else {
+            Known once the documents are frozen
+          }
+        </dd>
+        <dt>Range</dt>
+        <dd>
+          @if (p.count !== null) {
+            {{ p.atLeast ? 'at least ' : '' }}{{ num(p.count) }} numbers
+            @if (p.atLeast) {
+              <span class="dl__small"
+                >Every produced page takes a number, so documents with several pages extend the
+                range; the exact range is shown once numbers are assigned.</span
+              >
+            }
+          } @else {
+            —
+          }
+        </dd>
+      </dl>
+    </div>
+  }
+</section>
+
+<section class="dl__section" aria-labelledby="spec-handling">
+  <h2 id="spec-handling" class="dl__h2">Privileged and redacted documents</h2>
+  <fieldset class="dl__fieldset">
+    <legend class="dl__legend">Documents withheld for privilege</legend>
+    <div class="dl__radios">
+      <label class="dl__radio">
+        <input
+          type="radio"
+          name="withheld"
+          [checked]="form().withheld === 'placeholder'"
+          (change)="patch({ withheld: 'placeholder' })"
+        />
+        <span class="dl__radio-text">
+          Produce a placeholder
+          <span class="dl__muted">One page with the text below, taking one Bates number.</span>
+        </span>
+      </label>
+      <label class="dl__radio">
+        <input
+          type="radio"
+          name="withheld"
+          [checked]="form().withheld === 'block'"
+          (change)="patch({ withheld: 'block' })"
+        />
+        <span class="dl__radio-text">
+          Block finalization
+          <span class="dl__muted">Withheld documents must leave the set first.</span>
+        </span>
+      </label>
+    </div>
+  </fieldset>
+  <div class="dl__row">
+    <opp-select
+      class="dl__grow"
+      label="Redaction Set"
+      placeholder="No redactions"
+      hint="Redacted documents are always imaged, with the redactions burned in."
+      [options]="redactionOptions()"
+      [value]="form().redactionSetId"
+      (valueChange)="patch({ redactionSetId: $event })"
+    />
+  </div>
+</section>
+
+<section class="dl__section" aria-labelledby="spec-images">
+  <h2 id="spec-images" class="dl__h2">Images and text</h2>
+  <div class="dl__row">
+    <opp-select
+      class="dl__grow"
+      label="Image format"
+      [options]="imageFormats"
+      [value]="form().imageFormat"
+      (valueChange)="patch({ imageFormat: $event === 'jpeg' ? 'jpeg' : 'tiffG4' })"
+    />
+    <opp-text-field
+      class="dl__narrow"
+      label="Resolution (DPI)"
+      [value]="form().dpi"
+      (valueChange)="patch({ dpi: $event })"
+    />
+  </div>
+  <opp-checkbox [checked]="form().includeText" (checkedChange)="patch({ includeText: $event })">
+    Include text (from the redacted output for redacted documents)
+  </opp-checkbox>
+</section>
+
+<section class="dl__section" aria-labelledby="spec-endorsements">
+  <h2 id="spec-endorsements" class="dl__h2">Endorsements</h2>
+  <p class="dl__muted">
+    Use {{ '{' }}bates{{ '}' }}, {{ '{' }}confidentiality{{ '}' }} and {{ '{' }}production{{ '}' }}
+    for the page's Bates number, its designation and the production name. Leave a slot empty to
+    print nothing there.
+  </p>
+  <div class="dl__slots">
+    @for (s of slots; track s.position) {
+      <opp-text-field
+        [label]="s.label"
+        [value]="form().endorsements[s.position]"
+        (valueChange)="setSlot(s.position, $event)"
+      />
+    }
+  </div>
+  <div class="dl__row">
+    <opp-text-field
+      class="dl__narrow"
+      label="Font size (points)"
+      hint="Empty: the default size."
+      [value]="form().fontSize"
+      (valueChange)="patch({ fontSize: $event })"
+    />
+    <opp-checkbox [checked]="form().expandCanvas" (checkedChange)="patch({ expandCanvas: $event })">
+      Expand the page so stamps never cover content
+    </opp-checkbox>
+  </div>
+  <figure class="spec__sample" aria-label="Sample page with the endorsements">
+    <div class="spec__page" [class.spec__page--expanded]="form().expandCanvas">
+      <span class="spec__stamp spec__stamp--tl">{{ sample().topLeft }}</span>
+      <span class="spec__stamp spec__stamp--tc">{{ sample().topCenter }}</span>
+      <span class="spec__stamp spec__stamp--tr">{{ sample().topRight }}</span>
+      <span class="spec__content" aria-hidden="true"></span>
+      <span class="spec__stamp spec__stamp--bl">{{ sample().bottomLeft }}</span>
+      <span class="spec__stamp spec__stamp--bc">{{ sample().bottomCenter }}</span>
+      <span class="spec__stamp spec__stamp--br">{{ sample().bottomRight }}</span>
+    </div>
+    <figcaption class="dl__muted">Sample page (first number, example designation)</figcaption>
+  </figure>
+</section>
+
+<section class="dl__section" aria-labelledby="spec-placeholders">
+  <h2 id="spec-placeholders" class="dl__h2">Placeholder texts</h2>
+  <div class="dl__row">
+    <opp-text-field
+      class="dl__grow"
+      label="Withheld for privilege"
+      [value]="form().withheldText"
+      (valueChange)="patch({ withheldText: $event })"
+    />
+    <opp-text-field
+      class="dl__grow"
+      label="Technical issue"
+      [value]="form().technicalIssueText"
+      (valueChange)="patch({ technicalIssueText: $event })"
+    />
+    <opp-text-field
+      class="dl__grow"
+      label="Produced in native format (slip sheet)"
+      [value]="form().nativeSlipSheetText"
+      (valueChange)="patch({ nativeSlipSheetText: $event })"
+    />
+  </div>
+</section>

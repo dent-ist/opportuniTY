@@ -1,0 +1,272 @@
+@if (store.production(); as p) {
+  <section class="dl__panel" aria-labelledby="qc-bates">
+    <h2 id="qc-bates">Bates numbers</h2>
+    @switch (p.bates.state) {
+      @case ('allocated') {
+        <dl class="dl__facts">
+          <dt>Range</dt>
+          <dd>
+            <code class="dl__code">{{ p.bates.first }}</code> –
+            <code class="dl__code">{{ p.bates.last }}</code>
+          </dd>
+          <dt>Numbers</dt>
+          <dd>{{ num(p.bates.numbers) }} for {{ num(p.bates.documents) }} documents</dd>
+          @if (p.bates.integrity; as i) {
+            <dt>Integrity check</dt>
+            <dd>
+              @if (i.passed) {
+                Passed: no duplicates in the matter, no unattributed gaps, families together
+              } @else {
+                Failed: {{ i.problems.join('; ') }}
+              }
+            </dd>
+          }
+        </dl>
+      }
+      @case ('allocating') {
+        <p class="dl__muted" role="status">Assigning Bates numbers…</p>
+        @if (batesProgress(); as bp) {
+          <opp-progress label="Bates assignment" [value]="bp.value" [max]="bp.max" />
+        } @else {
+          <opp-progress label="Bates assignment" />
+        }
+      }
+      @default {
+        @if (p.bates.state === 'failed') {
+          <p class="dl__blocked" role="alert">
+            <opp-icon name="error" />
+            {{ p.bates.reason ?? 'Assigning the Bates numbers failed.' }}
+          </p>
+        }
+        @if (preview(); as pv) {
+          <div class="dl__preview" role="status" aria-label="Bates preview">
+            <dl class="dl__facts">
+              <dt>First number</dt>
+              <dd>
+                <code class="dl__code">{{ pv.first }}</code>
+              </dd>
+              <dt>Last number</dt>
+              <dd>
+                @if (pv.last) {
+                  <code class="dl__code">{{ pv.atLeast ? 'at least ' : '' }}{{ pv.last }}</code>
+                } @else {
+                  —
+                }
+              </dd>
+              <dt>Range</dt>
+              <dd>
+                @if (pv.count !== null) {
+                  {{ pv.atLeast ? 'at least ' : '' }}{{ num(pv.count) }} numbers
+                } @else {
+                  —
+                }
+              </dd>
+            </dl>
+          </div>
+        }
+        @if (p.status === 'draft') {
+          <p class="dl__muted">
+            Numbers are reserved for this draft until it is finalized or discarded. A range that
+            overlaps another production with the same prefix is refused.
+          </p>
+          <div>
+            <button type="button" oppButton="primary" [busy]="allocating()" (click)="allocate()">
+              <opp-icon name="play" />
+              Assign Bates numbers
+            </button>
+          </div>
+        }
+      }
+    }
+  </section>
+
+  <section class="dl__panel" aria-labelledby="qc-checks">
+    <div class="dl__section-head">
+      <h2 id="qc-checks">QC checks</h2>
+      <div class="dl__actions">
+        @if (store.qc()) {
+          <a oppButton="secondary" [href]="reportUrl('csv')" download>
+            <opp-icon name="download" />
+            QC report (CSV)
+          </a>
+          <a oppButton="secondary" [href]="reportUrl('pdf')" download>
+            <opp-icon name="download" />
+            QC report (PDF)
+          </a>
+        }
+        @if (canRunQc()) {
+          <button type="button" oppButton="primary" [busy]="running()" (click)="runQc()">
+            <opp-icon name="play" />
+            {{ store.qc() ? 'Run QC checks again' : 'Run QC checks' }}
+          </button>
+        }
+      </div>
+    </div>
+    @if (!store.allocated() && p.status === 'draft') {
+      <p class="dl__muted">The QC checks run once Bates numbers are assigned.</p>
+    }
+    @if (error(); as e) {
+      <opp-error-state [error]="e" />
+    }
+    @if (refused(); as r) {
+      <p class="dl__blocked" role="alert">
+        <opp-icon name="error" />
+        {{ r }}
+      </p>
+    }
+    @if (store.qc(); as qc) {
+      <p class="dl__muted">
+        {{ qc.purpose === 'finalization' ? 'Run at finalization' : 'Checked' }}
+        {{ date(qc.runAt) }} ·
+        @if (qc.outcome === 'passed') {
+          no blocking problem
+        } @else {
+          blocked
+        }
+        · report SHA-256 <code class="dl__code">{{ qc.reportSha256 }}</code>
+      </p>
+      <ul class="dl__check-list">
+        @for (c of qc.checks; track c.check) {
+          <li class="dl__check">
+            <div class="dl__check-head">
+              <span class="dl__check-title">{{ c.title }}</span>
+              <opp-badge [tone]="qcStatus[c.status].tone" [icon]="qcStatus[c.status].icon">{{
+                qcStatus[c.status].label
+              }}</opp-badge>
+              <span class="dl__muted">
+                {{ c.severity === 'blocking' ? 'Blocking' : 'Warning' }} ·
+                {{ num(c.documents) }} documents
+              </span>
+            </div>
+            @if (c.status !== 'passed') {
+              <p class="dl__muted">{{ c.remedy }}</p>
+            }
+            @if (c.overrideReason) {
+              <p class="dl__muted">Override reason: {{ c.overrideReason }}</p>
+            }
+            @if (c.status !== 'passed' && n(c.documents) > 0) {
+              <div>
+                <button
+                  type="button"
+                  oppButton="ghost"
+                  [attr.aria-expanded]="!!exceptions()[c.check]"
+                  (click)="toggleExceptions(c)"
+                >
+                  <opp-icon [name]="exceptions()[c.check] ? 'chevron-up' : 'chevron-down'" />
+                  {{ exceptions()[c.check] ? 'Hide documents' : 'Show documents' }}
+                </button>
+              </div>
+              @if (exceptions()[c.check]; as view) {
+                @if (view.error; as ve) {
+                  <opp-error-state [error]="ve" />
+                } @else if (view.page; as page) {
+                  @if (page.items.length > 0) {
+                    <div
+                      class="dl__table-wrap"
+                      tabindex="0"
+                      role="region"
+                      [attr.aria-label]="'Documents of ' + c.title"
+                    >
+                      <table class="dl__table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Control Number</th>
+                            <th scope="col">ProdBegBates</th>
+                            <th scope="col">Detail</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (x of page.items; track x.documentId) {
+                            <tr>
+                              <td>{{ x.controlNumber ?? '—' }}</td>
+                              <td class="dl__nowrap">{{ x.prodBegBates ?? '—' }}</td>
+                              <td>{{ x.detail ?? '' }}</td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  }
+                  @if (n(page.restricted) > 0) {
+                    <p class="dl__muted">
+                      {{ num(page.restricted) }} more documents you cannot view are counted, not
+                      listed.
+                    </p>
+                  }
+                  <div class="dl__actions">
+                    @if (openParams(c); as params) {
+                      <a
+                        oppButton="secondary"
+                        [routerLink]="['../../documents']"
+                        [queryParams]="params"
+                      >
+                        <opp-icon name="documents" />
+                        Open in Documents
+                      </a>
+                    }
+                    <a oppButton="ghost" [href]="reportUrl('csv')" download>
+                      <opp-icon name="download" />
+                      Download list (QC report CSV)
+                    </a>
+                  </div>
+                } @else {
+                  <p class="dl__muted" role="status">Loading documents…</p>
+                }
+              }
+            }
+          </li>
+        }
+      </ul>
+    } @else if (store.allocated()) {
+      <p class="dl__muted">The QC checks have not run yet.</p>
+    }
+  </section>
+
+  @if (p.status === 'draft' && store.allocated()) {
+    <section class="dl__panel" aria-labelledby="qc-finalize">
+      <h2 id="qc-finalize">Finalize</h2>
+      @if (!canFinalize) {
+        <p class="dl__muted">Finalizing a production needs permission to finalize productions.</p>
+      } @else {
+        @if (blocking().length > 0) {
+          <p class="dl__blocked">
+            <opp-icon name="error" />
+            {{ blocking().length }} blocking
+            {{ blocking().length === 1 ? 'check fails' : 'checks fail' }} and cannot be overridden:
+            fix the documents or the specification, then run the QC checks again.
+          </p>
+        }
+        @for (c of toOverride(); track c.check) {
+          <div class="dl__check">
+            <opp-checkbox
+              [checked]="!!overriding()[c.check]"
+              (checkedChange)="setOverride(c.check, $event)"
+            >
+              Override “{{ c.title }}”
+            </opp-checkbox>
+            @if (overriding()[c.check]) {
+              <opp-text-field
+                [label]="'Reason for overriding ' + c.title"
+                hint="Printed in the QC report, recorded in the manifest and audited."
+                [value]="overrides()[c.check] ?? ''"
+                (valueChange)="setReason(c.check, $event)"
+              />
+            }
+          </div>
+        }
+        @if (toAcknowledge().length > 0) {
+          <opp-checkbox [checked]="acknowledge()" (checkedChange)="acknowledge.set($event)">
+            I have reviewed the {{ toAcknowledge().length }}
+            {{ toAcknowledge().length === 1 ? 'warning' : 'warnings' }}
+          </opp-checkbox>
+        }
+        <div>
+          <button type="button" oppButton="primary" [busy]="finalizing()" (click)="finalize()">
+            <opp-icon name="lock" />
+            Finalize production
+          </button>
+        </div>
+      }
+    </section>
+  }
+}

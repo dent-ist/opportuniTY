@@ -1,0 +1,79 @@
+@if (store.production(); as p) {
+  <div class="dl__section-head">
+    <h2 class="dl__h2">Documents in production order</h2>
+    @if (p.bates.state === 'allocated') {
+      <div class="dl__actions">
+        @if (openParams(); as params) {
+          <a oppButton="secondary" [routerLink]="['../../documents']" [queryParams]="params">
+            <opp-icon name="documents" />
+            Open listed documents in Documents
+          </a>
+        }
+        <button type="button" oppButton="secondary" [busy]="exporting()" (click)="crossReference()">
+          <opp-icon name="download" />
+          Download Bates cross-reference (CSV)
+        </button>
+      </div>
+    }
+  </div>
+  @if (p.bates.state !== 'allocated') {
+    <opp-empty-state
+      icon="production"
+      title="No Bates numbers yet"
+      message="Assign Bates numbers on the QC tab to see the documents in production order."
+    />
+  } @else if (error(); as e) {
+    <opp-error-state [error]="e" (retry)="load()" />
+  } @else if (rows(); as list) {
+    <p class="dl__muted">
+      Review mode opens from the Documents list. Produced images show in the Production viewer mode
+      once a production's images can be viewed there; until then the viewer says "Not produced".
+    </p>
+    @if (list.length === 0) {
+      <opp-empty-state
+        title="No documents"
+        message="No document of this production is visible to you."
+      />
+    } @else {
+      <div class="dl__table-wrap" tabindex="0" role="region" aria-label="Production documents">
+        <table class="dl__table">
+          <thead>
+            <tr>
+              <th scope="col" class="dl__num">#</th>
+              <th scope="col">Control Number</th>
+              <th scope="col">ProdBegBates</th>
+              <th scope="col">ProdEndBates</th>
+              <th scope="col">ProdBegAttach</th>
+              <th scope="col">ProdEndAttach</th>
+              <th scope="col">Output</th>
+              <th scope="col">Designation</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (d of list; track d.documentId) {
+              <tr>
+                <td class="dl__num">{{ num(d.sequence) }}</td>
+                <td>{{ d.controlNumber ?? '—' }}</td>
+                <td class="dl__nowrap">{{ d.prodBegBates ?? '—' }}</td>
+                <td class="dl__nowrap">{{ d.prodEndBates ?? '—' }}</td>
+                <td class="dl__nowrap">{{ d.prodBegAttach ?? '—' }}</td>
+                <td class="dl__nowrap">{{ d.prodEndAttach ?? '—' }}</td>
+                <td>{{ d.output ?? '—' }}</td>
+                <td>{{ d.designation ?? '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (cursor()) {
+        <div>
+          <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="more()">
+            Load more documents
+          </button>
+        </div>
+      }
+    }
+  } @else {
+    <opp-loading-state label="Loading documents…" />
+  }
+}

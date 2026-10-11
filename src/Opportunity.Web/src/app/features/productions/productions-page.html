@@ -1,0 +1,79 @@
+<div class="dl__header">
+  <div class="dl__heading-group">
+    <h1 class="dl__title">Productions</h1>
+    <p class="dl__muted">
+      A production is a frozen set with a specification and Bates numbers. Work on it across days:
+      settings, documents, QC and output each have a tab.
+    </p>
+  </div>
+  <a oppButton="primary" routerLink="new">
+    <opp-icon name="production" />
+    New Production
+  </a>
+</div>
+
+@if (loading()) {
+  <opp-loading-state label="Loading productions…" />
+} @else if (error() && items().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else if (items().length === 0) {
+  <opp-empty-state
+    icon="production"
+    title="No productions yet"
+    message="Start one from a saved search or a frozen set with New Production."
+  />
+} @else {
+  <div class="dl__table-wrap" tabindex="0" role="region" aria-label="Productions">
+    <table class="dl__table">
+      <caption class="opp-visually-hidden">
+        Productions, newest first
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Prefix</th>
+          <th scope="col">Bates range</th>
+          <th scope="col" class="dl__num">Documents</th>
+          <th scope="col" class="dl__num">Bates numbers</th>
+          <th scope="col">Frozen set ID</th>
+          <th scope="col">Status</th>
+          <th scope="col">Finalized</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (p of items(); track p.productionId) {
+          <tr>
+            <th scope="row" class="dl__name">
+              <a [routerLink]="p.productionId">{{ p.name }}</a>
+              @if (versionOf(p) > 1) {
+                <span class="dl__small">Version {{ p.version }}</span>
+              }
+            </th>
+            <td>{{ p.specification.bates.prefix }}</td>
+            <td class="dl__nowrap">{{ range(p) || '—' }}</td>
+            <td class="dl__num">{{ num(p.bates.documents) }}</td>
+            <td class="dl__num">{{ num(p.bates.numbers) }}</td>
+            <td>
+              <code class="dl__code">{{ p.snapshotId }}</code>
+            </td>
+            <td>
+              @let s = stage(p);
+              <opp-badge [tone]="s.tone" [icon]="s.icon">{{ s.label }}</opp-badge>
+            </td>
+            <td class="dl__nowrap">{{ date(p.finalizedAt) || '—' }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (error() && items().length) {
+    <opp-error-state [error]="error()!" (retry)="loadMore()" />
+  }
+  @if (nextCursor()) {
+    <div>
+      <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+        Load more productions
+      </button>
+    </div>
+  }
+}

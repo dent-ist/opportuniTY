@@ -18,6 +18,8 @@ export const PERMISSIONS = {
   privilegeLogGenerate: 'PrivilegeLog.Generate',
   downloadNative: 'Document.DownloadNative',
   productionCreate: 'Production.Create',
+  /** Finalize (behind the QC gate) and void productions (E12-T07). */
+  productionFinalize: 'Production.Finalize',
   importRun: 'Import.Run',
   importOverlay: 'Import.Overlay',
   exportCreate: 'Export.Create',

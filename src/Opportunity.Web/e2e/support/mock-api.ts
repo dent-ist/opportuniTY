@@ -5,6 +5,7 @@ import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { PrivilegeConflictsMock } from './mock-privilege-conflicts';
 import { PrivilegeLogsMock } from './mock-privilege-logs';
+import { ProductionsMock } from './mock-productions';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
 import { SearchTermReportsMock } from './mock-search-term-reports';
@@ -127,6 +128,8 @@ export interface MockControl {
   readonly privilegeConflicts: PrivilegeConflictsMock;
   /** Privilege logs (E13-T03): finalized productions, templates, versions and generations received. */
   readonly privilegeLogs: PrivilegeLogsMock;
+  /** Productions and exports (E12-T08): their state and the writes received (If-Match, Idempotency-Key). */
+  readonly productions: ProductionsMock;
   /** Document-list views and the saved layout (E16-T09). */
   readonly gridViews: GridViewsMock;
   /** The body of the last `POST …/searches` (sort, fields). */
@@ -466,6 +469,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const termReports = new SearchTermReportsMock();
   const privilegeConflicts = new PrivilegeConflictsMock();
   const privilegeLogs = new PrivilegeLogsMock();
+  const productions = new ProductionsMock();
   const jobsMock = new JobsMock({
     userId: principal.userId,
     viewAll: permissions.includes('Job.ViewAll'),
@@ -506,6 +510,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     termReports,
     privilegeConflicts,
     privilegeLogs,
+    productions,
     gridViews,
     lastSearch: () => lastSearch,
     highlights,
@@ -720,6 +725,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Privilege conflicts (E13-T02): ./mock-privilege-conflicts.ts.
     const conflicts = signedIn ? privilegeConflicts.handle(route, method, path, url) : undefined;
     if (conflicts) return conflicts;
+    // Productions and exports (E12-T08): ./mock-productions.ts (before the privilege logs' production list).
+    const delivered = signedIn ? productions.handle(route, method, path) : undefined;
+    if (delivered) return delivered;
     // Privilege logs (E13-T03): ./mock-privilege-logs.ts.
     const privilegeLog = signedIn ? privilegeLogs.handle(route, method, path) : undefined;
     if (privilegeLog) return privilegeLog;

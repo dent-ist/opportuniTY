@@ -1,0 +1,88 @@
+<a class="dl__back-link" routerLink="..">
+  <opp-icon name="chevron-left" />
+  Productions
+</a>
+<div class="dl__heading-group">
+  <h1 class="dl__title">New Production</h1>
+  @if (copiedFrom(); as c) {
+    <p class="dl__muted">
+      Settings copied from <strong>{{ c.name }}</strong
+      >. The start number continues after the numbers already used for the prefix.
+    </p>
+  } @else {
+    <p class="dl__muted">
+      Creates a draft. Bates numbers are assigned, QC is run and the production is finalized from
+      its page.
+    </p>
+  }
+</div>
+
+<section class="dl__panel" aria-labelledby="new-production-source">
+  <h2 id="new-production-source">Source</h2>
+  <div class="dl__row">
+    <opp-text-field
+      class="dl__grow"
+      label="Production name"
+      hint="Optional; for example the volume or the request it answers."
+      [value]="form().name"
+      (valueChange)="setName($event)"
+    />
+  </div>
+  <opp-frozen-set-source
+    purpose="production"
+    [initialSavedSearch]="initialSavedSearch"
+    [(frozen)]="frozen"
+  />
+</section>
+
+<section class="dl__panel" aria-label="Specification">
+  <opp-specification-form
+    [(form)]="form"
+    [documents]="frozen()?.documentCount ?? null"
+    [redactionSets]="redactionSets()"
+    [suggestedStart]="suggestedStart()"
+  />
+</section>
+
+@if (problems().length > 0) {
+  <div class="dl__blocked" role="alert">
+    <opp-icon name="warning" />
+    <span>
+      @for (p of problems(); track $index) {
+        <span class="dl__radio-text">{{ p }}</span>
+      }
+    </span>
+  </div>
+}
+@if (errors().length > 0) {
+  <div class="dl__errors" role="alert" aria-labelledby="new-production-errors">
+    <p class="dl__blocked" id="new-production-errors">
+      <opp-icon name="error" />
+      The draft cannot be created until these settings are corrected.
+    </p>
+    <ul>
+      @for (e of errors(); track $index) {
+        <li>
+          <strong>{{ e[0] }}:</strong> {{ e[1] }}
+        </li>
+      }
+    </ul>
+    <div>
+      <button type="button" oppButton="secondary" (click)="downloadErrors()">
+        <opp-icon name="download" />
+        Download error list (CSV)
+      </button>
+    </div>
+  </div>
+}
+@if (error(); as e) {
+  <opp-error-state [error]="e" />
+}
+
+<div class="dl__actions">
+  <a oppButton="ghost" routerLink="..">Cancel</a>
+  <button type="button" oppButton="primary" [busy]="busy()" (click)="create()">
+    <opp-icon name="production" />
+    Create draft
+  </button>
+</div>

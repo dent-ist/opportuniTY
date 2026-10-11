@@ -200,12 +200,16 @@ test('Mass Edit results opens Mass Edit over every result of the saved search (E
   await expect(page).not.toHaveURL(/then=/);
 });
 
-test('Export from a saved search says why it is not available (E16-T11)', async ({ page }) => {
+test('Export results and Use in production open the wizards with the saved search (E12-T08)', async ({
+  page,
+}) => {
   await openPage(page, '/w/ws-1/searches/saved');
   await rowAction(page, 'PDF attachments', /Export results/);
-  await expect(
-    toast(page, 'Export from a saved search is not available in this version.'),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/w\/ws-1\/exports\/new\?savedSearch=ss-4$/);
+  await expect(page.getByRole('combobox', { name: 'Saved search' })).toHaveValue('ss-4');
+  await openPage(page, '/w/ws-1/searches/saved');
+  await rowAction(page, 'PDF attachments', /Use in production/);
+  await expect(page).toHaveURL(/\/w\/ws-1\/productions\/new\?savedSearch=ss-4$/);
 });
 
 test.describe('without SavedSearch.Share or admin rights', () => {
