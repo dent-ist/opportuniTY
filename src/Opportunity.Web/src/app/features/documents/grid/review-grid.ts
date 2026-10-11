@@ -117,6 +117,11 @@ export interface GridSearch {
    * frozen set (filtered for the caller); `query` is the term's expression, run live once filters narrow it.
    */
   readonly termReport?: { readonly reportId: string; readonly termId: string } | null;
+  /**
+   * A review batch (#178): the list holds only the batch's frozen members (filtered for the caller); `query` and the
+   * filters narrow it within the batch.
+   */
+  readonly reviewBatchId?: string | null;
   /** The page is still loading what to search (a saved search): show the loading state, run nothing yet. */
   readonly deferred?: boolean;
   /** "Include: Family / Duplicates / Email thread" (E09-T03); null: the hits only (or a saved search's stored choice). */
@@ -764,6 +769,7 @@ export class ReviewGrid implements CursorSource {
         sort: sort.length > 0 ? [...sort] : null,
         ...(fields.length > 0 ? { fields } : {}),
         ...(search.expand ? { expand: search.expand } : {}),
+        ...(search.reviewBatchId ? { reviewBatchId: search.reviewBatchId } : {}),
         countExact: this.countExact || null,
         pageSize: this.pageSize(),
         // The hits' snippets carry the search terms Review mode highlights in the extracted text (#130).
@@ -1907,9 +1913,12 @@ export class ReviewGrid implements CursorSource {
     this.selectPage(true);
   }
 
-  /** The list shows a report term's hits in its frozen set (not narrowed by filters). */
+  /** The list shows a frozen set no query names: a report term's hits (not narrowed by filters) or a review batch. */
   private termHits(): boolean {
-    return !!this.search().termReport && this.compiled().query === this.search().query;
+    return (
+      (!!this.search().termReport && this.compiled().query === this.search().query) ||
+      !!this.search().reviewBatchId
+    );
   }
 
   /** Selects every result of the search, loaded or not, as the query and the generation it was served at. */
@@ -1920,7 +1929,9 @@ export class ReviewGrid implements CursorSource {
       // A report term's hits are a frozen set that no query names, so they cannot be selected as "all results".
       this.offerAll.set(false);
       this.announcer.announce(
-        'All results of a Search Terms Report term cannot be selected. Select documents on the loaded pages.',
+        this.search().reviewBatchId
+          ? 'All results of a review batch cannot be selected. Select documents on the loaded pages.'
+          : 'All results of a Search Terms Report term cannot be selected. Select documents on the loaded pages.',
       );
       return;
     }

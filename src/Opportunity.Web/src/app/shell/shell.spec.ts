@@ -195,6 +195,7 @@ describe('Application shell', () => {
       ].map((t) => t.textContent!.trim());
     expect(tabs()).toEqual([
       'Documents',
+      'Review Batches',
       'Searches',
       'Productions',
       'Imports',

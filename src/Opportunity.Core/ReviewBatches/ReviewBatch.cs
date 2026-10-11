@@ -28,6 +28,20 @@ public enum ReviewPass : short
     Qc = 2,
 }
 
+/// <summary>
+/// The order documents are cut into batches in (#178). Keep-together groups stay whole and are ordered by the group's
+/// earliest date (descending: latest); documents without a date come last. Stored as smallint; values are fixed forever.
+/// </summary>
+public enum ReviewBatchSort : short
+{
+    /// <summary>The frozen set's own order: families by their parent's Control Number.</summary>
+    ControlNumber = 1,
+
+    FamilyDate = 2,
+
+    DocumentDate = 3,
+}
+
 /// <summary>How a checkout ended. Stored as smallint; values are fixed forever.</summary>
 public enum ReviewCheckoutEnd : short
 {

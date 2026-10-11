@@ -1,0 +1,161 @@
+<div class="dl__header">
+  <div class="dl__heading-group">
+    <h1 class="dl__title">Review Batches</h1>
+    <p class="dl__muted">
+      Check out the next pending batch of a Batch Set, review it in Review mode and check it in when
+      you are done.
+    </p>
+  </div>
+  @if (canManage) {
+    <a oppButton="primary" routerLink="new">
+      <opp-icon name="plus" />
+      New Batch Set
+    </a>
+  }
+</div>
+
+@if (loading()) {
+  <opp-loading-state label="Loading review batches…" />
+} @else if (error() && sets().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else {
+  <section class="dl__section">
+    <h2 id="my-batches-heading">My batches</h2>
+    @if (mine().length === 0) {
+      <p class="dl__muted">
+        You hold no batch. Use “Check out next batch” on a Batch Set below to get one.
+      </p>
+    } @else {
+      <div class="dl__table-wrap" tabindex="0" role="region" aria-label="My batches">
+        <table class="dl__table">
+          <caption class="opp-visually-hidden">
+            Batches checked out to you
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Batch</th>
+              <th scope="col">Batch Set</th>
+              <th scope="col" class="dl__num">Documents</th>
+              <th scope="col">Status</th>
+              <th scope="col"><span class="opp-visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (b of mine(); track b.batchId) {
+              <tr>
+                <th scope="row" class="dl__name rb__batch">{{ b.name }}</th>
+                <td>
+                  <a [routerLink]="b.batchSetId">{{ b.batchSetName }}</a>
+                </td>
+                <td class="dl__num">{{ num(b.documentCount) }}</td>
+                <td>
+                  <opp-badge [tone]="status[b.status].tone" [icon]="status[b.status].icon">
+                    {{ status[b.status].label }}
+                  </opp-badge>
+                </td>
+                <td>
+                  <div class="rb__actions">
+                    <button
+                      type="button"
+                      oppButton="primary"
+                      [attr.aria-label]="'Review ' + b.name"
+                      (click)="review(b)"
+                    >
+                      <opp-icon name="play" />
+                      Review
+                    </button>
+                    <button
+                      type="button"
+                      oppButton="secondary"
+                      [attr.aria-label]="'Check in ' + b.name"
+                      (click)="checkIn(b)"
+                    >
+                      <opp-icon name="check" />
+                      Check in…
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <section class="dl__section">
+    <h2 id="batch-sets-heading">Batch Sets</h2>
+    @if (sets().length === 0) {
+      <opp-empty-state
+        icon="batches"
+        title="No Batch Sets yet"
+        [message]="
+          canManage
+            ? 'Cut a saved search into batches with New Batch Set.'
+            : 'A review manager creates Batch Sets from saved searches.'
+        "
+      />
+    } @else {
+      <div class="dl__table-wrap" tabindex="0" role="region" aria-label="Batch Sets">
+        <table class="dl__table">
+          <caption class="opp-visually-hidden">
+            Batch Sets, newest first
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col" class="dl__num">Documents</th>
+              <th scope="col" class="dl__num">Batches</th>
+              <th scope="col" class="dl__num">Pending</th>
+              <th scope="col" class="dl__num">In progress</th>
+              <th scope="col" class="dl__num">Completed</th>
+              <th scope="col">Created</th>
+              <th scope="col"><span class="opp-visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (s of sets(); track s.batchSetId) {
+              <tr>
+                <th scope="row" class="dl__name">
+                  <a [routerLink]="s.batchSetId">{{ s.name }}</a>
+                  <span class="dl__muted rb__sub">{{ s.batchPrefix }}_0001…</span>
+                </th>
+                <td class="dl__num">{{ num(s.documentCount) }}</td>
+                <td class="dl__num">{{ num(s.batchCount) }}</td>
+                <td class="dl__num">{{ num(s.statusCounts.available) }}</td>
+                <td class="dl__num">{{ num(s.statusCounts.checkedOut) }}</td>
+                <td class="dl__num">{{ num(s.statusCounts.completed) }}</td>
+                <td class="dl__nowrap">
+                  {{ date(s.createdAt) }}
+                  <span class="dl__muted rb__sub">{{ s.createdBy.displayName }}</span>
+                </td>
+                <td>
+                  @if (canCode) {
+                    <button
+                      type="button"
+                      oppButton="secondary"
+                      [attr.aria-label]="'Check out next batch of ' + s.name"
+                      [busy]="busySet() === s.batchSetId"
+                      [disabled]="!hasPending(s)"
+                      (click)="checkOutNext(s)"
+                    >
+                      <opp-icon name="batches" />
+                      Check out next batch
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (nextCursor()) {
+        <div>
+          <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+            Load more Batch Sets
+          </button>
+        </div>
+      }
+    }
+  </section>
+}

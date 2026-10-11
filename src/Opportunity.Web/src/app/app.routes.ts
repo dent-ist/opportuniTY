@@ -139,6 +139,35 @@ export const workspaceChildren: Routes = [
     ],
   },
   {
+    // Review Batches (#178): the reviewer's batches and the Batch Sets, New Batch Set, and one set's batches.
+    path: 'review-batches',
+    canActivate: [requirePermission(PERMISSIONS.codingWrite)],
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        title: 'Review Batches',
+        loadComponent: () =>
+          import('./features/review-batches/review-batches-page').then((m) => m.ReviewBatchesPage),
+      },
+      {
+        path: 'new',
+        title: 'New Batch Set',
+        canActivate: [requirePermission(PERMISSIONS.reviewBatchManage)],
+        loadComponent: () =>
+          import('./features/review-batches/new-batch-set-page').then((m) => m.NewBatchSetPage),
+      },
+      {
+        path: ':batchSetId',
+        title: 'Batch Set',
+        loadComponent: () =>
+          import('./features/review-batches/review-batch-set-page').then(
+            (m) => m.ReviewBatchSetPage,
+          ),
+      },
+    ],
+  },
+  {
     // Import history, New Import wizard and one import's progress and report (E08-T08).
     path: 'imports',
     canActivate: [requirePermission(PERMISSIONS.importRun)],
@@ -229,7 +258,16 @@ export const workspaceChildren: Routes = [
     ],
   },
   ...WORKSPACE_SECTIONS.filter(
-    (s) => !['documents', 'searches', 'imports', 'jobs', 'productions', 'exports'].includes(s.path),
+    (s) =>
+      ![
+        'documents',
+        'review-batches',
+        'searches',
+        'imports',
+        'jobs',
+        'productions',
+        'exports',
+      ].includes(s.path),
   ).map((s): Route => ({
     path: s.path,
     title: s.label,

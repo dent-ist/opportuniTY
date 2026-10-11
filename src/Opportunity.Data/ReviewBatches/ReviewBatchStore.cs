@@ -27,7 +27,7 @@ public sealed class ReviewBatchStore(NpgsqlDataSource dataSource) : IReviewBatch
         """
         SELECT s.batch_set_id, s.name, s.batch_prefix, s.max_batch_size, s.keep_families_together, s.keep_threads_together,
                s.review_pass, s.qc_of_batch_set_id, s.reviewer_group, s.snapshot_id, s.batch_count, s.document_count,
-               s.created_by, s.created_at, c.available, c.checked_out, c.completed
+               s.created_by, s.created_at, c.available, c.checked_out, c.completed, s.sort_field, s.sort_descending
           FROM opportunity.review_batch_set s
           CROSS JOIN LATERAL (
               SELECT count(*) FILTER (WHERE b.status = 1)::integer AS available,
@@ -104,8 +104,9 @@ public sealed class ReviewBatchStore(NpgsqlDataSource dataSource) : IReviewBatch
             """
             INSERT INTO opportunity.review_batch_set
                 (workspace_id, batch_set_id, name, batch_prefix, max_batch_size, keep_families_together, keep_threads_together,
-                 review_pass, qc_of_batch_set_id, reviewer_group, snapshot_id, batch_count, document_count, created_by)
-            VALUES (@ws, @id, @name, @prefix, @size, @families, @threads, @pass, @qc, @group, @snapshot, 0, 0, @by)
+                 review_pass, qc_of_batch_set_id, reviewer_group, snapshot_id, batch_count, document_count, created_by, sort_field,
+                 sort_descending)
+            VALUES (@ws, @id, @name, @prefix, @size, @families, @threads, @pass, @qc, @group, @snapshot, 0, 0, @by, @sort, @descending)
             """))
         {
             insert.Parameters.AddWithValue("ws", ws);
@@ -120,6 +121,8 @@ public sealed class ReviewBatchStore(NpgsqlDataSource dataSource) : IReviewBatch
             insert.Parameters.Add(new NpgsqlParameter("group", NpgsqlDbType.Text) { Value = (object?)set.ReviewerGroup ?? DBNull.Value });
             insert.Parameters.AddWithValue("snapshot", set.SnapshotId);
             insert.Parameters.AddWithValue("by", set.CreatedBy);
+            insert.Parameters.AddWithValue("sort", (short)set.Sort);
+            insert.Parameters.AddWithValue("descending", set.SortDescending);
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -143,12 +146,21 @@ public sealed class ReviewBatchStore(NpgsqlDataSource dataSource) : IReviewBatch
 
     /// <summary>
     /// Streams the snapshot's members in review order with their keep-together group (the document; its family; or the
-    /// email thread of its family, falling back to the family), groups ordered by their first member, and packs them.
+    /// email thread of its family, falling back to the family), groups ordered by the set's sort (#178: the group's
+    /// earliest date, or latest when descending, undated last) and then by their first member, and packs them.
     /// </summary>
     private static async Task<(int Batches, long Documents)> CutAsync(WorkspaceTransaction tx, NewReviewBatchSet set, CancellationToken cancellationToken)
     {
+        // Fixed SQL fragments chosen by the enum; nothing user-supplied is spliced into the statement.
+        var date = set.Sort switch
+        {
+            ReviewBatchSort.FamilyDate => "d.family_date",
+            ReviewBatchSort.DocumentDate => "d.document_date",
+            _ => "NULL::timestamptz",
+        };
+        var (aggregate, direction) = set.SortDescending ? ("max", "DESC") : ("min", "ASC");
         await using (var declare = tx.Command(
-            """
+            $"""
             DECLARE review_batch_members NO SCROLL CURSOR FOR
             WITH m AS (
                 SELECT p.first_ordinal + u.i - 1 AS ordinal, u.document_id
@@ -156,7 +168,7 @@ public sealed class ReviewBatchStore(NpgsqlDataSource dataSource) : IReviewBatch
                   CROSS JOIN LATERAL unnest(p.document_ids) WITH ORDINALITY AS u(document_id, i)
                  WHERE p.workspace_id = @ws AND p.snapshot_id = @snapshot
             ), g AS (
-                SELECT m.ordinal, m.document_id,
+                SELECT m.ordinal, m.document_id, {date} AS sort_date,
                        CASE WHEN @threads THEN coalesce(
                                 first_value(d.email_thread_id) OVER (PARTITION BY d.family_id ORDER BY d.email_thread_id IS NULL, m.ordinal),
                                 d.family_id)
@@ -166,8 +178,9 @@ public sealed class ReviewBatchStore(NpgsqlDataSource dataSource) : IReviewBatch
                   JOIN opportunity.document d ON d.workspace_id = @ws AND d.document_id = m.document_id
             )
             SELECT document_id, group_key FROM (
-                SELECT g.document_id, g.group_key, g.ordinal, min(g.ordinal) OVER (PARTITION BY g.group_key) AS group_first FROM g) x
-             ORDER BY group_first, ordinal
+                SELECT g.document_id, g.group_key, g.ordinal, min(g.ordinal) OVER (PARTITION BY g.group_key) AS group_first,
+                       {aggregate}(g.sort_date) OVER (PARTITION BY g.group_key) AS group_date FROM g) x
+             ORDER BY group_date {direction} NULLS LAST, group_first, ordinal
             """))
         {
             declare.Parameters.AddWithValue("ws", set.WorkspaceId);
@@ -367,6 +380,67 @@ public sealed class ReviewBatchStore(NpgsqlDataSource dataSource) : IReviewBatch
         return members;
     }
 
+    public async Task<IReadOnlyList<Guid>> ListMemberIdsAsync(Guid workspaceId, Guid batchId, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var ids = new List<Guid>();
+        await using (var command = tx.Command(
+            "SELECT document_id FROM opportunity.review_batch_document WHERE workspace_id = @ws AND batch_id = @batch ORDER BY position LIMIT @limit"))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.AddWithValue("batch", batchId);
+            command.Parameters.AddWithValue("limit", limit);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                ids.Add(reader.GetGuid(0));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return ids;
+    }
+
+    public async Task<IReadOnlyList<ReviewBatchCandidate>> ListCandidatesAsync(
+        Guid workspaceId, string? nameContains, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
+        var candidates = new List<ReviewBatchCandidate>();
+        await using (var command = tx.Command(
+            """
+            WITH assigned AS (
+                SELECT user_id, group_name FROM opportunity.workspace_role_assignment WHERE workspace_id = @ws)
+            SELECT u.user_id, coalesce(u.display_name, u.email, u.user_id::text) AS name, u.groups
+              FROM opportunity.app_user u
+             WHERE (u.user_id IN (SELECT user_id FROM assigned WHERE user_id IS NOT NULL)
+                    OR u.groups && ARRAY(SELECT DISTINCT group_name FROM assigned WHERE group_name IS NOT NULL))
+               AND (@q::text IS NULL OR coalesce(u.display_name, '') ILIKE '%' || @q || '%' ESCAPE '\'
+                    OR coalesce(u.email, '') ILIKE '%' || @q || '%' ESCAPE '\')
+             ORDER BY lower(coalesce(u.display_name, u.email, u.user_id::text)), u.user_id
+             LIMIT @take
+            """))
+        {
+            command.Parameters.AddWithValue("ws", workspaceId);
+            command.Parameters.Add(new NpgsqlParameter("q", NpgsqlDbType.Text) { Value = (object?)EscapeLike(nameContains) ?? DBNull.Value });
+            command.Parameters.AddWithValue("take", limit);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                candidates.Add(new ReviewBatchCandidate(reader.GetGuid(0), reader.GetString(1), reader.IsDBNull(2) ? [] : reader.GetFieldValue<string[]>(2)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return candidates;
+    }
+
+    private static string? EscapeLike(string? text) =>
+        string.IsNullOrWhiteSpace(text)
+            ? null
+            : text.Trim().Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
+
     public async Task<ReviewBatchTransitionResult> TransitionAsync(ReviewBatchTransition transition, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(transition);
@@ -493,6 +567,8 @@ public sealed class ReviewBatchStore(NpgsqlDataSource dataSource) : IReviewBatch
                 Available = reader.GetInt32(14),
                 CheckedOut = reader.GetInt32(15),
                 Completed = reader.GetInt32(16),
+                Sort = (ReviewBatchSort)reader.GetInt16(17),
+                SortDescending = reader.GetBoolean(18),
             });
         }
 

@@ -37,6 +37,11 @@ namespace Opportunity.Contracts.Search;
 /// metadata and coding columns (E16-T09). At most <see cref="SearchResultFields.MaxFields"/>; names that are unknown or
 /// have no search slot are ignored (a column of a deleted field shows nothing). Pages of the search carry the same fields.
 /// </param>
+/// <param name="ReviewBatchId">
+/// #178: search within a review batch's frozen members (Review mode bound to a checked-out batch): <see cref="Query"/>
+/// (empty: the whole batch) narrows it, and only documents the caller may see are listed (Q-52). Not combined with a
+/// saved search, a report term or Include options.
+/// </param>
 public sealed record SearchRequest(
     string? Query,
     IReadOnlyList<SearchSortKey>? Sort = null,
@@ -48,7 +53,8 @@ public sealed record SearchRequest(
     Guid? SearchTermReportId = null,
     Guid? TermId = null,
     SearchExpand? Expand = null,
-    IReadOnlyList<string>? Fields = null);
+    IReadOnlyList<string>? Fields = null,
+    Guid? ReviewBatchId = null);
 
 /// <summary>
 /// Which related documents to add to a document set (E09-T03): used by searches, snapshots ("frozen sets", the targets of

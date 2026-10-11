@@ -343,6 +343,10 @@ export type { GetReviewBatchSet$Params as GetReviewBatchSet$Params } from './fn/
 export { getReviewBatchSet as getReviewBatchSet } from './fn/review-batches/get-review-batch-set';
 export type { ListReviewBatchConflicts$Params as ListReviewBatchConflicts$Params } from './fn/review-batches/list-review-batch-conflicts';
 export { listReviewBatchConflicts as listReviewBatchConflicts } from './fn/review-batches/list-review-batch-conflicts';
+export type { CheckOutNextReviewBatch$Params as CheckOutNextReviewBatch$Params } from './fn/review-batches/check-out-next-review-batch';
+export { checkOutNextReviewBatch as checkOutNextReviewBatch } from './fn/review-batches/check-out-next-review-batch';
+export type { ListReviewBatchAssigneeCandidates$Params as ListReviewBatchAssigneeCandidates$Params } from './fn/review-batches/list-review-batch-assignee-candidates';
+export { listReviewBatchAssigneeCandidates as listReviewBatchAssigneeCandidates } from './fn/review-batches/list-review-batch-assignee-candidates';
 export type { ListReviewBatches$Params as ListReviewBatches$Params } from './fn/review-batches/list-review-batches';
 export { listReviewBatches as listReviewBatches } from './fn/review-batches/list-review-batches';
 export type { GetReviewBatch$Params as GetReviewBatch$Params } from './fn/review-batches/get-review-batch';

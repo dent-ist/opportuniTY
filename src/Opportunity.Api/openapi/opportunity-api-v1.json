@@ -9273,6 +9273,165 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/review-batch-sets/{batchSetId}/check-out-next": {
+      "post": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Check out the next available batch of a set to yourself, or get the one of this set you already hold (audited).",
+        "description": "Batches are handed out by number; a batch whose documents are all hidden from you is skipped (Q-52). 409 when no batch is available. Safe to repeat: while you hold a batch of the set, it is returned instead of a new one.",
+        "operationId": "CheckOutNextReviewBatch",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/review-batch-sets/{batchSetId}/assignee-candidates": {
+      "get": {
+        "tags": [
+          "Review batches"
+        ],
+        "summary": "Members you may assign this set's batches to: a role that may code, in the set's reviewer group if it has one.",
+        "description": "By display name; q matches names and e-mail addresses (case-insensitive); limit 1–500, default 50.",
+        "operationId": "ListReviewBatchAssigneeCandidates",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "batchSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBatchAssigneeCandidateList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/review-batches": {
       "get": {
         "tags": [
@@ -19731,6 +19890,20 @@
               "null",
               "string"
             ]
+          },
+          "sort": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewBatchSortResource"
+              }
+            ]
+          },
+          "sortDescending": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -29085,6 +29258,20 @@
           }
         }
       },
+      "ReviewBatchAssigneeCandidateList": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewBatchUserResource"
+            }
+          }
+        }
+      },
       "ReviewBatchAssignmentRequest": {
         "required": [
           "assigneeId"
@@ -29296,8 +29483,23 @@
           },
           "createdAt": {
             "format": "date-time"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/ReviewBatchSortResource"
+          },
+          "sortDescending": {
+            "type": "boolean",
+            "default": false
           }
         }
+      },
+      "ReviewBatchSortResource": {
+        "enum": [
+          "controlNumber",
+          "familyDate",
+          "documentDate"
+        ],
+        "default": "controlNumber"
       },
       "ReviewBatchStatusCounts": {
         "required": [
@@ -31067,6 +31269,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "reviewBatchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },

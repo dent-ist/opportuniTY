@@ -5,6 +5,7 @@ import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { PrivilegeConflictsMock } from './mock-privilege-conflicts';
 import { AuditLogMock } from './mock-audit';
+import { ReviewBatchesMock } from './mock-review-batches';
 import { PrivilegeLogsMock } from './mock-privilege-logs';
 import { ProductionsMock } from './mock-productions';
 import { JobsMock } from './mock-jobs';
@@ -83,6 +84,8 @@ export interface MockAuditEvent {
 export interface MockControl {
   /** Requests to endpoints the mock had no answer for. */
   readonly unhandled: string[];
+  /** Review batches (#178): Batch Sets, batches and the status changes received. */
+  readonly reviewBatches: ReviewBatchesMock;
   /** Field and coding layout administration (E04-T06): the workspace's fields and layouts. */
   readonly fieldAdmin: FieldAdminMock;
   /** Roles, permissions and user/group assignment (E05-T08): assignments, class grants and writes received. */
@@ -298,6 +301,7 @@ export const ALL_PERMISSIONS = [
   'Workspace.ManageAcknowledgments',
   'Compliance.Report',
   'Audit.Export',
+  'ReviewBatch.Manage',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -477,6 +481,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const termReports = new SearchTermReportsMock();
   const privilegeConflicts = new PrivilegeConflictsMock();
   const privilegeLogs = new PrivilegeLogsMock();
+  const reviewBatches = new ReviewBatchesMock();
   const productions = new ProductionsMock();
   const jobsMock = new JobsMock({
     userId: principal.userId,
@@ -508,6 +513,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const auditLog = new AuditLogMock();
   const compliance = new ComplianceMock();
   const control: MockControl = {
+    reviewBatches,
     acknowledgments,
     auditLog,
     compliance,
@@ -673,6 +679,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         termId?: string;
         highlight?: boolean | null;
         fields?: string[];
+        reviewBatchId?: string;
       };
       lastSearch = { ...body };
       lastFields = body?.fields ?? [];
@@ -690,6 +697,18 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
           searchTermReportId: body.searchTermReportId,
           termId: body.termId,
         });
+      }
+      if (body?.reviewBatchId) {
+        // A review batch's documents (#178): the first N of the list; unknown → 404.
+        const size = reviewBatches.size(body.reviewBatchId);
+        if (size === null) return route.fulfill(problem(404, 'Not found'));
+        total = Math.min(documents, size);
+        expired = false;
+        lastQuery = body?.highlight === false ? '' : String(body?.query ?? '');
+        return json(
+          route,
+          searchPage(matching(), pageSize, 1, lastQuery, freshness.served(), lastFields),
+        );
       }
       if (body?.savedSearchId) {
         // A saved search runs its stored query (wave-9 contract): unknown or not visible → 404.
@@ -743,6 +762,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Productions and exports (E12-T08): ./mock-productions.ts (before the privilege logs' production list).
     const delivered = signedIn ? productions.handle(route, method, path) : undefined;
     if (delivered) return delivered;
+    // Review batches (#178): ./mock-review-batches.ts.
+    const batched = signedIn ? reviewBatches.handle(route, method, path, url) : undefined;
+    if (batched) return batched;
     // Privilege logs (E13-T03): ./mock-privilege-logs.ts.
     const privilegeLog = signedIn ? privilegeLogs.handle(route, method, path) : undefined;
     if (privilegeLog) return privilegeLog;

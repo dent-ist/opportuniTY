@@ -48,6 +48,8 @@ const PATHS = {
   export: 'M12 14.5v-11M7.5 8L12 3.5 16.5 8M4 16.5V20h16v-3.5',
   jobs: 'M8.5 6H20M8.5 12H20M8.5 18H20M4 6h.5M4 12h.5M4 18h.5',
   settings: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 4.5v5M9 14.5v5',
+  // Review batches: a stack of trays.
+  batches: 'M4 4.5h16v5H4zM4 14.5h16v5H4zM7.5 7h3M7.5 17h3M6 9.5v5M18 9.5v5',
   'sidebar-collapse': 'M4 4.5h16v15H4zM9 4.5v15M15.5 9.5L13 12l2.5 2.5',
   'sidebar-expand': 'M4 4.5h16v15H4zM9 4.5v15M13 9.5l2.5 2.5-2.5 2.5',
   // Saved searches: folders, actions, live and frozen sets.

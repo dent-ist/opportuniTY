@@ -1,0 +1,23 @@
+// Review Batches (#178): additions to the shared list styles (../exports/delivery.scss).
+
+.rb__batch {
+  font-family: var(--opp-font-family-mono);
+}
+
+.rb__sub {
+  display: block;
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-regular);
+}
+
+.rb__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+.rb__options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--opp-space-3);
+}
