@@ -47,6 +47,9 @@ HA and replication within the RPO ≤ 5 min / RTO ≤ 1 h targets (§17, ADR-016
    (`E19-T06`) SHOULD be: 3 masters (Raft), ≥ 2 volume servers with a replicating placement (e.g. `010`), filers backed
    by the `postgres2` filer store in a dedicated database of the Full PostgreSQL, and ≥ 2 stateless S3 gateways behind
    the load balancer. Cross-site replication for DR uses `weed filer.sync` (ADR-016 decides how).
+   *Note 2026-10-11 (E19-T07, #163):* [ADR-016](0016-backup-dr-and-restore-consistency.md) §2.7 proposes that the filer
+   store runs in a PostgreSQL **cluster separate** from the application cluster (a PITR of the application must not roll
+   object metadata back), and §4 decides versioning and `filer.sync` replication.
 3. The **fallback** S3 store is **RustFS** (Apache-2.0). It passes the same contract suite unchanged and supports
    Object Lock, versioning and erasure-coded distributed mode. Switching is configuration only (`ObjectStorage:S3`
    endpoint and credentials; no code change, no key-layout change) plus a data copy (`E19-T08` tooling). Because RustFS
