@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
+using Opportunity.Application.Backup;
 using Opportunity.Application.Bootstrap;
 using Opportunity.Application.Documents;
 #if OPPORTUNITY_FAILPOINTS
@@ -169,6 +170,27 @@ public static class SearchServiceCollectionExtensions
         services.AddSearchProjection(projection);
         services.AddProjectionIndexWriter(writer);
         services.TryAddScoped<InteractiveIndexWorker>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the backup and restore side of search (E19-T08, ADR-016 §3): <see cref="ISearchSnapshotRepository"/>
+    /// (the snapshot REST API over <c>&lt;prefix&gt;-*</c>) and <see cref="ISearchRestoreChecks"/> (placement and version
+    /// gates), with index management. Needs <see cref="IIndexPlacementStore"/> and <see cref="Application.Search.Reindex.IReindexStore"/>.
+    /// </summary>
+    public static IServiceCollection AddOpenSearchBackup(this IServiceCollection services, OpenSearchOptions options, SearchSnapshotOptions snapshots)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        snapshots.Validate();
+        AddOpenSearchCore(services, options);
+        AddIndexManagement(services);
+        services.TryAddSingleton(snapshots);
+        services.TryAddSingleton<ISearchSnapshotRepository>(sp => new Backup.OpenSearchSnapshotRepository(
+            sp.GetRequiredService<OpenSearchConnection>(), sp.GetRequiredService<IndexNames>(), sp.GetRequiredService<SearchSnapshotOptions>(),
+            sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<ISearchRestoreChecks>(sp => new Backup.SearchRestoreChecks(
+            sp.GetRequiredService<IIndexManager>(), sp.GetRequiredService<Application.Search.Reindex.IReindexStore>(),
+            sp.GetRequiredService<OpenSearchConnection>()));
         return services;
     }
 

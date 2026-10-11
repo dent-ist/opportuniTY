@@ -56,6 +56,10 @@ public static class ObjectKeys
     public static ObjectKey DestructionCertificate(Guid deletionId, Sha256Digest sha256) =>
         ObjectKey.Parse($"sys/certificates/{Id(deletionId)}/{sha256.Hex}");
 
+    /// <summary>The signed record of a restore (ADR-016 §5.3); write-once, so a later restore cannot roll it back.</summary>
+    public static ObjectKey RestoreRecord(Guid restoreId, Sha256Digest sha256) =>
+        ObjectKey.Parse($"sys/restores/{Id(restoreId)}/{sha256.Hex}");
+
     private static ObjectKey Document(Guid workspaceId, Guid documentId, string rest) =>
         Workspace(workspaceId, $"docs/{Id(documentId)}/{rest}");
 

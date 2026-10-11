@@ -6,7 +6,6 @@ import type {
   DefensibilityStatementResource,
   SearchTermHitReportResource,
 } from '../../core/api/generated/models';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../core/workspace/sections';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import {
@@ -31,6 +30,7 @@ import {
   localDateTime,
   parseDocumentIds,
 } from './defensibility-api';
+import { DisplayFormat } from '../../core/i18n';
 
 /** Rows of the per-day table shown on the page; the CSV holds them all. */
 const SHOWN_DAYS = 200;
@@ -88,7 +88,7 @@ class Generated<T> {
 export class DefensibilityPage {
   private readonly api = inject(DefensibilityApi);
   private readonly context = inject(WorkspaceContext);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly canExportAudit = this.context.can(PERMISSIONS.auditExport);
   protected readonly shownDays = SHOWN_DAYS;
@@ -221,19 +221,17 @@ export class DefensibilityPage {
   }
 
   protected date(value: unknown, seconds = false): string {
-    if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: seconds ? 'medium' : 'short',
-        }).format(d);
+    return value ? this.fmt.dateTime(String(value), { seconds }) : '';
+  }
+
+  /** A day of the review summary (`YYYY-MM-DD`), which never shifts with the display time zone. */
+  protected day(value: string): string {
+    return this.fmt.calendarDate(value);
   }
 
   protected n(value: unknown): string {
     const v = Number(value);
-    return Number.isFinite(v) ? v.toLocaleString(this.prefs.locale()) : '';
+    return Number.isFinite(v) ? this.fmt.number(v) : '';
   }
 
   protected short(value: string | null | undefined, length = 12): string {

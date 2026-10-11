@@ -1,7 +1,8 @@
 import type { FieldResource, SearchHit } from '../../../core/api/generated/models';
 
 /** How a cell value is shown (and aligned). */
-export type ColumnFormat = 'text' | 'date' | 'size' | 'number';
+/** `date`: an instant in the display time zone; `day`: a calendar date that never shifts with the zone. */
+export type ColumnFormat = 'text' | 'date' | 'day' | 'size' | 'number';
 
 /** A View column of the document list. Control Number and the family indicator are fixed, not View columns. */
 export interface GridColumn {
@@ -299,7 +300,7 @@ function fromField(field: FieldResource): GridColumn {
 function formatOf(field: FieldResource): ColumnFormat {
   switch (field.type) {
     case 'date':
-      return 'date';
+      return field.datePrecision === 'date' ? 'day' : 'date';
     case 'integer':
     case 'decimal':
       return 'number';

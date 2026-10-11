@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../core/workspace/sections';
 import { ActiveWorkspace, WorkspaceContext } from '../../core/workspace/workspace-context';
 import { Badge, Button, Icon, Progress } from '../../ui';
@@ -11,6 +10,7 @@ import {
   type SetupStepState,
   WorkspaceSetupApi,
 } from './workspace-setup';
+import { DisplayFormat } from '../../core/i18n';
 
 interface StepView {
   readonly step: SetupStepDefinition;
@@ -37,7 +37,7 @@ interface StepView {
 export class WorkspaceSetupPage {
   private readonly api = inject(WorkspaceSetupApi);
   private readonly context = inject(WorkspaceContext);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   protected readonly workspace = inject(ActiveWorkspace).current;
   protected readonly workspaceId = this.context.workspaceId;
   protected readonly canOpenDocuments = this.context.can(PERMISSIONS.documentView);
@@ -46,7 +46,7 @@ export class WorkspaceSetupPage {
   protected readonly checking = computed(() => [...this.counts().values()].includes('checking'));
 
   protected readonly steps = computed<StepView[]>(() => {
-    const format = new Intl.NumberFormat(this.prefs.locale()).format;
+    const format = (n: number) => this.fmt.number(n);
     return SETUP_STEPS.map((step) => {
       const link = this.context.can(step.link.permission)
         ? ['/w', this.workspaceId, ...step.link.path]

@@ -57,6 +57,7 @@ import {
   termErrorText,
   visibilityNotice,
 } from './search-term-report-model';
+import { DisplayFormat } from '../../../core/i18n';
 
 /** How often a queued or running report is re-read. */
 export const REPORT_POLL_MS = new InjectionToken<number>('REPORT_POLL_MS', { factory: () => 1500 });
@@ -115,6 +116,7 @@ export class TermsReportPage {
   private readonly feed = inject(JobFeed, { optional: true });
   private readonly context = inject(WorkspaceContext);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
@@ -137,12 +139,11 @@ export class TermsReportPage {
   protected readonly sort = signal<TermSort>({ key: 'entered', direction: 'asc' });
   protected readonly rerunning = signal(false);
 
-  private readonly timeZone = this.context.workspace.displayTimeZone || 'UTC';
   private readonly caller = computed(() => ({
     userId: this.me()?.userId ?? null,
     can: (p: string) => this.context.can(p),
   }));
-  protected readonly n = computed(() => new Intl.NumberFormat(this.prefs.locale()));
+  protected readonly n = this.fmt.formatter;
 
   protected readonly finished = computed(() => {
     const i = this.item();
@@ -175,20 +176,20 @@ export class TermsReportPage {
   });
   protected readonly frozenAt = computed(() => {
     const at = this.snapshot()?.frozenAt;
-    return at ? formatDate(at, this.prefs.locale(), this.timeZone) : null;
+    return at ? formatDate(at, this.fmt.formatter()) : null;
   });
   protected readonly frozenCount = computed(() => {
     const count = this.snapshot()?.documentCount;
     if (count === null || count === undefined) return null;
-    return `${this.n().format(count)} ${count === 1 ? 'document' : 'documents'}`;
+    return `${this.n().number(count)} ${count === 1 ? 'document' : 'documents'}`;
   });
 
   protected date(value: string | null | undefined): string {
-    return value ? formatDate(value, this.prefs.locale(), this.timeZone) : '—';
+    return value ? formatDate(value, this.fmt.formatter()) : '—';
   }
 
   protected num(value: number | null | undefined): string {
-    return value === null || value === undefined ? '—' : this.n().format(value);
+    return value === null || value === undefined ? '—' : this.n().number(value);
   }
 
   /** Progress of the counting job: a fraction, or undefined while not known (indeterminate). */

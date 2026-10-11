@@ -5,6 +5,7 @@ import type {
   ListExportResource,
 } from '../../../core/api/generated/models';
 import { AllResultsSelection, MAX_SELECTED_IDS, SelectionTarget } from '../grid/selection';
+import { DEFAULT_LOCALE, formatNumber, formatterFor } from '../../../core/i18n';
 
 /** How often the dialog asks for the job's progress (a token so tests can poll fast). */
 export const LIST_EXPORT_POLL_MS = new InjectionToken<number>('LIST_EXPORT_POLL_MS', {
@@ -49,12 +50,15 @@ export function toRequest(
 }
 
 /** Why the chosen rows cannot be exported as they are, or null. */
-export function rowsProblem(rows: SelectionTarget | null): string | null {
+export function rowsProblem(
+  rows: SelectionTarget | null,
+  locale: string = DEFAULT_LOCALE,
+): string | null {
   if (!rows || (rows.kind === 'documents' && rows.documentIds.length === 0)) {
     return 'There are no documents to export: run a search first.';
   }
   if (rows.kind === 'documents' && rows.documentIds.length > MAX_SELECTED_IDS) {
-    return `More than ${MAX_SELECTED_IDS.toLocaleString('en')} documents are checked one by one. Export all results of the list instead, after narrowing it with a filter if needed.`;
+    return `More than ${formatNumber(MAX_SELECTED_IDS, locale)} documents are checked one by one. Export all results of the list instead, after narrowing it with a filter if needed.`;
   }
   return null;
 }
@@ -74,7 +78,7 @@ export function isActive(e: ListExportResource): boolean {
 
 /** One line on the job's state, for the dialog and its live region. */
 export function progressText(e: ListExportResource, locale: string): string {
-  const n = (v: unknown) => new Intl.NumberFormat(locale).format(Number(v));
+  const n = (v: unknown) => formatNumber(Number(v), locale);
   switch (e.status) {
     case 'queued':
       return e.documentCount === null
@@ -97,14 +101,5 @@ export function progressText(e: ListExportResource, locale: string): string {
 
 /** "12.4 KB" for the download link. */
 export function sizeText(bytes: unknown, locale: string): string {
-  const b = Number(bytes ?? 0);
-  if (b < 1024) return `${new Intl.NumberFormat(locale).format(b)} bytes`;
-  const units = ['KB', 'MB', 'GB'];
-  let v = b / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(v)} ${units[i]}`;
+  return formatterFor(locale).bytes(Number(bytes ?? 0));
 }

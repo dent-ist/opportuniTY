@@ -1,11 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ExportResource } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { Button, EmptyState, ErrorState, Icon, LoadingState, StatusPill } from '../../ui';
 import { ExportApi, HttpExportApi } from './export-api';
 import { EXPORT_STATUS } from './export-model';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * Exports (familiarity guide §2.3): the export history, newest first: your own exports, or everyone's with
@@ -22,7 +22,7 @@ import { EXPORT_STATUS } from './export-model';
 })
 export class ExportsPage {
   private readonly api = inject(ExportApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly items = signal<readonly ExportResource[]>([]);
   protected readonly nextCursor = signal<string | null>(null);
@@ -30,9 +30,6 @@ export class ExportsPage {
   protected readonly loadingMore = signal(false);
   protected readonly error = signal<ApiError | null>(null);
   protected readonly status = EXPORT_STATUS;
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium', timeStyle: 'short' }),
-  );
 
   constructor() {
     void this.load();
@@ -67,13 +64,11 @@ export class ExportsPage {
   }
 
   protected date(value: unknown): string {
-    return value ? this.dates().format(new Date(String(value))) : '';
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   protected num(value: number | string | null | undefined): string {
-    return value === null || value === undefined
-      ? '—'
-      : Number(value).toLocaleString(this.prefs.locale());
+    return value === null || value === undefined ? '—' : this.fmt.number(Number(value));
   }
 
   /** The frozen set's documents once the export ran (exported plus excluded); the detail page reads the set itself. */

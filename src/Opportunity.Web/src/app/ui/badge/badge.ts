@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { pillText } from '../../core/search/search-freshness';
 import { Icon, IconName } from '../icon/icon';
+import { DisplayFormat } from '../../core/i18n';
 
 // Data-state indicators (ADR-018 §7). Every state is carried by text (and usually an icon), never by
 // colour alone (WCAG 1.4.1); colour only reinforces it.
@@ -94,17 +95,14 @@ export class FreshnessIndicator {
   readonly lagSeconds = input<number>();
 
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly tone = computed(() => FRESHNESS[this.state()].tone);
   protected readonly icon = computed(() => FRESHNESS[this.state()].icon);
   protected readonly text = computed(() => {
     const locale = this.prefs.locale();
     const asOf = this.asOf();
-    const time = asOf
-      ? new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(
-          new Date(asOf),
-        )
-      : null;
+    const time = asOf ? this.fmt.time(asOf) : null;
     switch (this.state()) {
       case 'current':
         return time ? `Current as of ${time}` : 'Current';
@@ -142,10 +140,8 @@ export class Count {
   readonly value = input.required<number>();
   readonly relation = input<'eq' | 'gte' | 'approx'>('eq');
 
-  private readonly prefs = inject(UiPreferences);
-  private readonly formatted = computed(() =>
-    new Intl.NumberFormat(this.prefs.locale()).format(this.value()),
-  );
+  private readonly fmt = inject(DisplayFormat);
+  private readonly formatted = computed(() => this.fmt.number(this.value()));
   protected readonly visual = computed(
     () => ({ eq: '', gte: '≥ ', approx: '≈ ' })[this.relation()] + this.formatted(),
   );

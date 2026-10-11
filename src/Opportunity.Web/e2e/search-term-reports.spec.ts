@@ -96,7 +96,7 @@ test('shows the frozen set, whose view the counts are, totals, sorting, exports 
   await openPage(page, '/w/ws-1/searches/terms-reports/str-1');
   const about = page.getByRole('region', { name: 'About this report' });
   await expect(about).toContainText('snapshot-str-1');
-  await expect(about).toContainText('Taken Oct 3, 2026');
+  await expect(about).toContainText('Taken 10/03/2026');
   await expect(about).toContainText('250 documents');
   await expect(about).toContainText(
     'Counts include only the documents you could see when you ran this report.',

@@ -11,7 +11,6 @@ import {
 import { RouterLink } from '@angular/router';
 import type { CodingHistoryEntryResource, FieldResource } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../core/workspace/sections';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import {
@@ -25,6 +24,7 @@ import {
   type SelectOption,
 } from '../../ui';
 import { DocumentHistoryApi, HttpDocumentHistoryApi, valueText } from './document-history-api';
+import { DisplayFormat } from '../../core/i18n';
 
 interface HistoryRow {
   readonly id: string;
@@ -163,7 +163,7 @@ export class DocumentHistory {
   readonly controlNumber = input<string | null>(null);
 
   private readonly api = inject(DocumentHistoryApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly context = inject(WorkspaceContext, { optional: true });
   protected readonly workspaceId = this.context?.workspaceId ?? '';
   protected readonly canReadAudit = this.context?.can(PERMISSIONS.auditRead) ?? false;
@@ -183,10 +183,6 @@ export class DocumentHistory {
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
 
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium', timeStyle: 'short' }),
-  );
-
   protected readonly rows = computed<HistoryRow[]>(() => {
     const byId = new Map(this.fields().map((f) => [String(f.fieldId), f]));
     return this.entries().map((e) => {
@@ -195,7 +191,7 @@ export class DocumentHistory {
       const source = propagated ? 'propagated' : e.source === 'job' ? 'job' : 'interactive';
       return {
         id: e.eventId,
-        when: this.dates().format(new Date(String(e.occurredAt))),
+        when: this.fmt.dateTime(String(e.occurredAt)),
         field: e.fieldName,
         before: valueText(e.oldValue, field),
         after: valueText(e.newValue, field),

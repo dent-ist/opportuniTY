@@ -50,15 +50,15 @@
     <dl class="step__facts" aria-label="Validation result">
       <div>
         <dt>Rows read</dt>
-        <dd>{{ n().format(r.rowsRead) }}</dd>
+        <dd>{{ n().number(r.rowsRead) }}</dd>
       </div>
       <div>
         <dt>Errors</dt>
-        <dd>{{ n().format(r.errorCount) }}</dd>
+        <dd>{{ n().number(r.errorCount) }}</dd>
       </div>
       <div>
         <dt>Warnings</dt>
-        <dd>{{ n().format(r.warningCount) }}</dd>
+        <dd>{{ n().number(r.warningCount) }}</dd>
       </div>
     </dl>
 
@@ -66,7 +66,7 @@
       <div class="step__callout step__callout--danger" role="alert">
         <opp-icon name="error" />
         <p>
-          {{ n().format(r.errorCount) }} error(s) block this import. Fix the load file or the
+          {{ n().number(r.errorCount) }} error(s) block this import. Fix the load file or the
           settings, then validate again.
         </p>
       </div>
@@ -100,7 +100,7 @@
                 >
               </td>
               <td class="step__mono">{{ c.code }}</td>
-              <td>{{ n().format(c.count) }}</td>
+              <td>{{ n().number(c.count) }}</td>
             </tr>
           }
         </tbody>
@@ -156,7 +156,7 @@
       <opp-checkbox
         [checked]="store.warningsAcknowledged()"
         (checkedChange)="store.warningsAcknowledged.set($event)"
-        >I have reviewed the {{ n().format(r.warningCount) }} warning(s) and want to import
+        >I have reviewed the {{ n().number(r.warningCount) }} warning(s) and want to import
         anyway</opp-checkbox
       >
     }

@@ -19,7 +19,6 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, debounceTime, firstValueFrom, map, of, switchMap } from 'rxjs';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { QueryHistory } from '../../../core/search/query-history';
 import { SearchFieldSource } from '../../../core/search/search-fields';
 import { QueryCheck, QueryDiagnostic, QueryValidator } from '../../../core/search/query-validation';
@@ -29,6 +28,7 @@ import { Suggestion, completionContext, suggest } from './query-completion';
 import { HighlightSegment, highlight, lineAndColumn } from './query-highlight';
 import { tokenize } from './query-lexer';
 import { QuerySyntaxHelp } from './query-syntax-help';
+import { DisplayFormat } from '../../../core/i18n';
 
 export interface QueryBarTiming {
   /** Pause after typing before the server checks the query. */
@@ -80,7 +80,7 @@ export class QueryBar {
   private readonly validator = inject(QueryValidator);
   private readonly history = inject(QueryHistory);
   private readonly announcer = inject(Announcer);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly timing = inject(QUERY_BAR_TIMING);
   private readonly workspaceId = inject(WorkspaceContext).workspaceId;
   private readonly fieldSource = inject(SearchFieldSource);
@@ -148,13 +148,9 @@ export class QueryBar {
         apply: () => this.insert(s),
       }));
     }
-    const format = new Intl.DateTimeFormat(this.prefs.locale(), {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
     return this.history.entries().map((e) => ({
       label: e.query,
-      detail: format.format(new Date(e.ranAt)),
+      detail: this.fmt.dateTime(e.ranAt),
       apply: () => this.replaceAll(e.query),
     }));
   });

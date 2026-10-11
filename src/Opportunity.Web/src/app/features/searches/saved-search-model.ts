@@ -1,5 +1,6 @@
 import { ApiError, describeError } from '../../core/api/problem-details';
 import type { FrozenSetSummary, SavedSearchFolder, SavedSearchSummary } from './saved-search-api';
+import { formatNumber, Formatter } from '../../core/i18n';
 
 // Pure rules of the Searches section (E16-T11): folder trees, labels and which actions a user has. Shared by the
 // Saved Searches page and the Documents browser pane.
@@ -123,49 +124,34 @@ export function sharingLabel(s: SavedSearchSummary): string {
 /** Last hit count as the list shows it: exact, "≥ 10,000", or "≈ n" while the index was catching up (Q-10). */
 export function hitCountLabel(s: SavedSearchSummary, locale: string): string {
   if (s.lastHitCount === null) return '—';
-  const n = new Intl.NumberFormat(locale).format(s.lastHitCount);
+  const n = formatNumber(s.lastHitCount, locale);
   if (s.lastHitRelation === 'gte') return `≥ ${n}`;
   if (s.lastRunFreshness?.state === 'catchingUp') return `≈ ${n}`;
   return n;
 }
 
 /** Freshness stamp of the last hit count: "Current as of 10:42" or "Updating as of 10:42". */
-export function freshnessLabel(s: SavedSearchSummary, locale: string, timeZone: string): string {
+export function freshnessLabel(s: SavedSearchSummary, format: Formatter): string {
   const f = s.lastRunFreshness;
   if (!f) return '';
-  const at = formatDate(f.asOf, locale, timeZone, { timeStyle: 'short' });
+  const at = format.time(f.asOf);
   return f.state === 'current' ? `Current as of ${at}` : `Updating as of ${at}`;
 }
 
-/** Frozen set label: "Frozen set (snapshot): 1,240 documents, frozen Oct 3, 2026, 10:42 AM by you". */
-export function frozenLabel(
-  s: FrozenSetSummary,
-  me: string | null,
-  locale: string,
-  timeZone: string,
-): string {
+/** Frozen set label: "Frozen set (snapshot): 1,240 documents, frozen 10/03/2026, 10:42 AM UTC by you". */
+export function frozenLabel(s: FrozenSetSummary, me: string | null, format: Formatter): string {
   const count =
     s.documentCount === null
       ? 'documents still being frozen'
-      : `${new Intl.NumberFormat(locale).format(s.documentCount)} ${s.documentCount === 1 ? 'document' : 'documents'}`;
-  const at = s.frozenAt ? `, frozen ${formatDate(s.frozenAt, locale, timeZone)}` : '';
+      : `${format.number(s.documentCount)} ${s.documentCount === 1 ? 'document' : 'documents'}`;
+  const at = s.frozenAt ? `, frozen ${formatDate(s.frozenAt, format)}` : '';
   return `Frozen set (snapshot): ${count}${at} by ${s.createdBy === me ? 'you' : 'another user'}`;
 }
 
-export function formatDate(
-  value: string | null | undefined,
-  locale: string,
-  timeZone: string,
-  style: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' },
-): string {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  try {
-    return new Intl.DateTimeFormat(locale, { ...style, timeZone }).format(date);
-  } catch {
-    return new Intl.DateTimeFormat(locale, style).format(date);
-  }
+/** Date and time in the display time zone ("" when missing or invalid). */
+export function formatDate(value: string | null | undefined, format: Formatter): string {
+  if (!value || Number.isNaN(new Date(value).getTime())) return '';
+  return format.dateTime(value);
 }
 
 /** What the caller may do with one saved search. The API decides every call; this only hides dead ends. */

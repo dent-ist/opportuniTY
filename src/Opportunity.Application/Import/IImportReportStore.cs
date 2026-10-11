@@ -49,6 +49,15 @@ public sealed record ImportReportData
 
     public long NativesMissing { get; init; }
 
+    /// <summary>Documents whose native is quarantined (E08-T09).</summary>
+    public long NativesQuarantined { get; init; }
+
+    /// <summary>Documents whose load-file hashes differ from the delivered native (E08-T09, D15.3).</summary>
+    public long NativesHashMismatch { get; init; }
+
+    /// <summary>OPT image files quarantined by the screening (E08-T09).</summary>
+    public long PagesQuarantined { get; init; }
+
     public long TextLinked { get; init; }
 
     public long TextMissing { get; init; }

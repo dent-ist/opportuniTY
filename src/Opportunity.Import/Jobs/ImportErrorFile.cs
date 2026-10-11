@@ -46,6 +46,8 @@ public static class ImportErrorFile
             RowEncodingFallback = options.RowEncodingFallback,
             HasHeader = options.HasHeader,
             ConvertNewlineCharacter = options.ConvertNewlineCharacter,
+            MaxRecordBytes = options.MaxRecordBytes,
+            MaxFieldCount = options.MaxFieldCount,
             MaxRejectedRows = null,
             ReturnRejectedRecords = true,
             CaptureRawRecords = true,

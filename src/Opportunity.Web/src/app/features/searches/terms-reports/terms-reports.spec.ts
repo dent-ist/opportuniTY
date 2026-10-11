@@ -329,7 +329,7 @@ describe('Searches › Search Terms Reports (#180)', () => {
     expect(text(root().querySelector('h1')!)).toBe('Key terms');
     const about = root().querySelector('section[aria-labelledby="str-about"]')!;
     expect(text(about)).toContain('snap-9');
-    expect(text(about)).toContain('Taken Oct 3, 2026, 10:41 AM');
+    expect(text(about)).toContain('Taken 10/03/2026, 10:41 AM UTC');
     expect(text(about)).toContain('2,000 documents');
     expect(text(about)).toContain('Search generation18,432');
     expect(text(about)).toContain(

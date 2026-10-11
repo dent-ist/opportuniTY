@@ -4,6 +4,7 @@ using NpgsqlTypes;
 
 using Opportunity.Application.Import;
 using Opportunity.Application.Storage;
+using Opportunity.Core.Storage;
 
 namespace Opportunity.Data.Storage;
 
@@ -40,10 +41,12 @@ internal static class StoredObjectSql
         await using (var insert = tx.Command(
             """
             INSERT INTO opportunity.stored_object
-                (workspace_id, object_id, logical_key, area, document_id, sha256, size_bytes, content_type, key_id, encryption_scheme, state, created_by_job_id)
-            SELECT @ws, u.object_id, u.logical_key, u.area, u.document_id, u.sha256, u.size_bytes, u.content_type, u.key_id, u.scheme, 1, @job
-            FROM unnest(@object_ids, @keys, @areas, @documents, @shas, @sizes, @types, @key_ids, @schemes)
-                AS u(object_id, logical_key, area, document_id, sha256, size_bytes, content_type, key_id, scheme)
+                (workspace_id, object_id, logical_key, area, document_id, sha256, size_bytes, content_type, key_id, encryption_scheme, state, created_by_job_id,
+                 scan_verdict, scan_detail, scan_engine, scanned_at)
+            SELECT @ws, u.object_id, u.logical_key, u.area, u.document_id, u.sha256, u.size_bytes, u.content_type, u.key_id, u.scheme, u.state, @job,
+                   u.verdict, u.detail, u.engine, CASE WHEN u.verdict IS NULL THEN NULL ELSE now() END
+            FROM unnest(@object_ids, @keys, @areas, @documents, @shas, @sizes, @types, @key_ids, @schemes, @states, @verdicts, @details, @engines)
+                AS u(object_id, logical_key, area, document_id, sha256, size_bytes, content_type, key_id, scheme, state, verdict, detail, engine)
             ON CONFLICT (workspace_id, logical_key) DO NOTHING
             """))
         {
@@ -58,6 +61,21 @@ internal static class StoredObjectSql
             insert.Parameters.AddWithValue("types", distinct.Select(o => o.ContentType).ToArray());
             insert.Parameters.AddWithValue("key_ids", distinct.Select(o => o.KeyId).ToArray());
             insert.Parameters.AddWithValue("schemes", distinct.Select(o => (short)o.EncryptionScheme).ToArray());
+
+            // E08-T09: Infected or Unscannable files are registered Quarantined, with their screening result.
+            insert.Parameters.AddWithValue("states", distinct.Select(o => (short)(o.Quarantined ? StoredObjectState.Quarantined : StoredObjectState.Committed)).ToArray());
+            insert.Parameters.Add(new NpgsqlParameter("verdicts", NpgsqlDbType.Array | NpgsqlDbType.Smallint)
+            {
+                Value = distinct.Select(o => o.Scan is { } scan ? (short?)scan.Verdict : null).ToArray(),
+            });
+            insert.Parameters.Add(new NpgsqlParameter("details", NpgsqlDbType.Array | NpgsqlDbType.Text)
+            {
+                Value = distinct.Select(o => o.Scan?.Detail).ToArray(),
+            });
+            insert.Parameters.Add(new NpgsqlParameter("engines", NpgsqlDbType.Array | NpgsqlDbType.Text)
+            {
+                Value = distinct.Select(o => o.Scan?.Engine).ToArray(),
+            });
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 

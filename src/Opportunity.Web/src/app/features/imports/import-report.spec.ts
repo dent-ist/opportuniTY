@@ -60,6 +60,25 @@ describe('import report summary (Q-71)', () => {
     ]);
   });
 
+  it('flags quarantined natives and images and hash mismatches (E08-T09)', () => {
+    const base = summary();
+    const groups = reportGroups(
+      summary({
+        natives: { ...base.natives, quarantined: 2, hashMismatch: '1' },
+        images: { ...base.images, pagesQuarantined: 1 },
+      }),
+    );
+    const facts = groups.flatMap((g) => g.facts);
+    const of = (label: string) => facts.find((f) => f.label === label);
+    expect(of('Natives quarantined (malware or not scannable)')).toEqual({
+      label: 'Natives quarantined (malware or not scannable)',
+      value: 2,
+      attention: true,
+    });
+    expect(of('Natives whose hash differs from the load file')?.attention).toBe(true);
+    expect(of('Images quarantined (malware or not scannable)')?.value).toBe(1);
+  });
+
   it('says so in words when a group has nothing to report', () => {
     const groups = reportGroups(
       summary({ families: { built: 0, orphans: 0 }, fieldsCreated: 0, choicesCreated: 0 }),

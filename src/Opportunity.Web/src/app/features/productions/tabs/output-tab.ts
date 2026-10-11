@@ -36,6 +36,7 @@ import { newIdempotencyKey } from '../../exports/frozen-set/frozen-set-api';
 import { ProductionApi } from '../production-api';
 import { ProductionStore } from '../production-store';
 import { downloadCrossReference } from './cross-reference';
+import { DisplayFormat } from '../../../core/i18n';
 
 const POLL_MS = 2000;
 
@@ -58,6 +59,7 @@ export class OutputTab {
   protected readonly store = inject(ProductionStore);
   private readonly api = inject(ProductionApi);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
@@ -301,7 +303,7 @@ export class OutputTab {
   }
 
   protected num(n: number | string | null | undefined): string {
-    return n === null || n === undefined ? '—' : Number(n).toLocaleString(this.prefs.locale());
+    return n === null || n === undefined ? '—' : this.fmt.number(Number(n));
   }
 
   protected bytes(n: number | string): string {
@@ -309,11 +311,6 @@ export class OutputTab {
   }
 
   protected date(value: unknown): string {
-    return value
-      ? new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(new Date(String(value)))
-      : '';
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 }

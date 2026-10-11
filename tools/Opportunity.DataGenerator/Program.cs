@@ -4,6 +4,7 @@ using System.Globalization;
 
 using Opportunity.DataGenerator.Corpus;
 using Opportunity.DataGenerator.Corpus.Generation;
+using Opportunity.DataGenerator.Corpus.KnownAnswer;
 using Opportunity.DataGenerator.Corpus.Output;
 using Opportunity.DataGenerator.Corpus.Profiles;
 using Opportunity.DataGenerator.Corpus.Volumes;
@@ -104,9 +105,33 @@ hashProfile.SetAction(parse =>
     return 0;
 });
 
+var kaSeedOption = new Option<ulong>("--seed") { Description = "Fixture seed (required; recorded in every file).", Required = true };
+var kaOutOption = new Option<DirectoryInfo>("--out") { Description = "Output directory.", DefaultValueFactory = _ => new DirectoryInfo("known-answer") };
+var kaStrFamiliesOption = new Option<int>("--str-families") { Description = "STR fixture families (parent + 0-3 attachments).", DefaultValueFactory = _ => new StrFixtureOptions().Families };
+var kaStrStandaloneOption = new Option<int>("--str-standalone") { Description = "STR fixture standalone documents.", DefaultValueFactory = _ => new StrFixtureOptions().Standalone };
+var kaQcFamiliesOption = new Option<int>("--qc-random-families") { Description = "Random families added to the planted QC cases.", DefaultValueFactory = _ => new QcFixtureOptions().RandomFamilies };
+var kaQcStandaloneOption = new Option<int>("--qc-random-standalone") { Description = "Random standalone documents added to the planted QC cases.", DefaultValueFactory = _ => new QcFixtureOptions().RandomStandalone };
+var knownAnswer = new Command("known-answer", "Write known-answer search term report and production QC fixtures with their ground truth (E17-T09).")
+{
+    kaSeedOption, kaOutOption, kaStrFamiliesOption, kaStrStandaloneOption, kaQcFamiliesOption, kaQcStandaloneOption,
+};
+knownAnswer.SetAction(parse =>
+{
+    DirectoryInfo output = parse.GetValue(kaOutOption)!;
+    IReadOnlyList<KnownAnswerFile> files = KnownAnswerWriter.Write(output.FullName, parse.GetValue(kaSeedOption),
+        new StrFixtureOptions { Families = parse.GetValue(kaStrFamiliesOption), Standalone = parse.GetValue(kaStrStandaloneOption) },
+        new QcFixtureOptions { RandomFamilies = parse.GetValue(kaQcFamiliesOption), RandomStandalone = parse.GetValue(kaQcStandaloneOption) });
+    foreach (KnownAnswerFile file in files)
+    {
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{file.Sha256}  {file.Bytes,8}  {Path.Combine(output.FullName, file.Path)}"));
+    }
+
+    return 0;
+});
+
 var root = new RootCommand("opportuniTY synthetic eDiscovery corpus generator (E17-T01). Output is synthetic only.")
 {
-    generate, initProfile, hashProfile,
+    generate, initProfile, hashProfile, knownAnswer,
 };
 
 try

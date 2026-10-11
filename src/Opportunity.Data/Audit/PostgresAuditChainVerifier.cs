@@ -12,8 +12,26 @@ namespace Opportunity.Data.Audit;
 /// continuity and ES256 signature with the given public keys. It trusts nothing it could not recompute: chain heads are
 /// used only to notice a deleted tail. One chain is read in one REPEATABLE READ snapshot, streamed in sequence order.
 /// </summary>
-public sealed class PostgresAuditChainVerifier(AuditChainDataSource chainDataSource)
+public sealed class PostgresAuditChainVerifier(AuditChainDataSource chainDataSource) : IAuditChainReader
 {
+    public async Task<IReadOnlyList<AuditChainHead>> ReadHeadsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var tx = await WorkspaceTransaction.BeginInstallationAsync(chainDataSource.DataSource, cancellationToken).ConfigureAwait(false);
+        await using var command = tx.Command(
+            "SELECT chain_id, last_sequence, last_hash, last_checkpoint_sequence FROM audit.chain_head ORDER BY chain_id");
+        var heads = new List<AuditChainHead>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                heads.Add(new AuditChainHead(reader.GetGuid(0), reader.GetInt64(1), reader.GetFieldValue<byte[]>(2), reader.GetInt64(3)));
+            }
+        }
+
+        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return heads;
+    }
+
     /// <summary>Every chain that has events, a head or a checkpoint (the system chain is the nil uuid).</summary>
     public async Task<IReadOnlyList<Guid>> ListChainsAsync(CancellationToken cancellationToken = default)
     {

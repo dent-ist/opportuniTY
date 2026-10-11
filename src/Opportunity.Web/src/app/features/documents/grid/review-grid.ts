@@ -77,7 +77,7 @@ import {
   quotePhrase,
 } from './grid-filters';
 import { ActiveFilter, FilterSummary } from './filter-summary';
-import { CellFormatter, countLabel, freshnessLabel } from './grid-format';
+import { countLabel, freshnessLabel } from './grid-format';
 import {
   type ServedFreshness,
   footnoteText,
@@ -102,6 +102,7 @@ import {
   selectionAnnouncement,
   selectionLabel,
 } from './selection';
+import { DisplayFormat } from '../../../core/i18n';
 
 /** What the document list shows. */
 export interface GridSearch {
@@ -298,6 +299,7 @@ export class ReviewGrid implements CursorSource {
   private readonly freshness = inject(FreshnessMonitor, { optional: true });
   private readonly context = inject(WorkspaceContext);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly storage = inject(PreferenceStorage);
   private readonly announcer = inject(Announcer);
   private readonly injector = inject(Injector);
@@ -388,9 +390,7 @@ export class ReviewGrid implements CursorSource {
     const rem = [2.25, 10, FAMILY_COLUMN_REM, ...this.columns().view.map((c) => minRem(c.width))];
     return `${rem.reduce((a, b) => a + b, 0)}rem`;
   });
-  protected readonly format = computed(
-    () => new CellFormatter(this.prefs.locale(), this.context.workspace.displayTimeZone || 'UTC'),
-  );
+  protected readonly format = this.fmt.formatter;
 
   // Filters (#191)
   protected readonly filtersOpen = computed(
@@ -545,7 +545,7 @@ export class ReviewGrid implements CursorSource {
   protected readonly expandedText = computed(() => {
     const r = this.result();
     if (!r?.expanded) return null;
-    const n = new Intl.NumberFormat(this.prefs.locale());
+    const n = this.fmt.formatter();
     const hits = countLabel(r.hits, r.freshness, this.prefs.locale());
     const parts = [
       [Number(r.expanded.family), 'family'],
@@ -556,7 +556,7 @@ export class ReviewGrid implements CursorSource {
       [Number(r.expanded.thread), 'email thread'],
     ]
       .filter(([count]) => Number(count) > 0)
-      .map(([count, label]) => `${n.format(Number(count))} ${label}`);
+      .map(([count, label]) => `${n.number(Number(count))} ${label}`);
     const hitWord = Number(r.hits.value) === 1 ? 'hit' : 'hits';
     return parts.length > 0
       ? `${hits} ${hitWord} + ${parts.join(', ')}`
@@ -564,13 +564,7 @@ export class ReviewGrid implements CursorSource {
   });
   protected readonly freshnessText = computed(() => {
     const r = this.result();
-    return r
-      ? freshnessLabel(
-          r.freshness,
-          this.prefs.locale(),
-          this.context.workspace.displayTimeZone || 'UTC',
-        )
-      : '';
+    return r ? freshnessLabel(r.freshness, this.format()) : '';
   });
   /** "Counts may not include 85 recent changes." under a result set served while the index was catching up. */
   protected readonly footnote = computed(() => {
@@ -600,11 +594,11 @@ export class ReviewGrid implements CursorSource {
     const page = w.pages[this.currentPage()];
     const r = this.result();
     if (!page || !r) return '';
-    const n = new Intl.NumberFormat(this.prefs.locale());
+    const n = this.fmt.formatter();
     if (page.number === null) return page.next ? 'Page —' : 'Last page';
-    if (r.pageCount !== null) return `Page ${n.format(page.number)} of ${n.format(r.pageCount)}`;
+    if (r.pageCount !== null) return `Page ${n.number(page.number)} of ${n.number(r.pageCount)}`;
     const atLeast = Math.ceil(Number(r.total.value) / w.pageSize);
-    return `Page ${n.format(page.number)} of ≥ ${n.format(atLeast)}`;
+    return `Page ${n.number(page.number)} of ≥ ${n.number(atLeast)}`;
   });
   protected readonly canGoBack = computed(
     () => this.currentPage() > 0 || this.window().hasPrevious,
@@ -620,10 +614,10 @@ export class ReviewGrid implements CursorSource {
     const last = Math.min(shown - 1, this.scrollRow() + this.visibleCount() - 1);
     const a = w.position(this.loadedIndex(first));
     const b = w.position(this.loadedIndex(last));
-    const n = new Intl.NumberFormat(this.prefs.locale());
+    const n = this.fmt.formatter();
     return a !== null && b !== null
-      ? `Rows ${n.format(a)}–${n.format(b)} of ${this.countText()}`
-      : `${n.format(last - first + 1)} rows near the end of ${this.countText()}`;
+      ? `Rows ${n.number(a)}–${n.number(b)} of ${this.countText()}`
+      : `${n.number(last - first + 1)} rows near the end of ${this.countText()}`;
   });
   protected readonly selectedOnPage = computed(() => {
     const ids = this.pageRows(this.currentPage()).map((r) => r.documentId);
@@ -2064,11 +2058,13 @@ export class ReviewGrid implements CursorSource {
     const f = this.format();
     switch (column.format) {
       case 'date':
-        return f.formatDate(String(value));
+        return f.dateTime(String(value));
+      case 'day':
+        return f.calendarDate(String(value));
       case 'size':
-        return f.formatSize(Number(value));
+        return f.bytes(Number(value));
       case 'number':
-        return f.formatNumber(Number(value));
+        return f.number(Number(value));
       default:
         return String(value);
     }

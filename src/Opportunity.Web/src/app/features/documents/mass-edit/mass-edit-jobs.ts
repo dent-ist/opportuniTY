@@ -12,6 +12,7 @@ import { JobFeed } from '../../../core/jobs/job-feed';
 import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { ToastService } from '../../../ui';
 import { BulkCodingApi, BulkJob, isFinished } from './bulk-coding-api';
+import { formatterFor } from '../../../core/i18n';
 
 /** How often running jobs and materializing frozen sets are polled. */
 export const MASS_EDIT_POLL_MS = new InjectionToken<number>('MASS_EDIT_POLL_MS', {
@@ -115,13 +116,13 @@ export class MassEditJobs {
 
 /** "Updated 58,201 · Skipped 129 · Failed 0" (+ unchanged and no-longer-permitted when there are any). */
 export function outcomeText(job: BulkJob, locale: string): string {
-  const n = new Intl.NumberFormat(locale);
+  const n = formatterFor(locale);
   const parts = [
-    `Updated ${n.format(job.applied)}`,
-    `Skipped ${n.format(job.skipped)}`,
-    `Failed ${n.format(job.failed)}`,
+    `Updated ${n.number(job.applied)}`,
+    `Skipped ${n.number(job.skipped)}`,
+    `Failed ${n.number(job.failed)}`,
   ];
-  if (job.unchanged) parts.push(`Already set ${n.format(job.unchanged)}`);
-  if (job.excluded) parts.push(`No longer permitted ${n.format(job.excluded)}`);
+  if (job.unchanged) parts.push(`Already set ${n.number(job.unchanged)}`);
+  if (job.excluded) parts.push(`No longer permitted ${n.number(job.excluded)}`);
   return parts.join(' · ');
 }

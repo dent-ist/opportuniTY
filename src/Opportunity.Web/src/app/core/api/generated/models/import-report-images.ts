@@ -6,4 +6,5 @@ export interface ImportReportImages {
   documentsWithoutImages: number | string;
   pagesLinked: number | string;
   pagesMissing: number | string;
+  pagesQuarantined?: number | string;
 }

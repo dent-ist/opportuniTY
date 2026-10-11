@@ -116,7 +116,7 @@ describe('Export List (CSV) (#181)', () => {
       expect(
         progressText(exportResource('failed', { statusReason: 'Permission lost.' }), 'en'),
       ).toBe('The export failed: Permission lost.');
-      expect(sizeText(512, 'en')).toBe('512 bytes');
+      expect(sizeText(512, 'en')).toBe('512 B');
       expect(sizeText(12_700, 'en')).toBe('12.4 KB');
     });
   });

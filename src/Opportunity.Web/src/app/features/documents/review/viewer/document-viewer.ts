@@ -98,6 +98,8 @@ export class DocumentViewer {
   private readonly injector = inject(Injector);
   protected readonly canDownload =
     inject(WorkspaceContext, { optional: true })?.can(PERMISSIONS.downloadNative) ?? false;
+  protected readonly canViewQuarantined =
+    inject(WorkspaceContext, { optional: true })?.can(PERMISSIONS.viewQuarantined) ?? false;
 
   protected readonly modes = VIEWER_MODES;
   protected readonly noAccess = NO_ACCESS;

@@ -305,6 +305,27 @@ All *Proposed* until lead-architect and product-owner sign-off.
 | B-4 | ADR-001 §7.3: the restore catch-up may lower `workspace_search_watermark` to the snapshot anchor (offline, before writers start) |
 | B-5 | ADR-020 rule 2: the SeaweedFS filer store runs in a PostgreSQL cluster separate from the application cluster |
 
+## Implementation (E19-T08, #164)
+
+§2–§8 are implemented as decided; the runbook is [backup-and-restore.md](../operations/backup-and-restore.md). Where the
+implementation chose a detail the ADR left open:
+
+- **Schema** (V0070): `opportunity.search_snapshot` (installation-level) and `opportunity.search_snapshot_anchor` (tenant,
+  RLS, expires with its snapshot by cascade), `opportunity.restore_run`, taxonomy `Integrity.Restored`, checkpoint reason
+  `AfterRestore`, session revocation reason `Restore`. The anchors of one snapshot are committed workspace by workspace
+  (one transaction each) before the snapshot starts; each is a lower bound because the watermark only rises.
+- **Scheduling:** backups are taken by age (newest full > 7 d, newest full/diff > 1 d, newest backup > 6 h) by the
+  `pgbackrest` service instead of clock times, so a missed window is made up at once; verification (`pgbackrest verify`
+  plus a restore test) weekly.
+- **Path C** lowers every watermark to 0 so freshness reads *Updating* until `jobs reindex` switched; the tool lists the
+  workspaces to reindex. **Path B** is refused by `restore plan` and `restore reconcile` (not automated).
+- **Lost window:** certified deletions close the workspace; production and export outputs are reported and need operator
+  acknowledgment before the pre-open gates pass. Blocking production finalization automatically is not implemented yet.
+- **Objects:** versioning is turned on by the migrator bootstrap (`ObjectStorage:S3:Versioning`) after the contract suite
+  passed against a versioned SeaweedFS bucket; single objects are recovered with `restore object`.
+- **Not measured yet** (§9 verdicts stay pending): the 1M PITR and snapshot drills and the full DR drill need the Full
+  reference host (Q-70); the development drills and their numbers are in the runbook.
+
 ## Links
 
 - Design: [restore-consistency.md](../architecture/restore-consistency.md)

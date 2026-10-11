@@ -279,13 +279,15 @@ the dump.
 
 ## 10. What `E19-T08` builds
 
-| Piece | Notes |
-|---|---|
-| pgBackRest configuration for Full, `restore-to-time` script, weekly `pgbackrest verify` plus a restore test | ADR-016 §2 |
-| `backup search-snapshot` job and the anchor tables (migration) | §3 |
-| `restore plan` (R1: lists `T_r` candidates, snapshot, path, loss window) | refuses invalid combinations |
-| `restore reconcile` (R6: §4.3–§4.6, idempotent, audited as `service:ops-cli`) | per workspace, resumable |
-| `restore verify` (§7.1 gates, §7.2 inventory, §7.3 convergence) | exit code 0 only when every gate passes |
-| Taxonomy `Integrity.Restored`, checkpoint reason `AfterRestore`, `sys/restores/…` record | ADR-016 §5.3 |
-| Versioning, lifecycle and `filer.sync` setup, plus a contract-suite run with versioning on | ADR-016 §4 |
-| Runbook `docs/operations/backup-and-restore.md` and the drills of the `E19-T08` acceptance criteria | |
+Status: implemented (see the table's last column); runbook [backup-and-restore.md](../operations/backup-and-restore.md).
+
+| Piece | Notes | Implemented in |
+|---|---|---|
+| pgBackRest configuration for Full, `restore-to-time` script, weekly `pgbackrest verify` plus a restore test | ADR-016 §2 | `deploy/docker-compose/full/pgbackrest/`, `pgbackrest` service |
+| `backup search-snapshot` job and the anchor tables (migration) | §3 | `SearchSnapshotService` (dispatcher, hourly), V0070 |
+| `restore plan` (R1: lists `T_r` candidates, snapshot, path, loss window) | refuses invalid combinations | `RestorePlanner` |
+| `restore reconcile` (R6: §4.3–§4.6, idempotent, audited as `service:ops-cli`) | per workspace, resumable | `RestoreService.ReconcileAsync`, `RestoreStore` |
+| `restore verify` (§7.1 gates, §7.2 inventory, §7.3 convergence) | exit code 0 only when every gate passes | `RestoreService.VerifyAsync`, `SearchRestoreChecks` |
+| Taxonomy `Integrity.Restored`, checkpoint reason `AfterRestore`, `sys/restores/…` record | ADR-016 §5.3 | `restore record` |
+| Versioning, lifecycle and `filer.sync` setup, plus a contract-suite run with versioning on | ADR-016 §4 | migrator bootstrap, `restore object`, `--profile replica` |
+| Runbook `docs/operations/backup-and-restore.md` and the drills of the `E19-T08` acceptance criteria | | development drills automated; Full-hardware drills listed in the runbook |

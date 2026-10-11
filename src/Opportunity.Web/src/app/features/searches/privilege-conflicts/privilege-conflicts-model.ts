@@ -5,6 +5,7 @@ import type {
   ConflictMember,
   ConflictReason,
 } from './privilege-conflicts-api';
+import { formatterFor } from '../../../core/i18n';
 
 // Pure helpers of the Privilege Conflicts screen (E13-T02), tested without a browser.
 
@@ -72,9 +73,9 @@ export function valueText(value: CodedValue | null): string {
 
 /** "3 family conflicts · 1 duplicate conflict". */
 export function summaryText(families: number, duplicates: number, locale: string): string {
-  const n = new Intl.NumberFormat(locale);
+  const n = formatterFor(locale);
   const part = (count: number, one: string, many: string) =>
-    `${n.format(count)} ${count === 1 ? one : many}`;
+    `${n.number(count)} ${count === 1 ? one : many}`;
   return `${part(families, 'family conflict', 'family conflicts')} · ${part(duplicates, 'duplicate conflict', 'duplicate conflicts')}`;
 }
 

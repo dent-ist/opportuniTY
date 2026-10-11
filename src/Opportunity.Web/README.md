@@ -28,6 +28,10 @@ The component showcase (development builds only) is at `/dev/components`.
 - `src/styles/_tokens.scss`: design tokens; the only place literal colours may appear.
 - `src/app/ui/`: design-system components (`opp-*`), built on Angular CDK and `@angular/aria`.
 - `src/app/core/`: API client, problem-details handling, BFF session, preferences, workspace context.
+- `src/app/core/i18n/`: the only place dates, times and numbers become display text (E15-T05, Q-28):
+  `DisplayFormat` (user locale, date format and display time zone as signals; pipes `oppDateTime`, `oppDate`,
+  `oppNumber`) and the pure `Formatter`. `i18n-lint.spec.ts` fails on Intl formatters, `toLocaleString`, Angular
+  locale pipes, hard-coded locales or raw API timestamps anywhere else.
 - `src/app/shell/`: application shell (E15-T02): sign-in, authenticated layout, Workspaces list, workspace
   switcher and section navigation, "Not available", error and About pages.
 - `src/app/features/<area>/`: lazy-loaded feature pages under `/w/:workspaceId/…`.

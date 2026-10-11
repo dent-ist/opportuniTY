@@ -16,7 +16,7 @@
     [max]="count() || 1"
     [value]="saved()"
   ></progress>
-  <span class="mp__phase-value">{{ n().format(saved()) }} of {{ n().format(count()) }}</span>
+  <span class="mp__phase-value">{{ n().number(saved()) }} of {{ n().number(count()) }}</span>
 </div>
 <div class="mp__phase">
   <span class="mp__phase-label" [id]="ids + '-searchable'">Searchable</span>
@@ -35,26 +35,26 @@
   <dl class="mp__outcome" aria-label="Outcome">
     <div>
       <dt>Updated</dt>
-      <dd>{{ n().format(j.applied) }}</dd>
+      <dd>{{ n().number(j.applied) }}</dd>
     </div>
     <div>
       <dt>Skipped</dt>
-      <dd>{{ n().format(j.skipped) }}</dd>
+      <dd>{{ n().number(j.skipped) }}</dd>
     </div>
     <div>
       <dt>Failed</dt>
-      <dd>{{ n().format(j.failed) }}</dd>
+      <dd>{{ n().number(j.failed) }}</dd>
     </div>
     @if (j.unchanged) {
       <div>
         <dt>Already set</dt>
-        <dd>{{ n().format(j.unchanged) }}</dd>
+        <dd>{{ n().number(j.unchanged) }}</dd>
       </div>
     }
     @if (j.excluded) {
       <div>
         <dt>No longer permitted</dt>
-        <dd>{{ n().format(j.excluded) }}</dd>
+        <dd>{{ n().number(j.excluded) }}</dd>
       </div>
     }
   </dl>

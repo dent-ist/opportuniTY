@@ -9,7 +9,7 @@ address, word and value is invented: people are built from syllables and script 
 |---|---|
 | `tools/Opportunity.DataGenerator` | CLI (`opportunity-datagen`) |
 | `tools/Opportunity.DataGenerator.Corpus` | Generation model as a library (planner, chunk generator, text synthesizer, writers, statistics). Tooling only: `src/` must never reference it (enforced by `ToolingIsolationTests`). |
-| `tests/Opportunity.DataGenerator.Tests` | Determinism, distribution, integrity, text/needle, streaming-memory, load-file volume and defect tests |
+| `tests/Opportunity.DataGenerator.Tests` | Determinism, distribution, integrity, text/needle, streaming-memory, load-file volume, defect and known-answer fixture tests |
 
 ## Usage
 
@@ -274,3 +274,53 @@ this flat profile but was not run here (it needs roughly 0.7 TB of disk with tex
 Throughput is dominated by file creation: page images (mean ~18 pages per document with default text sizes) are
 millions of files at 1M documents; use `--image-format multipage-tiff` or `--no-images` for large metadata/text
 benchmarks.
+
+## Known-answer STR and production-QC fixtures (E17-T09)
+
+`known-answer` writes two small synthetic fixtures whose answers are known before the features run, plus their ground
+truth. Code: `tools/Opportunity.DataGenerator.Corpus/KnownAnswer`.
+
+```bash
+opportunity-datagen known-answer --seed 147 --out ./known-answer
+# --str-families 10 --str-standalone 8 --qc-random-families 4 --qc-random-standalone 4 (defaults)
+```
+
+| File | Content |
+|---|---|
+| `str-fixture.json` | The report's terms and every document: control number, family (parent, sequence), text and its planted snippets |
+| `str-ground-truth.json` | Per term: documents with hits, with family, unique hits, unique hits with family, planted occurrences, and the hit and family document lists; scope totals; how often each plant kind was planted |
+| `qc-fixture.json` | The production to build (Bates prefix, withheld documents `block`, text delivered, an endorsement stamping `{confidentiality}`) and per document: extension, pages, imaged pages, native/text stored, Privilege Status, redactions, Confidentiality Designation, produced or left out, planted scenario |
+| `qc-expected.json` | Every QC check (code, severity, overridable) with its expected status, document count and exceptions (control number and detail), the blocking/warning check and exception counts and the outcome |
+| `known-answer-manifest.json` | Seed, generator and fixture versions, size and SHA-256 of every file |
+
+Output is a pure function of seed and options (byte-identical across runs and machines; no timestamps). Bump
+`StrFixtureGenerator.Version` / `QcFixtureGenerator.Version` when output for an unchanged seed changes.
+
+**STR fixture.** Text is filler words that never contain `j q x y z` or an apostrophe, with planted snippets at least
+12 filler words apart (so two plants can never form a phrase or a proximity hit). Every plant kind appears at least
+once for any seed; a few documents have none.
+
+| Term | Planted hits | Planted near misses (decoys) |
+|---|---|---|
+| `zarqon` | 1–4 occurrences in any case; `zàrqon` (ASCII folding) | — |
+| `quexate` / `quexat*` | the exact form; stem variants `quexated`, `quexation`… (no stemming: only the wildcard finds them) | — |
+| `zib-quor` | `zib-quor`, `ZIB-QUOR`, `zib quor` (a hyphen splits tokens; the term is a phrase) | `zibquor`, `quor zib`, `zib` / `quor` alone |
+| `qo'zarn` | `qo'zarn`, `qo’zarn` (the typographic apostrophe folds to `'`) | `qozarn`, `qo'zarn's` (one token) |
+| `vexil W/5 zondra` | the pair 1–5 positions apart, either order (5 = the limit) | 6 (just outside) and 7–15 apart, `zondra` alone |
+| `vexil` | every pair above and `vexil` alone | — |
+| `quillon` | attachments only (families expand to their parents) | — |
+| `zyxqovant` | never planted | — |
+
+**QC fixture.** Planted in every fixture: a family with one withheld attachment (withheld member; privilege conflict for
+the whole family), a fully withheld family (no conflict), a withheld standalone, Redact with and without redactions, a
+redacted spreadsheet (produced natively), a spreadsheet with and without its native, a render failure with some and
+with all pages lacking images, missing text, a family member left out of the production; random families and
+documents add more; designations are None, CONFIDENTIAL or blank (highest-in-family rule). `QcFixtureGenerator.Expected`
+restates the gate's rules (E12-T07) over this state.
+
+**Tests.** `KnownAnswerTests` (determinism, coverage for 60 seeds, the STR ground truth against an independent
+tokenizer, the QC rules on a hand-built production). The integration suite runs the real features on seed 147:
+`KnownAnswerSearchTermReportTests` loads the STR fixture with its families, indexes it with the projection mapping's
+analyzers and compares the API's report and each term's hit set with the ground truth; `KnownAnswerProductionQcTests`
+seeds the QC fixture (coding, redactions, page images, stored objects), allocates Bates numbers and compares the QC
+gate's statuses, counts, exceptions and outcome with `qc-expected.json`.

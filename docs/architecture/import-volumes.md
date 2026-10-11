@@ -43,7 +43,13 @@ the folder does not exist.
 | DAT MD5 / SHA-1 / SHA-256 differs from the native | warning `hash-mismatch-md5` / `-sha1` / `-sha256`; computed value stored | same |
 | Text with invalid byte sequences | `TextEncodingWarning`, warning `text-encoding` | same |
 
-No outcome fails the chunk. An unreadable share (I/O error) fails the chunk transiently, so it is retried.
+| Native over `Import:Limits:MaxNativeBytes` (default 4 GiB) | row error `native-too-large`, not loaded | same |
+| Native bytes contradict the file name (e.g. a `.pdf` that is a ZIP, an executable under any non-program extension) | warning `native-type-mismatch`; the sniffed type is stored | same |
+| Native infected, or not screenable (encrypted, oversize, scan timeout, archive limits) | warning `native-quarantined`; stored and registered `Quarantined` | same |
+| OPT image infected or not screenable | warning `opt-image-quarantined`; stored `Quarantined`, the page has no image | same |
+
+No outcome fails the chunk. An unreadable share (I/O error) or an unreachable scanner fails the chunk transiently, so
+it is retried.
 
 ## Storage
 
@@ -59,6 +65,43 @@ No outcome fails the chunk. An unreadable share (I/O error) fails the chunk tran
   so a retried chunk finds its objects (HEAD) and uploads nothing. An overlay stores files under the existing document
   and keeps the earlier objects registered (ADR-011 §4.2). Objects of rows that end up not loaded are orphans for the
   reconciler.
+
+## Ingest hardening (E08-T09)
+
+Normative: ADR-015 D15/D16 (and their 2026-10-11 amendments), threat model T-44, T-45, T-48.
+
+- **Screening** (`Opportunity.Import.Scanning.IngestScreening`): after a native is stored (content-addressed, so a
+  retry is free) and before the chunk registers it, a ZIP native (Office Open XML and OpenDocument included) is held to
+  the archive limits, then the bytes go to the `IMalwareScanner` port. The ClamAV adapter (`ClamAvScanner`) streams them
+  to clamd with `zINSTREAM`; `FOUND` is Infected, `Heuristics.Encrypted.*` and `Heuristics.Limits.Exceeded.*` and
+  clamd's stream limit are Unscannable, a scan longer than `ScanTimeout` is Unscannable (`timeout`). OPT images are
+  scanned the same way. Extracted text is not scanned: it is inert and stays searchable.
+- **Quarantine:** Infected and Unscannable objects are registered with `state = 2` and their result
+  (`stored_object.scan_verdict`, `scan_detail`, `scan_engine`, `scanned_at`, V0069). The render planner only reads
+  committed natives, so a quarantined native is never rendered; the protected-content gateway serves it only as an
+  audited download with `Document.ViewQuarantined` (plus `Document.DownloadNative`); `GET …/documents/{id}` says
+  `native.quarantined`. Metadata and load-file text still load and stay searchable. Each chunk writes one
+  `Import.MalwareDetected` audit event (object and document ids, verdict counts, signatures). Release from quarantine
+  is not part of the MVP.
+- **Report:** `natives.quarantined`, `natives.hashMismatch` (documents whose load-file MD5/SHA-1/SHA-256 differs; also
+  audited per chunk as `Import.HashMismatch`) and `images.pagesQuarantined`, in the JSON report, `report.csv` and the
+  `Import.Completed` audit event.
+- **Configuration** (import worker; the API pre-flight reads the DAT limits too):
+
+  | Setting | Default | Effect |
+  |---|---|---|
+  | `Import:Limits:MaxRecordBytes` / `MaxFieldCount` | 32 MiB / 2,048 | DAT record limits, frozen with the preparation |
+  | `Import:Limits:MaxNativeBytes` | 4 GiB | larger natives fail their row |
+  | `Import:Limits:MaxArchiveRatio` / `MaxArchiveEntries` / `MaxArchiveDepth` | 100 / 100,000 / 5 | ZIP limits (ratio once ≥ 16 MiB expanded) |
+  | `Import:Limits:MaxNestedArchiveBytes` | 64 MiB | nested archives expanded in memory to inspect them |
+  | `Import:MalwareScanning:Mode` | `Off` (Full compose: `ClamAv`) | `Off` or `ClamAv` |
+  | `Import:MalwareScanning:Host` / `Port` | `clamav` / 3310 | clamd address |
+  | `Import:MalwareScanning:MaxScanBytes` | 2 GiB | larger files are Unscannable without being sent (keep ≤ clamd `StreamMaxLength`) |
+  | `Import:MalwareScanning:ScanTimeout` / `ConnectTimeout` | 00:10:00 / 00:00:10 | |
+  | `Import:MalwareScanning:MaxSignatureAge` | 2.00:00:00 (48 h) | readiness fails with older signatures (0 disables) |
+
+- **Output neutralization:** every platform-produced CSV/DAT cell goes through
+  `Opportunity.Core.Text.FormulaNeutralizer` (a unit test refuses other copies of the rule).
 
 ## Shared pieces
 

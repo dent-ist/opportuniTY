@@ -43,6 +43,7 @@ import {
   HttpFrozenSetApi,
   newIdempotencyKey,
 } from './frozen-set/frozen-set-api';
+import { DisplayFormat } from '../../core/i18n';
 
 const POLL_MS = 2000;
 
@@ -70,6 +71,7 @@ export class ExportDetail {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
@@ -104,9 +106,6 @@ export class ExportDetail {
     const total = Number(c.chunksTotal);
     return total > 0 ? { value: Number(c.chunksCommitted), max: total } : null;
   });
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium', timeStyle: 'short' }),
-  );
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.stop());
@@ -223,13 +222,11 @@ export class ExportDetail {
   }
 
   protected date(value: unknown): string {
-    return value ? this.dates().format(new Date(String(value))) : '';
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   protected num(value: number | string | null | undefined): string {
-    return value === null || value === undefined
-      ? '—'
-      : Number(value).toLocaleString(this.prefs.locale());
+    return value === null || value === undefined ? '—' : this.fmt.number(Number(value));
   }
 
   protected reportTotal(e: ExportResource): number {

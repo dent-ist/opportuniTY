@@ -3,12 +3,14 @@ import type { DocumentResource, SearchHit } from '../../../../core/api/generated
 import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { Announcer, Button, Icon } from '../../../../ui';
 import { DocumentContentApi } from '../review-ports';
+import { formatterFor } from '../../../../core/i18n';
 
 /**
  * Native mode (E16-T04): natives are never rendered in the browser in the MVP (Q-36), so this is a file card
  * (name, type, size, hashes) and **Download native** for roles with `Document.DownloadNative` (Q-18, off for
  * Reviewers by default). The download goes through the gateway, which audits it and sends an attachment; there
- * is no lasting link on the page.
+ * is no lasting link on the page. A native the import's malware screening quarantined (E08-T09) says so and
+ * downloads only with `Document.ViewQuarantined` as well (the gateway enforces and audits it).
  */
 @Component({
   selector: 'opp-viewer-native',
@@ -29,13 +31,29 @@ import { DocumentContentApi } from '../review-ports';
           </div>
         }
       </dl>
-      <p class="native__note">
-        Native files open in their own application; they are not displayed in the browser.
-      </p>
-      @if (canDownload()) {
+      @if (quarantined()) {
+        <p class="native__quarantine" role="note">
+          <opp-icon name="warning" /><span
+            ><strong>Content quarantined — not viewable.</strong> The import's malware screening
+            flagged this file, so it is never displayed or turned into images.</span
+          >
+        </p>
+      } @else {
+        <p class="native__note">
+          Native files open in their own application; they are not displayed in the browser.
+        </p>
+      }
+      @if (canDownload() && (!quarantined() || canViewQuarantined())) {
         <button type="button" oppButton="primary" (click)="download()">
-          <opp-icon name="download" />Download native
+          <opp-icon name="download" />{{
+            quarantined() ? 'Download quarantined native' : 'Download native'
+          }}
         </button>
+      } @else if (canDownload()) {
+        <p class="native__note">
+          <opp-icon name="lock" />Downloading a quarantined native needs the View Quarantined
+          permission.
+        </p>
       } @else {
         <p class="native__note">
           <opp-icon name="lock" />Your role does not allow downloading natives in this workspace.
@@ -52,11 +70,14 @@ export class ViewerNative {
   readonly metadata = input.required<DocumentResource>();
   /** `Document.DownloadNative` in this workspace. */
   readonly canDownload = input(false);
+  /** `Document.ViewQuarantined` in this workspace (needed as well for a quarantined native). */
+  readonly canViewQuarantined = input(false);
 
   private readonly api = inject(DocumentContentApi);
   private readonly announcer = inject(Announcer);
   private readonly prefs = inject(UiPreferences);
 
+  protected readonly quarantined = computed(() => this.metadata().native.quarantined === true);
   protected readonly name = computed(
     () => this.hit().fileName || `${this.metadata().controlNumber} (native)`,
   );
@@ -96,14 +117,5 @@ export class ViewerNative {
 }
 
 export function formatBytes(bytes: number, locale: string): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '—';
-  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  const n = new Intl.NumberFormat(locale, { maximumFractionDigits: unit === 0 ? 0 : 1 });
-  return `${n.format(value)} ${units[unit]}`;
+  return formatterFor(locale).bytes(bytes);
 }

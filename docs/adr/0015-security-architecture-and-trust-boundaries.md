@@ -598,6 +598,21 @@ and may relax it only through an amendment to this ADR.
    into SQL or DSL.
 5. **Output neutralization:** every platform-produced CSV, DAT and XLSX (load files, privilege logs, reports,
    error files) prefixes cells starting with `=`, `+`, `-`, `@`, tab or CR (`E08-T09`, `E12-T05`, `E13-T03`).
+6. *Amendment 2026-10-11 (E08-T09, #83), as implemented:* the limits are configuration (`Import:Limits:*` on the
+   import worker and the API pre-flight): `MaxRecordBytes` (default 32 MiB) and `MaxFieldCount` (2,048), as the
+   E08-T01 parser shipped, are frozen with an import's preparation so every chunk and the error file re-read the DAT
+   with the limits that planned it, and a record is held to the byte limit even when it fits the read buffer;
+   `MaxNativeBytes` (4 GiB) fails the row (`native-too-large`); `MaxArchiveRatio` (100:1, applied once the declared
+   expansion reaches 16 MiB), `MaxArchiveEntries` (100,000) and `MaxArchiveDepth` (5) are read from ZIP central
+   directories (Office Open XML and OpenDocument included; nested archives up to 64 MiB expanded in memory, never past
+   their declared size) and make the native Unscannable, so quarantined. Other archive formats are left to the
+   scanner. Magic-byte verification flags a native whose bytes contradict its file name (`native-type-mismatch`,
+   executables under a non-program extension included); the sniffed type is what the platform stores and renders
+   from. Hash mismatches are counted per document in the import report and audited (`Import.HashMismatch`). Output
+   neutralization is one shared rule (`Opportunity.Core.Text.FormulaNeutralizer`): a plain negative number such as
+   `-12.5` stays, anything else starting with `-` (e.g. `-2+3+cmd|…`) is prefixed, and full-width `＝ ＋ － ＠`
+   count too. The re-loadable error file keeps the source rows byte for byte (they must load again) and neutralizes
+   only its platform-written `ImportError` cell.
 
 ### D16. Malware scanning (Full on by default; Lite optional)
 
@@ -610,6 +625,17 @@ and may relax it only through an amendment to this ADR.
    searchable, because they are inert.
 3. The scanner health check fails when signatures are older than 48 h (Full). Rescanning older natives before
    download when signatures update is post-MVP.
+4. *Amendment 2026-10-11 (E08-T09, #83), as implemented:* the port is `Opportunity.Application.Import.IMalwareScanner`;
+   the ClamAV adapter (`ClamAvScanner`, `Import:MalwareScanning:Mode = ClamAv`) speaks `zINSTREAM`/`zVERSION` to clamd.
+   In Full a `clamav` service (Docker Hub `clamav/clamav`, digest-pinned in `versions.env`) sits on its own internal
+   `scan` network that only `worker-import` joins, plus `egress` for freshclam; clamd's plain TCP never crosses the
+   data tier, and clamd holds no credentials and never sees a path. Infected and Unscannable results are stored on
+   the object's registry row (`stored_object.scan_verdict/scan_detail/scan_engine/scanned_at`, V0069) and register it
+   `Quarantined` (state 2); each import chunk writes one `Import.MalwareDetected` audit event listing the quarantined
+   object and document ids and the signatures. A clamd that cannot be reached, or answers an unexpected error, fails
+   the chunk transiently (retried) rather than judging the file. A quarantined OPT image is kept quarantined and its
+   page has no image. Lite defaults to `Off` (archive limits still apply). No permission was added: release from
+   quarantine is not part of the MVP.
 
 ### D17. Supply chain and secure SDLC
 

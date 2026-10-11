@@ -44,6 +44,8 @@ export function reportGroups(s: ImportReportResource): readonly ReportGroup[] {
   const files = [
     fact('Natives stored', s.natives.linked),
     fact('Natives missing', s.natives.missing, true),
+    fact('Natives quarantined (malware or not scannable)', s.natives.quarantined, true),
+    fact('Natives whose hash differs from the load file', s.natives.hashMismatch, true),
     fact('Extracted text stored', s.text.linked),
     fact('Extracted text missing', s.text.missing, true),
     fact('Text over the search size limit', s.text.truncated, true),
@@ -53,6 +55,7 @@ export function reportGroups(s: ImportReportResource): readonly ReportGroup[] {
     fact('Documents without page images', s.images.documentsWithoutImages, true),
     fact('Pages stored', s.images.pagesLinked),
     fact('Pages missing', s.images.pagesMissing, true),
+    fact('Images quarantined (malware or not scannable)', s.images.pagesQuarantined, true),
   ];
   const families = [
     fact('Families built', s.families.built),

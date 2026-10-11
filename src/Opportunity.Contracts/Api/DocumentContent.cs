@@ -49,7 +49,11 @@ public sealed record DocumentTextInfo(
 
 /// <param name="Available">A native file is stored (downloading it needs <c>Document.DownloadNative</c>).</param>
 /// <param name="Missing">The load file referenced a native that was not delivered.</param>
-public sealed record DocumentNativeInfo(bool Available, bool Missing, long? SizeBytes, string? FileExtension);
+/// <param name="Quarantined">
+/// The native is quarantined (E08-T09: infected, or it could not be screened): it is never rendered, and downloading
+/// it needs <c>Document.ViewQuarantined</c> as well as <c>Document.DownloadNative</c>.
+/// </param>
+public sealed record DocumentNativeInfo(bool Available, bool Missing, long? SizeBytes, string? FileExtension, bool Quarantined = false);
 
 /// <summary>The active page set (ADR-012); list its pages with <c>GET …/pages</c>.</summary>
 /// <param name="Available">The document has an active page set.</param>

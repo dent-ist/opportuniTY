@@ -27,6 +27,7 @@ import {
   sizeText,
   toRequest,
 } from './list-export-model';
+import { DisplayFormat } from '../../../core/i18n';
 
 export interface ListExportData {
   /** The checked rows (or "all results"), null when nothing is selected. */
@@ -143,6 +144,7 @@ export class ListExportDialog {
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
@@ -161,9 +163,7 @@ export class ListExportDialog {
   protected readonly selectionLabel = computed(() => {
     const s = this.data.selection;
     if (!s) return '0';
-    return s.kind === 'all'
-      ? `all ${s.countText}`
-      : new Intl.NumberFormat(this.prefs.locale()).format(s.documentIds.length);
+    return s.kind === 'all' ? `all ${s.countText}` : this.fmt.number(s.documentIds.length);
   });
   protected readonly problem = computed(
     () => this.error() ?? rowsProblem(rowsFor(this.scope(), this.data.selection, this.data.list)),

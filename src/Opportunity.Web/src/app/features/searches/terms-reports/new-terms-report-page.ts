@@ -11,8 +11,6 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
-import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { Announcer, Button, Icon, Select, SelectOption, TextField } from '../../../ui';
 import {
   FrozenSetSummary,
@@ -37,6 +35,7 @@ import {
   parseTermsCsv,
   reportErrorText,
 } from './search-term-report-model';
+import { DisplayFormat } from '../../../core/i18n';
 
 type TermSource = 'paste' | 'csv';
 
@@ -64,8 +63,7 @@ const PREVIEW_ROWS = 200;
 export class NewTermsReportPage {
   private readonly api = inject(SearchTermReportApi);
   private readonly savedApi = inject(SavedSearchApi);
-  private readonly context = inject(WorkspaceContext);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly announcer = inject(Announcer);
@@ -74,7 +72,7 @@ export class NewTermsReportPage {
 
   protected readonly scopeKinds = SCOPE_KINDS;
   protected readonly previewRows = PREVIEW_ROWS;
-  protected readonly name = signal(defaultReportName(new Date(), this.prefs.locale()));
+  protected readonly name = signal(defaultReportName(new Date(), this.fmt.formatter()));
   protected readonly scopeKind = signal<ReportScopeKind>('savedSearch');
   protected readonly savedSearchId = signal('');
   protected readonly snapshotId = signal('');
@@ -93,15 +91,13 @@ export class NewTermsReportPage {
   /** One key per draft: a retry after a lost answer starts no second job. */
   private idempotency: { key: string; body: string } | null = null;
 
-  private readonly timeZone = this.context.workspace.displayTimeZone || 'UTC';
-
   protected readonly parsed = computed<ParsedTerms>(() => {
     if (this.source() === 'csv') return this.csvFile()?.parsed ?? EMPTY;
     return parsePastedTerms(this.pasted());
   });
   protected readonly termCountText = computed(() => {
     const n = this.parsed().terms.length;
-    return `${new Intl.NumberFormat(this.prefs.locale()).format(n)} ${n === 1 ? 'term' : 'terms'}`;
+    return `${this.fmt.number(n)} ${n === 1 ? 'term' : 'terms'}`;
   });
 
   protected readonly savedOptions = computed<SelectOption[]>(() => {
@@ -111,11 +107,10 @@ export class NewTermsReportPage {
       .map((s) => ({ value: s.savedSearchId, label: s.name }));
   });
   protected readonly frozenOptions = computed<SelectOption[]>(() => {
-    const locale = this.prefs.locale();
-    const n = new Intl.NumberFormat(locale);
+    const n = this.fmt.formatter();
     return (this.frozenSets() ?? []).map((f) => ({
       value: f.snapshotId,
-      label: `${f.name} · ${f.documentCount === null ? 'freezing' : n.format(f.documentCount) + ' documents'}${f.frozenAt ? ' · ' + formatDate(f.frozenAt, locale, this.timeZone) : ''}`,
+      label: `${f.name} · ${f.documentCount === null ? 'freezing' : n.number(f.documentCount) + ' documents'}${f.frozenAt ? ' · ' + formatDate(f.frozenAt, n) : ''}`,
       disabled: f.documentCount === null,
     }));
   });

@@ -1,9 +1,12 @@
+using System.Globalization;
+
 using Opportunity.Application.Import;
 using Opportunity.Application.Storage;
 using Opportunity.Contracts.Import;
 using Opportunity.Core.Documents;
 using Opportunity.Import.LoadFiles;
 using Opportunity.Import.Mapping;
+using Opportunity.Import.Scanning;
 using Opportunity.Import.Volumes;
 
 using CoreArea = Opportunity.Core.Storage.ObjectArea;
@@ -18,9 +21,21 @@ namespace Opportunity.Import.Jobs;
 /// <c>TextLength</c> (full length), <c>TextTruncated</c> (above the indexed-text cap; the full text stays in storage)
 /// and <c>TextEncodingWarning</c>. A missing file flags the row (or, configured, fails it); a path that leaves the
 /// volume always fails it. Neither fails the chunk.
+/// Ingest hardening (E08-T09): a native over <see cref="ImportLimits.MaxNativeBytes"/> fails its row; a native whose
+/// bytes contradict its file name is flagged (<c>native-type-mismatch</c>); every stored native is screened
+/// (<see cref="IngestScreening"/>) and an Infected or Unscannable one is registered Quarantined with a
+/// <c>native-quarantined</c> warning — its metadata and text still load, it is never rendered.
 /// </summary>
 public sealed class ImportArtifactLinker
 {
+    /// <summary>Row issue codes of ingest hardening (E08-T09).</summary>
+    public static class Codes
+    {
+        public const string NativeTooLarge = "native-too-large";
+        public const string NativeTypeMismatch = "native-type-mismatch";
+        public const string NativeQuarantined = "native-quarantined";
+    }
+
     private readonly ColumnBinding? _native;
     private readonly ColumnBinding? _text;
     private readonly PathSettings _paths;
@@ -29,11 +44,13 @@ public sealed class ImportArtifactLinker
     private readonly string? _volumeError;
     private readonly VolumeObjectWriter _writer;
     private readonly int _textCap;
+    private readonly IngestScreening _screening;
 
     private ImportArtifactLinker(
         ColumnBinding? native, ColumnBinding? text, PathSettings paths, LoadFileEncodingKind? textEncoding, ImportVolume? volume,
-        string? volumeError, VolumeObjectWriter writer, int textCap)
+        string? volumeError, VolumeObjectWriter writer, int textCap, IngestScreening screening)
     {
+        _screening = screening;
         _native = native;
         _text = text;
         _paths = paths;
@@ -86,7 +103,8 @@ public sealed class ImportArtifactLinker
     /// unmounted share), the first row that names a file throws <see cref="DirectoryNotFoundException"/>, so the chunk
     /// is retried; rows with blank links still load.
     /// </summary>
-    public static ImportArtifactLinker? Create(CompiledMapping mapping, ImportJobOptions options, ImportVolumeOptions volumes, IObjectStore store)
+    public static ImportArtifactLinker? Create(
+        CompiledMapping mapping, ImportJobOptions options, ImportVolumeOptions volumes, IObjectStore store, IngestScreening? screening = null)
     {
         ArgumentNullException.ThrowIfNull(mapping);
         ArgumentNullException.ThrowIfNull(options);
@@ -108,7 +126,8 @@ public sealed class ImportArtifactLinker
         }
 
         var encoding = LoadFileSettingsResolver.ResolveEncoding(mapping.EffectiveProfile.LoadFile.TextEncoding, "text", []);
-        return new ImportArtifactLinker(native, text, paths, encoding, volume, volumeError, new VolumeObjectWriter(store), options.IndexedTextCap);
+        return new ImportArtifactLinker(native, text, paths, encoding, volume, volumeError, new VolumeObjectWriter(store), options.IndexedTextCap,
+            screening ?? new IngestScreening(options.Limits, null));
     }
 
     /// <summary>
@@ -165,9 +184,31 @@ public sealed class ImportArtifactLinker
             return;
         }
 
+        var size = new FileInfo(file.FullPath!).Length;
+        if (size > _screening.Limits.MaxNativeBytes)
+        {
+            issues.Add(new ImportRowIssue(ImportIssueSeverity.Error, Codes.NativeTooLarge, Truncate(string.Create(CultureInfo.InvariantCulture,
+                $"The native has {size} bytes; at most {_screening.Limits.MaxNativeBytes} are loaded (Import:Limits:MaxNativeBytes).")), column));
+            return;
+        }
+
         var stored = await _writer.StoreFileAsync(document.WorkspaceId, document.DocumentId, CoreArea.Native, file.FullPath!, cancellationToken)
             .ConfigureAwait(false);
-        objects.Add(stored.Stored);
+        var sniffed = stored.Stored.ContentType;
+        if (FileTypeVerifier.Mismatch(raw, sniffed) is { } mismatch)
+        {
+            issues.Add(new ImportRowIssue(ImportIssueSeverity.Warning, Codes.NativeTypeMismatch, Truncate(mismatch), column));
+        }
+
+        var scan = await _screening.ScreenAsync(file.FullPath!, sniffed, cancellationToken).ConfigureAwait(false);
+        if (scan is { Quarantines: true })
+        {
+            issues.Add(new ImportRowIssue(ImportIssueSeverity.Warning, Codes.NativeQuarantined, Truncate(
+                (scan.Verdict == MalwareScanVerdict.Infected ? $"The native is infected ({scan.Detail})" : $"The native could not be screened ({scan.Detail})")
+                + "; it is quarantined: never rendered, downloadable only with Document.ViewQuarantined."), column));
+        }
+
+        objects.Add(stored.Stored with { Scan = scan });
         CompareHash(document.Md5, stored.Md5, "MD5", "md5", column, issues);
         CompareHash(document.Sha1, stored.Sha1, "SHA-1", "sha1", column, issues);
         CompareHash(document.Sha256, stored.Stored.Sha256, "SHA-256", "sha256", column, issues);

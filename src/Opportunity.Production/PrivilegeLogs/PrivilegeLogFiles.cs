@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Opportunity.Contracts.Api;
+using Opportunity.Core.Text;
 
 namespace Opportunity.Production.PrivilegeLogs;
 
@@ -256,10 +257,7 @@ public static class PrivilegeLogFiles
     private static string CsvValue(string? value)
     {
         var v = value ?? string.Empty;
-        if (v.Length > 0 && (v[0] is '=' or '+' or '@' or '\t' or '\r' || (v[0] == '-' && (v.Length == 1 || !char.IsDigit(v[1])))))
-        {
-            v = "'" + v;
-        }
+        v = FormulaNeutralizer.Neutralize(v);
 
         return v.AsSpan().IndexOfAny(",\"\r\n") >= 0 ? "\"" + v.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"" : v;
     }

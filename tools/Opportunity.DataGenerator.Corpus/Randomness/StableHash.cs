@@ -50,4 +50,6 @@ public enum StreamTag : ulong
     FamilyKey = 20,
     VolumeDefect = 21,
     VolumeChoice = 22,
+    KnownAnswerStr = 23,
+    KnownAnswerQc = 24,
 }

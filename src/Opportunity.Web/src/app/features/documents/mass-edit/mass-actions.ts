@@ -97,7 +97,6 @@ export class MassActions {
         fields: this.fields() ?? [],
         canWritePrivilege: this.context.can(CODING_WRITE_PRIVILEGE),
         showGeneration: this.context.can(JOB_VIEW_ALL),
-        timeZone: this.context.workspace.displayTimeZone || 'UTC',
       },
       width: '40rem',
       injector: this.injector,

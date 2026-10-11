@@ -122,7 +122,7 @@ test('rebinds a shortcut and turns single keys off by keyboard; both follow the 
   await tabTo(page, trigger);
   await page.keyboard.press('Enter');
   const item = page.getByRole('menuitem', { name: 'Keyboard shortcuts…' });
-  for (let i = 0; i < 10 && !(await item.evaluate((el) => el === document.activeElement)); i++) {
+  for (let i = 0; i < 20 && !(await item.evaluate((el) => el === document.activeElement)); i++) {
     await page.keyboard.press('ArrowDown');
   }
   await page.keyboard.press('Enter');

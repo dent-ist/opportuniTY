@@ -9,7 +9,6 @@ import {
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiError, describeError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { acknowledgmentPath } from '../../core/workspace/acknowledgment';
 import { WorkspaceDirectory } from '../../core/workspace/workspace-api';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
@@ -35,6 +34,7 @@ import {
   PublishAcknowledgmentData,
   PublishAcknowledgmentDialog,
 } from './publish-acknowledgment-dialog';
+import { DisplayFormat } from '../../core/i18n';
 
 const STATUS: Record<RosterEntry['status'], { label: string; tone: BadgeTone }> = {
   current: { label: 'Accepted', tone: 'success' },
@@ -65,7 +65,7 @@ export class AcknowledgmentsAdminPage {
   private readonly router = inject(Router);
   private readonly directory = inject(WorkspaceDirectory);
   private readonly injector = inject(Injector);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly loading = signal(true);
   protected readonly loadError = signal<ApiError | null>(null);
@@ -174,13 +174,6 @@ export class AcknowledgmentsAdminPage {
   }
 
   protected date(value: unknown): string {
-    if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(d);
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 }

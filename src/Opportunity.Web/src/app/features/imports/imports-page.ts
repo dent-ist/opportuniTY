@@ -1,11 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ImportResource } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { Badge, Button, EmptyState, ErrorState, Icon, LoadingState, StatusPill } from '../../ui';
 import { HttpImportApi, ImportApi } from './import-api';
 import { JOB_STATUS, MODE_LABELS } from './import-model';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * Imports: the import history of the workspace (familiarity guide §2.3, ticket review E08-T08), newest first, with
@@ -21,7 +21,7 @@ import { JOB_STATUS, MODE_LABELS } from './import-model';
 })
 export class ImportsPage {
   private readonly api = inject(ImportApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly items = signal<readonly ImportResource[]>([]);
   protected readonly nextCursor = signal<string | null>(null);
@@ -31,21 +31,18 @@ export class ImportsPage {
   protected readonly modeLabels = MODE_LABELS;
   protected readonly jobStatus = JOB_STATUS;
 
-  protected readonly n = computed(() => new Intl.NumberFormat(this.prefs.locale()));
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium', timeStyle: 'short' }),
-  );
+  protected readonly n = this.fmt.formatter;
 
   constructor() {
     void this.load();
   }
 
   protected date(value: unknown): string {
-    return value ? this.dates().format(new Date(String(value))) : '';
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   protected num(value: number | string | null | undefined): string {
-    return value === null || value === undefined ? '' : this.n().format(Number(value));
+    return value === null || value === undefined ? '' : this.n().number(Number(value));
   }
 
   protected async load(): Promise<void> {

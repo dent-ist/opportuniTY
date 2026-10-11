@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import {
@@ -28,6 +27,7 @@ import {
   PrivilegeLogApi,
   SavedSearchChoice,
 } from './privilege-logs-api';
+import { DisplayFormat, NumberPipe } from '../../../core/i18n';
 
 type SourceKind = 'production' | 'savedSearch';
 
@@ -43,6 +43,7 @@ type SourceKind = 'production' | 'savedSearch';
 @Component({
   selector: 'opp-privilege-logs-page',
   imports: [
+    NumberPipe,
     Badge,
     Button,
     EmptyState,
@@ -61,10 +62,9 @@ type SourceKind = 'production' | 'savedSearch';
 export class PrivilegeLogsPage {
   private readonly api = inject(PrivilegeLogApi);
   private readonly context = inject(WorkspaceContext);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
-  private readonly timeZone = this.context.workspace.displayTimeZone || 'UTC';
   /** `?production=<id>` from a production's Privilege Log tab preselects it (E12-T08). */
   private readonly requested = inject(ActivatedRoute).snapshot.queryParamMap.get('production');
 
@@ -241,17 +241,15 @@ export class PrivilegeLogsPage {
   }
 
   protected generatedAt(version: LogVersion): string {
-    return formatDate(version.generatedAt, this.prefs.locale(), this.timeZone);
+    return formatDate(version.generatedAt, this.fmt.formatter());
   }
 
   protected count(n: number, noun: string): string {
-    return `${n.toLocaleString(this.prefs.locale())} ${noun}${n === 1 ? '' : 's'}`;
+    return `${this.fmt.number(n)} ${noun}${n === 1 ? '' : 's'}`;
   }
 
   protected size(bytes: number): string {
-    return bytes < 1024
-      ? `${bytes.toLocaleString(this.prefs.locale())} B`
-      : `${(bytes / 1024).toLocaleString(this.prefs.locale(), { maximumFractionDigits: 1 })} KB`;
+    return this.fmt.bytes(bytes);
   }
 
   protected short(sha: string): string {

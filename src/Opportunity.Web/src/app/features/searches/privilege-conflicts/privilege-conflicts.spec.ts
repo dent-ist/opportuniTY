@@ -159,7 +159,7 @@ describe('Searches › Privilege Conflicts (E13-T02)', () => {
     expect(text(family.querySelector('h3')!)).toBe('Family of ACM0001');
     expect(text(family)).toContain('Withheld member');
     expect(text(family)).toContain('Withhold');
-    expect(text(family)).toContain('by Alex Privilege, Oct 8, 2026');
+    expect(text(family)).toContain('by Alex Privilege, 10/08/2026');
     expect(text(family)).toContain('by Sam Second');
     expect(text(family)).toContain('Attachment 1');
     expect(family.querySelector('a.pc__open')?.getAttribute('href')).toBe(

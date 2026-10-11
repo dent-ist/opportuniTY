@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, model } from '@angular/core';
 import type { EndorsementPositionResource } from '../../core/api/generated/models';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { Checkbox, Select, SelectOption, TextField } from '../../ui';
 import { ENDORSEMENT_SLOTS, ProductionForm, batesPreview } from './production-model';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * The editable part of a production specification (familiarity guide §5.6): Bates numbering with a preview of the
@@ -18,7 +18,7 @@ import { ENDORSEMENT_SLOTS, ProductionForm, batesPreview } from './production-mo
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SpecificationForm {
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   readonly form = model.required<ProductionForm>();
   /** Documents of the frozen set, for the Bates preview. */
@@ -63,6 +63,6 @@ export class SpecificationForm {
   }
 
   protected num(n: number | null): string {
-    return n === null ? '—' : n.toLocaleString(this.prefs.locale());
+    return n === null ? '—' : this.fmt.number(n);
   }
 }

@@ -128,7 +128,9 @@ public sealed class SeaweedFsProvider : ContainerS3Provider
 
     protected override ContainerBuilder Configure(ContainerBuilder builder) => builder
         .WithResourceMapping(Encoding.UTF8.GetBytes(IdentitiesJson), "/etc/seaweedfs/s3.json")
-        .WithCommand("server", "-dir=/data", "-ip.bind=0.0.0.0", "-volume.max=0", "-s3", "-s3.config=/etc/seaweedfs/s3.json");
+        // Small volumes: every bucket is a collection with volumes of its own, which a nearly full shared CI disk could not
+        // reserve at the 30 GB default (the versioned bucket of E19-T08 is the second collection).
+        .WithCommand("server", "-dir=/data", "-ip.bind=0.0.0.0", "-volume.max=0", "-master.volumeSizeLimitMB=256", "-s3", "-s3.config=/etc/seaweedfs/s3.json");
 }
 
 /// <summary>Garage (AGPL-3.0), single node, replication factor 1.</summary>

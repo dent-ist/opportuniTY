@@ -277,7 +277,7 @@ public sealed class ImportEndpoints : IApiEndpointModule
         await WorkspaceProvisioning.EnsureFieldsAsync(context.RequestServices, ws, cancellationToken).ConfigureAwait(false);
 
         var settingsIssues = new List<MappingIssue>();
-        var readerOptions = ImportSource.ReaderOptions(profile, null, settingsIssues);
+        var readerOptions = ImportSource.ReaderOptions(profile, null, settingsIssues, context.RequestServices.GetService<ImportLimits>());
         if (settingsIssues.Any(i => i.Severity == MappingIssueSeverity.Error))
         {
             return (null, MappingProblem(settingsIssues), null);
@@ -647,9 +647,9 @@ public sealed class ImportEndpoints : IApiEndpointModule
             report.CompletedAt,
             report.ElapsedSeconds,
             new ImportReportRows(report.RowsRead, report.RowsImported, report.RowsOverlaid, report.RowsSkipped, report.RowsErrored, report.RowsWithWarnings),
-            new ImportReportFiles(report.NativesLinked, report.NativesMissing),
+            new ImportReportFiles(report.NativesLinked, report.NativesMissing, 0, report.NativesQuarantined, report.NativesHashMismatch),
             new ImportReportFiles(report.TextLinked, report.TextMissing, report.TextTruncated),
-            new ImportReportImages(report.ImageDocumentsLinked, report.DocumentsWithoutImages, report.PagesLinked, report.PagesMissing),
+            new ImportReportImages(report.ImageDocumentsLinked, report.DocumentsWithoutImages, report.PagesLinked, report.PagesMissing, report.PagesQuarantined),
             new ImportReportFamilies(report.FamiliesBuilt, report.FamilyOrphans),
             report.FieldsCreated,
             report.ChoicesCreated,
@@ -865,8 +865,11 @@ public static class ImportEndpointRegistration
         {
             VolumeShareRoot = configuration[$"{ImportVolumeOptions.SectionName}:{nameof(ImportVolumeOptions.VolumeShareRoot)}"],
         });
+        // The DAT record and field limits (E08-T09, Import:Limits) the pre-flight checks with, as the import worker does.
+        services.TryAddSingleton(ImportLimits.FromConfiguration(configuration));
         services.TryAddSingleton(sp => new ImportPreflightRunner(
-            sp.GetRequiredService<IImportPreflightStore>(), sp.GetServices<IImportPreflightCheck>(), sp.GetRequiredService<ImportVolumeOptions>()));
+            sp.GetRequiredService<IImportPreflightStore>(), sp.GetServices<IImportPreflightCheck>(), sp.GetRequiredService<ImportVolumeOptions>(),
+            limits: sp.GetRequiredService<ImportLimits>()));
         services.AddImportSourceStore();
         services.AddSingleton<IApiEndpointModule, ImportEndpoints>();
         return services;

@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom, map } from 'rxjs';
 import { WorkspaceContext } from '../workspace/workspace-context';
+import { formatNumber } from '../i18n';
 
 // Search freshness (wave-10 contract "Search freshness", owned by #70) as a port, written against the contract while
 // the API lands: the additions to `SearchFreshness` on every search response and page, and
@@ -131,7 +132,7 @@ export function pillText(
     case 'updating': {
       const parts = ['Updating'];
       if (f.pendingChanges > 0)
-        parts.push(`≈ ${new Intl.NumberFormat(locale).format(f.pendingChanges)} changes pending`);
+        parts.push(`≈ ${formatNumber(f.pendingChanges, locale)} changes pending`);
       if (f.lagSeconds > 0) parts.push(lagText(f.lagSeconds));
       return parts.join(' · ');
     }
@@ -157,7 +158,7 @@ export function announcementText(state: FreshnessState): string {
 /** Footnote under a result set that is not current: "Counts may not include 85 recent changes." */
 export function footnoteText(pendingChanges: number, locale: string): string {
   if (pendingChanges <= 0) return 'Counts may not include recent changes.';
-  const n = new Intl.NumberFormat(locale).format(pendingChanges);
+  const n = formatNumber(pendingChanges, locale);
   return `Counts may not include ${n} recent change${pendingChanges === 1 ? '' : 's'}.`;
 }
 
@@ -165,5 +166,5 @@ export function footnoteText(pendingChanges: number, locale: string): string {
 export function generationText(generation: string | null, locale: string): string {
   if (generation === null) return '—';
   const n = Number(generation);
-  return Number.isSafeInteger(n) ? new Intl.NumberFormat(locale).format(n) : generation;
+  return Number.isSafeInteger(n) ? formatNumber(n, locale) : generation;
 }

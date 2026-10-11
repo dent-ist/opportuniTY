@@ -125,6 +125,18 @@ public sealed class S3ObjectStoreOptions
 
     /// <summary>Optional SSE header, e.g. <c>AES256</c>; null relies on the bucket's default encryption.</summary>
     public string? ServerSideEncryption { get; set; }
+
+    /// <summary>
+    /// ADR-016 §4.2 (Full): the migrator bootstrap turns bucket versioning on and installs the lifecycle rules (noncurrent
+    /// versions expire after <see cref="NoncurrentVersionDays"/>, <c>ws/*/tmp/</c> after <see cref="TmpExpirationDays"/>).
+    /// Correctness never depends on it (ADR-011 §3.4); deleted objects become recoverable.
+    /// </summary>
+    public bool Versioning { get; set; }
+
+    /// <summary>= <c>WorkspaceDeletion:BackupRetention</c> (35 days).</summary>
+    public int NoncurrentVersionDays { get; set; } = 35;
+
+    public int TmpExpirationDays { get; set; } = 7;
 }
 
 public sealed class AzureBlobObjectStoreOptions

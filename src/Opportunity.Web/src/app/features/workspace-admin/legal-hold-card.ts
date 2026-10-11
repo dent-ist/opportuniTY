@@ -12,11 +12,11 @@ import {
 } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiError, describeError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { SessionService } from '../../core/session/session';
 import { Badge, Button, DialogService, ErrorState, LoadingState, ToastService } from '../../ui';
 import { type LegalHold, LegalHoldApi } from './legal-hold-api';
 import { LegalHoldDialog, type LegalHoldDialogData } from './legal-hold-dialog';
+import { DisplayFormat } from '../../core/i18n';
 
 /** What a hold freezes, in the words the settings page and its dialogs use (ADR-014 §2.3). */
 export const HOLD_EFFECT =
@@ -46,7 +46,7 @@ export class LegalHoldCard {
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly session = inject(SessionService);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly injector = inject(Injector);
 
   protected readonly effect = HOLD_EFFECT;
@@ -90,14 +90,7 @@ export class LegalHoldCard {
   }
 
   protected date(value: unknown): string {
-    if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(d);
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   protected async place(): Promise<void> {

@@ -21,6 +21,9 @@ public enum AuditCheckpointReason
 
     /// <summary>When a matter is closed.</summary>
     MatterClosed,
+
+    /// <summary>After a restore from backup, over the <c>Integrity.Restored</c> events (E19-T08, ADR-016 §5.3).</summary>
+    AfterRestore,
 }
 
 /// <summary>A signed checkpoint as stored in <c>audit.checkpoint</c>.</summary>
@@ -227,4 +230,26 @@ public static class AuditCheckpointSignatures
         key.ImportSubjectPublicKeyInfo(subjectPublicKeyInfo, out _);
         return key.VerifyData(AuditChainFormat.CheckpointPayload(checkpoint.Data), checkpoint.Signature, HashAlgorithmName.SHA256);
     }
+}
+
+/// <summary>The sealer's position of one chain (<c>audit.chain_head</c>): the last sealed event.</summary>
+public sealed record AuditChainHead(Guid ChainId, long LastSequence, byte[] LastHash, long LastCheckpointSequence);
+
+/// <summary>
+/// Read side of the audit hash chain for operations tooling (<c>audit verify</c>, the restore tool of E19-T08). Reads
+/// with the sealer login, which sees every chain. Implemented by <c>Opportunity.Data</c>.
+/// </summary>
+public interface IAuditChainReader
+{
+    /// <summary>Every chain that has events, a head or a checkpoint (the system chain is the nil uuid).</summary>
+    Task<IReadOnlyList<Guid>> ListChainsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Every chain's head.</summary>
+    Task<IReadOnlyList<AuditChainHead>> ReadHeadsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The chain's checkpoints in sequence order.</summary>
+    IAsyncEnumerable<AuditCheckpoint> CheckpointsAsync(Guid chainId, CancellationToken cancellationToken = default);
+
+    /// <summary>Recomputes and checks one chain (see <c>audit verify</c>).</summary>
+    Task<AuditChainVerification> VerifyAsync(Guid chainId, IAuditCheckpointKeys keys, CancellationToken cancellationToken = default);
 }

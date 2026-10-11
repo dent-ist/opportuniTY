@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 
+using Opportunity.Core.Text;
+
 namespace Opportunity.Application.Workspaces;
 
 /// <summary>
@@ -57,10 +59,7 @@ public static class AcknowledgmentRosterCsv
     private static string Cell(string? value)
     {
         var v = value ?? string.Empty;
-        if (v.Length > 0 && (v[0] is '=' or '+' or '@' or '\t' or '\r' || (v[0] == '-' && (v.Length == 1 || !char.IsDigit(v[1])))))
-        {
-            v = "'" + v;
-        }
+        v = FormulaNeutralizer.Neutralize(v);
 
         return v.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + v.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"" : v;
     }

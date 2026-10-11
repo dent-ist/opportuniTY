@@ -337,6 +337,15 @@ public sealed class DatReader : IAsyncDisposable, IDisposable
         while (true)
         {
             Frame frame = _skipping ? TrySkip() : TryFrame();
+            if (frame == Frame.Record && _contentEnd - _start > _o.MaxRecordBytes)
+            {
+                // A record that fits the buffer read so far is held to the same limit as one that does not (E08-T09).
+                _skipStartOffset = _bufferOffset + _start;
+                _skipEndOffset = _bufferOffset + _contentEnd;
+                Consume();
+                return Frame.Skipped;
+            }
+
             if (frame != Frame.NeedMore)
             {
                 return frame;

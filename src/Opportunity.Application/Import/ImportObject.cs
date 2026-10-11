@@ -19,4 +19,13 @@ public sealed record ImportObject(
     long SizeBytes,
     string ContentType,
     string KeyId,
-    EncryptionScheme EncryptionScheme);
+    EncryptionScheme EncryptionScheme)
+{
+    /// <summary>
+    /// The screening result (E08-T09, ADR-015 D16): null when the file was not screened (text, or scanning off and no
+    /// archive limit applied). An Infected or Unscannable file is registered <c>Quarantined</c>.
+    /// </summary>
+    public MalwareScanResult? Scan { get; init; }
+
+    public bool Quarantined => Scan is { Quarantines: true };
+}

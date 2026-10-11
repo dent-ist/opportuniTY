@@ -9,7 +9,6 @@ import {
 import { RouterLink } from '@angular/router';
 import type { ProductionDocumentResource } from '../../../core/api/generated/models';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { Button, EmptyState, ErrorState, Icon, LoadingState, ToastService } from '../../../ui';
 import { queryDocumentsParams } from '../../documents/relationships/relationship-link';
@@ -17,6 +16,7 @@ import { ProductionApi } from '../production-api';
 import { controlNumberQuery } from '../production-model';
 import { ProductionStore } from '../production-store';
 import { downloadCrossReference } from './cross-reference';
+import { DisplayFormat } from '../../../core/i18n';
 
 /**
  * Documents tab: the production's documents in production order with ProdBegBates/ProdEndBates and the attachment
@@ -33,7 +33,7 @@ import { downloadCrossReference } from './cross-reference';
 export class DocumentsTab {
   protected readonly store = inject(ProductionStore);
   private readonly api = inject(ProductionApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly toasts = inject(ToastService);
   private readonly context = inject(WorkspaceContext);
 
@@ -109,6 +109,6 @@ export class DocumentsTab {
   }
 
   protected num(n: number | string | null | undefined): string {
-    return n === null || n === undefined ? '—' : Number(n).toLocaleString(this.prefs.locale());
+    return n === null || n === undefined ? '—' : this.fmt.number(Number(n));
   }
 }

@@ -1,14 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ReviewBatchResource, ReviewBatchSetResource } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../core/workspace/sections';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import { Badge, Button, EmptyState, ErrorState, Icon, LoadingState } from '../../ui';
 import { BatchActions } from './batch-actions';
 import { HttpReviewBatchApi, ReviewBatchApi } from './review-batch-api';
 import { BATCH_STATUS } from './review-batch-model';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * Review Batches (#178, Q-53, familiarity guide §2.3/§5.3): the reviewer's batches in progress (Review, Check in) and
@@ -28,7 +28,7 @@ import { BATCH_STATUS } from './review-batch-model';
 export class ReviewBatchesPage {
   private readonly api = inject(ReviewBatchApi);
   private readonly actions = inject(BatchActions);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly context = inject(WorkspaceContext);
 
   protected readonly canCode = this.context.can(PERMISSIONS.codingWrite);
@@ -42,9 +42,6 @@ export class ReviewBatchesPage {
   protected readonly loadingMore = signal(false);
   protected readonly busySet = signal<string | null>(null);
   protected readonly error = signal<ApiError | null>(null);
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium' }),
-  );
 
   constructor() {
     void this.load();
@@ -106,12 +103,10 @@ export class ReviewBatchesPage {
   }
 
   protected num(value: number | string | null | undefined): string {
-    return value === null || value === undefined
-      ? '—'
-      : Number(value).toLocaleString(this.prefs.locale());
+    return value === null || value === undefined ? '—' : this.fmt.number(Number(value));
   }
 
   protected date(value: unknown): string {
-    return value ? this.dates().format(new Date(String(value))) : '';
+    return value ? this.fmt.date(String(value)) : '';
   }
 }

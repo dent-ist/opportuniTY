@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import type { ReviewBatchResource, ReviewBatchSetResource } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { SessionService } from '../../core/session/session';
 import { PERMISSIONS } from '../../core/workspace/sections';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
@@ -10,6 +9,7 @@ import { Badge, Button, ErrorState, Icon, LoadingState } from '../../ui';
 import { BatchActions } from './batch-actions';
 import { HttpReviewBatchApi, ReviewBatchApi } from './review-batch-api';
 import { BATCH_STATUS, assigneeText, orderText } from './review-batch-model';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * One Batch Set (#178): its settings and every batch with status (Pending · In progress · Completed), reviewer and the
@@ -28,7 +28,7 @@ import { BATCH_STATUS, assigneeText, orderText } from './review-batch-model';
 export class ReviewBatchSetPage {
   private readonly api = inject(ReviewBatchApi);
   private readonly actions = inject(BatchActions);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly context = inject(WorkspaceContext);
   private readonly principal = inject(SessionService).principal;
   private readonly batchSetId = inject(ActivatedRoute).snapshot.paramMap.get('batchSetId') ?? '';
@@ -45,9 +45,6 @@ export class ReviewBatchSetPage {
   protected readonly loadingMore = signal(false);
   protected readonly busy = signal<string | null>(null);
   protected readonly error = signal<ApiError | null>(null);
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium', timeStyle: 'short' }),
-  );
 
   constructor() {
     void this.load();
@@ -127,13 +124,11 @@ export class ReviewBatchSetPage {
   }
 
   protected num(value: number | string | null | undefined): string {
-    return value === null || value === undefined
-      ? '—'
-      : Number(value).toLocaleString(this.prefs.locale());
+    return value === null || value === undefined ? '—' : this.fmt.number(Number(value));
   }
 
   protected date(value: unknown): string {
-    return value ? this.dates().format(new Date(String(value))) : '';
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   /** Runs a batch action, then shows every batch and the counts as they are now. */

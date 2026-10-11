@@ -10,7 +10,6 @@ import {
   signal,
 } from '@angular/core';
 import { UserFacingError, describeError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { Button, DialogLayout, Icon, TextField } from '../../ui';
 import type {
   DeletionView,
@@ -21,6 +20,7 @@ import {
   type DeletionAvailability,
   WorkspaceDeletion,
 } from './workspace-deletion';
+import { DisplayFormat } from '../../core/i18n';
 
 export const MAX_DELETION_REASON = 2000;
 export const MAX_DELETION_REFERENCE = 200;
@@ -62,7 +62,7 @@ export class DeleteWorkspaceDialog {
   protected readonly data = inject<DeleteWorkspaceData>(DIALOG_DATA);
   protected readonly ref = inject<DialogRef<DeletionView>>(DialogRef);
   private readonly deletion = inject(WorkspaceDeletion, { optional: true });
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
 
@@ -107,10 +107,7 @@ export class DeleteWorkspaceDialog {
   );
 
   protected date(value: string): string {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime())
-      ? value
-      : new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium' }).format(d);
+    return this.fmt.date(value);
   }
 
   protected onReason(event: Event): void {

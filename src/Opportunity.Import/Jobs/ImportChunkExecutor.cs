@@ -10,6 +10,7 @@ using Opportunity.Core.Documents;
 using Opportunity.Core.Jobs;
 using Opportunity.Import.LoadFiles;
 using Opportunity.Import.Mapping;
+using Opportunity.Import.Scanning;
 using Opportunity.Import.Volumes;
 
 namespace Opportunity.Import.Jobs;
@@ -32,8 +33,11 @@ public sealed class ImportChunkExecutor(
     IObjectStore store,
     ImportJobOptions options,
     ImportVolumeOptions? volumes = null,
-    IJobRepository? jobs = null) : IJobChunkExecutor
+    IJobRepository? jobs = null,
+    IngestScreening? screening = null) : IJobChunkExecutor
 {
+    private readonly IngestScreening _screening = screening ?? new IngestScreening(options.Limits, null);
+
     /// <summary>Failure code of an import stopped by 'Stop after N errors' (E08-T06).</summary>
     public const string ErrorLimitReached = "import-error-limit";
 
@@ -98,7 +102,7 @@ public sealed class ImportChunkExecutor(
                 $"The mapping now loads coding or privilege field(s) {string.Join(", ", notEnabled)} that this import did not enable (Q-31).");
         }
 
-        var linker = ImportArtifactLinker.Create(mapping, options, volumes ?? new ImportVolumeOptions(), store);
+        var linker = ImportArtifactLinker.Create(mapping, options, volumes ?? new ImportVolumeOptions(), store, _screening);
         var rows = new List<ImportRow>(checked((int)(range.RowTo - range.RowFrom + 1)));
         var values = new List<IReadOnlyList<string>>(linker is null ? 0 : rows.Capacity);
         var stream = ImportSource.OpenChunk(store, batch, range);
@@ -222,7 +226,7 @@ public sealed class ImportChunkExecutor(
 
             var documentId = existing.TryGetValue(row.ControlNumberNorm!, out var found) ? found.DocumentId : row.Document!.DocumentId;
             var (images, issues) = await ImportImageLinker.LinkAsync(
-                store, ws, documentId, documentRows, volume, profile.Paths.StripPrefix, cancellationToken).ConfigureAwait(false);
+                store, ws, documentId, documentRows, volume, profile.Paths.StripPrefix, _screening, cancellationToken).ConfigureAwait(false);
             result.Add(row with { Images = images, OptIssues = issues });
         }
 
@@ -263,7 +267,7 @@ public sealed class ImportChunkExecutor(
             }
 
             var (images, issues) = await ImportImageLinker.LinkAsync(
-                store, ws, document.DocumentId, documentRows, volume, profile.Paths.StripPrefix, cancellationToken).ConfigureAwait(false);
+                store, ws, document.DocumentId, documentRows, volume, profile.Paths.StripPrefix, _screening, cancellationToken).ConfigureAwait(false);
             rows.Add(new ImportRow
             {
                 RowNo = rowNo,

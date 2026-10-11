@@ -29,6 +29,9 @@ public static class ContainerImages
     /// <summary>Prometheus (Apache-2.0) of the observability profile; its <c>promtool</c> checks the alert rules (E19-T05).</summary>
     public static string Prometheus => Resolve("PROMETHEUS", "prom/prometheus");
 
+    /// <summary>ClamAV clamd (GPL-2.0, an unmodified external service), the default ingest malware scanner (E08-T09).</summary>
+    public static string ClamAv => Resolve("CLAMAV", "clamav/clamav");
+
     public static string Resolve(string key, string repository) => Resolve(VersionsFile.Repository, key, repository);
 
     public static string Resolve(VersionsFile versions, string key, string repository)

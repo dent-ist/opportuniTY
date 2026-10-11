@@ -23,6 +23,7 @@ import {
   TextField,
   ToastService,
 } from '../../ui';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * Installation-level Workspaces list, the first page after sign-in (familiarity guide §2.1): recent
@@ -41,6 +42,7 @@ export class WorkspacesPage {
   private readonly directory = inject(WorkspaceDirectory);
   private readonly recentIds = inject(RecentWorkspaces).ids;
   private readonly locale = inject(UiPreferences).locale;
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
@@ -80,17 +82,12 @@ export class WorkspacesPage {
   });
 
   protected readonly summary = computed(() => {
-    const format = new Intl.NumberFormat(this.locale());
     const shown = this.filtered().length;
     const loaded = this.items().length;
     const more = this.nextCursor() ? ' (more available)' : '';
-    if (!this.query().trim()) return `${format.format(loaded)} workspaces${more}`;
-    return `${format.format(shown)} of ${format.format(loaded)} workspaces match${more}`;
+    if (!this.query().trim()) return `${this.fmt.number(loaded)} workspaces${more}`;
+    return `${this.fmt.number(shown)} of ${this.fmt.number(loaded)} workspaces match${more}`;
   });
-
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.locale(), { dateStyle: 'medium' }),
-  );
 
   constructor() {
     void this.load();
@@ -106,8 +103,7 @@ export class WorkspacesPage {
 
   protected date(value: unknown): string {
     if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime()) ? '' : this.dates().format(d);
+    return Number.isNaN(new Date(String(value)).getTime()) ? '' : this.fmt.date(String(value));
   }
 
   /** New workspace; on success the new workspace opens on its setup checklist. */

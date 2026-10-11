@@ -32,6 +32,13 @@ case "$1" in
         printf ','
         identity "opportunity-$component" "$rw"
       done
+      # Backups (E19-T08, ADR-016 §2.3/§3.1, T-63): each backup bucket has its own identity, and no application
+      # identity can read either bucket. pgBackRest (repo1) and the OpenSearch nodes (snapshot repository).
+      printf ','
+      identity opportunity-pgbackrest '["Read:opportunity-pgbackrest","List:opportunity-pgbackrest","Write:opportunity-pgbackrest"]'
+      printf ','
+      identity opportunity-snapshots \
+        '["Read:opportunity-search-snapshots","List:opportunity-search-snapshots","Write:opportunity-search-snapshots"]'
       printf ']}\n'
     } >/tmp/s3.json
     chown seaweed:seaweed /tmp/s3.json

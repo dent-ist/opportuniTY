@@ -12,6 +12,9 @@ namespace Opportunity.Testing.OpenSearch;
 /// </summary>
 public class OpenSearchFixture : DependencyFixture
 {
+    /// <summary>The container's <c>path.repo</c>: a test registers an <c>fs</c> repository at a subfolder of it.</summary>
+    public const string SnapshotRoot = "/tmp/opportunity-snapshots";
+
     private const string HostAlias = "opensearch";
     private const int Port = 9200;
 
@@ -33,6 +36,8 @@ public class OpenSearchFixture : DependencyFixture
             .WithEnvironment("cluster.routing.allocation.disk.threshold_enabled", "false")
             // Reap expired point-in-time readers every second (default 1 min), so keep-alive expiry is testable (E10-T03).
             .WithEnvironment("search.keep_alive_interval", "1s")
+            // Filesystem snapshot repositories (E19-T08 restore tests) live under this path inside the container.
+            .WithEnvironment("path.repo", SnapshotRoot)
             // ForPath escapes '?', so poll the plain health endpoint; it answers 200 once the node is up.
             .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r
                 .ForPort(Port)

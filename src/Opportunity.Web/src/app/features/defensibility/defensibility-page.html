@@ -161,7 +161,7 @@
           <tbody>
             @for (d of shownDayRows(); track d.date + d.userId) {
               <tr>
-                <td>{{ d.date }}</td>
+                <td>{{ day(d.date) }}</td>
                 <th scope="row">{{ d.displayName || d.userId }}</th>
                 <td class="dfn__num">{{ n(d.documents) }}</td>
                 <td class="dfn__num">{{ n(d.changes) }}</td>

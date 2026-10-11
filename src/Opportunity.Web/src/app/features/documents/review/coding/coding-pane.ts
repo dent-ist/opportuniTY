@@ -16,7 +16,6 @@ import {
 } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
-import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { SessionService } from '../../../../core/session/session';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
 import {
@@ -68,6 +67,7 @@ import {
 import { AccessLossDialog, AccessLossData } from './access-loss-dialog';
 import { CodingConflict, CodingDifference } from './coding-conflict';
 import { PendingCoding } from './pending-coding';
+import { DisplayFormat } from '../../../../core/i18n';
 
 /** A choice as a radio button or checkbox. */
 interface ChoiceOption {
@@ -160,7 +160,7 @@ export class ReviewCoding implements CodingEditor {
   private readonly context = inject(WorkspaceContext);
   private readonly session = inject(SessionService);
   private readonly announcer = inject(Announcer);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly injector = inject(Injector);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
@@ -406,10 +406,10 @@ export class ReviewCoding implements CodingEditor {
     if (!result) return;
     this.propagated.emit(result);
     if (result.mode === 'interactive') {
-      const n = new Intl.NumberFormat(this.prefs.locale());
+      const n = this.fmt.formatter();
       const docs = result.applied === 1 ? 'document' : 'documents';
-      const skipped = result.skipped > 0 ? ` ${n.format(result.skipped)} skipped.` : '';
-      this.toasts.show(`Coding applied to ${n.format(result.applied)} ${docs}.${skipped}`, {
+      const skipped = result.skipped > 0 ? ` ${n.number(result.skipped)} skipped.` : '';
+      this.toasts.show(`Coding applied to ${n.number(result.applied)} ${docs}.${skipped}`, {
         tone: result.skipped > 0 ? 'warning' : 'success',
       });
     }
@@ -882,15 +882,8 @@ export class ReviewCoding implements CodingEditor {
   }
 
   private formatTime(iso: string): string {
-    const at = new Date(iso);
-    if (Number.isNaN(at.getTime())) return iso;
-    const sameDay = at.toDateString() === new Date().toDateString();
-    return new Intl.DateTimeFormat(
-      this.prefs.locale(),
-      sameDay
-        ? { hour: 'numeric', minute: '2-digit' }
-        : { dateStyle: 'medium', timeStyle: 'short' },
-    ).format(at);
+    const sameDay = this.fmt.date(iso) === this.fmt.date(new Date());
+    return sameDay ? this.fmt.time(iso) : this.fmt.dateTime(iso);
   }
 }
 

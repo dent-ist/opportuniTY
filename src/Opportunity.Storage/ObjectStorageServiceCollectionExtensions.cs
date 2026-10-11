@@ -40,6 +40,11 @@ public static class ObjectStorageServiceCollectionExtensions
             services.AddSingleton(sp => (IObjectUrlSigner)sp.GetRequiredService<ObjectStoreBase>());
         }
 
+        if (options.Provider == ObjectStorageProvider.S3)
+        {
+            services.AddSingleton<IObjectVersionRecovery>(sp => (S3ObjectStore)sp.GetRequiredService<ObjectStoreBase>());
+        }
+
         services.AddSingleton<IInfrastructureBootstrapStep, ObjectStoreBootstrapStep>();
         return services;
     }
@@ -65,10 +70,21 @@ public sealed class ObjectStoreBootstrapStep(ObjectStoreBase store) : IInfrastru
 
     public int Order => 300;
 
-    public Task RunAsync(CancellationToken cancellationToken) => store switch
+    public async Task RunAsync(CancellationToken cancellationToken)
     {
-        S3ObjectStore s3 => s3.EnsureBucketAsync(cancellationToken),
-        AzureBlobObjectStore azure => azure.EnsureContainerAsync(cancellationToken),
-        _ => Task.CompletedTask,
-    };
+        switch (store)
+        {
+            case S3ObjectStore s3:
+                await s3.EnsureBucketAsync(cancellationToken).ConfigureAwait(false);
+                if (s3.VersioningRequested)
+                {
+                    await s3.EnableVersioningAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                break;
+            case AzureBlobObjectStore azure:
+                await azure.EnsureContainerAsync(cancellationToken).ConfigureAwait(false);
+                break;
+        }
+    }
 }

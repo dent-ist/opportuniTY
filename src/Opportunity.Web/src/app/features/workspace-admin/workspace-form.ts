@@ -70,13 +70,7 @@ export function serverErrors(error: ApiError): DraftErrors {
 }
 
 /** The browser's IANA time zone, the default for a new workspace; UTC when it cannot be read. */
-export function browserTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
+export { browserTimeZone } from '../../core/i18n';
 
 /** IANA time zone IDs the browser knows, UTC first, always including `current` (a stored value stays selectable). */
 export function timeZoneOptions(current?: string): SelectOption[] {

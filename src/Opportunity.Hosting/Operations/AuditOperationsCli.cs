@@ -46,7 +46,7 @@ public static class AuditOperationsCli
                        the installation's key provider. Exit 1 when anything does not verify.
           checkpoints  (--workspace <id> | --system) [--format csv|json]
                        the chain's signed checkpoints with their signed payloads, for declaration exhibits
-          seal         [--workspace <id> | --system] [--checkpoint] [--reason manual|before-purge|before-deletion|matter-closed]
+          seal         [--workspace <id> | --system] [--checkpoint] [--reason manual|before-purge|before-deletion|matter-closed|after-restore]
                        --operator <name>
                        seal now (what the dispatcher does every second); with --checkpoint also take signed checkpoints
                        (required before `audit.drop_expired_partition`)
@@ -533,6 +533,9 @@ public static class AuditOperationsCli
                     return true;
                 case "matter-closed":
                     reason = AuditCheckpointReason.MatterClosed;
+                    return true;
+                case "after-restore":
+                    reason = AuditCheckpointReason.AfterRestore;
                     return true;
                 default:
                     return false;

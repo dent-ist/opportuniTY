@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { ApiError, UserFacingError, describeError } from '../../core/api/problem-details';
 import { Button } from '../button/button';
 import { Icon, IconName } from '../icon/icon';
+import { DisplayFormat } from '../../core/i18n';
 
 // Loading / empty / error states (ADR-018 §7). Every async region renders exactly one of: content,
 // <opp-loading-state>, <opp-empty-state> or <opp-error-state>.
@@ -104,12 +104,10 @@ export class Progress {
   /** Spoken value instead of the bare percentage, e.g. "40% · 400 of 1,000 saved · about 2 minutes left". */
   readonly valueText = input<string>();
 
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   protected readonly fraction = computed(() => {
     const v = this.value();
     return v === undefined ? 0 : Math.min(1, Math.max(0, v / (this.max() || 1)));
   });
-  protected readonly percentText = computed(() =>
-    new Intl.NumberFormat(this.prefs.locale(), { style: 'percent' }).format(this.fraction()),
-  );
+  protected readonly percentText = computed(() => this.fmt.percent(this.fraction()));
 }

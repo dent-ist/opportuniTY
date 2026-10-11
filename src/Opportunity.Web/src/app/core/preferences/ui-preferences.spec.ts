@@ -28,6 +28,8 @@ describe('UiPreferences', () => {
       theme: 'high-contrast',
       density: 'compact',
       locale: 'en-GB',
+      dateStyle: 'locale',
+      timeZone: 'workspace',
     });
   });
 

@@ -19,7 +19,9 @@ using Opportunity.Data.Jobs;
 using Opportunity.Data.Relationships;
 using Opportunity.Data.SearchWork;
 using Opportunity.Data.Workspaces;
+using Opportunity.Hosting.Health;
 using Opportunity.Import.Jobs;
+using Opportunity.Import.Scanning;
 using Opportunity.Import.Volumes;
 using Opportunity.Jobs;
 using Opportunity.Messaging;
@@ -63,6 +65,18 @@ public static class ImportWorkerModule
         services.TryAddSingleton<IDedupeStore>(sp => new DedupeStore(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddJobChunkExecutor<DedupeChunkExecutor>();
 
+        // Ingest hardening (E08-T09): limits, archive checks and the malware scanner every native and image passes
+        // before anything renders it (Import:MalwareScanning:Mode ClamAv in Full, Off in Lite).
+        var scanning = MalwareScanningOptions.FromConfiguration(configuration);
+        services.TryAddSingleton(scanning);
+        if (scanning.Mode == MalwareScanningMode.ClamAv)
+        {
+            services.TryAddSingleton<IMalwareScanner>(sp => new ClamAvScanner(scanning, sp.GetService<TimeProvider>()));
+            services.AddHealthChecks().AddCheck<MalwareScannerHealthCheck>(MalwareScannerHealthCheck.Name, tags: [HealthTags.Ready]);
+        }
+
+        services.TryAddSingleton(sp => new IngestScreening(sp.GetRequiredService<ImportJobOptions>().Limits, sp.GetService<IMalwareScanner>()));
+
         // Volumes whose natives, text (E08-T04) and OPT images the worker reads: Import:VolumeShareRoot.
         services.TryAddSingleton(new ImportVolumeOptions
         {
@@ -81,8 +95,8 @@ public static class ImportWorkerModule
     }
 
     /// <summary>
-    /// <c>Import:FileConcurrency</c> (volume files stored in parallel per chunk, E08-T04) and the indexed-text cap shared
-    /// with the projection (<c>Search:IndexedTextCap</c>, Q-29).
+    /// <c>Import:FileConcurrency</c> (volume files stored in parallel per chunk, E08-T04), the indexed-text cap shared
+    /// with the projection (<c>Search:IndexedTextCap</c>, Q-29) and the ingest limits (<c>Import:Limits</c>, E08-T09).
     /// </summary>
     public static ImportJobOptions BindOptions(IConfiguration configuration)
     {
@@ -92,6 +106,7 @@ public static class ImportWorkerModule
         {
             FileConcurrency = configuration.GetValue("Import:FileConcurrency", defaults.FileConcurrency),
             IndexedTextCap = configuration.GetValue("Search:IndexedTextCap", defaults.IndexedTextCap),
+            Limits = ImportLimits.FromConfiguration(configuration),
         };
     }
 }

@@ -16,6 +16,7 @@ import type {
   PathOptions,
   SavedProfile,
 } from './import-api';
+import { formatterFor } from '../../core/i18n';
 
 // Pure rules of the import wizard (E08-T08, familiarity guide §5.1): steps, delimiter presets and glyphs, the request
 // the settings make, column status wording and field type names. No Angular here, so every rule is unit-tested.
@@ -409,13 +410,5 @@ export function searchableProgress(job: JobResource): {
 
 /** Byte size in the units lit-support staff read (KB/MB/GB, 1024-based). */
 export function formatBytes(bytes: number, locale: string): string {
-  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  const digits = unit === 0 ? 0 : 1;
-  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value)} ${units[unit]}`;
+  return formatterFor(locale).bytes(bytes);
 }

@@ -115,7 +115,7 @@ public sealed partial class ComposeProfileTests
         foreach (var (name, service) in services)
         {
             ((List<object>)service["profiles"]).Cast<string>().Should().ContainSingle()
-                .Which.Should().BeOneOf(["full", "observability"], "{0} must not start without the profile", name);
+                .Which.Should().BeOneOf(["full", "observability", "replica"], "{0} must not start without the profile", name);
             if (service.TryGetValue("secrets", out var used))
             {
                 secrets.Should().Contain(((List<object>)used).Cast<string>(), "{0} uses undeclared secrets", name);

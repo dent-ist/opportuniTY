@@ -27,9 +27,9 @@ using Opportunity.Testing.OpenSearch;
 namespace Opportunity.IntegrationTests.Search;
 
 /// <summary>
-/// E07-T10 through the real API host, PostgreSQL PDP and OpenSearch, on a hand-built known-answer corpus (E17-T09's
-/// generated fixtures do not exist yet): two families and standalone documents with known term hits, one document
-/// walled from the executor. Counts, family expansion and unique hits equal the hand-computed answer and
+/// E07-T10 through the real API host, PostgreSQL PDP and OpenSearch, on a hand-built known-answer corpus (the generated
+/// E17-T09 corpus is run by <see cref="KnownAnswerSearchTermReportTests"/>): two families and standalone documents with
+/// known term hits, one document walled from the executor. Counts, family expansion and unique hits equal the hand-computed answer and
 /// <see cref="FamilyHitCounting"/>; reruns give identical numbers; an invalid term gets its own error; exports carry the
 /// provenance; a term opens as a search; a stale index is reported.
 /// </summary>
@@ -234,7 +234,7 @@ public sealed class SearchTermReportApiTests(OpenSearchFixture openSearch, Migra
         }, "s3")).ShouldBeProblemAsync(HttpStatusCode.NotFound, "not-found");
     }
 
-    private static WebApplicationFactory<Program> Factory(SnapshotHarness h, InMemoryAuditEventWriter audit) =>
+    internal static WebApplicationFactory<Program> Factory(SnapshotHarness h, InMemoryAuditEventWriter audit) =>
         new ApiFactory().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:App", h.Search.Db.Core.AppConnectionString);
@@ -253,13 +253,13 @@ public sealed class SearchTermReportApiTests(OpenSearchFixture openSearch, Migra
             });
         });
 
-    private static async Task<SearchTermReportStatus?> RunAsync(WebApplicationFactory<Program> factory, Guid ws, Guid reportId)
+    internal static async Task<SearchTermReportStatus?> RunAsync(WebApplicationFactory<Program> factory, Guid ws, Guid reportId)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<SearchTermReportRunner>().RunToEndAsync(ws, reportId, cancellationToken: Ct);
     }
 
-    private static async Task<JsonElement> CreateAndRunAsync(
+    internal static async Task<JsonElement> CreateAndRunAsync(
         HttpClient client, WebApplicationFactory<Program> factory, Guid ws, string url, Guid user, JsonObject body, string key)
     {
         using var created = await SendAsync(client, HttpMethod.Post, url, user, body, key);
@@ -268,12 +268,12 @@ public sealed class SearchTermReportApiTests(OpenSearchFixture openSearch, Migra
         return await GetAsync(client, $"{url}/{id}", user);
     }
 
-    private static List<(string, long, long, long, long)> Counts(JsonElement report) =>
+    internal static List<(string, long, long, long, long)> Counts(JsonElement report) =>
         [.. report.GetProperty("terms").EnumerateArray().Select(t => (
             t.GetProperty("name").GetString()!,
             N(t, "documentsWithHits"), N(t, "documentsWithHitsIncludingFamily"), N(t, "uniqueHits"), N(t, "uniqueHitsIncludingFamily")))];
 
-    private static List<long> Totals(JsonElement report)
+    internal static List<long> Totals(JsonElement report)
     {
         var t = report.GetProperty("totals");
         return [N(t, "documentsInScope"), N(t, "documentsWithHits"), N(t, "documentsWithHitsIncludingFamily"), N(t, "documentsWithoutHits")];

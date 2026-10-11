@@ -9,8 +9,6 @@ import {
   untracked,
 } from '@angular/core';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
-import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import {
   Announcer,
   Badge,
@@ -22,6 +20,7 @@ import {
 } from '../../../ui';
 import { formatDate } from '../saved-search-model';
 import { DescriptionChange, LogEntry, LogVersion, PrivilegeLogApi } from './privilege-logs-api';
+import { DisplayFormat } from '../../../core/i18n';
 
 /** The open description editor of one entry. */
 interface Editor {
@@ -46,10 +45,9 @@ interface Editor {
 })
 export class PrivilegeLogEntries {
   private readonly api = inject(PrivilegeLogApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
-  private readonly timeZone = inject(WorkspaceContext).workspace.displayTimeZone || 'UTC';
 
   readonly version = input.required<LogVersion>();
   /** The caller may code documents (Coding.Write); the API still decides per document and field. */
@@ -231,11 +229,11 @@ export class PrivilegeLogEntries {
   }
 
   protected when(at: string): string {
-    return formatDate(at, this.prefs.locale(), this.timeZone);
+    return formatDate(at, this.fmt.formatter());
   }
 
   protected count(n: number): string {
-    return n.toLocaleString(this.prefs.locale());
+    return this.fmt.number(n);
   }
 
   private focus(id: string): void {

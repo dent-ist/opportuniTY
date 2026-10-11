@@ -241,6 +241,8 @@ public sealed record ImportBatchRecord
 /// <param name="DataOffset">Bytes before the first data row (byte-order mark, header, blank lines).</param>
 /// <param name="EncodingFallback">The reader's row-level encoding fallback (on when the encoding was detected).</param>
 /// <param name="OptRowsTotal">OPT rows staged for the import; null without an OPT.</param>
+/// <param name="MaxRecordBytes">The DAT record limit the preparation read with (E08-T09); null: the built-in default.</param>
+/// <param name="MaxFieldCount">The DAT field-count limit the preparation read with; null: the built-in default.</param>
 public sealed record ImportPreparation(
     IReadOnlyList<string> Header,
     string DatEncoding,
@@ -249,7 +251,9 @@ public sealed record ImportPreparation(
     long RowsTotal,
     int FieldsCreated,
     int ChoicesCreated,
-    long? OptRowsTotal = null);
+    long? OptRowsTotal = null,
+    int? MaxRecordBytes = null,
+    int? MaxFieldCount = null);
 
 /// <summary>Data rows <c>RowFrom…RowTo</c> occupy bytes <c>ByteFrom…ByteTo</c> (exclusive) of the DAT.</summary>
 public sealed record ImportChunkRange(long RowFrom, long RowTo, long ByteFrom, long ByteTo, long LineFrom);
@@ -382,7 +386,11 @@ public sealed record ImportImages
 
 /// <summary>A stored image file (ADR-011 §2.3 registry values).</summary>
 public sealed record ImportImageObject(
-    string LogicalKey, byte[] Sha256, long SizeBytes, string ContentType, string KeyId, EncryptionScheme EncryptionScheme);
+    string LogicalKey, byte[] Sha256, long SizeBytes, string ContentType, string KeyId, EncryptionScheme EncryptionScheme)
+{
+    /// <summary>The screening result (E08-T09); a quarantining one registers the object Quarantined and leaves its page without image.</summary>
+    public MalwareScanResult? Scan { get; init; }
+}
 
 /// <param name="Raster">Null when the page's image is missing.</param>
 public sealed record ImportPage(int Ordinal, string? ImageKey, int SourceFrame, ImportPageRaster? Raster)

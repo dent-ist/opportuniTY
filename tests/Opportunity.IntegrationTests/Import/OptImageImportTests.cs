@@ -141,7 +141,7 @@ public sealed class OptImageImportTests(MigrationPostgresFixture postgres)
         var someone = sets.First(s => !s.Value.ImagesIncomplete);
         var staged = await h.Batches.GetImageRowsAsync(ws, batch.ImportBatchId, someone.Value.RowNo, someone.Value.RowNo, Ct);
         ImportVolume.TryOpen(h.Volumes, "VOL001", out var opened, out _).Should().BeTrue();
-        var (again, _) = await ImportImageLinker.LinkAsync(h.Store, ws, someone.Value.DocumentId, staged, opened, null, Ct);
+        var (again, _) = await ImportImageLinker.LinkAsync(h.Store, ws, someone.Value.DocumentId, staged, opened, null, null, Ct);
         again.Pages.Should().HaveCount(someone.Value.Pages);
         Directory.EnumerateFiles(h.StoreRoot, "*", SearchOption.AllDirectories).Count().Should().Be(files);
     }

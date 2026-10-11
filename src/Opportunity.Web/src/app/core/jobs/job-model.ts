@@ -1,4 +1,5 @@
 import type { JobStatus as PillStatus, ToastTone } from '../../ui';
+import { formatNumber, formatterFor } from '../i18n';
 
 // Jobs (E06-T07) as the wave-9 "Job operations" contract (#61) describes them, plus the pure rules of the Jobs page,
 // the job detail and the job tray: wording, two-phase progress ("Saved" / "Searchable", ticket review E16-T07),
@@ -194,12 +195,11 @@ export function fraction(p: Progress, complete = false): number {
 
 /** "400 of 1,000". */
 export function countText(p: Progress, locale: string): string {
-  const n = new Intl.NumberFormat(locale);
-  return `${n.format(p.done)} of ${n.format(p.total)}`;
+  return `${formatNumber(p.done, locale)} of ${formatNumber(p.total, locale)}`;
 }
 
 export function percentText(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { style: 'percent' }).format(value);
+  return formatterFor(locale).percent(value);
 }
 
 /** "About 3 minutes left" (rounded up), "Less than a minute left", "About 2 hours left". */

@@ -2,16 +2,21 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import { describeError, toApiError } from '../core/api/problem-details';
 import {
+  DATE_FORMATS,
   DENSITIES,
+  DateFormat,
   Density,
   THEMES,
   Theme,
   UiPreferences,
+  ZoneChoice,
 } from '../core/preferences/ui-preferences';
+import { ActiveWorkspace } from '../core/workspace/workspace-context';
 import { SessionService } from '../core/session/session';
 import { Icon, MENU, ToastService } from '../ui';
 import { PRODUCT_NAME, SHELL_PATHS } from './navigation';
 import { ShortcutDialogs } from './shortcuts/shortcut-dialogs';
+import { DisplayFormat } from '../core/i18n';
 
 const THEME_LABELS: Record<Theme, string> = {
   system: 'Match system',
@@ -24,7 +29,10 @@ const DENSITY_LABELS: Record<Density, string> = {
   compact: 'Compact',
 };
 
-/** The signed-in user's menu: display preferences, keyboard shortcuts, About, Sign out (familiarity guide §2.2). */
+/**
+ * The signed-in user's menu: display preferences (theme, density, date format, display time zone), keyboard
+ * shortcuts, About, Sign out (familiarity guide §2.2). Date format and time zone apply at once, without a reload.
+ */
 @Component({
   selector: 'opp-user-menu',
   imports: [Icon, RouterLink, ...MENU],
@@ -67,6 +75,34 @@ const DENSITY_LABELS: Record<Density, string> = {
             </button>
           }
         </div>
+        <div cdkMenuGroup aria-label="Date format">
+          <div class="opp-menu__heading" aria-hidden="true">Date format</div>
+          @for (option of dateFormats; track option.value) {
+            <button
+              type="button"
+              cdkMenuItemRadio
+              class="opp-menu__item"
+              [cdkMenuItemChecked]="dateFormat() === option.value"
+              (cdkMenuItemTriggered)="setDateFormat(option.value)"
+            >
+              <opp-icon class="opp-menu__check" name="check" />{{ option.label }}
+            </button>
+          }
+        </div>
+        <div cdkMenuGroup aria-label="Time zone">
+          <div class="opp-menu__heading" aria-hidden="true">Time zone</div>
+          @for (option of zones(); track option.value) {
+            <button
+              type="button"
+              cdkMenuItemRadio
+              class="opp-menu__item"
+              [cdkMenuItemChecked]="prefs.timeZone() === option.value"
+              (cdkMenuItemTriggered)="prefs.timeZone.set(option.value)"
+            >
+              <opp-icon class="opp-menu__check" name="check" />{{ option.label }}
+            </button>
+          }
+        </div>
         <div class="opp-menu__separator" role="separator"></div>
         <button
           type="button"
@@ -96,6 +132,8 @@ export class UserMenu {
   private readonly session = inject(SessionService);
   private readonly toasts = inject(ToastService);
   private readonly shortcuts = inject(ShortcutDialogs);
+  private readonly format = inject(DisplayFormat);
+  private readonly active = inject(ActiveWorkspace);
 
   protected readonly productName = PRODUCT_NAME;
   protected readonly about = SHELL_PATHS.about;
@@ -105,6 +143,21 @@ export class UserMenu {
     label: DENSITY_LABELS[value],
   }));
   protected readonly signingOut = signal(false);
+  protected readonly dateFormats = DATE_FORMATS;
+  protected readonly dateFormat = computed<DateFormat>(() =>
+    this.prefs.dateStyle() === 'iso' ? 'iso' : this.prefs.locale(),
+  );
+  protected readonly zones = computed<{ value: ZoneChoice; label: string }[]>(() => {
+    const workspace = this.active.current();
+    return [
+      {
+        value: 'workspace',
+        label: workspace ? `Workspace (${this.format.workspaceTimeZone()})` : 'Workspace time zone',
+      },
+      { value: 'local', label: `This computer (${this.format.browserTimeZone})` },
+      { value: 'utc', label: 'UTC' },
+    ];
+  });
 
   protected readonly name = computed(() => this.session.principal()?.displayName || 'Signed in');
   protected readonly email = computed(() => this.session.principal()?.email ?? null);
@@ -116,6 +169,15 @@ export class UserMenu {
       .map((part) => part[0].toUpperCase())
       .join(''),
   );
+
+  protected setDateFormat(value: DateFormat): void {
+    if (value === 'iso') {
+      this.prefs.dateStyle.set('iso');
+    } else {
+      this.prefs.locale.set(value);
+      this.prefs.dateStyle.set('locale');
+    }
+  }
 
   protected openShortcuts(): void {
     void this.shortcuts.settings();
