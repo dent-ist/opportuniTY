@@ -228,6 +228,7 @@ describe('Document viewer (E16-T04)', () => {
       'Native',
       'Production',
       'Metadata',
+      'History',
     ]);
     const disabled = tabs().filter((t) => t.getAttribute('aria-disabled') === 'true');
     expect(disabled.map((t) => `${t.textContent?.trim()}: ${description(t)}`)).toEqual([

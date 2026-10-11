@@ -4,6 +4,7 @@ import { documentText, serveContent, snippetsFor, type Rendition } from './mock-
 import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { PrivilegeConflictsMock } from './mock-privilege-conflicts';
+import { AuditLogMock } from './mock-audit';
 import { PrivilegeLogsMock } from './mock-privilege-logs';
 import { ProductionsMock } from './mock-productions';
 import { JobsMock } from './mock-jobs';
@@ -145,6 +146,8 @@ export interface MockControl {
   readonly acknowledgments: AcknowledgmentsMock;
   /** Compliance reports (E14-T06): the wall proof and access review requests received. */
   readonly compliance: ComplianceMock;
+  /** Audit log viewer and exports, and documents' coding history (E14-T04): requests received. */
+  readonly auditLog: AuditLogMock;
 }
 
 /**
@@ -502,9 +505,11 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     ),
   );
   const acknowledgments = new AcknowledgmentsMock(options.acknowledgmentPending ?? false);
+  const auditLog = new AuditLogMock();
   const compliance = new ComplianceMock();
   const control: MockControl = {
     acknowledgments,
+    auditLog,
     compliance,
     legalHolds,
     deletions,
@@ -753,6 +758,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Coding and coding layouts (E10-T01, E04-T03): ./mock-coding.ts.
     const coded = signedIn ? coding.handle(route, method, path) : undefined;
     if (coded) return coded;
+    // Audit log and coding history (E14-T04): ./mock-audit.ts.
+    const audited = signedIn ? auditLog.handle(route, method, path, url) : undefined;
+    if (audited) return audited;
     // Relationships and coding propagation (E16-T10): ./mock-relationships.ts.
     const related = signedIn ? relationships.handle(route, method, path, url) : undefined;
     if (related) return related;

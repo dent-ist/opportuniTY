@@ -112,6 +112,12 @@
               @case ('metadata') {
                 <opp-viewer-metadata [metadata]="loaded.metadata" />
               }
+              @case ('history') {
+                <opp-document-history
+                  [documentId]="loaded.documentId"
+                  [controlNumber]="doc.hit.controlNumber"
+                />
+              }
               @default {
                 <opp-empty-state [title]="reason(current) ?? 'Not available'" />
               }

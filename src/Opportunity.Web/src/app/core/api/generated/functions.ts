@@ -385,6 +385,18 @@ export type { ExportAccessReview$Params as ExportAccessReview$Params } from './f
 export { exportAccessReview as exportAccessReview } from './fn/compliance/export-access-review';
 export type { ExportAuditTrail$Params as ExportAuditTrail$Params } from './fn/compliance/export-audit-trail';
 export { exportAuditTrail as exportAuditTrail } from './fn/compliance/export-audit-trail';
+export type { ListAuditEvents$Params as ListAuditEvents$Params } from './fn/audit/list-audit-events';
+export { listAuditEvents as listAuditEvents } from './fn/audit/list-audit-events';
+export type { ListAuditActions$Params as ListAuditActions$Params } from './fn/audit/list-audit-actions';
+export { listAuditActions as listAuditActions } from './fn/audit/list-audit-actions';
+export type { DownloadAuditExport$Params as DownloadAuditExport$Params } from './fn/audit/download-audit-export';
+export { downloadAuditExport as downloadAuditExport } from './fn/audit/download-audit-export';
+export type { ListAuditExports$Params as ListAuditExports$Params } from './fn/audit/list-audit-exports';
+export { listAuditExports as listAuditExports } from './fn/audit/list-audit-exports';
+export type { CreateAuditExport$Params as CreateAuditExport$Params } from './fn/audit/create-audit-export';
+export { createAuditExport as createAuditExport } from './fn/audit/create-audit-export';
+export type { GetAuditExport$Params as GetAuditExport$Params } from './fn/audit/get-audit-export';
+export { getAuditExport as getAuditExport } from './fn/audit/get-audit-export';
 export type { ListSnapshots$Params as ListSnapshots$Params } from './fn/snapshots/list-snapshots';
 export { listSnapshots as listSnapshots } from './fn/snapshots/list-snapshots';
 export type { CreateSnapshot$Params as CreateSnapshot$Params } from './fn/snapshots/create-snapshot';

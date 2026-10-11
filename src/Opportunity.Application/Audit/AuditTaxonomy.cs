@@ -421,8 +421,13 @@ public static class AuditTaxonomy
         public const string Queried = "Queried";
         public const string Purged = "Purged";
 
-        /// <summary>An audit export with its chain range and verification result was downloaded (E14-T06).</summary>
+        /// <summary>An audit export was requested (E14-T04: filters, export and job) or an audit-chain export with its chain range and verification result was downloaded (E14-T06).</summary>
         public const string Exported = "Exported";
+
+        /// <summary>An audit export file was downloaded through the gateway (E14-T04): rows, bytes and SHA-256.</summary>
+        public const string ExportDownloaded = "ExportDownloaded";
+
+        public const string ExportResourceType = "AuditExport";
 
         /// <summary>A signed hash-chain checkpoint taken on request (manual, before a purge or deletion run; E14-T03).</summary>
         public const string CheckpointCreated = "CheckpointCreated";
@@ -463,7 +468,7 @@ public static class AuditTaxonomy
             "HoldReleaseCancelled", "DeletionBlocked"),
         .. Expand("Admin", "ConfigChanged", "UserProvisioned", "UserDeactivated", "KeyCreated", "KeyRotated", "KeyDestroyed",
             "SecretRotated"),
-        .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged"),
+        .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged", "ExportDownloaded"),
         .. Expand("Job", "Created", "Cancelled", "Failed", "CompletedWithErrors", "Replayed"),
         .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict",
             "MessageRejected"),

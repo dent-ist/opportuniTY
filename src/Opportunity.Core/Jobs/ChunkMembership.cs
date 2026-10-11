@@ -103,6 +103,17 @@ public sealed record ChunkMembership
         return new ChunkMembership(ChunkMembershipKind.ExplicitIds) { DocumentIds = [.. documentIds] };
     }
 
+    /// <summary>
+    /// <see cref="ChunkMembershipKind.TimeRange"/>: records whose time falls in <paramref name="fromMicros"/>…<paramref name="toMicros"/>
+    /// (Unix microseconds, inclusive).
+    /// </summary>
+    public static ChunkMembership TimeRange(long fromMicros, long toMicros)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(fromMicros);
+        ArgumentOutOfRangeException.ThrowIfLessThan(toMicros, fromMicros);
+        return new ChunkMembership(ChunkMembershipKind.TimeRange) { RangeFrom = fromMicros, RangeTo = toMicros };
+    }
+
     /// <summary>Rebuilds a stored reference (persistence only); validates like the factory methods.</summary>
     public static ChunkMembership Restore(
         ChunkMembershipKind kind, Guid? snapshotId, Guid? importBatchId, long? rangeFrom, long? rangeTo,
@@ -112,6 +123,7 @@ public sealed record ChunkMembership
             ChunkMembershipKind.ImportRows => ImportRows(importBatchId!.Value, rangeFrom!.Value, rangeTo!.Value),
             ChunkMembershipKind.DocumentKeyRange => DocumentKeyRange(projectionGeneration!.Value, documentIdFrom!.Value, documentIdTo!.Value),
             ChunkMembershipKind.ExplicitIds => ExplicitIds(documentIds!),
+            ChunkMembershipKind.TimeRange => TimeRange(rangeFrom!.Value, rangeTo!.Value),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown membership kind."),
         };
 

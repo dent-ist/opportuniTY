@@ -79,6 +79,7 @@ internal static class AuditCoverageCatalog
         Permission.ProductionCreate, Permission.ProductionFinalize, Permission.RedactionApply, Permission.RedactionRemove, Permission.CodingBulk,
         Permission.CodingWritePrivilege, Permission.PrivilegeLogGenerate, Permission.SearchTermReportRun, Permission.SavedSearchShare,
         Permission.ViewManageShared, Permission.HighlightSetManage, Permission.ReviewBatchManage, Permission.ImportOverlay,
+        Permission.AuditRead,
     ];
 
     /// <summary>Why the endpoint's metadata requires an audit event, or null.</summary>
@@ -434,6 +435,13 @@ internal static class AuditCoverageCatalog
         Audited("GET", "/compliance/access-review", "Security.AccessReviewGenerated"),
         Audited("GET", "/compliance/access-review/export", "Security.AccessReviewGenerated"),
         Audited("GET", "/compliance/audit-export", "Audit.Exported"),
+        // Audit log (E14-T04, ADR-013 §8.4): who reads or exports the audit trail is itself audited.
+        Audited("GET", "/audit-events", "Audit.Queried"),
+        NoneWs("GET", "/audit-actions", "reads the closed audit taxonomy; no audit events"),
+        Audited("POST", "/audit-exports", "Audit.Exported"),
+        NoneWs("GET", "/audit-exports", ListRead),
+        NoneWs("GET", "/audit-exports/{exportId}", ListRead),
+        Audited("GET", "/audit-exports/{exportId}/content", "Audit.ExportDownloaded", probe: "audit export file"),
         NoneWs("GET", "/privilege-log-templates", ConfigurationRead),
         Audited("POST", "/privilege-log-templates", "Privilege.LogTemplate.Created"),
         NoneWs("GET", "/privilege-log-templates/{templateId}", ConfigurationRead),

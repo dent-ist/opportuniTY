@@ -39,6 +39,9 @@ public enum JobType
 
     /// <summary>A search term report run (E07-T10): counts term hits over a Report snapshot.</summary>
     SearchTermReport,
+
+    /// <summary>An audit log export (E14-T04): the filtered audit trail of a workspace written to CSV.</summary>
+    AuditExport,
 }
 
 /// <summary>
@@ -64,6 +67,9 @@ public enum ChunkOperationKind
     /// owns the render sandbox where produced pages are decoded, redacted and endorsed.
     /// </summary>
     ProductionVolumeChunk,
+
+    /// <summary>A time window of a workspace's audit trail written as one part of an audit export (E14-T04).</summary>
+    AuditExportChunk,
 }
 
 /// <summary>How a chunk names its members (ADR-010 §4). Stored as smallint; values are fixed forever.</summary>
@@ -80,6 +86,12 @@ public enum ChunkMembershipKind : short
 
     /// <summary>An explicit list of at most <see cref="ChunkMembership.MaxExplicitIds"/> document ids.</summary>
     ExplicitIds = 4,
+
+    /// <summary>
+    /// Records whose time falls in <c>From…To</c> (Unix microseconds, inclusive), e.g. a window of the audit trail
+    /// (E14-T04). Not a document set: never handed to the indexing pipeline.
+    /// </summary>
+    TimeRange = 5,
 }
 
 /// <summary>Why a chunk attempt failed (ADR-010 §7). Stored as smallint; values are fixed forever.</summary>
