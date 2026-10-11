@@ -16,6 +16,11 @@ namespace Opportunity.Contracts.Api;
 /// <param name="ReviewPass"><c>firstPass</c> (default) or <c>qc</c>; a QC set names the first-pass set it checks.</param>
 /// <param name="QcOfBatchSetId">For <c>qc</c>: the first-pass Batch Set whose calls this pass is compared with.</param>
 /// <param name="ReviewerGroup">Optional IdP group: only its members may check batches out (managers may still assign anyone).</param>
+/// <param name="Sort">
+/// The order documents are cut into batches in (#178): <c>controlNumber</c> (default, the frozen set's order), <c>familyDate</c>
+/// or <c>documentDate</c>. Families (and threads) stay whole, ordered by their earliest date; undated documents come last.
+/// </param>
+/// <param name="SortDescending">Latest date first.</param>
 public sealed record CreateReviewBatchSetRequest(
     string Name,
     Guid SnapshotId,
@@ -25,7 +30,9 @@ public sealed record CreateReviewBatchSetRequest(
     bool KeepThreadsTogether = false,
     ReviewPassResource ReviewPass = ReviewPassResource.FirstPass,
     Guid? QcOfBatchSetId = null,
-    string? ReviewerGroup = null);
+    string? ReviewerGroup = null,
+    ReviewBatchSortResource? Sort = null,
+    bool SortDescending = false);
 
 /// <summary>A Batch Set: the batches cut from one frozen document set. Membership never changes after creation.</summary>
 /// <param name="DocumentCount">Documents of the set you may see (documents hidden from you are not counted, Q-52).</param>
@@ -46,7 +53,9 @@ public sealed record ReviewBatchSetResource(
     long DocumentCount,
     ReviewBatchStatusCounts StatusCounts,
     ReviewBatchUserResource CreatedBy,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    ReviewBatchSortResource Sort = ReviewBatchSortResource.ControlNumber,
+    bool SortDescending = false);
 
 public sealed record ReviewBatchStatusCounts(int Available, int CheckedOut, int Completed);
 
@@ -108,6 +117,19 @@ public sealed record ReviewCallResource(
     Guid BatchId,
     string BatchName,
     Guid EventId);
+
+/// <summary>
+/// <c>GET …/review-batch-sets/{batchSetId}/assignee-candidates</c>: members a manager may assign the set's batches to (a
+/// role that may code, directly or through a group of their last sign-in; in the set's reviewer group when it has one).
+/// </summary>
+public sealed record ReviewBatchAssigneeCandidateList(IReadOnlyList<ReviewBatchUserResource> Items);
+
+public enum ReviewBatchSortResource
+{
+    ControlNumber,
+    FamilyDate,
+    DocumentDate,
+}
 
 public enum ReviewPassResource
 {

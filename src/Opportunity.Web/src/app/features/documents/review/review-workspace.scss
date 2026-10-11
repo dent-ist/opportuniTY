@@ -64,6 +64,19 @@
   padding: var(--opp-space-3);
 }
 
+// #178: the review batch the cursor walks, with its check-in.
+.review__batch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  padding-inline: var(--opp-space-2);
+  border-inline-start: var(--opp-border-width) solid var(--opp-color-border);
+}
+
+.review__batch strong {
+  font-family: var(--opp-font-family-mono);
+}
+
 .review__toggles {
   display: flex;
   gap: var(--opp-space-1);

@@ -45,6 +45,7 @@ interface Subnav {
 /** Sidebar icon per workspace section (original icons, `ui/icon`). */
 const SECTION_ICONS: Readonly<Record<string, IconName>> = {
   documents: 'documents',
+  'review-batches': 'batches',
   searches: 'search',
   productions: 'production',
   imports: 'import',

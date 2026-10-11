@@ -53,6 +53,8 @@ export class FrozenSetSource {
 
   /** Snapshot purpose the set is frozen for (exports and productions accept only their own). */
   readonly purpose = input.required<SnapshotResourcePurpose>();
+  /** The legend of the source choice (review batches take documents to review, not to send). */
+  readonly legend = input('Documents to send');
   /** A saved search to preselect (`?savedSearch=` from Searches). */
   readonly initialSavedSearch = input<string | null>(null);
   /** The frozen set chosen; null until one is Ready. */

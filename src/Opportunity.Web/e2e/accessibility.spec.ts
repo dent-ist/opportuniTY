@@ -23,6 +23,10 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/searches/privilege-conflicts',
   '/w/ws-1/searches/privilege-logs',
   '/w/ws-1/documents?termReport=str-1&term=str-1-t1',
+  // Review Batches (#178): the list, a Batch Set, New Batch Set, and Documents bound to a batch.
+  '/w/ws-1/review-batches',
+  '/w/ws-1/review-batches/set-1',
+  '/w/ws-1/review-batches/new',
   '/w/ws-1/jobs',
   '/w/ws-1/jobs/job-exp-3',
   '/w/ws-1/jobs/job-bulk-7',

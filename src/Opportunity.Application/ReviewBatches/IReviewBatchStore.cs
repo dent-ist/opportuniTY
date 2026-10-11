@@ -29,6 +29,10 @@ public sealed record ReviewBatchSetRecord
 
     public required Guid SnapshotId { get; init; }
 
+    public ReviewBatchSort Sort { get; init; } = ReviewBatchSort.ControlNumber;
+
+    public bool SortDescending { get; init; }
+
     public required int BatchCount { get; init; }
 
     /// <summary>Frozen member count (every member, whoever may see it).</summary>
@@ -101,6 +105,11 @@ public sealed record NewReviewBatchSet
 
     public required Guid SnapshotId { get; init; }
 
+    /// <summary>The order groups are cut in (#178); groups are never split.</summary>
+    public ReviewBatchSort Sort { get; init; } = ReviewBatchSort.ControlNumber;
+
+    public bool SortDescending { get; init; }
+
     public required Guid CreatedBy { get; init; }
 
     /// <summary>The audit event of the creation, built from the stored set and written in its transaction.</summary>
@@ -128,6 +137,9 @@ public sealed record ReviewBatchFilter(Guid? BatchSetId = null, ReviewBatchStatu
 
 /// <summary>Keyset position of the batch list: (set, ordinal), sets oldest first.</summary>
 public readonly record struct ReviewBatchCursor(Guid BatchSetId, int Ordinal);
+
+/// <summary>A workspace member who may be assigned a batch, with the IdP groups of their last sign-in.</summary>
+public sealed record ReviewBatchCandidate(Guid UserId, string Name, IReadOnlyList<string> Groups);
 
 /// <summary>A member of a batch.</summary>
 public sealed record ReviewBatchMember(Guid DocumentId, string ControlNumber, int Position);
@@ -223,6 +235,16 @@ public interface IReviewBatchStore
     /// <summary>Members of a batch in position order, after <paramref name="afterPosition"/>.</summary>
     Task<IReadOnlyList<ReviewBatchMember>> ListMembersAsync(
         Guid workspaceId, Guid batchId, int afterPosition, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>The documents of a batch in position order, at most <paramref name="limit"/>.</summary>
+    Task<IReadOnlyList<Guid>> ListMemberIdsAsync(Guid workspaceId, Guid batchId, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Users with a role in the workspace, directly or through one of their groups, by name; <paramref name="nameContains"/>
+    /// matches names and e-mail addresses (case-insensitive).
+    /// </summary>
+    Task<IReadOnlyList<ReviewBatchCandidate>> ListCandidatesAsync(
+        Guid workspaceId, string? nameContains, int limit, CancellationToken cancellationToken = default);
 
     Task<ReviewBatchTransitionResult> TransitionAsync(ReviewBatchTransition transition, CancellationToken cancellationToken = default);
 }

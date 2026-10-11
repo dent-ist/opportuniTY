@@ -66,7 +66,9 @@ public sealed record ReviewBatchSetRequest(
     bool KeepThreadsTogether,
     ReviewPass Pass,
     Guid? QcOfBatchSetId,
-    string? ReviewerGroup);
+    string? ReviewerGroup,
+    ReviewBatchSort Sort = ReviewBatchSort.ControlNumber,
+    bool SortDescending = false);
 
 /// <summary>
 /// Review batches (E10-T05; baseline §14, Q-53, familiarity guide §5.3): Batch Sets cut from a materialized ReviewBatch
@@ -133,6 +135,11 @@ public sealed class ReviewBatchService(
             errors["qcOfBatchSetId"] = ["Only a QC Batch Set names a first-pass Batch Set."];
         }
 
+        if (!Enum.IsDefined(request.Sort))
+        {
+            errors["sort"] = ["The sort is controlNumber, familyDate or documentDate."];
+        }
+
         if (errors.Count > 0)
         {
             return new ReviewBatchOutcome { Status = ReviewBatchOutcomeStatus.Invalid, Errors = errors };
@@ -167,6 +174,8 @@ public sealed class ReviewBatchService(
             QcOfBatchSetId = request.QcOfBatchSetId,
             ReviewerGroup = group,
             SnapshotId = snapshot.SnapshotId,
+            Sort = request.Sort,
+            SortDescending = request.SortDescending,
             CreatedBy = principal.UserId,
             Audit = set => Event(principal, workspaceId, AuditTaxonomy.Coding.BatchSetCreated, AuditTaxonomy.Coding.BatchSetResourceType,
                 set.BatchSetId, new Dictionary<string, string?>
@@ -177,6 +186,8 @@ public sealed class ReviewBatchService(
                     ["maxBatchSize"] = Number(set.MaxBatchSize),
                     ["keepFamiliesTogether"] = set.KeepFamiliesTogether ? "true" : "false",
                     ["keepThreadsTogether"] = set.KeepThreadsTogether ? "true" : "false",
+                    ["sort"] = set.Sort.ToString(),
+                    ["sortDescending"] = set.SortDescending ? "true" : "false",
                     ["batchCount"] = Number(set.BatchCount),
                     ["documentCount"] = Number(set.DocumentCount),
                 }),
@@ -262,6 +273,93 @@ public sealed class ReviewBatchService(
 
         return await TransitionAsync(principal, workspaceId, batch, ReviewBatchTransitionKind.CheckOut, principal.UserId,
             AuditTaxonomy.Coding.BatchCheckedOut, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// "Check out next batch" (#178, familiarity guide §5.3): the caller's batch of the set when they already hold one,
+    /// else the first Available batch (by number) with documents the caller may see, checked out to them. Batches whose
+    /// documents are all hidden from the caller are never handed out (Q-52). Conflict when none is left.
+    /// </summary>
+    public async Task<ReviewBatchOutcome> CheckOutNextAsync(
+        SecurityPrincipal principal, Guid workspaceId, ReviewBatchSetRecord set, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+        ArgumentNullException.ThrowIfNull(set);
+        if (set.ReviewerGroup is { } group && !principal.Groups.Contains(group, StringComparer.Ordinal)
+            && !await IsManagerAsync(principal, workspaceId, cancellationToken).ConfigureAwait(false))
+        {
+            return ReviewBatchOutcome.Of(ReviewBatchOutcomeStatus.Forbidden, "This Batch Set is for another reviewer group.");
+        }
+
+        var held = await store.ListBatchesAsync(workspaceId, new ReviewBatchFilter(set.BatchSetId, ReviewBatchStatus.CheckedOut, principal.UserId),
+            null, 1, cancellationToken).ConfigureAwait(false);
+        if (held.Count > 0)
+        {
+            return new ReviewBatchOutcome
+            {
+                Status = ReviewBatchOutcomeStatus.Ok,
+                Batch = (await BatchViewsAsync(principal, workspaceId, held, cancellationToken).ConfigureAwait(false))[0],
+            };
+        }
+
+        const int Page = 20;
+        ReviewBatchCursor? after = null;
+        while (true)
+        {
+            var available = await store.ListBatchesAsync(workspaceId, new ReviewBatchFilter(set.BatchSetId, ReviewBatchStatus.Available), after, Page,
+                cancellationToken).ConfigureAwait(false);
+            if (available.Count == 0)
+            {
+                return ReviewBatchOutcome.Of(ReviewBatchOutcomeStatus.Conflict, "No batch of this Batch Set is available.");
+            }
+
+            foreach (var view in await BatchViewsAsync(principal, workspaceId, available, cancellationToken).ConfigureAwait(false))
+            {
+                if (view.VisibleDocuments == 0)
+                {
+                    continue;
+                }
+
+                var outcome = await TransitionAsync(principal, workspaceId, view.Batch, ReviewBatchTransitionKind.CheckOut, principal.UserId,
+                    AuditTaxonomy.Coding.BatchCheckedOut, cancellationToken).ConfigureAwait(false);
+
+                // Another reviewer took it meanwhile: try the next one.
+                if (outcome.Status is not (ReviewBatchOutcomeStatus.VersionConflict or ReviewBatchOutcomeStatus.Conflict))
+                {
+                    return outcome;
+                }
+            }
+
+            if (available.Count < Page)
+            {
+                return ReviewBatchOutcome.Of(ReviewBatchOutcomeStatus.Conflict, "No batch of this Batch Set is available.");
+            }
+
+            after = new ReviewBatchCursor(available[^1].BatchSetId, available[^1].Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// Members a manager may assign the set's batches to: a role that grants Coding.Write (directly or through a group of
+    /// their last sign-in) and, when the set names one, membership of its reviewer group. The same rule as
+    /// <see cref="AssignAsync"/>.
+    /// </summary>
+    public async Task<IReadOnlyList<ReviewBatchCandidate>> ListAssigneeCandidatesAsync(
+        Guid workspaceId, ReviewBatchSetRecord set, string? nameContains, int limit, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(set);
+        var assignments = await roles.ReadAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+        if (assignments is null)
+        {
+            return [];
+        }
+
+        var candidates = await store.ListCandidatesAsync(workspaceId, nameContains, MaxLimit, cancellationToken).ConfigureAwait(false);
+        return [.. candidates
+            .Where(c => c.Groups.Select(RolePrincipal.Group).Append(RolePrincipal.User(c.UserId)).SelectMany(assignments.RolesOf)
+                .Any(r => r.Grants(Permission.CodingWrite)))
+            .Where(c => set.ReviewerGroup is not { } group || c.Groups.Contains(group, StringComparer.Ordinal))
+            .Take(limit)];
     }
 
     /// <summary>The holder (or a manager) checks a batch in, done or not.</summary>

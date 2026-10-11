@@ -37,6 +37,17 @@
       }
     </p>
   }
+  @if (batchName(); as batch) {
+    <div class="review__batch" role="group" aria-label="Review batch">
+      <opp-icon name="batches" />
+      <span
+        ><span class="opp-visually-hidden">Batch </span><strong>{{ batch }}</strong></span
+      >
+      @if (canCheckIn()) {
+        <button type="button" oppButton="secondary" (click)="checkInBatch()">Check in…</button>
+      }
+    </div>
+  }
   <div class="review__toggles" role="group" aria-label="Panes">
     <button
       #codingToggle
@@ -91,6 +102,11 @@
       <opp-icon [name]="n.kind === 'refreshed' ? 'refresh' : 'info'" />
       <span>{{ n.message }}</span>
       @if (n.kind === 'end') {
+        @if (batchName() && canCheckIn()) {
+          <button type="button" oppButton="primary" (click)="checkInBatch()">
+            Check in batch…
+          </button>
+        }
         <button type="button" oppButton="secondary" (click)="leave()">Back to list</button>
       }
       <button type="button" oppButton="ghost" (click)="notice.set(null)">Dismiss</button>

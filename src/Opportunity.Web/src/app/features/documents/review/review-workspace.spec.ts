@@ -575,4 +575,58 @@ describe('Review mode (E16-T03)', () => {
     expect(review()).toBeNull();
     expect(TestBed.inject(Location).path()).toBe('/w/ws-1/documents');
   });
+
+  it('binds the list to a review batch, opens its first document and checks the batch in at its end (#178)', async () => {
+    await setup({ total: 3 });
+    const batch = {
+      batchId: 'b-1',
+      batchSetId: 'set-1',
+      batchSetName: 'First pass',
+      ordinal: 1,
+      name: 'FP_0001',
+      reviewPass: 'firstPass',
+      status: 'checkedOut',
+      documentCount: 3,
+      assignee: { userId: 'u-1', displayName: 'Alex Reviewer' },
+      statusChangedAt: '2026-10-10T09:00:00Z',
+      statusChangedBy: 'u-1',
+      version: 2,
+    };
+    let checkIn: HttpRequest<unknown> | null = null;
+    api
+      .on('GET', `${WS}/review-batches/b-1`, { body: batch })
+      .on('POST', `${WS}/review-batches/b-1/check-in`, (req) => {
+        checkIn = req;
+        return { body: { ...batch, status: 'completed', version: 3 } };
+      });
+    await TestBed.inject(Router).navigateByUrl('/w/ws-1/documents?batch=b-1');
+    await settle();
+    await settle();
+
+    const search = api.requests.filter((r) => r.method === 'POST' && r.url === SEARCHES).at(-1)!;
+    expect(search.body).toEqual(expect.objectContaining({ query: '', reviewBatchId: 'b-1' }));
+    expect(search.body).not.toHaveProperty('expand');
+    expect(bar()).toContain('Doc 1 of 3');
+    expect(bar()).toContain('FP_0001');
+
+    press('BracketRight', { key: ']' });
+    await settle();
+    press('BracketRight', { key: ']' });
+    await settle();
+    press('BracketRight', { key: ']' });
+    await settle();
+    expect(bar()).toContain('Doc 3 of 3');
+    expect(review()!.textContent).toContain('End of batch FP_0001.');
+
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
+    button('Check in batch…').click();
+    await settle();
+    [...document.querySelectorAll<HTMLButtonElement>('.cdk-overlay-container button')]
+      .find((b) => b.textContent?.trim() === 'Mark completed')!
+      .click();
+    await settle();
+    expect(checkIn!.body).toEqual({ completed: true });
+    expect(checkIn!.headers.get('If-Match')).toBe('"2"');
+    expect(navigate).toHaveBeenCalledWith(['/w', 'ws-1', 'review-batches']);
+  });
 });

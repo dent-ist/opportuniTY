@@ -68,6 +68,17 @@ public interface ISearchTermHitSource
     Task<SearchTermHitSet?> GetAsync(SearchCaller caller, Guid reportId, Guid termId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// The frozen members of a review batch, for searching within the batch (#178: Review mode bound to a checked-out batch).
+/// Implemented by the review batch feature; the search service only filters by it (and, as always, by the caller's
+/// visibility, Q-52). Null when the batch does not exist.
+/// </summary>
+public interface IReviewBatchScopeSource
+{
+    /// <summary>At most <paramref name="limit"/> member IDs in review order.</summary>
+    Task<IReadOnlyList<Guid>?> GetMembersAsync(SearchCaller caller, Guid batchId, int limit, CancellationToken cancellationToken = default);
+}
+
 public enum SearchTermHitSetStatus
 {
     Ok,

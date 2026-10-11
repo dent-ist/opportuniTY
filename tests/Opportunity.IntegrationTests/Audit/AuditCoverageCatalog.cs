@@ -350,6 +350,22 @@ internal static class AuditCoverageCatalog
         NoneWs("GET", "/review-batch-sets", ListRead),
         NoneWs("GET", "/review-batch-sets/{batchSetId}", ListRead),
         NoneWs("GET", "/review-batch-sets/{batchSetId}/conflicts", DocumentDataRead),
+        Custom("POST", "/review-batch-sets/{batchSetId}/check-out-next", "Coding.ReviewBatch.CheckedOut", async w =>
+        {
+            // A fresh set, so the probe checks a batch out instead of returning one the actor already holds.
+            var snapshot = await w.JsonAsync(HttpMethod.Post, $"{W(w.A.WorkspaceId)}/snapshots", w.Attacker, HttpStatusCode.Created,
+                new JsonObject { ["purpose"] = "ReviewBatch", ["documentIds"] = new JsonArray(w.A.DocumentId.ToString()) });
+            var set = await w.JsonAsync(HttpMethod.Post, $"{W(w.A.WorkspaceId)}/review-batch-sets", w.Attacker, HttpStatusCode.Created, new JsonObject
+            {
+                ["name"] = Unique("Audit probe "),
+                ["snapshotId"] = snapshot.GetProperty("snapshotId").GetString(),
+                ["batchPrefix"] = Unique("AP"),
+                ["maxBatchSize"] = 10,
+            });
+            return new AuditRequest(HttpMethod.Post,
+                $"{W(w.A.WorkspaceId)}/review-batch-sets/{set.GetProperty("batchSetId").GetGuid()}/check-out-next", w.Attacker);
+        }),
+        NoneWs("GET", "/review-batch-sets/{batchSetId}/assignee-candidates", ConfigurationRead),
         NoneWs("GET", "/review-batches", ListRead),
         NoneWs("GET", "/review-batches/{batchId}", ListRead),
         NoneWs("GET", "/review-batches/{batchId}/documents", ListRead),

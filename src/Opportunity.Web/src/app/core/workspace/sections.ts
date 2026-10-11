@@ -1,7 +1,7 @@
 /**
  * Workspace navigation (familiarity guide §2.1–§2.3). Order is fixed; a section shows only when the API
  * grants its permission in the workspace (RBAC-driven navigation, baseline §15). Search is part of
- * Documents, so there is no separate Search section. Review Batches stay hidden until M5.
+ * Documents, so there is no separate Search section. Review Batches (#178, Q-53) show to members who may code.
  *
  * Names are the closed E05-T02 catalogue (docs/security/permission-matrix.md); `GET /api/v1/workspaces/{id}`
  * returns the caller's effective subset. Navigation is an affordance only: the API authorizes every call.
@@ -14,6 +14,8 @@ export const PERMISSIONS = {
   /** Security-affecting fields: privilege, confidentiality, wall membership (Q-11). */
   codingWritePrivilege: 'Coding.WritePrivilege',
   codingBulk: 'Coding.Bulk',
+  /** Create Batch Sets, assign, reassign and release review batches (#178). */
+  reviewBatchManage: 'ReviewBatch.Manage',
   /** Privilege logs and the privilege conflicts report (E13-T02). */
   privilegeLogGenerate: 'PrivilegeLog.Generate',
   downloadNative: 'Document.DownloadNative',
@@ -62,6 +64,8 @@ export interface WorkspaceSection {
 
 export const WORKSPACE_SECTIONS: readonly WorkspaceSection[] = [
   { path: 'documents', label: 'Documents', permission: PERMISSIONS.documentView },
+  // Batch review (#178, Q-53): reviewers check out batches; managers create and assign them.
+  { path: 'review-batches', label: 'Review Batches', permission: PERMISSIONS.codingWrite },
   // Saved searches: create, organise, share and report on them (Search Terms Reports is one of its tabs).
   { path: 'searches', label: 'Searches', permission: PERMISSIONS.searchExecute },
   { path: 'productions', label: 'Productions', permission: PERMISSIONS.productionCreate },

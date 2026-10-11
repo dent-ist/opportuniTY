@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Conventions.Idempotency;
 using Opportunity.Application.ReviewBatches;
+using Opportunity.Application.Search;
 using Opportunity.Contracts.Api;
 using Opportunity.Core.ReviewBatches;
 using Opportunity.Core.Security;
@@ -80,6 +81,30 @@ public sealed class ReviewBatchEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
+            .RequirePermission(Permission.ReviewBatchManage);
+
+        ws.MapPost(SetsPath + "/{batchSetId}/check-out-next", CheckOutNextAsync)
+            .WithName("CheckOutNextReviewBatch")
+            .WithTags(SetTag)
+            .WithSummary("Check out the next available batch of a set to yourself, or get the one of this set you already hold (audited).")
+            .WithDescription(
+                "Batches are handed out by number; a batch whose documents are all hidden from you is skipped (Q-52). 409 when no " +
+                "batch is available. Safe to repeat: while you hold a batch of the set, it is returned instead of a new one.")
+            .Produces<ReviewBatchResource>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .RequirePermission(Permission.CodingWrite);
+
+        ws.MapGet(SetsPath + "/{batchSetId}/assignee-candidates", ListAssigneeCandidatesAsync)
+            .WithName("ListReviewBatchAssigneeCandidates")
+            .WithTags(SetTag)
+            .WithSummary("Members you may assign this set's batches to: a role that may code, in the set's reviewer group if it has one.")
+            .WithDescription("By display name; q matches names and e-mail addresses (case-insensitive); limit 1–500, default 50.")
+            .Produces<ReviewBatchAssigneeCandidateList>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
             .RequirePermission(Permission.ReviewBatchManage);
 
         ws.MapGet(BatchesPath, ListBatchesAsync)
@@ -170,7 +195,15 @@ public sealed class ReviewBatchEndpoints : IApiEndpointModule
             request.KeepThreadsTogether,
             request.ReviewPass == ReviewPassResource.Qc ? ReviewPass.Qc : ReviewPass.FirstPass,
             request.QcOfBatchSetId,
-            request.ReviewerGroup), cancellationToken).ConfigureAwait(false);
+            request.ReviewerGroup,
+            request.Sort switch
+            {
+                null or ReviewBatchSortResource.ControlNumber => ReviewBatchSort.ControlNumber,
+                ReviewBatchSortResource.FamilyDate => ReviewBatchSort.FamilyDate,
+                ReviewBatchSortResource.DocumentDate => ReviewBatchSort.DocumentDate,
+                _ => (ReviewBatchSort)0,
+            },
+            request.SortDescending), cancellationToken).ConfigureAwait(false);
         if (outcome.Status != ReviewBatchOutcomeStatus.Created)
         {
             return Problem(outcome, NoSuchSet);
@@ -277,6 +310,50 @@ public sealed class ReviewBatchEndpoints : IApiEndpointModule
             : null;
         return TypedResults.Ok(new CursorPage<ReviewConflictResource>(items, nextCursor,
             new TotalCount(items.Count, nextCursor is null && after is null ? TotalRelation.Eq : TotalRelation.Gte)));
+    }
+
+    internal static async Task<IResult> CheckOutNextAsync(
+        string workspaceId, string batchSetId, HttpContext context, ReviewBatchService service, CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (context.GetWorkspaceAccess() is not { } access || !TryParseId(batchSetId, out var id)
+            || await service.GetSetAsync(access.Principal, access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { } view)
+        {
+            return Problems.NotFound(NoSuchSet);
+        }
+
+        return Result(context, await service.CheckOutNextAsync(access.Principal, access.WorkspaceId, view.Set, cancellationToken).ConfigureAwait(false));
+    }
+
+    internal static async Task<IResult> ListAssigneeCandidatesAsync(
+        string workspaceId,
+        string batchSetId,
+        [FromQuery] string? q,
+        [FromQuery] int? limit,
+        HttpContext context,
+        ReviewBatchService service,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (context.GetWorkspaceAccess() is not { } access || !TryParseId(batchSetId, out var id)
+            || await service.GetSetAsync(access.Principal, access.WorkspaceId, id, cancellationToken).ConfigureAwait(false) is not { } view)
+        {
+            return Problems.NotFound(NoSuchSet);
+        }
+
+        if (new PageQuery(limit, null).Validate() is { } invalid)
+        {
+            return invalid;
+        }
+
+        if (q is { Length: > 256 })
+        {
+            return Problems.Validation(new Dictionary<string, string[]> { ["q"] = ["q has at most 256 characters."] });
+        }
+
+        var candidates = await service.ListAssigneeCandidatesAsync(access.WorkspaceId, view.Set, q, limit ?? Pagination.DefaultLimit, cancellationToken)
+            .ConfigureAwait(false);
+        return TypedResults.Ok(new ReviewBatchAssigneeCandidateList([.. candidates.Select(c => new ReviewBatchUserResource(c.UserId, c.Name))]));
     }
 
     internal static async Task<IResult> ListBatchesAsync(
@@ -489,7 +566,14 @@ public sealed class ReviewBatchEndpoints : IApiEndpointModule
             view.VisibleDocuments,
             new ReviewBatchStatusCounts(s.Available, s.CheckedOut, s.Completed),
             new ReviewBatchUserResource(s.CreatedBy, view.CreatorName),
-            s.CreatedAt);
+            s.CreatedAt,
+            s.Sort switch
+            {
+                ReviewBatchSort.FamilyDate => ReviewBatchSortResource.FamilyDate,
+                ReviewBatchSort.DocumentDate => ReviewBatchSortResource.DocumentDate,
+                _ => ReviewBatchSortResource.ControlNumber,
+            },
+            s.SortDescending);
     }
 
     internal static ReviewBatchResource ToResource(ReviewBatchView view)
@@ -594,6 +678,7 @@ public static class ReviewBatchEndpointRegistration
         services.TryAddSingleton(TimeProvider.System);
         services.AddPostgresReviewBatchStore();
         services.TryAddScoped<ReviewBatchService>();
+        services.TryAddScoped<IReviewBatchScopeSource, ReviewBatchScopeSource>();
         services.AddSingleton<IApiEndpointModule, ReviewBatchEndpoints>();
         return services;
     }

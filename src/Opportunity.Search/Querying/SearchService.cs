@@ -51,7 +51,8 @@ internal sealed partial class SearchService(
     ISavedSearchQueries? savedSearches = null,
     ISearchTermHitSource? termHits = null,
     ISearchFieldCatalogSource? catalogs = null,
-    IFieldAccessFilter? fieldAccess = null) : ISearchService
+    IFieldAccessFilter? fieldAccess = null,
+    IReviewBatchScopeSource? batches = null) : ISearchService
 {
     private const string ResourceType = "Search";
     private const string CorrelationTag = "opportunity.correlation_id";
@@ -97,6 +98,28 @@ internal sealed partial class SearchService(
 
         SavedSearchRunSource? saved = null;
         TermScope? termScope = null;
+        BatchScope? batchScope = null;
+        if (request.ReviewBatchId is { } batchId)
+        {
+            if (request.SavedSearchId is not null || request.SearchTermReportId is not null || request.TermId is not null)
+            {
+                return SearchOutcome.InvalidRequest("reviewBatchId", "A review batch is searched with query text only.");
+            }
+
+            if (request.Expand is { } expand && !expand.ToExpansion().IsNone)
+            {
+                return SearchOutcome.InvalidRequest("expand", "Include options do not apply within a review batch; its families are already in it.");
+            }
+
+            var resolved = await ResolveBatchAsync(caller, batchId, cancellationToken).ConfigureAwait(false);
+            if (resolved.Outcome is { } refused)
+            {
+                return refused;
+            }
+
+            batchScope = resolved.Scope;
+        }
+
         if (request.SearchTermReportId is not null || request.TermId is not null)
         {
             if (request.SearchTermReportId is not { } reportId || request.TermId is not { } termId)
@@ -238,7 +261,7 @@ internal sealed partial class SearchService(
             now + Settings.SearchIdleTimeout)
         {
             ServedGeneration = watermark.IndexedThroughGeneration,
-            ScopeJson = termScope?.Json,
+            ScopeJson = termScope?.Json ?? batchScope?.Json,
             Expansion = expansion,
             ResultFieldsJson = columns.Fields.Count > 0 ? SearchColumns.ToJson(columns.Fields) : null,
         };
@@ -262,7 +285,9 @@ internal sealed partial class SearchService(
         var pit = await OpenPointInTimeAsync(placement, cancellationToken).ConfigureAwait(false);
         search = search with { PointInTimeOpenedAt = time.GetUtcNow() };
         var query = SearchDsl.Query(placement.WorkspaceFilterValue, visibility.Filter!,
-            termScope is null ? plan.Query! : TermScoped(plan.Query!, termScope.DocumentIds));
+            termScope is not null ? TermScoped(plan.Query!, termScope.DocumentIds)
+            : batchScope is not null ? BatchScoped(plan.Query!, batchScope.DocumentIds)
+            : plan.Query!);
         SearchResult result;
         try
         {
@@ -391,7 +416,17 @@ internal sealed partial class SearchService(
         }
 
         var userClause = plan.Query!;
-        if (search.ScopeJson is { } scopeJson)
+        if (search.ScopeJson is { } batchJson && BatchScope.Parse(batchJson) is { } scopedBatch)
+        {
+            // A review batch (#178): its frozen membership, re-read for every page.
+            if (await ResolveBatchAsync(caller, scopedBatch, cancellationToken).ConfigureAwait(false) is not { Scope: { } batch })
+            {
+                return SearchOutcome.NotFound;
+            }
+
+            userClause = BatchScoped(userClause, batch.DocumentIds);
+        }
+        else if (search.ScopeJson is { } scopeJson)
         {
             // A term hit set (E07-T10): re-read for every page; a report deleted or being rerun meanwhile ends the search.
             if (TermScope.Parse(scopeJson) is not { } term
