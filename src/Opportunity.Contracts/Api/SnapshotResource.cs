@@ -81,6 +81,7 @@ public enum SnapshotResourcePurpose
     Production,
     Report,
     ReviewBatch,
+    ListExport,
 }
 
 public enum SnapshotResourceStatus

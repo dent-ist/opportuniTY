@@ -33,10 +33,11 @@ public sealed class TelemetryApiFactory(string? connectionString = null, bool re
     {
         builder.UseSetting("Telemetry:Enabled", "true");
         builder.UseSetting("Telemetry:RecordSqlStatements", recordSqlStatements ? "true" : "false");
-        // No background snapshot, search term report or audit export loop: their PostgreSQL traffic would pool connections the span assertions expect to open.
+        // No background snapshot, search term report, audit or list export loop: their PostgreSQL traffic would pool connections the span assertions expect to open.
         builder.UseSetting("Snapshots:BackgroundEnabled", "false");
         builder.UseSetting("SearchTermReports:BackgroundEnabled", "false");
         builder.UseSetting("AuditExports:BackgroundEnabled", "false");
+        builder.UseSetting("ListExports:BackgroundEnabled", "false");
         if (connectionString is not null)
         {
             builder.UseSetting($"ConnectionStrings:{PostgresReadiness.ConnectionStringName}", connectionString);

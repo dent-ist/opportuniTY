@@ -54,6 +54,9 @@ public enum SetOperationKind
     /// <summary>Review batch membership (E10-T05; frozen review sets, Q-33).</summary>
     ReviewBatch,
 
+    /// <summary>Document list export to CSV (#181): a restart must write the same rows.</summary>
+    ListExport,
+
     /// <summary>The interactive grid and review cursor: not a job; always a live reader (ADR-002 §8, Q-33).</summary>
     InteractiveCursor,
 }
@@ -157,6 +160,7 @@ public static class SnapshotStrategyRules
         SetOperationKind.SavedSearchTermReport => StrategyPredicates.SurvivesIndexChange | StrategyPredicates.LegalReproducibility,
         SetOperationKind.SearchTermReportPreview => StrategyPredicates.None,
         SetOperationKind.ReviewBatch => StrategyPredicates.ExactRestart | StrategyPredicates.SurvivesIndexChange,
+        SetOperationKind.ListExport => StrategyPredicates.ExactRestart | StrategyPredicates.SurvivesIndexChange,
         SetOperationKind.InteractiveCursor => StrategyPredicates.None,
         _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Unknown operation."),
     };
@@ -220,6 +224,7 @@ public static class SnapshotStrategyRules
         SnapshotPurpose.Production => SetOperationKind.Production,
         SnapshotPurpose.Report => SetOperationKind.SavedSearchTermReport,
         SnapshotPurpose.ReviewBatch => SetOperationKind.ReviewBatch,
+        SnapshotPurpose.ListExport => SetOperationKind.ListExport,
         _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, "Unknown snapshot purpose."),
     };
 

@@ -174,8 +174,17 @@ public static class AuditTaxonomy
 
         public const string Downloaded = "Downloaded";
 
+        /// <summary>A document list export to CSV was requested (#181): columns, frozen selection and job.</summary>
+        public const string ListRequested = "ListRequested";
+
+        /// <summary>A document list export's CSV was downloaded through the gateway (#181): rows, bytes and SHA-256.</summary>
+        public const string ListDownloaded = "ListDownloaded";
+
         /// <summary>The audit resource type of export events.</summary>
         public const string ResourceType = "Export";
+
+        /// <summary>The audit resource type of document list export events (#181).</summary>
+        public const string ListResourceType = "ListExport";
     }
 
     /// <summary>Privilege review (E13): conflict overrides and reports.</summary>
@@ -451,7 +460,7 @@ public static class AuditTaxonomy
         .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded", "ConflictReportExported", "LogDownloaded",
             "LogTemplate.Created", "LogTemplate.Modified"),
         .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
-        .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
+        .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded", "ListRequested", "ListDownloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
             "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted",

@@ -569,7 +569,7 @@ public sealed class DocumentSetSnapshotStore(NpgsqlDataSource dataSource) : IDoc
                           (NOT EXISTS (SELECT 1 FROM opportunity.job j
                                         WHERE j.workspace_id = @ws AND j.target_snapshot_id = c.snapshot_id)
                            AND c.created_at <= now() - @unreferenced)
-                       OR (c.purpose = 'BulkCoding'
+                       OR (c.purpose IN ('BulkCoding', 'ListExport')
                            AND EXISTS (SELECT 1 FROM opportunity.job j
                                         WHERE j.workspace_id = @ws AND j.target_snapshot_id = c.snapshot_id)
                            AND NOT EXISTS (SELECT 1 FROM opportunity.job j

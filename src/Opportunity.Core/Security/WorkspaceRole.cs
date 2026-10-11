@@ -50,7 +50,7 @@ public static class RoleCatalog
         [
             Permission.DocumentView, Permission.DocumentDownloadNative, Permission.DocumentPrint, Permission.SearchExecute,
             Permission.SavedSearchShare, Permission.SearchTermReportRun, Permission.CodingBulk, Permission.ExportCreate, Permission.ExportDownload,
-            Permission.ProductionCreate, Permission.ProductionFinalize, Permission.PrivilegeLogGenerate, Permission.JobViewAll,
+            Permission.ProductionCreate, Permission.ProductionFinalize, Permission.PrivilegeLogGenerate, Permission.JobViewAll, Permission.DocumentExportList,
         ]),
         Role(WorkspaceRole.Auditor, "Auditor", "Auditor (read-only)",
         [

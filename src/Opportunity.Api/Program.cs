@@ -85,6 +85,8 @@ builder.Services.AddComplianceContentEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddAuditLogEndpoints(builder.Configuration);
 builder.Services.AddAuditExportContentEndpoints();
+builder.Services.AddListExportEndpoints(builder.Configuration);
+builder.Services.AddListExportContentEndpoints();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();
 

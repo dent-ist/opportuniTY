@@ -75,6 +75,7 @@ import {
   toExpand,
 } from './search/include-related';
 import { BulkCodingApi, HttpBulkCodingApi } from './mass-edit/bulk-coding-api';
+import { HttpListExportApi, ListExportApi } from './list-export/list-export-api';
 import { MassActions } from './mass-edit/mass-actions';
 import { MassEditJobs } from './mass-edit/mass-edit-jobs';
 import { FreshnessMonitor } from './freshness/freshness-monitor';
@@ -307,6 +308,8 @@ const BROWSER_KEY = 'pane.documentsBrowser';
               [target]="grid().selectionTarget()"
               [listCount]="grid().countText()"
               [fields]="grid().fieldCatalogue()"
+              [wholeList]="wholeList"
+              [viewColumns]="grid().viewQueryNames()"
               [returnFocus]="listElement"
             />
           </opp-review-grid>
@@ -335,6 +338,7 @@ const BROWSER_KEY = 'pane.documentsBrowser';
     { provide: RedactionApi, useClass: HttpRedactionApi },
     PendingCoding,
     { provide: BulkCodingApi, useClass: HttpBulkCodingApi },
+    { provide: ListExportApi, useClass: HttpListExportApi },
     MassEditJobs,
     { provide: SearchFreshnessApi, useClass: HttpSearchFreshnessApi },
     FreshnessMonitor,
@@ -386,6 +390,8 @@ export class DocumentsPage {
   );
   /** Mass Actions dialogs return focus to the list. */
   protected readonly listElement = () => this.grid().focusTarget();
+  /** The whole list as its query, for Export List without a selection (#181). */
+  protected readonly wholeList = () => this.grid().wholeList();
 
   // Saved searches (E16-T11)
   private readonly savedApi = inject(SavedSearchApi);
