@@ -75,11 +75,13 @@ test('shows a document’s coding history in the viewer’s History tab (E14-T04
   const viewer = page.getByRole('region', { name: 'Viewer' });
   await expect(viewer.getByRole('tab', { name: 'History' })).toBeVisible();
 
-  await page.keyboard.press('Alt+Shift+Digit6');
-  await expect(viewer.getByRole('tab', { name: 'History' })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  // Review mode binds its viewer shortcuts once the document has loaded; on a slow runner the first press can arrive
+  // before that, so press until the tab is selected (pressing again on the selected tab changes nothing).
+  const historyTab = viewer.getByRole('tab', { name: 'History' });
+  await expect(async () => {
+    await page.keyboard.press('Alt+Shift+Digit6');
+    await expect(historyTab).toHaveAttribute('aria-selected', 'true', { timeout: 1000 });
+  }).toPass();
   const history = viewer.getByRole('group', { name: /^Coding history of ACM/ });
   await expect(history.getByRole('row')).toHaveCount(3);
   await expect(history.getByRole('row').nth(1)).toContainText('Not Responsive');
