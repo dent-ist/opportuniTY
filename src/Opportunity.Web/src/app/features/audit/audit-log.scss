@@ -1,0 +1,215 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-4);
+  max-width: 96rem;
+  padding: var(--opp-space-5);
+}
+
+.audit__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--opp-space-3);
+}
+
+.audit__heading-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+}
+
+.audit__title {
+  font-size: var(--opp-font-size-2xl);
+}
+
+.audit__section-title {
+  font-size: var(--opp-font-size-lg);
+}
+
+.audit__subtitle {
+  font-size: var(--opp-font-size-md);
+}
+
+.audit__muted {
+  margin: 0;
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+}
+
+.audit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+// Filters: compact fields in a wrapping row; the user filter and the search-text switch follow on their own line.
+.audit__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--opp-space-2) var(--opp-space-3);
+  padding: var(--opp-space-3) var(--opp-space-4);
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-lg);
+  background: var(--opp-color-surface-sunken);
+}
+
+.audit__filters > * {
+  flex: 0 1 11rem;
+  min-width: 9rem;
+}
+
+.audit__filters > .audit__filter-actions,
+.audit__filters > .audit__chip,
+.audit__filters > .audit__search-text {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.audit__filter-actions {
+  display: flex;
+  gap: var(--opp-space-2);
+}
+
+.audit__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding-inline-start: var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-pill);
+  background: var(--opp-color-surface);
+  font-size: var(--opp-font-size-sm);
+}
+
+.audit__table-wrap {
+  overflow-x: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.audit__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.audit__table th,
+.audit__table td {
+  height: var(--opp-row-height);
+  padding: var(--opp-space-1) var(--opp-cell-padding-x);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.audit__table thead th {
+  background: var(--opp-color-surface-sunken);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+  white-space: nowrap;
+}
+
+.audit__table tbody th {
+  font-weight: var(--opp-font-weight-medium);
+}
+
+.audit__event {
+  min-width: 12rem;
+}
+
+.audit__object {
+  min-width: 8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.audit__nowrap {
+  white-space: nowrap;
+}
+
+.audit__table .audit__num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.audit__row--open > * {
+  background: var(--opp-color-selected);
+}
+
+.audit__detail-row > td {
+  padding: 0;
+  background: var(--opp-color-surface-sunken);
+}
+
+.audit__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-3);
+  padding: var(--opp-space-3) var(--opp-space-4);
+}
+
+// Facts as a two-column definition list that collapses on narrow screens.
+.audit__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--opp-space-1) var(--opp-space-4);
+  margin: 0;
+  font-size: var(--opp-font-size-sm);
+}
+
+.audit__facts dt {
+  color: var(--opp-color-text-muted);
+}
+
+.audit__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.audit__value {
+  white-space: pre-wrap;
+}
+
+.audit__pre {
+  margin: var(--opp-space-1) 0 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  overflow-x: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-sm);
+  background: var(--opp-color-surface);
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-sm);
+  white-space: pre-wrap;
+}
+
+.audit__narrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-2);
+}
+
+.audit__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--opp-space-3);
+}
+
+.audit__exports {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-2);
+}
+
+@media (max-width: 40rem) {
+  .audit__facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .audit__facts dd {
+    margin-block-end: var(--opp-space-2);
+  }
+}

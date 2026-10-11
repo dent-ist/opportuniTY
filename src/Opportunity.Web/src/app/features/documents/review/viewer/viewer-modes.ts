@@ -2,13 +2,16 @@ import { Injectable, computed, inject } from '@angular/core';
 import type { DocumentResource } from '../../../../core/api/generated/models';
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
 
-/** The viewer modes, in their fixed order (familiarity guide §3.2, ticket review E16-T04). */
-export type ViewerMode = 'text' | 'image' | 'native' | 'production' | 'metadata';
+/**
+ * The viewer modes, in their fixed order (familiarity guide §3.2, ticket review E16-T04), then History: the document's
+ * coding history (E14-T04), which is about the document rather than one of its renditions.
+ */
+export type ViewerMode = 'text' | 'image' | 'native' | 'production' | 'metadata' | 'history';
 
 export interface ViewerModeDefinition {
   readonly mode: ViewerMode;
   readonly label: string;
-  /** Keyboard command that switches to the mode (Alt+Shift+1 … 5 by default). */
+  /** Keyboard command that switches to the mode (Alt+Shift+1 … 6 by default). */
   readonly command: string;
 }
 
@@ -18,9 +21,15 @@ export const VIEWER_MODES: readonly ViewerModeDefinition[] = [
   { mode: 'native', label: 'Native', command: 'viewer.mode.native' },
   { mode: 'production', label: 'Production', command: 'viewer.mode.production' },
   { mode: 'metadata', label: 'Metadata', command: 'viewer.mode.metadata' },
+  { mode: 'history', label: 'History', command: 'viewer.mode.history' },
 ];
 
-const MODE_IDS: readonly ViewerMode[] = VIEWER_MODES.map((m) => m.mode);
+/** Modes that show the document's content, which a document opens in and the reviewer's last mode remembers. */
+export function isContentMode(mode: ViewerMode): boolean {
+  return mode !== 'history';
+}
+
+const MODE_IDS: readonly ViewerMode[] = VIEWER_MODES.map((m) => m.mode).filter(isContentMode);
 
 /** Without a usable last mode: Image, then Extracted Text, then Metadata (always there). */
 const FALLBACK_ORDER: readonly ViewerMode[] = ['image', 'text', 'metadata'];
@@ -62,6 +71,7 @@ export function modeAvailability(document: DocumentResource): ModeAvailabilityMa
     // Produced images arrive with productions (E12, M3).
     production: off('Not produced'),
     metadata: ok,
+    history: ok,
   };
 }
 

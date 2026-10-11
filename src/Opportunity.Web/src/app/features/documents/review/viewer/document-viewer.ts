@@ -26,8 +26,10 @@ import {
   ViewerMode,
   ViewerModePreference,
   initialMode,
+  isContentMode,
   modeLabel,
 } from './viewer-modes';
+import { DocumentHistory } from '../../../audit/document-history';
 
 /**
  * What the viewer shows: the displayed document and, once loaded, its metadata and first content. `unavailable`:
@@ -56,7 +58,9 @@ export const NO_ACCESS = {
  *   progress", "No native", "Not produced").
  * - The document opens in the reviewer's last mode when it has it, else Image → Extracted Text → Metadata. The
  *   last mode is a user preference (`viewer.mode`); falling back never changes it, and the fallback is named.
- * - Alt+Shift+1 … 5 switch modes from anywhere in Review mode (command registry). The modes are a tab list
+ * - History (after the content modes) lists the document's coding changes (E14-T04); it is never remembered as the
+ *   last mode, so the next document opens in content again.
+ * - Alt+Shift+1 … 6 switch modes from anywhere in Review mode (command registry). The modes are a tab list
  *   (WAI-ARIA tabs, manual activation): the selected mode is the tab stop, arrows / Home / End move between the
  *   tabs and Enter / Space selects, because every mode fetches audited content and browsing the tabs must not.
  *   The design system's tab styles are reused; the pattern is local because the selection also changes from
@@ -68,6 +72,7 @@ export const NO_ACCESS = {
   selector: 'opp-document-viewer',
   imports: [
     Button,
+    DocumentHistory,
     EmptyState,
     Icon,
     LoadingState,
@@ -209,7 +214,8 @@ export class DocumentViewer {
         );
       }
     }
-    this.preference.set(wanted);
+    // History is about the document, not a way of reading it: the next document opens in the last content mode.
+    if (isContentMode(wanted)) this.preference.set(wanted);
   }
 
   /** Arrows, Home and End move focus between the mode tabs; Enter and Space select the focused one. */

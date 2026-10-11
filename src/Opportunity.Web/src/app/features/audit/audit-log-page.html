@@ -1,0 +1,350 @@
+@let f = filter();
+<div class="audit__header">
+  <div class="audit__heading-group">
+    <h1 class="audit__title">Audit</h1>
+    <p class="audit__muted">
+      Who did what in this workspace, and when. Reading this list and exporting it are recorded too.
+    </p>
+  </div>
+  <div class="audit__actions">
+    <button type="button" oppButton="secondary" [busy]="exporting()" (click)="exportCsv()">
+      <opp-icon name="export" />Export to CSV
+    </button>
+  </div>
+</div>
+
+<form
+  class="audit__filters"
+  role="search"
+  aria-label="Filter audit events"
+  (submit)="applyText($event)"
+>
+  <opp-text-field
+    label="From"
+    type="date"
+    [value]="f.from"
+    [error]="fieldError('from')"
+    (valueChange)="setFilter({ from: $event })"
+  />
+  <opp-text-field
+    label="To"
+    type="date"
+    [value]="f.to"
+    [error]="fieldError('to')"
+    (valueChange)="setFilter({ to: $event })"
+  />
+  <opp-select
+    label="Category"
+    placeholder="All categories"
+    [options]="categoryOptions()"
+    [value]="f.category"
+    [error]="fieldError('category')"
+    (valueChange)="setFilter({ category: $event })"
+  />
+  <opp-select
+    label="Action"
+    placeholder="All actions"
+    [options]="actionOptions()"
+    [value]="f.action"
+    [disabled]="!f.category"
+    [hint]="f.category ? undefined : 'Choose a category first'"
+    [error]="fieldError('action')"
+    (valueChange)="setFilter({ action: $event })"
+  />
+  <opp-select
+    label="Outcome"
+    placeholder="Any outcome"
+    [options]="outcomeOptions"
+    [value]="f.outcome"
+    [error]="fieldError('outcome')"
+    (valueChange)="setFilter({ outcome: $event })"
+  />
+  <opp-text-field
+    label="Document"
+    placeholder="Control Number"
+    [value]="documentDraft()"
+    [error]="fieldError('controlNumber')"
+    (valueChange)="documentDraft.set($event)"
+  />
+  <opp-text-field
+    label="Job ID"
+    [value]="jobDraft()"
+    [error]="fieldError('jobId')"
+    (valueChange)="jobDraft.set($event)"
+  />
+  <div class="audit__filter-actions">
+    <button type="submit" oppButton="secondary">Apply</button>
+    @if (filtered()) {
+      <button type="button" oppButton="ghost" (click)="clearFilters()">Clear filters</button>
+    }
+  </div>
+  @if (f.actor) {
+    <p class="audit__chip">
+      <span
+        >User: <strong>{{ f.actorName || short(f.actor) }}</strong></span
+      >
+      <button
+        type="button"
+        oppButton="ghost"
+        [attr.aria-label]="'Remove the user filter (' + (f.actorName || f.actor) + ')'"
+        (click)="setFilter({ actor: '', actorName: '' })"
+      >
+        <opp-icon name="close" />Remove
+      </button>
+    </p>
+  }
+  @if (canReadSearchText) {
+    <opp-checkbox
+      class="audit__search-text"
+      [checked]="f.searchText === '1'"
+      (checkedChange)="setFilter({ searchText: $event ? '1' : '' })"
+      >Show search text</opp-checkbox
+    >
+  }
+</form>
+
+@if (loading() && events().length === 0) {
+  <opp-loading-state label="Loading audit events…" />
+} @else if (error() && events().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else if (events().length === 0) {
+  <opp-empty-state icon="report" [title]="empty().title" [message]="empty().message" />
+} @else {
+  <div
+    class="audit__table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Audit events"
+    [attr.aria-busy]="loading() || null"
+  >
+    <table class="audit__table">
+      <caption class="opp-visually-hidden">
+        Audit events, newest first
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Time</th>
+          <th scope="col">User</th>
+          <th scope="col">Event</th>
+          <th scope="col">Object</th>
+          <th scope="col">Outcome</th>
+          <th scope="col">Job</th>
+          <th scope="col"><span class="opp-visually-hidden">Details</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (e of events(); track e.eventId) {
+          @let open = expanded() === e.eventId;
+          <tr [class.audit__row--open]="open">
+            <td class="audit__nowrap">{{ date(e.occurredAt) }}</td>
+            <td class="audit__nowrap">
+              {{ e.actor.displayName }}
+              @if (e.accessPath === 'breakGlass') {
+                <opp-badge tone="warning" icon="warning">Break-glass</opp-badge>
+              }
+            </td>
+            <th scope="row" class="audit__event">{{ eventLabel(e) }}</th>
+            <td class="audit__object">{{ resource(e) }}</td>
+            <td class="audit__nowrap">
+              @switch (e.outcome) {
+                @case ('success') {
+                  <span>{{ outcomeText(e) }}</span>
+                }
+                @case ('denied') {
+                  <opp-badge tone="danger" icon="eye-off">{{ outcomeText(e) }}</opp-badge>
+                }
+                @default {
+                  <opp-badge tone="warning" icon="error">{{ outcomeText(e) }}</opp-badge>
+                }
+              }
+            </td>
+            <td class="audit__nowrap">
+              @if (e.jobId) {
+                <a [routerLink]="['/w', workspaceId, 'jobs', e.jobId]"
+                  ><span class="opp-visually-hidden">Job </span>{{ short(e.jobId) }}</a
+                >
+              }
+            </td>
+            <td class="audit__nowrap">
+              <button
+                type="button"
+                oppButton="ghost"
+                [attr.aria-expanded]="open"
+                [attr.aria-controls]="'audit-detail-' + e.eventId"
+                (click)="toggle(e)"
+              >
+                <opp-icon [name]="open ? 'chevron-up' : 'chevron-down'" />Details<span
+                  class="opp-visually-hidden"
+                >
+                  of {{ eventLabel(e) }}, {{ date(e.occurredAt) }}</span
+                >
+              </button>
+            </td>
+          </tr>
+          @if (open) {
+            <tr class="audit__detail-row">
+              <td colspan="7" [id]="'audit-detail-' + e.eventId">
+                <div class="audit__detail">
+                  <dl class="audit__facts">
+                    <dt>Event ID</dt>
+                    <dd>
+                      <code>{{ e.eventId }}</code>
+                    </dd>
+                    <dt>User ID</dt>
+                    <dd>
+                      <code>{{ e.actor.id }}</code>
+                    </dd>
+                    @if (e.resource; as r) {
+                      <dt>Object</dt>
+                      <dd>
+                        {{ r.type }}
+                        @if (r.id) {
+                          <code>{{ r.id }}</code>
+                        }
+                      </dd>
+                    }
+                    @if (e.reasonCode) {
+                      <dt>Reason</dt>
+                      <dd>{{ e.reasonCode }}</dd>
+                    }
+                    @if (e.jobId) {
+                      <dt>Job</dt>
+                      <dd>
+                        <code>{{ e.jobId }}</code>
+                        @if (e.chunkSequence !== null) {
+                          (part {{ num(e.chunkSequence) }})
+                        }
+                      </dd>
+                    }
+                    @if (e.snapshotId) {
+                      <dt>Frozen set</dt>
+                      <dd>
+                        <code>{{ e.snapshotId }}</code>
+                      </dd>
+                    }
+                    @if (e.searchGeneration !== null) {
+                      <dt>Search generation</dt>
+                      <dd>{{ num(e.searchGeneration) }}</dd>
+                    }
+                    @if (e.clientIp) {
+                      <dt>Client address</dt>
+                      <dd>{{ e.clientIp }}</dd>
+                    }
+                    <dt>Correlation ID</dt>
+                    <dd>
+                      <code>{{ e.correlationId }}</code>
+                    </dd>
+                    <dt>Recorded</dt>
+                    <dd>
+                      {{ date(e.recordedAt) }}
+                      @if (e.sequence !== null) {
+                        · sealed in the hash chain (#{{ num(e.sequence) }})
+                      } @else {
+                        · not yet sealed
+                      }
+                    </dd>
+                    @for (d of details(e); track d.label) {
+                      <dt>{{ d.label }}</dt>
+                      <dd class="audit__value">{{ d.value }}</dd>
+                    }
+                  </dl>
+                  @if (searchTextOf(e); as text) {
+                    <div class="audit__search">
+                      <h3 class="audit__subtitle">Search text</h3>
+                      <pre class="audit__pre">{{ text }}</pre>
+                    </div>
+                  }
+                  <div class="audit__narrow" role="group" aria-label="Narrow the list">
+                    <button type="button" oppButton="secondary" (click)="onlyUser(e)">
+                      <opp-icon name="filter" />Only this user
+                    </button>
+                    @if (e.resource?.controlNumber) {
+                      <button type="button" oppButton="secondary" (click)="onlyDocument(e)">
+                        <opp-icon name="filter" />Only this document
+                      </button>
+                    }
+                    @if (e.jobId) {
+                      <button type="button" oppButton="secondary" (click)="onlyJob(e)">
+                        <opp-icon name="filter" />Only this job
+                      </button>
+                    }
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (error() && events().length) {
+    <opp-error-state [error]="error()!" (retry)="loadMore()" />
+  }
+  <div class="audit__more">
+    <p class="audit__muted" role="status">
+      Showing {{ num(events().length) }} {{ events().length === 1 ? 'event' : 'events'
+      }}{{ nextCursor() ? '; more are available' : '' }}.
+    </p>
+    @if (nextCursor()) {
+      <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+        Load more events
+      </button>
+    }
+  </div>
+}
+
+<section class="audit__exports" aria-labelledby="audit-exports-title">
+  <h2 id="audit-exports-title" class="audit__section-title">Your exports</h2>
+  @if (exports().length === 0) {
+    <p class="audit__muted">
+      Exports you start with “Export to CSV” are listed here. Only you can see and download them.
+    </p>
+  } @else {
+    <div class="audit__table-wrap" tabindex="0" role="region" aria-label="Your audit exports">
+      <table class="audit__table">
+        <caption class="opp-visually-hidden">
+          Your audit exports, newest first
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Requested</th>
+            <th scope="col">Filters</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="audit__num">Events</th>
+            <th scope="col"><span class="opp-visually-hidden">File</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (x of exports(); track x.exportId) {
+            <tr>
+              <th scope="row" class="audit__nowrap">{{ date(x.createdAt) }}</th>
+              <td>{{ exportFilters(x) }}</td>
+              <td class="audit__nowrap">
+                <opp-status-pill [status]="exportPill(x)" />
+                @if (x.status === 'failed' && x.statusReason) {
+                  <span class="audit__muted"> {{ x.statusReason }}</span>
+                }
+              </td>
+              <td class="audit__num">{{ num(x.rowCount) }}</td>
+              <td class="audit__nowrap">
+                @if (x.status === 'completed') {
+                  <a oppButton="ghost" [href]="downloadUrl(x)" download>
+                    <opp-icon name="download" />Download CSV<span class="opp-visually-hidden">
+                      requested {{ date(x.createdAt) }}</span
+                    >
+                  </a>
+                } @else {
+                  <a [routerLink]="['/w', workspaceId, 'jobs', x.jobId]"
+                    >View job<span class="opp-visually-hidden">
+                      of the export requested {{ date(x.createdAt) }}</span
+                    ></a
+                  >
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

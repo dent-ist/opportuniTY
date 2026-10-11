@@ -10394,6 +10394,272 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/audit-events": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "The workspace's audit trail, newest first, filtered and cursor-paged (Audit.Read). Each page read is audited.",
+        "description": "Filters combine: from/to (to exclusive), category and action (an action needs its category), actorId, controlNumber or documentId (events about that document), jobId (events of that job), outcome. includeSearchText adds the executed query text of search events and needs Audit.ReadSearchText. Events about documents you may not see are never listed.",
+        "operationId": "ListAuditEvents",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "controlNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "jobId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeSearchText",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfAuditEventResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/audit-actions": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "The closed audit taxonomy: every category and action an event can have (Audit.Read).",
+        "operationId": "ListAuditActions",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditActionResource"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/audit-exports/{exportId}/content": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "The completed audit export as CSV (UTF-8 with BOM), oldest event first. Audited (Audit.ExportDownloaded).",
+        "operationId": "DownloadAuditExport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/snapshots": {
       "post": {
         "tags": [
@@ -16321,6 +16587,205 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/audit-exports": {
+      "post": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Export the filtered audit trail to CSV as a background job; 202 with the export. Audited (Audit.Exported).",
+        "description": "Takes the filters of GET …/audit-events. The file holds the events that occurred before the request (or before 'to'), oldest first, without events about documents you may not see. Only you can see the export and download its file. Refused under break-glass access, which is read-only.",
+        "operationId": "CreateAuditExport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-chosen key; a retry with the same key and body returns the original response.",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAuditExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditExportResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Your audit exports, newest first.",
+        "operationId": "ListAuditExports",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPageOfAuditExportResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/audit-exports/{exportId}": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "One of your audit exports: status, rows, bytes and SHA-256 of the file.",
+        "operationId": "GetAuditExport",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditExportResource"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me/preferences": {
       "get": {
         "tags": [
@@ -16726,6 +17191,372 @@
             ]
           }
         }
+      },
+      "AuditAccessPathResource": {
+        "enum": [
+          "normal",
+          "breakGlass",
+          "impersonation"
+        ]
+      },
+      "AuditActionResource": {
+        "required": [
+          "category",
+          "action"
+        ],
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          }
+        }
+      },
+      "AuditActorResource": {
+        "required": [
+          "type",
+          "id",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/AuditActorTypeResource"
+          },
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        }
+      },
+      "AuditActorTypeResource": {
+        "enum": [
+          "user",
+          "service",
+          "system"
+        ]
+      },
+      "AuditEventResource": {
+        "required": [
+          "eventId",
+          "occurredAt",
+          "category",
+          "action",
+          "outcome",
+          "reasonCode",
+          "actor",
+          "onBehalfOf",
+          "accessPath",
+          "resource",
+          "jobId",
+          "chunkSequence",
+          "snapshotId",
+          "searchGeneration",
+          "correlationId",
+          "clientIp",
+          "details",
+          "searchText",
+          "recordedAt",
+          "sequence"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "format": "date-time"
+          },
+          "category": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/AuditOutcomeResource"
+          },
+          "reasonCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "actor": {
+            "$ref": "#/components/schemas/AuditActorResource"
+          },
+          "onBehalfOf": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "accessPath": {
+            "$ref": "#/components/schemas/AuditAccessPathResource"
+          },
+          "resource": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AuditEventResourceRef"
+              }
+            ]
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "chunkSequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "searchGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "clientIp": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "searchText": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "recordedAt": {
+            "format": "date-time"
+          },
+          "sequence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "AuditEventResourceRef": {
+        "required": [
+          "type",
+          "id",
+          "controlNumber"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AuditExportFiltersResource": {
+        "required": [
+          "from",
+          "to",
+          "category",
+          "action",
+          "actorId",
+          "documentId",
+          "jobId",
+          "outcome"
+        ],
+        "type": "object",
+        "properties": {
+          "from": {
+            "format": "date-time"
+          },
+          "to": {
+            "format": "date-time"
+          },
+          "category": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "action": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "actorId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "documentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "outcome": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AuditOutcomeResource"
+              }
+            ]
+          }
+        }
+      },
+      "AuditExportResource": {
+        "required": [
+          "exportId",
+          "jobId",
+          "status",
+          "statusReason",
+          "filters",
+          "includeSearchText",
+          "occurredBefore",
+          "createdAt",
+          "completedAt",
+          "rowCount",
+          "byteCount",
+          "contentSha256"
+        ],
+        "type": "object",
+        "properties": {
+          "exportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AuditExportStatusResource"
+          },
+          "statusReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AuditExportFiltersResource"
+          },
+          "includeSearchText": {
+            "type": "boolean"
+          },
+          "occurredBefore": {
+            "format": "date-time"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "rowCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "byteCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "contentSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AuditExportStatusResource": {
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed"
+        ]
+      },
+      "AuditOutcomeResource": {
+        "enum": [
+          "success",
+          "denied",
+          "failure"
+        ]
       },
       "BatesAllocationStateResource": {
         "enum": [
@@ -17961,6 +18792,68 @@
           "mergedIntoDate"
         ]
       },
+      "CreateAuditExportRequest": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "format": "date-time"
+          },
+          "to": {
+            "format": "date-time"
+          },
+          "category": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "action": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "actorId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "controlNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "documentId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "outcome": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AuditOutcomeResource"
+              }
+            ]
+          },
+          "includeSearchText": {
+            "type": "boolean"
+          }
+        }
+      },
       "CreateChoiceRequest": {
         "required": [
           "name"
@@ -18329,6 +19222,56 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AcknowledgmentRosterEntryResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfAuditEventResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEventResource"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalCount"
+          }
+        }
+      },
+      "CursorPageOfAuditExportResource": {
+        "required": [
+          "items",
+          "nextCursor",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditExportResource"
             }
           },
           "nextCursor": {
@@ -23390,7 +24333,8 @@
           "export",
           "production",
           "render",
-          "searchTermReport"
+          "searchTermReport",
+          "auditExport"
         ]
       },
       "JobSearchableProgress": {
@@ -31242,6 +32186,9 @@
     },
     {
       "name": "Privilege logs"
+    },
+    {
+      "name": "Audit"
     },
     {
       "name": "Snapshots"

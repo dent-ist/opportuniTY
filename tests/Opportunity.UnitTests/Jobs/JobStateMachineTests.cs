@@ -178,7 +178,7 @@ public class JobStateMachineTests
     public void Stored_chunk_status_codes_are_fixed()
     {
         Enum.GetValues<JobChunkStatus>().Select(s => (short)s).Should().Equal(1, 2, 3, 4, 5, 6, 7);
-        Enum.GetValues<ChunkMembershipKind>().Select(s => (short)s).Should().Equal(1, 2, 3, 4);
+        Enum.GetValues<ChunkMembershipKind>().Select(s => (short)s).Should().Equal(1, 2, 3, 4, 5);
         Enum.GetValues<ChunkErrorClass>().Select(s => (short)s).Should().Equal(1, 2, 3);
         Enum.GetValues<JobItemResultKind>().Select(s => (short)s).Should().Equal(1, 2, 3);
     }

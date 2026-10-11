@@ -317,6 +317,18 @@ export type { DownloadPrivilegeLog$CsvCharsetUtf8$Params as DownloadPrivilegeLog
 export { downloadPrivilegeLog$CsvCharsetUtf8 as downloadPrivilegeLog$CsvCharsetUtf8 } from './fn/privilege-logs/download-privilege-log-csv-charset-utf-8';
 export type { DownloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet$Params as DownloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet$Params } from './fn/privilege-logs/download-privilege-log-vnd-openxmlformats-officedocument-spreadsheetml-sheet';
 export { downloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet as downloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet } from './fn/privilege-logs/download-privilege-log-vnd-openxmlformats-officedocument-spreadsheetml-sheet';
+export type { ListAuditEvents$Params as ListAuditEvents$Params } from './fn/audit/list-audit-events';
+export { listAuditEvents as listAuditEvents } from './fn/audit/list-audit-events';
+export type { ListAuditActions$Params as ListAuditActions$Params } from './fn/audit/list-audit-actions';
+export { listAuditActions as listAuditActions } from './fn/audit/list-audit-actions';
+export type { DownloadAuditExport$Params as DownloadAuditExport$Params } from './fn/audit/download-audit-export';
+export { downloadAuditExport as downloadAuditExport } from './fn/audit/download-audit-export';
+export type { ListAuditExports$Params as ListAuditExports$Params } from './fn/audit/list-audit-exports';
+export { listAuditExports as listAuditExports } from './fn/audit/list-audit-exports';
+export type { CreateAuditExport$Params as CreateAuditExport$Params } from './fn/audit/create-audit-export';
+export { createAuditExport as createAuditExport } from './fn/audit/create-audit-export';
+export type { GetAuditExport$Params as GetAuditExport$Params } from './fn/audit/get-audit-export';
+export { getAuditExport as getAuditExport } from './fn/audit/get-audit-export';
 export type { ListSnapshots$Params as ListSnapshots$Params } from './fn/snapshots/list-snapshots';
 export { listSnapshots as listSnapshots } from './fn/snapshots/list-snapshots';
 export type { CreateSnapshot$Params as CreateSnapshot$Params } from './fn/snapshots/create-snapshot';

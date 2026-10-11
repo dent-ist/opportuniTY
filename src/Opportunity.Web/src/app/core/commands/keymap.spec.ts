@@ -84,6 +84,7 @@ describe('Default key map (familiarity guide §4)', () => {
       'viewer.mode.native',
       'viewer.mode.production',
       'viewer.mode.metadata',
+      'viewer.mode.history',
       'selection.toggleRow',
       'selection.allResults',
       'selection.clear',

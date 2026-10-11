@@ -49,6 +49,8 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
     import('./features/acknowledgments/acknowledgments-admin-page').then(
       (m) => m.AcknowledgmentsAdminPage,
     ),
+  // The audit log viewer and audit exports (E14-T04).
+  audit: () => import('./features/audit/audit-log-page').then((m) => m.AuditLogPage),
 };
 
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */

@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using Opportunity.Api.Audit;
 using Opportunity.Api.Coding;
 using Opportunity.Api.Content;
 using Opportunity.Api.Conventions;
@@ -79,6 +80,8 @@ builder.Services.AddReviewBatchEndpoints();
 builder.Services.AddPrivilegeLogEndpoints();
 builder.Services.AddPrivilegeLogContentEndpoints();
 builder.Services.AddPostgresAuditStore();
+builder.Services.AddAuditLogEndpoints(builder.Configuration);
+builder.Services.AddAuditExportContentEndpoints();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();
 

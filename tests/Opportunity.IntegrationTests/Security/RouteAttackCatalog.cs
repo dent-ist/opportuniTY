@@ -39,6 +39,7 @@ internal static class ProtectedOperation
     public const string Job = "Job status";
     public const string Workspace = "Workspace administration and catalogues";
     public const string PrivilegeLog = "Privilege logs (templates, versions, rows, files)";
+    public const string AuditLog = "Audit log (events, document and job filters, exports and their files)";
 
     public static IReadOnlyList<string> Section24 { get; } = [Open, View, NativeDownload, ImageRetrieval, Export, ProductionInclusion];
 }
@@ -527,6 +528,27 @@ internal static class RouteAttackCatalog
             new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}/entries", HttpStatusCode.OK)),
         Case("GET", Ws + "/privilege-logs/{logId}/content", ProtectedOperation.PrivilegeLog,
             new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}/content?format=xlsx", HttpStatusCode.OK)),
+        // Audit log viewer and exports (E14-T04): the document and job filters name identifiers (a document or job of another
+        // workspace is "no such document/job", like one that exists nowhere); exports are their requester's.
+        Case("GET", Ws + "/audit-events", ProtectedOperation.AuditLog,
+            WorkspaceOnly(HttpMethod.Get, "/audit-events?limit=5", HttpStatusCode.OK),
+            new RouteProbe("document in the query", HttpMethod.Get, (o, t) => $"{W(o)}/audit-events?documentId={t.DocumentId}", HttpStatusCode.OK,
+                Expectation: ForeignExpectation.SameAsUnknown),
+            new RouteProbe("control number in the query", HttpMethod.Get, (o, t) => $"{W(o)}/audit-events?controlNumber={t.ControlNumber}",
+                HttpStatusCode.OK, Expectation: ForeignExpectation.SameAsUnknown),
+            new RouteProbe("job in the query", HttpMethod.Get, (o, t) => $"{W(o)}/audit-events?jobId={t.BulkCodingJobId}", HttpStatusCode.OK,
+                Expectation: ForeignExpectation.SameAsUnknown)),
+        Case("GET", Ws + "/audit-actions", ProtectedOperation.AuditLog, WorkspaceOnly(HttpMethod.Get, "/audit-actions", HttpStatusCode.OK)),
+        Case("POST", Ws + "/audit-exports", ProtectedOperation.AuditLog,
+            new RouteProbe("document in the body", HttpMethod.Post, (o, _) => W(o) + "/audit-exports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject { ["documentId"] = t.DocumentId.ToString() }), Expectation: ForeignExpectation.SameAsUnknown),
+            new RouteProbe("job in the body", HttpMethod.Post, (o, _) => W(o) + "/audit-exports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject { ["jobId"] = t.BulkCodingJobId.ToString() }), Expectation: ForeignExpectation.SameAsUnknown)),
+        Case("GET", Ws + "/audit-exports", ProtectedOperation.AuditLog, WorkspaceOnly(HttpMethod.Get, "/audit-exports", HttpStatusCode.OK)),
+        Case("GET", Ws + "/audit-exports/{exportId}", ProtectedOperation.AuditLog,
+            new RouteProbe("audit export", HttpMethod.Get, (o, t) => $"{W(o)}/audit-exports/{t.AuditExportId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/audit-exports/{exportId}/content", ProtectedOperation.AuditLog,
+            new RouteProbe("audit export file", HttpMethod.Get, (o, t) => $"{W(o)}/audit-exports/{t.AuditExportId}/content", HttpStatusCode.OK)),
         Case("POST", Ws + "/privilege-conflicts/propagations", ProtectedOperation.Coding,
             // The probe document is in no duplicate group: the own request is a validation problem, a foreign source a 404.
             new RouteProbe("source document and duplicate group in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-conflicts/propagations",

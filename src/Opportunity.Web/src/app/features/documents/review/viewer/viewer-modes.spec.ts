@@ -17,6 +17,7 @@ describe('viewer modes (E16-T04)', () => {
       native: { available: false, reason: 'The native file is missing' },
       production: { available: false, reason: 'Not produced' },
       metadata: { available: true, reason: null },
+      history: { available: true, reason: null },
     });
     expect(
       modeAvailability(documentResource(1, { images: { available: false, status: 'pending' } }))
