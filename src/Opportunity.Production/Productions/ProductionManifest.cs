@@ -41,7 +41,7 @@ public static class ProductionManifest
 
     public static (string Json, byte[] Sha256) Build(
         ProductionRecord production, SnapshotRecord snapshot, CodingHighWater? coding, ProductionSoftware software, Guid finalizedBy,
-        DateTimeOffset finalizedAt, string? privilegeConflictOverrideReason = null)
+        DateTimeOffset finalizedAt, string? privilegeConflictOverrideReason = null, ProductionQcResult? qc = null)
     {
         ArgumentNullException.ThrowIfNull(production);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -116,6 +116,39 @@ public static class ProductionManifest
                 json.WriteStartObject("privilegeConflictOverride");
                 json.WriteString("reason", privilegeConflictOverrideReason);
                 json.WriteString("by", finalizedBy.ToString("D"));
+                json.WriteEndObject();
+            }
+
+            // E12-T07: the QC run the production was finalized with: its report hash, overrides with their reasons and warnings.
+            if (qc is not null)
+            {
+                json.WriteStartObject("qc");
+                json.WriteString("qcRunId", qc.QcRunId.ToString("D"));
+                json.WriteString("reportSha256", Convert.ToHexStringLower(qc.ReportSha256));
+                json.WriteString("outcome", qc.Passed ? "passed" : "blocked");
+                json.WriteBoolean("warningsAcknowledged", qc.WarningsAcknowledged);
+                json.WriteStartArray("overrides");
+                foreach (var check in qc.Overridden)
+                {
+                    json.WriteStartObject();
+                    json.WriteString("check", check.Definition.Key);
+                    json.WriteNumber("documents", check.Documents);
+                    json.WriteString("reason", check.OverrideReason);
+                    json.WriteString("by", finalizedBy.ToString("D"));
+                    json.WriteEndObject();
+                }
+
+                json.WriteEndArray();
+                json.WriteStartArray("warnings");
+                foreach (var check in qc.Warnings)
+                {
+                    json.WriteStartObject();
+                    json.WriteString("check", check.Definition.Key);
+                    json.WriteNumber("documents", check.Documents);
+                    json.WriteEndObject();
+                }
+
+                json.WriteEndArray();
                 json.WriteEndObject();
             }
 

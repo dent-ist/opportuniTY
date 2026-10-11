@@ -301,9 +301,9 @@ public interface IExportStore
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Running → Failed for a production volume run whose burn-in verification found a leak (E12-T06): registers the
-    /// verification files (kept, never delivered), records the verification and <paramref name="audit"/> in one
-    /// transaction. False when the run is no longer Running.
+    /// Running → Failed for a production volume run whose burn-in verification found a leak (E12-T06) or whose load
+    /// files do not reconcile with its files (E12-T07): registers the verification files (kept, never delivered), records
+    /// the verification and <paramref name="audit"/> in one transaction. False when the run is no longer Running.
     /// </summary>
     Task<bool> RejectAsync(
         Guid workspaceId, Guid exportId, IReadOnlyList<NewExportFile> files, ExportVerification verification, string reason, AuditEvent audit,

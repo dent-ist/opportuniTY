@@ -464,11 +464,6 @@ public sealed class ExportRepository(NpgsqlDataSource dataSource) : IExportStore
         ArgumentNullException.ThrowIfNull(verification);
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-        if (verification.Passed)
-        {
-            throw new ArgumentException("Only a failed verification rejects a run.", nameof(verification));
-        }
-
         await using var tx = await WorkspaceTransaction.BeginAsync(dataSource, workspaceId, cancellationToken).ConfigureAwait(false);
         Guid jobId;
         await using (var update = tx.Command(

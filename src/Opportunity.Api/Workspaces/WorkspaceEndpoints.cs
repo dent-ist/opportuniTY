@@ -80,8 +80,10 @@ public sealed class WorkspaceEndpoints : IApiEndpointModule
             .WithTags("Workspaces")
             .ProducesProblem(StatusCodes.Status404NotFound)
             .WithSummary("The workspace, the current user's effective permissions in it and its read-only search placement.")
-            .WithDescription("A workspace the user is not a member of returns 404, exactly like one that does not exist.")
-            .RequireWorkspaceMember();
+            .WithDescription("A workspace the user is not a member of returns 404, exactly like one that does not exist. Readable before "
+                + "the member accepted the workspace's acknowledgment text (acknowledgmentPending), so clients can show it (E20-T03).")
+            .RequireWorkspaceMember()
+            .AllowBeforeAcknowledgment();
 
         // Settings sit with the other workspace administration of the Admin menu (Workspace Settings, Workspace.ManageSecurity).
         routes.Workspace.MapPut(string.Empty, UpdateWorkspaceAsync)
@@ -297,6 +299,7 @@ public sealed class WorkspaceEndpoints : IApiEndpointModule
                 });
         }
 
+        var acknowledgment = await authorization.GetAcknowledgmentGateAsync(principal, workspace.WorkspaceId, cancellationToken).ConfigureAwait(false);
         return new WorkspaceResource(
             workspace.WorkspaceId,
             workspace.Name,
@@ -310,7 +313,8 @@ public sealed class WorkspaceEndpoints : IApiEndpointModule
             workspace.RowVersion,
             workspace.UpdatedAt,
             placement,
-            workspace.ActivePreservationLocks);
+            workspace.ActivePreservationLocks,
+            acknowledgment.Pending);
     }
 
     private static WorkspaceResourceStatus Status(WorkspaceStatus status) =>

@@ -162,17 +162,23 @@ public enum ProductionWriteStatus
 
     /// <summary>E12-T04: a member's designation cannot be produced (unlisted level, or no endorsement stamps it).</summary>
     DesignationRefused,
+
+    /// <summary>
+    /// E12-T07: the QC gate blocked the finalization (a failed check without an override, or unacknowledged warnings);
+    /// the run and its exceptions were stored and audited, nothing else changed.
+    /// </summary>
+    QcBlocked,
 }
 
 /// <summary>
-/// An authorized override of the privilege conflict gate (E13-T02 AC 2), used only when conflicts exist at the
-/// finalization: the manifest that records it (with its SHA-256) and the audit events that replace the plain ones
-/// (<c>Privilege.ConflictOverride</c> with the reason among them).
+/// What a finalization writes once its QC run passed (E12-T07): the manifest that names the run (with its SHA-256) and the
+/// audit events (overrides among them), composed from the run's result inside the finalization transaction.
 /// </summary>
-public sealed record PrivilegeConflictOverrideWrite(string Manifest, byte[] ManifestSha256, IReadOnlyList<AuditEvent> Audit);
+public sealed record FinalizationWrite(string Manifest, byte[] ManifestSha256, IReadOnlyList<AuditEvent> Audit);
 
 public sealed record ProductionWriteResult(
-    ProductionWriteStatus Status, ProductionRecord? Production = null, IReadOnlyList<BatesRangeConflict>? Conflicts = null, string? Reason = null);
+    ProductionWriteStatus Status, ProductionRecord? Production = null, IReadOnlyList<BatesRangeConflict>? Conflicts = null, string? Reason = null,
+    ProductionQcResult? Qc = null);
 
 /// <summary>A production that is allocating, with its job's state: the ones the coordinator plans or completes.</summary>
 public sealed record ActiveBatesAllocation(ProductionRecord Production, JobStatus JobStatus, long ChunksFailed);
@@ -190,7 +196,12 @@ public sealed record BatesPlanResult(
 }
 
 /// <summary>What the planner needs from the specification.</summary>
-public sealed record BatesPlanRequest(BatesNumberingLevel Level, Func<string?, ProductionOutputKind> OutputFor, int DocumentsPerChunk, int UnitsPerChunk, long MaxNumber);
+/// <param name="WithheldAsPlaceholder">
+/// E12-T07: members coded Privilege Status = Withhold at planning become withheld placeholders (one Bates number each).
+/// </param>
+public sealed record BatesPlanRequest(
+    BatesNumberingLevel Level, Func<string?, ProductionOutputKind> OutputFor, int DocumentsPerChunk, int UnitsPerChunk, long MaxNumber,
+    bool WithheldAsPlaceholder = false);
 
 /// <summary>A planned member of one chunk, read back for its assignment.</summary>
 public sealed record ProductionSliceRow(long Sequence, Guid DocumentId, Guid FamilyKey, int Units, long FirstOffset);
@@ -421,21 +432,32 @@ public interface IProductionStore
         Guid workspaceId, Guid productionId, Guid jobId, string reason, IReadOnlyList<AuditEvent> audit, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Draft (Allocated) → Finalized: freezes every member's designation under <paramref name="designations"/> (read from
-    /// the coding store under the privilege gate), stores the manifest, marks the range Produced and writes the audit
-    /// events (<paramref name="designationAudit"/> gets the counts by source). Refused while members are withheld, while
-    /// privilege conflicts exist unless <paramref name="conflictOverride"/> is given (E13-T02), and (<see cref="ProductionWriteStatus.DesignationRefused"/>)
-    /// when a member carries a designation the levels do not list, or a designated member would get no stamp.
+    /// Draft (Allocated) → Finalized, behind the QC gate (E12-T07): under the prefix lock and the exclusive privilege gate
+    /// the gate runs every check of <paramref name="qc"/> over the members as they are now and stores the run, its
+    /// exceptions and <c>Production.QcRun</c> (from <paramref name="qcAudit"/>). A blocked run is committed alone
+    /// (<see cref="ProductionWriteStatus.QcBlocked"/>, with the run); a passed one goes on: <paramref name="compose"/>
+    /// builds the manifest naming the run and the audit events, every member's designation is frozen under
+    /// <paramref name="designations"/> (<paramref name="designationAudit"/> gets the counts by source), each member's page
+    /// set and redaction version in the production's Redaction Set are frozen (E12-T05, Q-08), the range becomes
+    /// Produced, and everything commits together.
     /// </summary>
-    /// <remarks>
-    /// E12-T05: every member's active page set and its redaction version in <paramref name="redactionSetId"/> (the
-    /// workspace's Default set when null) are frozen too, so every volume run burns the same redactions on the same pages
-    /// (Q-08). A named set that does not exist refuses the finalization (<see cref="ProductionWriteStatus.InvalidState"/>).
-    /// </remarks>
+    /// <remarks>A named Redaction Set that does not exist refuses the finalization (<see cref="ProductionWriteStatus.InvalidState"/>).</remarks>
     Task<ProductionWriteResult> FinalizeAsync(
-        Guid workspaceId, Guid productionId, long expectedRowVersion, string manifest, byte[] manifestSha256, Guid finalizedBy, DateTimeOffset finalizedAt,
-        IReadOnlyList<AuditEvent> audit, DesignationPlan designations, AuditEvent designationAudit, PrivilegeConflictOverrideWrite? conflictOverride = null,
-        Guid? redactionSetId = null, CancellationToken cancellationToken = default);
+        Guid workspaceId, Guid productionId, long expectedRowVersion, Guid finalizedBy, DateTimeOffset finalizedAt, ProductionQcRequest qc, AuditEvent qcAudit,
+        Func<ProductionQcResult, FinalizationWrite> compose, DesignationPlan designations, AuditEvent designationAudit, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs the QC gate over an allocated draft on request (E12-T07, purpose Check) and stores the run, its exceptions and
+    /// <c>Production.QcRun</c>. Null result with the write status when the production is not an allocated draft.
+    /// </summary>
+    Task<ProductionWriteResult> RunQcAsync(Guid workspaceId, Guid productionId, ProductionQcRequest qc, AuditEvent qcAudit, CancellationToken cancellationToken = default);
+
+    /// <summary>The production's latest QC run (for a finalized production, its finalization run).</summary>
+    Task<ProductionQcRunRecord?> GetLatestQcRunAsync(Guid workspaceId, Guid productionId, CancellationToken cancellationToken = default);
+
+    /// <summary>A page of a run's exceptions in report order (check, then production order), optionally of one check.</summary>
+    Task<IReadOnlyList<ProductionQcExceptionRow>> ReadQcExceptionsAsync(
+        Guid workspaceId, Guid qcRunId, ProductionQcCheck? check, ProductionQcExceptionCursor? after, int limit, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The pages of frozen page sets (E12-T05) by document, in ordinal order, each with the image a production decodes

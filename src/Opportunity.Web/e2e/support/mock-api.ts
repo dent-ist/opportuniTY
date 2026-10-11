@@ -4,6 +4,7 @@ import { documentText, serveContent, snippetsFor, type Rendition } from './mock-
 import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { PrivilegeConflictsMock } from './mock-privilege-conflicts';
+import { PrivilegeLogsMock } from './mock-privilege-logs';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
 import { SearchTermReportsMock } from './mock-search-term-reports';
@@ -15,6 +16,7 @@ import { RoleAdminMock } from './mock-role-admin';
 import { RelationshipsMock, hitRelations } from './mock-relationships';
 import { LegalHoldsMock } from './mock-legal-holds';
 import { DeletionsMock } from './mock-deletions';
+import { AcknowledgmentsMock } from './mock-acknowledgments';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -54,6 +56,8 @@ export interface MockApiOptions {
   freshness?: MockFreshnessState;
   /** Propagation targets above this run as a job (wave-12 contract; the API default is 1,000). */
   propagationThreshold?: number;
+  /** ws-1 publishes an acknowledgment the user has not accepted yet (E20-T03); by default it is accepted. */
+  acknowledgmentPending?: boolean;
 }
 
 /** A request the mock answered, with its JSON body and Idempotency-Key. */
@@ -121,6 +125,8 @@ export interface MockControl {
   readonly termReports: SearchTermReportsMock;
   /** Privilege conflicts (E13-T02): the report, its CSV and propagations received. */
   readonly privilegeConflicts: PrivilegeConflictsMock;
+  /** Privilege logs (E13-T03): finalized productions, templates, versions and generations received. */
+  readonly privilegeLogs: PrivilegeLogsMock;
   /** Document-list views and the saved layout (E16-T09). */
   readonly gridViews: GridViewsMock;
   /** The body of the last `POST …/searches` (sort, fields). */
@@ -131,6 +137,8 @@ export interface MockControl {
   readonly legalHolds: LegalHoldsMock;
   /** Workspace deletions (E20-T02): requests (del-7 waiting, del-5 completed) and writes received. */
   readonly deletions: DeletionsMock;
+  /** Acknowledgments (E20-T03): ws-1's text versions, the user's acceptances and writes received. */
+  readonly acknowledgments: AcknowledgmentsMock;
 }
 
 /**
@@ -278,6 +286,7 @@ export const ALL_PERMISSIONS = [
   'Workspace.RequestDeletion',
   'HighlightSet.Manage',
   'Workspace.ManageHolds',
+  'Workspace.ManageAcknowledgments',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -456,6 +465,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const workspaceWrites: MockControl['workspaceWrites'] = [];
   const termReports = new SearchTermReportsMock();
   const privilegeConflicts = new PrivilegeConflictsMock();
+  const privilegeLogs = new PrivilegeLogsMock();
   const jobsMock = new JobsMock({
     userId: principal.userId,
     viewAll: permissions.includes('Job.ViewAll'),
@@ -482,7 +492,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       'Installation.ApproveDeletion',
     ),
   );
+  const acknowledgments = new AcknowledgmentsMock(options.acknowledgmentPending ?? false);
   const control: MockControl = {
+    acknowledgments,
     legalHolds,
     deletions,
     relationships,
@@ -493,6 +505,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     savedSearches,
     termReports,
     privilegeConflicts,
+    privilegeLogs,
     gridViews,
     lastSearch: () => lastSearch,
     highlights,
@@ -524,6 +537,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
         : route.fulfill(problem(401, 'Unauthorized'));
     }
     const method = route.request().method();
+    // Acknowledgments (E20-T03): ./mock-acknowledgments.ts; also the gate in front of every other workspace route.
+    const acknowledged = signedIn ? acknowledgments.handle(route, method, path) : undefined;
+    if (acknowledged) return acknowledged;
     // E16-T08: a document hidden from the reviewer answers every route like a missing one (the gateway's 404).
     const named = /^\/api\/v1\/workspaces\/[^/]+\/documents\/doc-(\d+)(?:\/|$)/.exec(path);
     if (named) {
@@ -704,6 +720,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Privilege conflicts (E13-T02): ./mock-privilege-conflicts.ts.
     const conflicts = signedIn ? privilegeConflicts.handle(route, method, path, url) : undefined;
     if (conflicts) return conflicts;
+    // Privilege logs (E13-T03): ./mock-privilege-logs.ts.
+    const privilegeLog = signedIn ? privilegeLogs.handle(route, method, path) : undefined;
+    if (privilegeLog) return privilegeLog;
     // Highlight Sets and term hits (E16-T12): ./mock-highlights.ts.
     const highlighted = signedIn ? highlights.handle(route, method, path, url) : undefined;
     if (highlighted) return highlighted;
@@ -881,6 +900,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
       return json(route, {
         ...ws,
         activePreservationLocks: legalHolds.activeCount(wsPath![1]),
+        acknowledgmentPending: acknowledgments.pending(wsPath![1]),
         permissions: created.has(wsPath![1]) ? ALL_PERMISSIONS : permissions,
       });
     unhandled.push(`${route.request().method()} ${path}`);

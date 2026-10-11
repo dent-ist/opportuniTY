@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Opportunity.Application.Telemetry;
+using Opportunity.Security.Http;
 
 namespace Opportunity.Api.Conventions;
 
@@ -21,6 +22,7 @@ internal sealed class CorrelationIdMiddleware(RequestDelegate next, ILogger<Corr
             : Activity.Current?.TraceId.ToHexString() ?? context.TraceIdentifier;
 
         Activity.Current?.SetTag(TelemetryAttributes.CorrelationId, correlationId);
+        RequestCorrelation.Set(context, correlationId);
         context.Response.OnStarting(() =>
         {
             context.Response.Headers[HeaderName] = correlationId;

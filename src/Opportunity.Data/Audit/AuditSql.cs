@@ -28,11 +28,15 @@ internal static class AuditSql
         reason_code, correlation_id, causation_id, job_id, chunk_sequence, snapshot_id, search_generation, details
         """;
 
-    /// <summary>Validates and inserts <paramref name="auditEvent"/>; a retried insert of the same EventId is a no-op.</summary>
+    /// <summary>
+    /// Completes the envelope from the current <see cref="AuditRequestContext"/>, validates and inserts
+    /// <paramref name="auditEvent"/>; a retried insert of the same EventId is a no-op.
+    /// </summary>
     public static async Task InsertAsync(WorkspaceTransaction tx, AuditEvent auditEvent, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(tx);
-        var e = AuditEventRules.Normalize(auditEvent);
+        // Client, session and correlation come from the request when the caller left them empty (E14-T02).
+        var e = AuditEventRules.Normalize(AuditRequestContext.Complete(auditEvent));
         AuditEventRules.EnsureValid(e);
         var scope = tx.WorkspaceId == Guid.Empty ? (Guid?)null : tx.WorkspaceId;
         if (e.WorkspaceId != scope)

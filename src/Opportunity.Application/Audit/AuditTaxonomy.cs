@@ -188,6 +188,18 @@ public static class AuditTaxonomy
 
         /// <summary>The privilege conflict report was downloaded as CSV through the gateway (E13-T02).</summary>
         public const string ConflictReportExported = "ConflictReportExported";
+
+        /// <summary>A privilege log version was generated, or a generation found the latest version unchanged (E13-T03).</summary>
+        public const string LogGenerated = "LogGenerated";
+
+        /// <summary>A privilege log version was downloaded (CSV or XLSX) through the gateway (E13-T03).</summary>
+        public const string LogDownloaded = "LogDownloaded";
+
+        public const string LogTemplateCreated = "LogTemplate.Created";
+        public const string LogTemplateModified = "LogTemplate.Modified";
+
+        public const string LogResourceType = "PrivilegeLog";
+        public const string LogTemplateResourceType = "PrivilegeLogTemplate";
     }
 
     /// <summary>Productions (E12-T02/T03, ADR-013 §5, Q-54).</summary>
@@ -241,6 +253,12 @@ public static class AuditTaxonomy
         /// <summary>A file or the package of a production volume was downloaded through the gateway.</summary>
         public const string Downloaded = "Downloaded";
 
+        /// <summary>The QC gate ran over a draft (on request or inside a finalization), passed or blocked (E12-T07).</summary>
+        public const string QcRun = "QcRun";
+
+        /// <summary>A failed QC check was overridden at finalization by an authorized person, with a reason (E12-T07).</summary>
+        public const string QcOverride = "QcOverride";
+
         /// <summary>The audit resource type of production events.</summary>
         public const string ResourceType = "Production";
     }
@@ -267,6 +285,18 @@ public static class AuditTaxonomy
         public const string WallDeleted = "WallDeleted";
         public const string BreakGlassActivated = "BreakGlassActivated";
         public const string BreakGlassEnded = "BreakGlassEnded";
+
+        /// <summary>A member accepted the current acknowledgment text version (E20-T03): version and text hash.</summary>
+        public const string AcknowledgmentAccepted = "AcknowledgmentAccepted";
+
+        /// <summary>An administrator published a new acknowledgment text version (E20-T03): version and text hash.</summary>
+        public const string AcknowledgmentPublished = "AcknowledgmentPublished";
+
+        /// <summary>The acknowledgment roster was exported as CSV (E20-T03): row and member counts.</summary>
+        public const string AcknowledgmentRosterExported = "AcknowledgmentRosterExported";
+
+        /// <summary>The audit resource type of acknowledgment events; the resource id is the workspace id.</summary>
+        public const string AcknowledgmentResourceType = "Workspace";
     }
 
     public static class Workspace
@@ -401,16 +431,18 @@ public static class AuditTaxonomy
             "HighlightSet.Created", "HighlightSet.Modified", "HighlightSet.Deleted"),
         .. Expand("Coding", "Changed", "FamilyApplied", "BulkSubmitted", "BulkChunkApplied", "BulkCompleted", "OverlayEnabled",
             "ReviewBatchSet.Created", "ReviewBatch.CheckedOut", "ReviewBatch.CheckedIn", "ReviewBatch.Assigned"),
-        .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded", "ConflictReportExported"),
+        .. Expand("Privilege", "LogGenerated", "ConflictOverride", "ClawbackRecorded", "ConflictReportExported", "LogDownloaded",
+            "LogTemplate.Created", "LogTemplate.Modified"),
         .. Expand("Redaction", "Added", "Modified", "Removed", "RedactionSet.Created", "RedactionSet.Modified", "Reason.Created", "Reason.Modified"),
         .. Expand("Export", "Created", "Completed", "DocumentsExcluded", "Downloaded"),
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
-            "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted"),
+            "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted",
+            "QcRun"),
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",
-            "AcknowledgmentAccepted"),
+            "AcknowledgmentAccepted", "AcknowledgmentPublished", "AcknowledgmentRosterExported"),
         .. Expand("Workspace", "Created", "SettingsChanged", "Closed", "Reopened", "HoldPlaced", "HoldReleaseRequested",
             "HoldReleased", "DeletionRequested", "DeletionApproved", "DeletionCancelled", "DeletionStarted",
             "DeletionStepCompleted", "DeletionHalted", "Deleted",

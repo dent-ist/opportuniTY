@@ -159,6 +159,16 @@ internal sealed class ProductionHarness : IAsyncDisposable
             : throw new InvalidOperationException($"Expected a Ready snapshot, got {outcome.Status}.");
     }
 
+    /// <summary>
+    /// Finalization options for documents made by <see cref="FamiliesAsync"/>: their page sets have no stored page images
+    /// and they have no text, so the QC gate's render failures are overridden and its warnings acknowledged (E12-T07).
+    /// </summary>
+    public static ProductionFinalizeOptions Unimaged(params ProductionQcOverride[] more) =>
+        new([new ProductionQcOverride(ProductionQcCheck.RenderFailure, "The test documents have no stored page images."), .. more], AcknowledgeWarnings: true);
+
+    /// <summary>Finalization options that acknowledge the QC gate's warnings (E12-T07) and override nothing.</summary>
+    public static ProductionFinalizeOptions Acknowledged { get; } = new([], AcknowledgeWarnings: true);
+
     public static ProductionSpecification Spec(string prefix, long start = 1, BatesLevelResource level = BatesLevelResource.Page, int padding = 7) =>
         new(new ProductionBatesSettings(prefix, start, padding, Level: level));
 

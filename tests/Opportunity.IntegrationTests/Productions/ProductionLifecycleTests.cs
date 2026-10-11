@@ -92,7 +92,7 @@ public sealed class ProductionLifecycleTests(MigrationPostgresFixture postgres)
         (await service.LookupAsync(principal, ws, "XYZ0000005", null, Ct)).Matches.Should().BeEmpty();
 
         // Finalize: the manifest records the specification, hashes and software versions.
-        var finalized = await service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion, Ct);
+        var finalized = await service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion, ProductionHarness.Unimaged(), Ct);
         finalized.Status.Should().Be(ProductionOutcomeStatus.Ok, finalized.Reason);
         var production = finalized.Production!;
         production.Status.Should().Be(ProductionStatus.Finalized);
@@ -142,7 +142,7 @@ public sealed class ProductionLifecycleTests(MigrationPostgresFixture postgres)
         verification!.Consistent.Should().BeFalse();
         verification.Differences.Select(d => d.Item).Should().Contain(["assignmentsSha256 (stored rows)", "integrity"]).And.Contain(i => i.StartsWith("document 4", StringComparison.Ordinal));
         (await h.Db.ColumnAsync($"SELECT action FROM audit.audit_event WHERE workspace_id = '{ws}' AND category = 'Production' ORDER BY occurred_at, action"))
-            .Should().BeEquivalentTo("Created", "BatesAllocated", "SpecFrozen", "Finalized", "DesignationsFrozen", "Verified", "VerificationFailed");
+            .Should().BeEquivalentTo("Created", "BatesAllocated", "QcRun", "QcOverride", "SpecFrozen", "Finalized", "DesignationsFrozen", "Verified", "VerificationFailed");
 
         // A change is a new version: same lineage and frozen set, numbering continues after the version it supersedes.
         var next = await service.CreateAsync(principal, ws, new CreateProductionRequest(PreviousVersionId: draft.ProductionId), null, Ct);
@@ -178,7 +178,7 @@ public sealed class ProductionLifecycleTests(MigrationPostgresFixture postgres)
         (p3.BatesFirst, p3.BatesLast).Should().Be((1L, 6L));
 
         // Once produced, never reissued, even after voiding.
-        var finalized = (await service.FinalizeAsync(principal, ws, p3.ProductionId, p3.RowVersion, Ct)).Production!;
+        var finalized = (await service.FinalizeAsync(principal, ws, p3.ProductionId, p3.RowVersion, ProductionHarness.Unimaged(), Ct)).Production!;
         (await service.VoidAsync(principal, ws, p3.ProductionId, finalized.RowVersion, "Produced to the wrong party.", Ct)).Status.Should().Be(ProductionOutcomeStatus.Ok);
         (await h.CreateAsync(ws, user, snapshot.SnapshotId, Spec("ABC", 3))).Status.Should().Be(ProductionOutcomeStatus.BatesConflict);
         (await service.LookupAsync(principal, ws, "ABC0000002", null, Ct)).Matches.Should().ContainSingle()

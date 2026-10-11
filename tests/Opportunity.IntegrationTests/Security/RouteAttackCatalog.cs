@@ -38,6 +38,7 @@ internal static class ProtectedOperation
     public const string Import = "Import jobs, reports and profiles";
     public const string Job = "Job status";
     public const string Workspace = "Workspace administration and catalogues";
+    public const string PrivilegeLog = "Privilege logs (templates, versions, rows, files)";
 
     public static IReadOnlyList<string> Section24 { get; } = [Open, View, NativeDownload, ImageRetrieval, Export, ProductionInclusion];
 }
@@ -351,6 +352,24 @@ internal static class RouteAttackCatalog
         Case("POST", Ws + "/preservation-locks/{lockId}/release/cancel", ProtectedOperation.Workspace,
             new RouteProbe("preservation lock", HttpMethod.Post, (o, t) => $"{W(o)}/preservation-locks/{t.PreservationLockId}/release/cancel",
                 HttpStatusCode.Conflict, IfMatch: "*")),
+        // Acknowledgments (E20-T03). Versions are workspace-local numbers (every workspace has a version 1 once it publishes),
+        // not identifiers of another workspace. The world publishes no text, so nothing gates the other probes: publishing
+        // is probed with an invalid body and version 1 does not exist.
+        Case("GET", Ws + "/acknowledgment", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/acknowledgment", HttpStatusCode.OK)),
+        Case("POST", Ws + "/acknowledgment/acceptances", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Post, "/acknowledgment/acceptances", HttpStatusCode.Conflict,
+                _ => J(new JsonObject { ["version"] = 1, ["textSha256"] = new string('a', 64) }))),
+        Case("GET", Ws + "/acknowledgment-versions", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/acknowledgment-versions", HttpStatusCode.OK)),
+        Case("POST", Ws + "/acknowledgment-versions", ProtectedOperation.Workspace,
+            new RouteProbe("workspace", HttpMethod.Post, (o, _) => W(o) + "/acknowledgment-versions", HttpStatusCode.BadRequest,
+                (_, _) => J(new JsonObject { ["title"] = " ", ["text"] = "probe" }), IfMatch: "*", HasForeignIdentifier: false)),
+        Case("GET", Ws + "/acknowledgment-versions/{version}", ProtectedOperation.Workspace,
+            new RouteProbe("version", HttpMethod.Get, (o, _) => W(o) + "/acknowledgment-versions/1", HttpStatusCode.NotFound, HasForeignIdentifier: false)),
+        Case("GET", Ws + "/acknowledgment-roster", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/acknowledgment-roster", HttpStatusCode.OK)),
+        Case("GET", Ws + "/acknowledgment-roster/export", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/acknowledgment-roster/export", HttpStatusCode.OK)),
         Case("GET", Ws + "/fields", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/fields", HttpStatusCode.OK)),
         Case("GET", Ws + "/coding-layouts", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/coding-layouts", HttpStatusCode.OK)),
 
@@ -475,6 +494,39 @@ internal static class RouteAttackCatalog
             WorkspaceOnly(HttpMethod.Get, "/privilege-conflicts/export", HttpStatusCode.OK),
             new RouteProbe("production in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-conflicts/export?productionId={t.FinalizedProductionId}",
                 HttpStatusCode.OK)),
+        // Privilege logs (E13-T03): templates, generation from a production (with a review set) or a frozen set, versions,
+        // their rows and files (gateway). A version listing a document the caller may not see answers like a missing one.
+        Case("GET", Ws + "/privilege-log-templates", ProtectedOperation.PrivilegeLog,
+            WorkspaceOnly(HttpMethod.Get, "/privilege-log-templates", HttpStatusCode.OK)),
+        Case("POST", Ws + "/privilege-log-templates", ProtectedOperation.PrivilegeLog,
+            WorkspaceOnly(HttpMethod.Post, "/privilege-log-templates", HttpStatusCode.Created,
+                _ => J(new JsonObject { ["name"] = "Probe " + Guid.NewGuid().ToString("N") }))),
+        Case("GET", Ws + "/privilege-log-templates/{templateId}", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("template", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-log-templates/{t.PrivilegeLogTemplateId}", HttpStatusCode.OK)),
+        Case("PUT", Ws + "/privilege-log-templates/{templateId}", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("template", HttpMethod.Put, (o, t) => $"{W(o)}/privilege-log-templates/{t.PrivilegeLogTemplateId}", HttpStatusCode.OK,
+                (o, _) => J(new JsonObject { ["name"] = "Log template " + o.Name, ["definition"] = new JsonObject { ["privIdPrefix"] = "PRIV" } }),
+                IfMatch: "*")),
+        Case("POST", Ws + "/privilege-logs", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("production and template in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-logs", null,
+                (o, t) => J(new JsonObject { ["productionId"] = t.FinalizedProductionId.ToString(), ["templateId"] = o.PrivilegeLogTemplateId.ToString() })),
+            new RouteProbe("template in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-logs", null,
+                (o, t) => J(new JsonObject { ["productionId"] = o.FinalizedProductionId.ToString(), ["templateId"] = t.PrivilegeLogTemplateId.ToString() })),
+            new RouteProbe("review set in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-logs", null,
+                (o, t) => J(new JsonObject { ["productionId"] = o.FinalizedProductionId.ToString(), ["snapshotId"] = t.ProductionSnapshotId.ToString() })),
+            new RouteProbe("frozen set in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-logs", null,
+                (_, t) => J(new JsonObject { ["snapshotId"] = t.ProductionSnapshotId.ToString(), ["preset"] = "metadataOnly" }))),
+        Case("GET", Ws + "/privilege-logs", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("production in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs?productionId={t.FinalizedProductionId}",
+                HttpStatusCode.OK, Expectation: ForeignExpectation.EmptySet),
+            new RouteProbe("frozen set in the query", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs?snapshotId={t.ProductionSnapshotId}",
+                HttpStatusCode.OK, Expectation: ForeignExpectation.EmptySet)),
+        Case("GET", Ws + "/privilege-logs/{logId}", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/privilege-logs/{logId}/entries", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}/entries", HttpStatusCode.OK)),
+        Case("GET", Ws + "/privilege-logs/{logId}/content", ProtectedOperation.PrivilegeLog,
+            new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}/content?format=xlsx", HttpStatusCode.OK)),
         Case("POST", Ws + "/privilege-conflicts/propagations", ProtectedOperation.Coding,
             // The probe document is in no duplicate group: the own request is a validation problem, a foreign source a 404.
             new RouteProbe("source document and duplicate group in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-conflicts/propagations",
@@ -687,6 +739,16 @@ internal static class RouteAttackCatalog
             new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-report", HttpStatusCode.OK)),
         Case("GET", Ws + "/productions/{productionId}/redesignation-overlay", ProtectedOperation.ProductionInclusion,
             new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/redesignation-overlay", HttpStatusCode.OK)),
+        // Production QC gate (E12-T07): the draft is not allocated (409 for its owner), the finalized production keeps its finalization run.
+        Case("POST", Ws + "/productions/{productionId}/qc", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("draft production", HttpMethod.Post, (o, t) => $"{W(o)}/productions/{t.DraftProductionId}/qc", null)),
+        Case("GET", Ws + "/productions/{productionId}/qc", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/qc", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/qc/exceptions", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/qc/exceptions", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/{productionId}/qc/report", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("finalized production, CSV", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/qc/report", HttpStatusCode.OK),
+            new RouteProbe("finalized production, PDF", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}/qc/report?format=pdf", HttpStatusCode.OK)),
         // Production volumes (E12-T05): the production and the run are both identifiers; a foreign run under an own production
         // (or a foreign file under an own run) must answer like an unknown one.
         Case("POST", Ws + "/productions/{productionId}/volumes", ProtectedOperation.ProductionInclusion,

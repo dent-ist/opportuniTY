@@ -42,6 +42,7 @@ public enum Permission
     HighlightSetManage = 30,
     WorkspaceManageHolds = 31,
     ReviewBatchManage = 32,
+    WorkspaceManageAcknowledgments = 33,
 }
 
 /// <summary>Catalogue entry: the dotted wire name used in docs, audit details and the API, and what it allows.</summary>
@@ -87,6 +88,7 @@ public static class PermissionCatalog
         new(Permission.WorkspaceManageFields, "Workspace.ManageFields", "Manage fields, choices and coding layouts."),
         new(Permission.WorkspaceRequestDeletion, "Workspace.RequestDeletion", "Request workspace deletion (Q-23)."),
         new(Permission.WorkspaceManageHolds, "Workspace.ManageHolds", "Place, release and approve the release of preservation locks (legal holds) (ADR-014 §2)."),
+        new(Permission.WorkspaceManageAcknowledgments, "Workspace.ManageAcknowledgments", "Publish the reviewer attestation or protective-order text members must acknowledge, and read and export the acknowledgment roster."),
         new(Permission.ViewManageShared, "View.ManageShared", "Create, change and delete the document-list views shared with the whole workspace."),
         new(Permission.HighlightSetManage, "HighlightSet.Manage", "Create, change and delete the workspace's Highlight Sets (persistent term highlighting)."),
         new(Permission.ReviewBatchManage, "ReviewBatch.Manage", "Create review Batch Sets, assign and reassign batches, check in others' batches and read first-pass/QC conflicts."),

@@ -89,6 +89,14 @@ export class AppShell {
 
   protected readonly paths = SHELL_PATHS;
   protected readonly workspace = inject(ActiveWorkspace).current;
+  /**
+   * The workspace whose sections the sidebar and job tray show: none while the member still has to accept the
+   * workspace's acknowledgment (E20-T03), when only the acknowledgment page is reachable.
+   */
+  protected readonly navigable = computed(() => {
+    const ws = this.workspace();
+    return ws && !ws.acknowledgmentPending ? ws : null;
+  });
   protected readonly sections = computed(() =>
     allowedSections(WORKSPACE_SECTIONS, this.workspace()?.permissions ?? []),
   );

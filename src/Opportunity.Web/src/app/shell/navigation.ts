@@ -161,3 +161,7 @@ export function requirePermission(permission: string): CanActivateFn {
 
 export const workspaceResolver: ResolveFn<Workspace> = (route) =>
   inject(WorkspaceDirectory).get(workspaceIdOf(route));
+
+/** The workspace read again from the API (not the cached copy), e.g. for its current acknowledgment state. */
+export const currentWorkspaceResolver: ResolveFn<Workspace> = (route) =>
+  inject(WorkspaceDirectory).refresh(workspaceIdOf(route));

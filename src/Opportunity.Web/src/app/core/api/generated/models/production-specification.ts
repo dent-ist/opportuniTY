@@ -9,6 +9,7 @@ import { ProductionImageSettings } from '../models/production-image-settings';
 import { ProductionLoadFileSettings } from '../models/production-load-file-settings';
 import { ProductionOutputResource } from '../models/production-output-resource';
 import { ProductionPlaceholderSettings } from '../models/production-placeholder-settings';
+import { WithheldDocumentsResource } from '../models/withheld-documents-resource';
 export interface ProductionSpecification {
   bates: ProductionBatesSettings;
   defaultOutput?: null | ProductionOutputResource;
@@ -20,4 +21,5 @@ export interface ProductionSpecification {
   loadFile?: null | ProductionLoadFileSettings;
   placeholders?: null | ProductionPlaceholderSettings;
   redactionSetId?: string | null;
+  withheldDocuments?: null | WithheldDocumentsResource;
 }

@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -79,7 +81,9 @@ internal sealed record WorkspaceResources(
     Guid QcBatchSetId,
     Guid ReviewBatchId,
     Guid ProductionVolumeId,
-    Guid ProductionVolumeFileId)
+    Guid ProductionVolumeFileId,
+    Guid PrivilegeLogTemplateId,
+    Guid PrivilegeLogId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -91,7 +95,7 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7(), Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -103,7 +107,7 @@ internal sealed record WorkspaceResources(
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
             WallId, SpareWallId, BreakGlassActivationId, RedactionSetId, PreservationLockId, ReviewBatchSnapshotId, FirstPassBatchSetId,
-            QcBatchSetId, ReviewBatchId, ProductionVolumeId, ProductionVolumeFileId,
+            QcBatchSetId, ReviewBatchId, ProductionVolumeId, ProductionVolumeFileId, PrivilegeLogTemplateId, PrivilegeLogId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -186,8 +190,15 @@ internal sealed class AttackWorld : IAsyncDisposable
             builder.UseSetting("Snapshots:BackgroundEnabled", "false");
             builder.UseSetting("SearchTermReports:BackgroundEnabled", "false");
             builder.UseSetting("Jobs:Events:MaxStreamDuration", "00:00:01");
+            // Audit envelopes (E14-T02): a session hash key (obviously fake) and a client address, as behind a real listener.
+            builder.UseSetting("Authentication:Session:AuditHashKey", Convert.ToBase64String(new byte[32]));
+            // Installation administration and step-up for the audit coverage scenario (workspace creation, holds, deletion).
+            builder.UseSetting("Authentication:Mfa:AmrValues:0", "mfa");
+            builder.UseSetting("Authorization:InstallationAdminGroups:0", InstallationAdminGroup);
+            builder.UseSetting("Authorization:RetentionApproverGroups:0", RetentionApproverGroup);
             builder.ConfigureTestServices(services =>
             {
+                services.AddSingleton<IStartupFilter, ClientAddressStartupFilter>();
                 services.RemoveAll<ISecurityStateReader>();
                 services.AddSingleton<ISecurityStateReader, Data.Security.PostgresSecurityStateReader>();
             });
@@ -306,6 +317,12 @@ internal sealed class AttackWorld : IAsyncDisposable
         await Productions.RunAllocationAsync(ws, allocation.GetProperty("jobId").GetGuid());
         using (var current = await SendAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/productions/{finalized}", owner))
         using (var finalize = await SendAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/productions/{finalized}/finalize", owner,
+            JsonContent.Create(new JsonObject
+            {
+                // E12-T07: the attack document has no stored page images (a Technical Issue page) and the QC warnings are accepted.
+                ["qcOverrides"] = new JsonArray(new JsonObject { ["check"] = "renderFailure", ["reason"] = "Attack-suite document without page images." }),
+                ["acknowledgeWarnings"] = true,
+            }),
             ifMatch: current.Headers.ETag!.ToString()))
         {
             finalize.StatusCode.Should().Be(HttpStatusCode.OK, await finalize.Content.ReadAsStringAsync(Ct));
@@ -411,6 +428,15 @@ internal sealed class AttackWorld : IAsyncDisposable
         });
         var batches = await JsonAsync(HttpMethod.Get, $"/api/v1/workspaces/{ws}/review-batches?batchSetId={firstPassId}", owner, HttpStatusCode.OK);
 
+        // Privilege logs (E13-T03): a template and a log of the finalized production.
+        var logTemplate = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/privilege-log-templates", owner, HttpStatusCode.Created,
+            new JsonObject { ["name"] = $"Log template {name}" });
+        var privilegeLog = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/privilege-logs", owner, HttpStatusCode.Created, new JsonObject
+        {
+            ["productionId"] = finalized.ToString(),
+            ["templateId"] = logTemplate.GetProperty("templateId").GetString(),
+        });
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -461,7 +487,9 @@ internal sealed class AttackWorld : IAsyncDisposable
             qcSet.GetProperty("batchSetId").GetGuid(),
             batches.GetProperty("items")[0].GetProperty("batchId").GetGuid(),
             volumeId,
-            volumeFiles.GetProperty("items")[0].GetProperty("fileId").GetGuid());
+            volumeFiles.GetProperty("items")[0].GetProperty("fileId").GetGuid(),
+            logTemplate.GetProperty("templateId").GetGuid(),
+            privilegeLog.GetProperty("log").GetProperty("logId").GetGuid());
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>
@@ -494,15 +522,22 @@ internal sealed class AttackWorld : IAsyncDisposable
 
     /// <summary>Sends a request as <paramref name="user"/> (null: anonymous) with a fresh Idempotency-Key on writes.</summary>
     public async Task<HttpResponseMessage> SendAsync(
-        HttpMethod method, string url, Guid? user, HttpContent? content = null, string? ifMatch = null, string? groups = null)
+        HttpMethod method, string url, Guid? user, HttpContent? content = null, string? ifMatch = null, string? groups = null,
+        string? amr = null, string? correlationId = null)
     {
         using var request = new HttpRequestMessage(method, new Uri(url, UriKind.Relative)) { Content = content };
         if (user is { } id)
         {
             request.Headers.Add(TestAuthentication.UserHeader, id.ToString());
+            request.Headers.Add(TestAuthentication.SessionHeader, SessionOf(id).ToString());
             if (groups is not null)
             {
                 request.Headers.Add(TestAuthentication.GroupsHeader, groups);
+            }
+
+            if (amr is not null)
+            {
+                request.Headers.Add(TestAuthentication.AmrHeader, amr);
             }
         }
         else
@@ -520,7 +555,27 @@ internal sealed class AttackWorld : IAsyncDisposable
             request.Headers.TryAddWithoutValidation("If-Match", ifMatch);
         }
 
+        if (correlationId is not null)
+        {
+            request.Headers.Add("X-Correlation-Id", correlationId);
+        }
+
         return await Client.SendAsync(request, Ct);
+    }
+
+    public const string InstallationAdminGroup = "cn=attack-world-installation-admins";
+
+    public const string RetentionApproverGroup = "cn=attack-world-retention-approvers";
+
+    /// <summary>The client address every request of the world comes from (TEST-NET-1, RFC 5737).</summary>
+    public static IPAddress ClientAddress { get; } = IPAddress.Parse("192.0.2.10");
+
+    /// <summary>The (stable) server-side session of <paramref name="user"/> in this world.</summary>
+    public static Guid SessionOf(Guid user)
+    {
+        var bytes = user.ToByteArray();
+        bytes[0] ^= 0x5a;
+        return new Guid(bytes);
     }
 
     public async Task<JsonElement> JsonAsync(HttpMethod method, string url, Guid user, HttpStatusCode expected, JsonNode? body = null)
@@ -560,4 +615,18 @@ internal sealed class AttackWorld : IAsyncDisposable
         _openSearch.Dispose();
         await Db.DisposeAsync();
     }
+}
+
+/// <summary>TestServer leaves the remote address empty; the world's requests come from <see cref="AttackWorld.ClientAddress"/>.</summary>
+internal sealed class ClientAddressStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use((context, nextMiddleware) =>
+        {
+            context.Connection.RemoteIpAddress ??= AttackWorld.ClientAddress;
+            return nextMiddleware(context);
+        });
+        next(app);
+    };
 }

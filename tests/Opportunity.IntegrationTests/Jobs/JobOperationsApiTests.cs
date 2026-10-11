@@ -247,6 +247,11 @@ public sealed class JobOperationsApiTests(MigrationPostgresFixture postgres)
         (await JsonAsync(client, HttpMethod.Post, w.Url("/search-outbox/retry-failed"), w.Admin, HttpStatusCode.Accepted))
             .GetProperty("rowsReplayed").GetInt32().Should().Be(0);
         (await w.Db.Core.ScalarAsync<short>("SELECT status FROM opportunity.search_outbox WHERE workspace_id = @ws", ("ws", w.Ws))).Should().Be(1);
+        (await w.Db.Core.ScalarAsync<long>(
+            """
+            SELECT count(*) FROM audit.audit_event WHERE workspace_id = @ws AND category = 'Job' AND action = 'Replayed'
+               AND resource_type = 'SearchOutbox' AND actor_id = @actor AND details ->> 'RowsReplayed' = '1'
+            """, ("ws", w.Ws), ("actor", w.Admin.ToString()))).Should().Be(1, "the replay is audited (E14-T02); the empty one changes nothing");
     }
 
     [Fact]

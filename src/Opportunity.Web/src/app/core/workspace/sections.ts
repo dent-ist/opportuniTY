@@ -26,6 +26,8 @@ export const PERMISSIONS = {
   manageSecurity: 'Workspace.ManageSecurity',
   /** Place and release legal holds (preservation locks, E20-T01). */
   manageHolds: 'Workspace.ManageHolds',
+  /** Publish the acknowledgment text members must accept, and read its roster (E20-T03). */
+  manageAcknowledgments: 'Workspace.ManageAcknowledgments',
   /** Request the deletion of the workspace (E20-T02, Q-23); a Retention Approver approves it. */
   requestDeletion: 'Workspace.RequestDeletion',
   auditRead: 'Audit.Read',
@@ -77,6 +79,12 @@ export const SEARCH_AREAS: readonly WorkspaceSection[] = [
     label: 'Privilege Conflicts',
     permission: PERMISSIONS.privilegeLogGenerate,
   },
+  // Privilege logs of finalized productions (E13-T03): versions, SHA-256, CSV/XLSX.
+  {
+    path: 'privilege-logs',
+    label: 'Privilege Logs',
+    permission: PERMISSIONS.privilegeLogGenerate,
+  },
 ];
 
 /** Entries of the Admin ▾ menu, in guide order; paths are under `/w/:workspaceId/admin/`. */
@@ -91,6 +99,12 @@ export const ADMIN_AREAS: readonly WorkspaceSection[] = [
   { path: 'roles-security', label: 'Roles & Security', permission: PERMISSIONS.manageSecurity },
   { path: 'ethical-walls', label: 'Ethical Walls', permission: PERMISSIONS.manageSecurity },
   { path: 'settings', label: 'Workspace Settings', permission: PERMISSIONS.manageSecurity },
+  // Reviewer attestation / protective-order text and who accepted it (E20-T03).
+  {
+    path: 'acknowledgments',
+    label: 'Acknowledgments',
+    permission: PERMISSIONS.manageAcknowledgments,
+  },
   // The empty-state checklist a new workspace lands on (E04-T07); stays available to finish setting up.
   { path: 'setup', label: 'Setup Checklist', permission: PERMISSIONS.manageSecurity },
   { path: 'audit', label: 'Audit', permission: PERMISSIONS.auditRead },

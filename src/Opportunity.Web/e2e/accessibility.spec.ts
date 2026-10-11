@@ -21,6 +21,7 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/searches/terms-reports/str-1',
   '/w/ws-1/searches/terms-reports/str-2',
   '/w/ws-1/searches/privilege-conflicts',
+  '/w/ws-1/searches/privilege-logs',
   '/w/ws-1/documents?termReport=str-1&term=str-1-t1',
   '/w/ws-1/jobs',
   '/w/ws-1/jobs/job-exp-3',
@@ -38,6 +39,9 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/admin/coding-layouts',
   '/w/ws-1/admin/users-groups',
   '/w/ws-1/admin/roles-security',
+  // Acknowledgments (E20-T03): the admin page and the text as a member who has accepted it.
+  '/w/ws-1/admin/acknowledgments',
+  '/w/ws-1/acknowledgment',
   // A requester sees only their own deletions (none yet) (E20-T02).
   '/workspace-deletions',
 ];
@@ -68,6 +72,11 @@ const POPUPS = [
     name: 'Place legal hold dialog',
     path: '/w/ws-1/admin/settings',
     trigger: { role: 'button', name: /Place legal hold/ },
+  },
+  {
+    name: 'Publish acknowledgment dialog',
+    path: '/w/ws-1/admin/acknowledgments',
+    trigger: { role: 'button', name: /Publish new version/ },
   },
   {
     name: 'Delete workspace dialog',
@@ -101,6 +110,17 @@ for (const theme of THEMES) {
         await expectNoSeriousAxeViolations(page, testInfo);
       });
     }
+
+    test.describe('acknowledgment not yet accepted (E20-T03)', () => {
+      test.use({ api: { acknowledgmentPending: true } });
+      test('/w/ws-1/acknowledgment', async ({ page }, testInfo) => {
+        await openPage(page, '/w/ws-1/documents');
+        await expect(page).toHaveURL(/\/w\/ws-1\/acknowledgment\?returnUrl=/);
+        await page.getByRole('button', { name: 'Accept and continue' }).click();
+        await expect(page.getByText('Tick the box to confirm you agree.')).toBeVisible();
+        await expectNoSeriousAxeViolations(page, testInfo);
+      });
+    });
 
     test.describe('retention approver', () => {
       test.use({

@@ -12,6 +12,7 @@ import {
   SESSION_CONFIG,
   SessionService,
 } from '../session/session';
+import { acknowledgmentInterceptor } from '../workspace/acknowledgment';
 import { workspaceBoundaryInterceptor } from '../workspace/workspace-context';
 import { provideApiConfiguration } from './generated';
 import { toApiError } from './problem-details';
@@ -36,7 +37,8 @@ export const problemDetailsInterceptor: HttpInterceptorFn = (req, next) =>
 /**
  * HTTP stack for the API (ADR-018 §3–§5): same-origin relative URLs, cookie session, Angular XSRF support
  * against ASP.NET Core antiforgery (the BFF's readable `__Host-opp-xsrf` cookie is echoed in `X-XSRF-TOKEN` on
- * every unsafe method), problem-details normalisation and the workspace boundary check. XHR backend (not fetch) because
+ * every unsafe method), problem-details normalisation, the acknowledgment redirect (E20-T03) and the workspace
+ * boundary check. XHR backend (not fetch) because
  * native/load-file uploads need upload progress events.
  */
 export function provideOpportunityHttp(
@@ -51,6 +53,7 @@ export function provideOpportunityHttp(
       withInterceptors([
         problemDetailsInterceptor,
         sessionInterceptor,
+        acknowledgmentInterceptor,
         workspaceBoundaryInterceptor,
       ]),
     ),

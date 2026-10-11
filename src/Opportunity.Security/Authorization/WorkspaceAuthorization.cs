@@ -10,6 +10,7 @@ using Opportunity.Application.Authorization;
 using Opportunity.Contracts.Api;
 using Opportunity.Core.Security;
 using Opportunity.Security.Authentication;
+using Opportunity.Security.Http;
 
 namespace Opportunity.Security.Authorization;
 
@@ -32,6 +33,15 @@ public sealed class WorkspaceMembershipMetadata
 public sealed class BreakGlassHolderMetadata
 {
     public static BreakGlassHolderMetadata Instance { get; } = new();
+}
+
+/// <summary>
+/// The endpoint is reachable before the member accepted the workspace's current acknowledgment text (E20-T03): only the
+/// routes that read and accept the text and the workspace descriptor carry it (an architecture test pins the list).
+/// </summary>
+public sealed class AcknowledgmentExemptMetadata
+{
+    public static AcknowledgmentExemptMetadata Instance { get; } = new();
 }
 
 /// <summary>The outcome of PEP-1 for the current request, for handlers that authorize resources further.</summary>
@@ -69,6 +79,18 @@ public static class WorkspaceAuthorizationConventions
         return builder;
     }
 
+    /// <summary>
+    /// Lets members reach the endpoint before they accepted the workspace's acknowledgment text (E20-T03). Only for the
+    /// routes that read and accept the text, and the workspace descriptor the web app needs to show it.
+    /// </summary>
+    public static TBuilder AllowBeforeAcknowledgment<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.WithMetadata(AcknowledgmentExemptMetadata.Instance);
+        return builder;
+    }
+
     /// <summary>True when the endpoint's route has a <c>{workspaceId}</c> parameter, wherever it was mapped.</summary>
     public static bool IsWorkspaceScoped(Endpoint endpoint) =>
         endpoint is RouteEndpoint route && route.RoutePattern.GetParameter(WorkspaceIdRouteValue) is not null;
@@ -96,7 +118,7 @@ public static class WorkspaceAuthorizationConventions
             Groups = [.. user.FindAll(OpportunityClaimTypes.Group).Select(c => c.Value).Where(g => g.Length > 0).Distinct(StringComparer.Ordinal)],
             ClientIp = context.Connection.RemoteIpAddress?.ToString(),
             UserAgent = string.IsNullOrEmpty(userAgent) ? null : userAgent[..Math.Min(userAgent.Length, 512)],
-            CorrelationId = context.TraceIdentifier,
+            CorrelationId = RequestCorrelation.Get(context),
         };
     }
 }
@@ -106,7 +128,10 @@ public static class WorkspaceAuthorizationConventions
 /// model binding, idempotency and endpoint filters. A malformed ID, an unknown workspace and a workspace the user is
 /// not a member of all give the same 404 (no enumeration); a member lacking the endpoint's permission gets 403. An
 /// endpoint that declares neither a permission nor membership-only is refused (fail closed; the architecture test
-/// keeps that from shipping).
+/// keeps that from shipping). An allowed member who has not accepted the workspace's current acknowledgment text (E20-T03)
+/// then gets 403 <c>acknowledgment-required</c> on every route except the few marked
+/// <see cref="WorkspaceAuthorizationConventions.AllowBeforeAcknowledgment{TBuilder}"/> (and break-glass activation, which
+/// grants nothing by itself): this is the one access path of every workspace content route.
 /// </summary>
 internal sealed partial class WorkspaceAuthorizationMiddleware(RequestDelegate next, ILogger<WorkspaceAuthorizationMiddleware> logger)
 {
@@ -156,6 +181,15 @@ internal sealed partial class WorkspaceAuthorizationMiddleware(RequestDelegate n
             return;
         }
 
+        if (endpoint.Metadata.GetMetadata<AcknowledgmentExemptMetadata>() is null
+            && endpoint.Metadata.GetMetadata<BreakGlassHolderMetadata>() is null
+            && !(await authorization.AuthorizeAcknowledgmentAsync(principal, workspaceId, context.RequestAborted).ConfigureAwait(false)).IsAllowed)
+        {
+            var gate = await authorization.GetAcknowledgmentGateAsync(principal, workspaceId, context.RequestAborted).ConfigureAwait(false);
+            await WriteAcknowledgmentRequiredAsync(context, problems, workspaceId, gate.RequiredVersion).ConfigureAwait(false);
+            return;
+        }
+
         context.Features.Set(new WorkspaceAccess(workspaceId, principal));
         await next(context).ConfigureAwait(false);
     }
@@ -170,6 +204,27 @@ internal sealed partial class WorkspaceAuthorizationMiddleware(RequestDelegate n
         {
             HttpContext = context,
             ProblemDetails = new ProblemDetails { Status = status, Detail = detail, Extensions = { ["code"] = code } },
+        }).ConfigureAwait(false);
+    }
+
+    private static async Task WriteAcknowledgmentRequiredAsync(HttpContext context, IProblemDetailsService problems, Guid workspaceId, int? version)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await problems.WriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = context,
+            ProblemDetails = new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Acknowledgment required",
+                Detail = "This workspace requires you to read and accept its acknowledgment before you can use it.",
+                Extensions =
+                {
+                    ["code"] = ProblemCodes.AcknowledgmentRequired,
+                    ["acknowledgmentVersion"] = version,
+                    ["acknowledgmentUrl"] = $"/api/v1/workspaces/{workspaceId}/acknowledgment",
+                },
+            },
         }).ConfigureAwait(false);
     }
 

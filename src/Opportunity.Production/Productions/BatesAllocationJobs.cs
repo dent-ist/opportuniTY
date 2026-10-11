@@ -11,6 +11,7 @@ using Opportunity.Application.Faults;
 #endif
 using Opportunity.Application.Jobs;
 using Opportunity.Application.Productions;
+using Opportunity.Contracts.Api;
 using Opportunity.Core.Jobs;
 using Opportunity.Core.Productions;
 using Opportunity.Core.Security;
@@ -103,7 +104,8 @@ public sealed partial class BatesAllocationCoordinator(
         var specification = ProductionSpecificationRules.Deserialize(production.SpecificationJson);
         var format = ProductionSpecificationRules.FormatOf(specification);
         var plan = await productions.PlanAllocationAsync(ws, production.ProductionId, jobId, new BatesPlanRequest(
-            format.Level, ProductionSpecificationRules.OutputFor(specification), options.DocumentsPerChunk, options.NumbersPerChunk, format.MaxNumber),
+            format.Level, ProductionSpecificationRules.OutputFor(specification), options.DocumentsPerChunk, options.NumbersPerChunk, format.MaxNumber,
+            WithheldAsPlaceholder: specification.WithheldDocuments == WithheldDocumentsResource.Placeholder),
             cancellationToken).ConfigureAwait(false);
         if (!plan.Planned)
         {

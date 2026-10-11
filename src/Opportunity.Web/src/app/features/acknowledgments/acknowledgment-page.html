@@ -1,0 +1,104 @@
+<div class="ack__sheet">
+  <p class="ack__eyebrow">
+    <opp-icon name="lock" />
+    <span>{{ workspace.name }}</span>
+  </p>
+  <!-- One heading for every state, so the focus the shell gives it on arrival survives loading. -->
+  <h1 class="ack__title" tabindex="-1">{{ heading() }}</h1>
+
+  @if (loadError(); as error) {
+    <opp-error-state [error]="error" (retry)="load()" />
+  } @else if (state(); as s) {
+    @if (!s.required) {
+      <p class="ack__lead">This workspace does not ask its members to accept an acknowledgment.</p>
+      <div class="ack__actions">
+        <a oppButton="primary" [routerLink]="next">Continue to the workspace</a>
+      </div>
+    } @else {
+      <p class="ack__meta">
+        <opp-badge [tone]="pending() ? 'warning' : 'success'" [icon]="pending() ? 'info' : 'check'">
+          {{ pending() ? 'Acceptance required' : 'Accepted' }}
+        </opp-badge>
+        <span>Version {{ s.version }} · published {{ date(s.publishedAt) }}</span>
+      </p>
+
+      @if (pending()) {
+        @if (replaced()) {
+          <p class="ack__notice ack__notice--warning" role="status">
+            <opp-icon name="warning" />
+            <span
+              >The text was updated while you were reading it. Read this version before you accept
+              it.</span
+            >
+          </p>
+        }
+        <p class="ack__lead">
+          Before you can open documents or use anything else in this workspace, read the text below
+          and confirm that you agree to it. When the text changes, you will be asked again.
+        </p>
+      } @else {
+        <p class="ack__lead">
+          You accepted this version on {{ date(s.acknowledgedAt) }}. It stays available here for
+          reference.
+        </p>
+      }
+
+      <div
+        class="ack__text"
+        role="region"
+        tabindex="0"
+        aria-label="Acknowledgment text"
+        aria-describedby="ack-fingerprint"
+        [textContent]="s.text"
+      ></div>
+      <p id="ack-fingerprint" class="ack__fine">
+        Text fingerprint (SHA-256): <code>{{ short(s.textSha256) }}…</code>
+      </p>
+
+      @if (pending()) {
+        <form class="ack__form" novalidate (submit)="accept($event)">
+          <div class="ack__confirm">
+            <opp-checkbox
+              #confirm
+              [required]="true"
+              [invalid]="!!confirmError()"
+              [disabled]="saving()"
+              [(checked)]="agreed"
+            >
+              I have read this text and agree to be bound by it
+            </opp-checkbox>
+            @if (confirmError(); as message) {
+              <p class="ack__field-error" role="alert">
+                <span class="opp-visually-hidden">Error:</span>
+                {{ message }}
+              </p>
+            }
+          </div>
+          <p class="ack__fine">
+            Your acceptance is recorded with the version, the text fingerprint and the time. The
+            workspace's administrators can see who accepted which version.
+          </p>
+          @if (failure(); as f) {
+            <div class="ack__notice ack__notice--danger" role="alert">
+              <opp-icon name="error" />
+              <div>
+                <p class="ack__notice-title">{{ f.title }}</p>
+                <p>{{ f.detail }}</p>
+              </div>
+            </div>
+          }
+          <div class="ack__actions">
+            <button type="submit" oppButton="primary" [busy]="saving()">Accept and continue</button>
+            <a oppButton="ghost" routerLink="/workspaces">Back to workspaces</a>
+          </div>
+        </form>
+      } @else {
+        <div class="ack__actions">
+          <a oppButton="primary" [routerLink]="next">Continue to the workspace</a>
+        </div>
+      }
+    }
+  } @else {
+    <opp-loading-state label="Loading the acknowledgment…" />
+  }
+</div>

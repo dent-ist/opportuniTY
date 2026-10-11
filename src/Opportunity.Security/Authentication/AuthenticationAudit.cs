@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 
 using Opportunity.Application.Audit;
 using Opportunity.Application.Identity;
+using Opportunity.Security.Http;
 
 namespace Opportunity.Security.Authentication;
 
@@ -89,12 +90,13 @@ internal sealed class AuthenticationAudit(
             UserAgent = string.IsNullOrEmpty(userAgent) ? null : userAgent[..Math.Min(userAgent.Length, MaxUserAgentLength)],
             Outcome = outcome,
             ReasonCode = reasonCode,
-            CorrelationId = Activity.Current?.GetTagItem(CorrelationTag) as string ?? context?.TraceIdentifier,
+            CorrelationId = context is null ? Activity.Current?.GetTagItem(CorrelationTag) as string : RequestCorrelation.Get(context),
             Details = details ?? new Dictionary<string, string?>(),
         };
     }
 
-    private ReadOnlyMemory<byte>? HashSession(Guid sessionId)
+    /// <summary>The audit <c>SessionIdHash</c> of a server-side session; null without a configured hash key.</summary>
+    internal ReadOnlyMemory<byte>? HashSession(Guid sessionId)
     {
         if (_hashKey is null)
         {

@@ -1,0 +1,68 @@
+<form novalidate (submit)="submit($event)">
+  <opp-dialog-layout [title]="'Publish version ' + next">
+    <div class="acka__dialog-body">
+      <p class="acka__notice" role="note">
+        <opp-icon name="info" />
+        <span>
+          Once published, every member, you included, must read and accept this version before they
+          can use the workspace again.
+        </span>
+      </p>
+
+      <opp-text-field
+        label="Title"
+        hint="Shown as the heading members read, e.g. Protective order acknowledgment (Exhibit A)."
+        [required]="true"
+        [error]="titleError()"
+        [disabled]="saving()"
+        [value]="title()"
+        (valueChange)="onTitle($event)"
+      />
+
+      <div class="acka__textarea-field">
+        <label class="acka__label" for="ack-text">
+          Text members accept
+          <span class="acka__required" aria-hidden="true">*</span>
+        </label>
+        <textarea
+          id="ack-text"
+          class="acka__textarea"
+          rows="12"
+          required
+          [attr.maxlength]="maxText"
+          [attr.aria-invalid]="textError() ? true : null"
+          [attr.aria-describedby]="textError() ? 'ack-text-hint ack-text-error' : 'ack-text-hint'"
+          [value]="text()"
+          [disabled]="saving()"
+          (input)="onText($event)"
+        ></textarea>
+        <p id="ack-text-hint" class="acka__hint">
+          Plain text; line breaks are kept. For example the undertaking of a protective order, a
+          confidentiality attestation or a conflicts check.
+        </p>
+        @if (textError(); as message) {
+          <p id="ack-text-error" class="acka__field-error">
+            <span class="opp-visually-hidden">Error:</span>
+            {{ message }}
+          </p>
+        }
+      </div>
+
+      @if (failure(); as f) {
+        <div class="acka__notice acka__notice--danger" role="alert">
+          <opp-icon name="error" />
+          <div>
+            <p class="acka__notice-title">{{ f.title }}</p>
+            <p>{{ f.detail }}</p>
+          </div>
+        </div>
+      }
+    </div>
+    <ng-container dialogActions>
+      <button type="button" oppButton="ghost" (click)="ref.close()">Cancel</button>
+      <button type="submit" oppButton="primary" [busy]="saving()">
+        Publish version {{ next }}
+      </button>
+    </ng-container>
+  </opp-dialog-layout>
+</form>

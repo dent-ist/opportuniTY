@@ -17,8 +17,13 @@ public sealed class PostgresSecurityStateReader(NpgsqlDataSource dataSource) : I
     private const string WorkspaceSql = """
         SELECT w.status,
                (SELECT max(b.expires_at) FROM opportunity.break_glass_activation b
-                WHERE b.workspace_id = w.workspace_id AND b.user_id = @user AND b.ended_at IS NULL AND b.expires_at > now())
+                WHERE b.workspace_id = w.workspace_id AND b.user_id = @user AND b.ended_at IS NULL AND b.expires_at > now()),
+               ack.version,
+               EXISTS (SELECT FROM opportunity.acknowledgment a
+                       WHERE a.workspace_id = w.workspace_id AND a.user_id = @user AND a.version = ack.version)
         FROM opportunity.workspace w
+        LEFT JOIN LATERAL (SELECT max(v.version) AS version FROM opportunity.acknowledgment_version v
+                           WHERE v.workspace_id = w.workspace_id) ack ON true
         WHERE w.workspace_id = @ws
         """;
 
@@ -114,10 +119,15 @@ public sealed class PostgresSecurityStateReader(NpgsqlDataSource dataSource) : I
     {
         WorkspaceStatus? status = null;
         DateTimeOffset? breakGlassExpiresAt = null;
+        var acknowledgment = AcknowledgmentGateState.None;
         if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             status = Enum.Parse<WorkspaceStatus>(reader.GetString(0));
             breakGlassExpiresAt = reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTimeOffset>(1);
+            if (!reader.IsDBNull(2))
+            {
+                acknowledgment = new AcknowledgmentGateState(reader.GetInt32(2), reader.GetBoolean(3));
+            }
         }
 
         await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
@@ -154,7 +164,9 @@ public sealed class PostgresSecurityStateReader(NpgsqlDataSource dataSource) : I
         }
 
         await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
-        return status is { } s ? new PrincipalSecurityState(s, roles, classGrants, walls, breakGlassExpiresAt) : null;
+        return status is { } s
+            ? new PrincipalSecurityState(s, roles, classGrants, walls, breakGlassExpiresAt) { Acknowledgment = acknowledgment }
+            : null;
     }
 
     private static NpgsqlBatchCommand Command(string sql, Guid workspaceId, Guid userId, string[] groups)

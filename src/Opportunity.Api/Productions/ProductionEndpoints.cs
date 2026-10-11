@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Opportunity.Api.Conventions;
@@ -121,11 +122,13 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             .RequirePermission(Permission.ProductionFinalize)
             .WithName("FinalizeProduction")
             .WithTags(Tag)
-            .WithSummary("Finalize an allocated draft (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.")
+            .WithSummary("Finalize an allocated draft behind the QC gate (If-Match required): specification, membership and Bates numbers are frozen and recorded in the manifest.")
             .WithDescription(
-                "409 PRIVILEGE_WITHHELD while members are coded Withhold; 409 PRIVILEGE_CONFLICTS while members' families or duplicate " +
-                "groups have unresolved privilege conflicts (E13-T02), unless the body gives privilegeConflictOverride with a reason " +
-                "(needs PrivilegeLog.Generate; recorded in the manifest and audited). Neither answer counts or names documents.")
+                "Runs every QC check (E12-T07) over the members as they are now; the run is kept with the production and named in its manifest. " +
+                "A failed blocking check answers 409 with the QC report in `qc` (reason PRIVILEGE_WITHHELD, BATES_OVERLAP, PRIVILEGE_CONFLICTS, " +
+                "DESIGNATION_REFUSED or QC_FAILED; QC_WARNINGS for unacknowledged warnings) unless the check may be overridden and qcOverrides " +
+                "(or privilegeConflictOverride) gives a reason (privilege conflicts need PrivilegeLog.Generate); overrides are printed in the QC " +
+                "report, recorded in the manifest and audited. The report counts documents; it never names documents you may not view.")
             .Produces<ProductionResource>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -216,6 +219,38 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPost("/{productionId}/qc", RunQcAsync)
+            .RequirePermission(Permission.ProductionCreate)
+            .WithName("RunProductionQc")
+            .WithTags(Tag)
+            .WithSummary("Run the QC gate over an allocated draft now: every check with its status and document count (the validation summary before finalizing).")
+            .WithDescription(
+                "The same checks finalization runs (E12-T07). The run is kept and audited (Production.QcRun); its document-level exceptions are " +
+                "listed by …/qc/exceptions and in the QC report (…/qc/report). 409 when the production is not an allocated draft.")
+            .Produces<ProductionQcReportResource>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapGet("/{productionId}/qc", GetQcAsync)
+            .RequirePermission(Permission.ProductionCreate)
+            .WithName("GetProductionQc")
+            .WithTags(Tag)
+            .WithSummary("The production's latest QC run; a finalized production's is the run it was finalized with (overrides and acknowledged warnings included).")
+            .Produces<ProductionQcReportResource>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{productionId}/qc/exceptions", ListQcExceptionsAsync)
+            .RequirePermission(Permission.ProductionCreate)
+            .WithName("ListProductionQcExceptions")
+            .WithTags(Tag)
+            .WithSummary("Document-level exceptions of the latest QC run (?check= to narrow), by check and production order; documents you may not view are only counted.")
+            .Produces<ProductionQcExceptionPageResource>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/{productionId}/verification", VerifyAsync)
             .RequirePermission(Permission.ProductionCreate)
@@ -410,8 +445,19 @@ public sealed class ProductionEndpoints : IApiEndpointModule
             });
         }
 
+        var overrides = new List<ProductionQcOverride>();
+        if (request?.PrivilegeConflictOverride is { } conflictOverride)
+        {
+            overrides.Add(new ProductionQcOverride(ProductionQcCheck.PrivilegeConflicts, conflictOverride.Reason));
+        }
+
+        foreach (var item in request?.QcOverrides ?? [])
+        {
+            overrides.Add(new ProductionQcOverride(item is null ? 0 : (ProductionQcCheck)(short)item.Check, item?.Reason ?? string.Empty));
+        }
+
         var outcome = await service.FinalizeAsync(access.Principal, access.WorkspaceId, current.ProductionId, current.RowVersion,
-            request?.PrivilegeConflictOverride?.Reason, cancellationToken).ConfigureAwait(false);
+            new ProductionFinalizeOptions(overrides, request?.AcknowledgeWarnings ?? false), cancellationToken).ConfigureAwait(false);
         return await ResultAsync(context, outcome, jobs, cancellationToken).ConfigureAwait(false);
     }
 
@@ -647,6 +693,95 @@ public sealed class ProductionEndpoints : IApiEndpointModule
         _ => DesignationSourceResource.None,
     };
 
+    internal static async Task<IResult> RunQcAsync(
+        string workspaceId, string productionId, HttpContext context, IProductionStore productions, ProductionService service,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } production)
+        {
+            return Problems.NotFound(NotFoundDetail);
+        }
+
+        var access = context.GetWorkspaceAccess()!;
+        var outcome = await service.RunQcAsync(access.Principal, access.WorkspaceId, production.ProductionId, cancellationToken).ConfigureAwait(false);
+        return outcome is { Status: ProductionOutcomeStatus.Ok, Qc: { } qc }
+            ? TypedResults.Ok(ProductionService.QcResource(qc))
+            : Problem(outcome);
+    }
+
+    internal static async Task<IResult> GetQcAsync(
+        string workspaceId, string productionId, HttpContext context, IProductionStore productions, ProductionService service,
+        CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } production
+            || await service.GetQcAsync(production.WorkspaceId, production.ProductionId, cancellationToken).ConfigureAwait(false) is not { } qc)
+        {
+            return Problems.NotFound("No such production, or its QC checks have not run.");
+        }
+
+        return TypedResults.Ok(ProductionService.QcResource(qc));
+    }
+
+    internal static async Task<IResult> ListQcExceptionsAsync(
+        string workspaceId, string productionId, string? check, [AsParameters] PageQuery page, HttpContext context, IProductionStore productions,
+        ProductionService service, CancellationToken cancellationToken)
+    {
+        _ = workspaceId;
+        if (page.Validate() is { } invalid)
+        {
+            return invalid;
+        }
+
+        ProductionQcCheck? only = null;
+        if (check is not null)
+        {
+            if (ProductionQcRules.Find(check) is not { } definition)
+            {
+                return Problems.Validation(new Dictionary<string, string[]>
+                {
+                    ["check"] = ["Use one of " + string.Join(", ", ProductionQcRules.Checks.Select(c => c.Key)) + "."],
+                });
+            }
+
+            only = definition.Check;
+        }
+
+        if (await CurrentAsync(context, productionId, productions, cancellationToken).ConfigureAwait(false) is not { } production
+            || await service.GetQcAsync(production.WorkspaceId, production.ProductionId, cancellationToken).ConfigureAwait(false) is not { } qc)
+        {
+            return Problems.NotFound("No such production, or its QC checks have not run.");
+        }
+
+        var access = context.GetWorkspaceAccess()!;
+        ProductionQcExceptionCursor? after = null;
+        if (page.Cursor is { } cursor)
+        {
+            if (PageCursor.Decode(cursor, access.Principal.UserId, access.WorkspaceId, 3) is not [var run, var code, var sequence]
+                || run != qc.QcRunId.ToString("N")
+                || !short.TryParse(code, NumberStyles.None, CultureInfo.InvariantCulture, out var c)
+                || !long.TryParse(sequence, NumberStyles.None, CultureInfo.InvariantCulture, out var s))
+            {
+                return PageCursor.Invalid();
+            }
+
+            after = new ProductionQcExceptionCursor(c, s);
+        }
+
+        var (rows, restricted, next) = await service.ListQcExceptionsAsync(access.Principal, access.WorkspaceId, qc.QcRunId, only, after, page.EffectiveLimit,
+            cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(new ProductionQcExceptionPageResource(
+            qc.QcRunId,
+            [.. rows.Select(r => new ProductionQcExceptionResource((ProductionQcCheckResource)(short)r.Check, r.Sequence, r.DocumentId, r.ControlNumber,
+                r.ProdBegBates, r.ProdEndBates, r.Detail))],
+            next is { } n
+                ? PageCursor.Encode(access.Principal.UserId, access.WorkspaceId, qc.QcRunId.ToString("N"), n.Check.ToString(CultureInfo.InvariantCulture),
+                    n.Sequence.ToString(CultureInfo.InvariantCulture))
+                : null,
+            restricted));
+    }
+
     internal static async Task<IResult> VerifyAsync(
         string workspaceId, string productionId, HttpContext context, IProductionStore productions, ProductionService service,
         DocumentSetSnapshotService snapshots, CancellationToken cancellationToken)
@@ -763,39 +898,66 @@ public sealed class ProductionEndpoints : IApiEndpointModule
         return TypedResults.Ok(await ResourceAsync(outcome.Production!, jobs, cancellationToken).ConfigureAwait(false));
     }
 
-    private static IResult Problem(ProductionOutcome outcome) => outcome.Status switch
+    private static IResult Problem(ProductionOutcome outcome) => outcome.Qc is { Passed: false } qc
+        ? QcProblem(outcome, qc)
+        : outcome.Status switch
+        {
+            ProductionOutcomeStatus.Invalid => Problems.Validation(outcome.Errors!.ToDictionary()),
+            ProductionOutcomeStatus.NotFound => Problems.NotFound(NotFoundDetail),
+            ProductionOutcomeStatus.VersionConflict => Problems.Create(StatusCodes.Status412PreconditionFailed, ProblemCodes.VersionConflict,
+                "The production was modified since it was read."),
+            ProductionOutcomeStatus.BatesConflict => TypedResults.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                detail: outcome.Reason,
+                type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
+                extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "BATES_OVERLAP" }),
+            ProductionOutcomeStatus.PrivilegeWithheld => TypedResults.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Documents are withheld for privilege",
+                detail: outcome.Reason,
+                type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
+                extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_WITHHELD" }),
+            ProductionOutcomeStatus.PrivilegeConflicts => TypedResults.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Unresolved privilege conflicts",
+                detail: outcome.Reason,
+                type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
+                extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_CONFLICTS" }),
+            ProductionOutcomeStatus.Forbidden => Problems.Create(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden,
+                outcome.Reason ?? "You do not have permission for this operation."),
+            ProductionOutcomeStatus.DesignationRefused => TypedResults.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Designations cannot be produced as specified",
+                detail: outcome.Reason,
+                type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
+                extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "DESIGNATION_REFUSED" }),
+            _ => Problems.Create(StatusCodes.Status409Conflict, ProblemCodes.Conflict, outcome.Reason ?? "The production's state does not allow this."),
+        };
+
+    /// <summary>A finalization the QC gate blocked (E12-T07): 409 with the reason code and the run's report.</summary>
+    private static ProblemHttpResult QcProblem(ProductionOutcome outcome, ProductionQcResult qc)
     {
-        ProductionOutcomeStatus.Invalid => Problems.Validation(outcome.Errors!.ToDictionary()),
-        ProductionOutcomeStatus.NotFound => Problems.NotFound(NotFoundDetail),
-        ProductionOutcomeStatus.VersionConflict => Problems.Create(StatusCodes.Status412PreconditionFailed, ProblemCodes.VersionConflict,
-            "The production was modified since it was read."),
-        ProductionOutcomeStatus.BatesConflict => TypedResults.Problem(
+        var (title, reason) = outcome.Status switch
+        {
+            ProductionOutcomeStatus.PrivilegeWithheld => ("Documents are withheld for privilege", "PRIVILEGE_WITHHELD"),
+            ProductionOutcomeStatus.BatesConflict => ("Bates numbers already used", "BATES_OVERLAP"),
+            ProductionOutcomeStatus.PrivilegeConflicts => ("Unresolved privilege conflicts", "PRIVILEGE_CONFLICTS"),
+            ProductionOutcomeStatus.DesignationRefused => ("Designations cannot be produced as specified", "DESIGNATION_REFUSED"),
+            _ when qc.Failed.Any() => ("The QC checks failed", "QC_FAILED"),
+            _ => ("The QC checks found warnings to acknowledge", "QC_WARNINGS"),
+        };
+        return TypedResults.Problem(
             statusCode: StatusCodes.Status409Conflict,
+            title: title,
             detail: outcome.Reason,
             type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
-            extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "BATES_OVERLAP" }),
-        ProductionOutcomeStatus.PrivilegeWithheld => TypedResults.Problem(
-            statusCode: StatusCodes.Status409Conflict,
-            title: "Documents are withheld for privilege",
-            detail: outcome.Reason,
-            type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
-            extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_WITHHELD" }),
-        ProductionOutcomeStatus.PrivilegeConflicts => TypedResults.Problem(
-            statusCode: StatusCodes.Status409Conflict,
-            title: "Unresolved privilege conflicts",
-            detail: outcome.Reason,
-            type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
-            extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "PRIVILEGE_CONFLICTS" }),
-        ProductionOutcomeStatus.Forbidden => Problems.Create(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden,
-            outcome.Reason ?? "You do not have permission for this operation."),
-        ProductionOutcomeStatus.DesignationRefused => TypedResults.Problem(
-            statusCode: StatusCodes.Status409Conflict,
-            title: "Designations cannot be produced as specified",
-            detail: outcome.Reason,
-            type: ProblemCodes.TypeFor(ProblemCodes.Conflict),
-            extensions: new Dictionary<string, object?> { [Problems.CodeExtension] = ProblemCodes.Conflict, ["reason"] = "DESIGNATION_REFUSED" }),
-        _ => Problems.Create(StatusCodes.Status409Conflict, ProblemCodes.Conflict, outcome.Reason ?? "The production's state does not allow this."),
-    };
+            extensions: new Dictionary<string, object?>
+            {
+                [Problems.CodeExtension] = ProblemCodes.Conflict,
+                ["reason"] = reason,
+                ["qc"] = ProductionService.QcResource(qc),
+            });
+    }
 
     private static void SetETag(HttpContext context, ProductionRecord production) =>
         context.Response.Headers.ETag = EntityTags.ForVersion(production.RowVersion);

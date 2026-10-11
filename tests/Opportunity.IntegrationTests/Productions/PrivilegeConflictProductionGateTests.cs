@@ -86,8 +86,8 @@ public sealed class PrivilegeConflictProductionGateTests(MigrationPostgresFixtur
         (await service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion, "  ", Ct)).Status
             .Should().Be(ProductionOutcomeStatus.Invalid, "an override needs a reason");
 
-        var finalized = await service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion,
-            "Duplicate withheld under the clawback agreement; produced copy is the public filing.", Ct);
+        var finalized = await service.FinalizeAsync(principal, ws, draft.ProductionId, allocated.RowVersion, ProductionHarness.Unimaged(
+            new ProductionQcOverride(ProductionQcCheck.PrivilegeConflicts, "Duplicate withheld under the clawback agreement; produced copy is the public filing.")), Ct);
         finalized.Status.Should().Be(ProductionOutcomeStatus.Ok, finalized.Reason);
         var stored = (await h.Store.GetAsync(ws, draft.ProductionId, Ct))!;
         stored.Status.Should().Be(ProductionStatus.Finalized);
@@ -111,7 +111,8 @@ public sealed class PrivilegeConflictProductionGateTests(MigrationPostgresFixtur
         var clean = await h.SnapshotAsync(ws, user, [docs[6]]);
         var second = await h.CreateOkAsync(ws, user, clean.SnapshotId, ProductionHarness.Spec("GATEB"));
         var secondAllocated = await h.AllocateAsync(ws, user, second.ProductionId);
-        (await service.FinalizeAsync(principal, ws, second.ProductionId, secondAllocated.RowVersion, "Just in case.", Ct)).Status
+        (await service.FinalizeAsync(principal, ws, second.ProductionId, secondAllocated.RowVersion,
+            ProductionHarness.Unimaged(new ProductionQcOverride(ProductionQcCheck.PrivilegeConflicts, "Just in case.")), Ct)).Status
             .Should().Be(ProductionOutcomeStatus.Ok);
         (await h.Store.GetAsync(ws, second.ProductionId, Ct))!.Manifest.Should().NotContain("privilegeConflictOverride");
         (await h.Db.ScalarAsync<long>(

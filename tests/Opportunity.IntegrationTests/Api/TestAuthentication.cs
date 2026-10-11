@@ -44,6 +44,9 @@ internal static class TestAuthentication
     /// <summary>Comma-separated <c>amr</c> values of the signed-in user (e.g. to satisfy an MFA requirement).</summary>
     public const string AmrHeader = "X-Test-Amr";
 
+    /// <summary>The server-side session ID (<c>opp_sid</c>) of the signed-in user; without it the request has no session.</summary>
+    public const string SessionHeader = "X-Test-Session";
+
     /// <summary>A sub-group of the workspace routes whose endpoints need membership only (test probe endpoints).</summary>
     public static RouteGroupBuilder MemberOnly(this ApiRouteGroups routes) =>
         routes.Workspace.MapGroup(string.Empty).RequireWorkspaceMember();
@@ -122,6 +125,11 @@ internal static class TestAuthentication
             if (Request.Headers.TryGetValue(GroupsHeader, out var groups))
             {
                 claims.AddRange(groups.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries).Select(g => new Claim("groups", g)));
+            }
+
+            if (Request.Headers.TryGetValue(SessionHeader, out var session))
+            {
+                claims.Add(new Claim("opp_sid", session.ToString()));
             }
 
             if (Request.Headers.TryGetValue(AmrHeader, out var amr))

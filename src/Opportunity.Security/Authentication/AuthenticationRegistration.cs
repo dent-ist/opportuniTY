@@ -88,13 +88,15 @@ public static class AuthenticationRegistration
     }
 
     /// <summary>
-    /// Authentication, then CSRF (needs the principal and the endpoint), then authorization (signed-in user), then
-    /// workspace membership and permission (PEP-1, needs <c>AddOpportunityAuthorization</c>). After routing.
+    /// Authentication, then the audit request context (actor, client, session, correlation; E14-T02), then CSRF (needs the
+    /// principal and the endpoint), then authorization (signed-in user), then workspace membership and permission (PEP-1,
+    /// needs <c>AddOpportunityAuthorization</c>). After routing.
     /// </summary>
     public static IApplicationBuilder UseOpportunityAuthentication(this IApplicationBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
         app.UseAuthentication();
+        app.UseMiddleware<AuditRequestContextMiddleware>();
         app.UseMiddleware<CsrfProtectionMiddleware>();
         app.UseAuthorization();
         app.UseMiddleware<WorkspaceAuthorizationMiddleware>();

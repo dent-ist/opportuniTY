@@ -4,6 +4,7 @@
 import { WorkspaceResourceStatus } from '../models/workspace-resource-status';
 import { WorkspaceSearchPlacementResource } from '../models/workspace-search-placement-resource';
 export interface WorkspaceResource {
+  acknowledgmentPending?: boolean;
   activePreservationLocks?: number | string;
   breakGlassActive: boolean;
   createdAt: any;

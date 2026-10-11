@@ -83,7 +83,7 @@ The full table is in [permission-matrix.md](permission-matrix.md#roles--permissi
 | Data in and out | `Import.Run`, `Import.Overlay`, `Export.Create`, `Export.Download`, `Production.Create`, `Production.Finalize`, `PrivilegeLog.Generate` |
 | Jobs | `Job.ViewAll`, `Job.Manage` (users always see their own jobs) |
 | Audit | `Audit.Read`, `Audit.ReadSearchText` |
-| Administration | `Workspace.ManageUsers`, `Workspace.ManageSecurity`, `Workspace.ManageFields`, `Workspace.RequestDeletion`, `Workspace.ManageHolds` |
+| Administration | `Workspace.ManageUsers`, `Workspace.ManageSecurity`, `Workspace.ManageFields`, `Workspace.RequestDeletion`, `Workspace.ManageHolds`, `Workspace.ManageAcknowledgments` |
 
 A worked example: Pat is in the IdP groups `reviewers` and `privilege-reviewers`. In workspace *ACME v. Widget*, the
 group `reviewers` has the Reviewer role and `privilege-reviewers` has Privilege Reviewer. Pat's permissions there
@@ -289,6 +289,7 @@ deliberately built **from** the permissions, so the two cannot drift apart.
 | **Imports that create fields** | Creating new fields during an import also needs `Workspace.ManageFields`. That decision is taken when the import starts and recorded with it, so the import cannot do more than its starter was allowed to. |
 | **Workspace settings and members** | Changing settings needs `Workspace.ManageSecurity`; listing members and roles needs `Workspace.ManageUsers`. |
 | **Legal holds** | `Workspace.ManageHolds` places a preservation lock (with a reason) and releases it; by default a release is a request that a *different* hold manager approves. While any lock is active the database refuses every delete or purge of the workspace's documents, artifacts, history, snapshots, productions, exports, reports and audit, and the API answers `423 preservation-locked` with an audit event. Review, coding and imports continue. |
+| **Acknowledgments** | `Workspace.ManageAcknowledgments` publishes the reviewer attestation / protective-order text (Admin › Acknowledgments) as numbered versions. Until a member accepts the current version, every workspace request except reading and accepting the text answers `403 acknowledgment-required` (audited as `AuthZ.Denied`, reason `AcknowledgmentRequired`); the web app opens the acknowledgment page instead. A new version requires everyone to accept again. Each acceptance is stored with the version, the SHA-256 of the text and the time, and audited as `Security.AcknowledgmentAccepted`; the roster (who accepted which version) can be exported as CSV. |
 | **Workspace deletion** | A Workspace Admin *requests* it (`Workspace.RequestDeletion`); an Installation Admin *approves* it. A workspace being deleted answers 404 for everyone. |
 | **MFA** | Delegated to the IdP. Always required for installation administration and break-glass activation; a workspace may require it for everything. |
 | **Changes in the IdP** | Group changes reach opportuniTY at the next sign-in or the 15-minute refresh. Disabling a user in the IdP ends their sessions at the next refresh, or at once with back-channel logout. Changes made **inside** opportuniTY apply to the very next request. |
