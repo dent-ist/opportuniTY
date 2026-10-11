@@ -82,7 +82,7 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Audit.Read` | Read the workspace audit trail. |
 | `Audit.ReadSearchText` | Read search query text in the audit trail (Q-16). |
 | `Audit.Export` | Download the workspace audit trail as a verifiable export: events, hash chain and signed checkpoints (search text only with Audit.ReadSearchText). |
-| `Compliance.Report` | Generate the ethical-wall proof and the workspace access review (users, roles, walls, last access). |
+| `Compliance.Report` | Generate the ethical-wall proof and the workspace access review (users, roles, walls, last access), and the defensibility reports and report pack (review summary, production history, search term hit reports, chain of custody; E14-T05). |
 | `Workspace.ManageUsers` | Assign and revoke workspace roles. |
 | `Workspace.ManageSecurity` | Manage restriction classes, class grants and ethical walls. |
 | `Workspace.ManageFields` | Manage fields, choices and coding layouts. |

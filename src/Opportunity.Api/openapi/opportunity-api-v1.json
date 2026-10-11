@@ -10859,6 +10859,684 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/defensibility/review-summary": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "Review population and coding summary by reviewer and date, as of a point. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf). snapshotId (optional): a Ready snapshot whose members are the population; otherwise every document the workspace held at the point. At most 20,000 reviewer days are listed (the totals cover all).",
+        "operationId": "GetReviewSummary",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSummaryResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/defensibility/production-history": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "Production history as of a point: volumes, Bates ranges, counts, hashes and QC results. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf). A production voided after the point is shown as finalized.",
+        "operationId": "GetProductionHistory",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductionHistoryResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/defensibility/search-term-hits": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "Search term hit reports completed by a point, each with its snapshot, search generation and index lag at execution. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf). At most 500 reports are listed (the oldest first).",
+        "operationId": "GetSearchTermHits",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTermHitsResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/defensibility/review-summary/export": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "The review population and coding summary as CSV. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf). snapshotId as for the JSON form.",
+        "operationId": "ExportReviewSummary",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/defensibility/production-history/export": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "The production history as CSV: one row per production, then one per volume. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf).",
+        "operationId": "ExportProductionHistory",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/defensibility/search-term-hits/export": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "The search term hit reports as CSV: one row per term and a totals row per report. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf).",
+        "operationId": "ExportSearchTermHits",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/chain-of-custody/export": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "A document's chain of custody as CSV. Re-reads the stored bytes. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf).",
+        "operationId": "ExportChainOfCustody",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/documents/{documentId}/chain-of-custody": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "A document's chain of custody as of a point: import source and load file, hashes recorded at import next to the hashes of the bytes re-read from storage now, derived artifacts and productions. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf). The native and text are re-read first, then load files and other objects, at most 100 per report; a mismatch raises Integrity.HashMismatch. A document you may not view answers 404.",
+        "operationId": "GetChainOfCustody",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChainOfCustodyResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/defensibility/pack": {
+      "get": {
+        "tags": [
+          "Defensibility"
+        ],
+        "summary": "The defensibility report pack (ZIP) as of a point: the reports, production manifests and QC reports, compliance reports, the verifiable audit trail and manifest.json with every file's SHA-256. Audited.",
+        "description": "asOf (ISO 8601, optional, not in the future): the data-as-of point. The report reads only what was recorded at or before it, so the same asOf gives the same report and fingerprint. Without it the report is as of the moment it is generated (statement.asOf). from (optional, before asOf; default 30 days before it): start of the period of the ethical-wall proof and the audit trail. snapshotId scopes the review summary. documentId (repeatable, at most 25): documents whose chain of custody to include. The audit trail is included only for callers with Audit.Export (search text only with Audit.ReadSearchText).",
+        "operationId": "ExportDefensibilityPack",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/audit-events": {
       "get": {
         "tags": [
@@ -18521,6 +19199,108 @@
           }
         }
       },
+      "ChainOfCustodyResource": {
+        "required": [
+          "statement",
+          "documentId",
+          "controlNumber",
+          "fileName",
+          "fileSize",
+          "createdAt",
+          "importHashes",
+          "verified",
+          "mismatches",
+          "imports",
+          "objects",
+          "objectsTruncated",
+          "pageSets",
+          "overlays",
+          "productions"
+        ],
+        "type": "object",
+        "properties": {
+          "statement": {
+            "$ref": "#/components/schemas/DefensibilityStatementResource"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controlNumber": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fileSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "importHashes": {
+            "$ref": "#/components/schemas/CustodyHashesResource"
+          },
+          "verified": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "mismatches": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "imports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustodyImportResource"
+            }
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustodyObjectResource"
+            }
+          },
+          "objectsTruncated": {
+            "type": "boolean"
+          },
+          "pageSets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustodyPageSetResource"
+            }
+          },
+          "overlays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustodyOverlayResource"
+            }
+          },
+          "productions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustodyProductionResource"
+            }
+          }
+        }
+      },
       "CheckInReviewBatchRequest": {
         "required": [
           "completed"
@@ -20632,6 +21412,359 @@
           }
         }
       },
+      "CustodyHashesResource": {
+        "required": [
+          "sha256",
+          "sha1",
+          "md5",
+          "upstream"
+        ],
+        "type": "object",
+        "properties": {
+          "sha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sha1": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "md5": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "upstream": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CustodyImportResource": {
+        "required": [
+          "importId",
+          "name",
+          "mode",
+          "loadFileName",
+          "loadFileSha256",
+          "loadFileSize",
+          "loadFileVerification",
+          "rowNumber",
+          "action",
+          "startedBy",
+          "startedAt",
+          "completedAt",
+          "jobId"
+        ],
+        "type": "object",
+        "properties": {
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "loadFileName": {
+            "type": "string"
+          },
+          "loadFileSha256": {
+            "type": "string"
+          },
+          "loadFileSize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "loadFileVerification": {
+            "$ref": "#/components/schemas/CustodyVerificationResource"
+          },
+          "rowNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "action": {
+            "type": "string"
+          },
+          "startedBy": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "CustodyObjectResource": {
+        "required": [
+          "objectId",
+          "area",
+          "current",
+          "pageSetId",
+          "page",
+          "sizeBytes",
+          "contentType",
+          "storedAt",
+          "jobId",
+          "recordedSha256",
+          "verification"
+        ],
+        "type": "object",
+        "properties": {
+          "objectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "area": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "pageSetId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "page": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "contentType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "storedAt": {
+            "format": "date-time"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "recordedSha256": {
+            "type": "string"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/CustodyVerificationResource"
+          }
+        }
+      },
+      "CustodyOverlayResource": {
+        "required": [
+          "importId",
+          "rowNumber",
+          "documentVersion",
+          "overlaidAt",
+          "changed"
+        ],
+        "type": "object",
+        "properties": {
+          "importId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rowNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "documentVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "overlaidAt": {
+            "format": "date-time"
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CustodyPageSetResource": {
+        "required": [
+          "pageSetId",
+          "source",
+          "renderer",
+          "rendererVersion",
+          "pages",
+          "status",
+          "createdAt",
+          "active"
+        ],
+        "type": "object",
+        "properties": {
+          "pageSetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "type": "string"
+          },
+          "renderer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rendererVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "pages": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CustodyProductionResource": {
+        "required": [
+          "productionId",
+          "name",
+          "version",
+          "finalizedAt",
+          "voidedAt",
+          "output",
+          "begBates",
+          "endBates",
+          "volumeIds"
+        ],
+        "type": "object",
+        "properties": {
+          "productionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "finalizedAt": {
+            "format": "date-time"
+          },
+          "voidedAt": {
+            "format": "date-time"
+          },
+          "output": {
+            "type": "string"
+          },
+          "begBates": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "endBates": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "volumeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "CustodyVerificationResource": {
+        "required": [
+          "status",
+          "sha256",
+          "verifiedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "verifiedAt": {
+            "format": "date-time"
+          }
+        }
+      },
       "DedupeHashSourceResource": {
         "enum": [
           "auto",
@@ -20834,6 +21967,89 @@
           "global",
           "custodial"
         ]
+      },
+      "DefensibilitySnapshotResource": {
+        "required": [
+          "snapshotId",
+          "name",
+          "purpose",
+          "documents",
+          "materializedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "materializedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "DefensibilityStatementResource": {
+        "required": [
+          "report",
+          "asOf",
+          "snapshotId",
+          "searchGeneration",
+          "generatedAt",
+          "generatedBy",
+          "fingerprint",
+          "auditEventId"
+        ],
+        "type": "object",
+        "properties": {
+          "report": {
+            "type": "string"
+          },
+          "asOf": {
+            "format": "date-time"
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "searchGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "generatedAt": {
+            "format": "date-time"
+          },
+          "generatedBy": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "auditEventId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
       },
       "DeletionActor": {
         "required": [
@@ -27155,6 +28371,142 @@
           }
         }
       },
+      "ProductionHistoryEntryResource": {
+        "required": [
+          "productionId",
+          "name",
+          "version",
+          "status",
+          "snapshotId",
+          "finalizedAt",
+          "finalizedBy",
+          "voidedAt",
+          "voidReason",
+          "batesBegin",
+          "batesEnd",
+          "documents",
+          "pages",
+          "specificationSha256",
+          "assignmentsSha256",
+          "manifestSha256",
+          "qc",
+          "volumes"
+        ],
+        "type": "object",
+        "properties": {
+          "productionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "finalizedAt": {
+            "format": "date-time"
+          },
+          "finalizedBy": {
+            "type": "string"
+          },
+          "voidedAt": {
+            "format": "date-time"
+          },
+          "voidReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "batesBegin": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "batesEnd": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pages": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "specificationSha256": {
+            "type": "string"
+          },
+          "assignmentsSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "manifestSha256": {
+            "type": "string"
+          },
+          "qc": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProductionQcHistoryResource"
+              }
+            ]
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionVolumeHistoryResource"
+            }
+          }
+        }
+      },
+      "ProductionHistoryResource": {
+        "required": [
+          "statement",
+          "productions"
+        ],
+        "type": "object",
+        "properties": {
+          "statement": {
+            "$ref": "#/components/schemas/DefensibilityStatementResource"
+          },
+          "productions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionHistoryEntryResource"
+            }
+          }
+        }
+      },
       "ProductionImageFormatResource": {
         "enum": [
           "tiffG4",
@@ -27359,6 +28711,34 @@
           }
         }
       },
+      "ProductionQcCheckHistoryResource": {
+        "required": [
+          "check",
+          "severity",
+          "status",
+          "documents"
+        ],
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "ProductionQcCheckResource": {
         "enum": [
           "withheldWithoutPlaceholder",
@@ -27509,6 +28889,41 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "ProductionQcHistoryResource": {
+        "required": [
+          "qcRunId",
+          "runAt",
+          "outcome",
+          "warningsAcknowledged",
+          "reportSha256",
+          "checks"
+        ],
+        "type": "object",
+        "properties": {
+          "qcRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runAt": {
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "warningsAcknowledged": {
+            "type": "boolean"
+          },
+          "reportSha256": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductionQcCheckHistoryResource"
+            }
           }
         }
       },
@@ -27844,6 +29259,90 @@
           },
           "integrity": {
             "$ref": "#/components/schemas/ProductionIntegrityResource"
+          }
+        }
+      },
+      "ProductionVolumeHistoryResource": {
+        "required": [
+          "volumeId",
+          "name",
+          "completedAt",
+          "documents",
+          "pages",
+          "files",
+          "bytes",
+          "manifestSha256",
+          "verification",
+          "verifiedDocuments",
+          "verificationReportSha256"
+        ],
+        "type": "object",
+        "properties": {
+          "volumeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "pages": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "files": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "bytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "manifestSha256": {
+            "type": "string"
+          },
+          "verification": {
+            "type": "string"
+          },
+          "verifiedDocuments": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "verificationReportSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -29441,6 +30940,242 @@
           "firstPass",
           "qc"
         ]
+      },
+      "ReviewPopulationResource": {
+        "required": [
+          "documents",
+          "reviewed",
+          "notReviewed",
+          "systemCodedOnly",
+          "bulkSkips"
+        ],
+        "type": "object",
+        "properties": {
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "reviewed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "notReviewed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "systemCodedOnly": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "bulkSkips": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ReviewSummaryResource": {
+        "required": [
+          "statement",
+          "snapshot",
+          "population",
+          "reviewers",
+          "days",
+          "daysTruncated"
+        ],
+        "type": "object",
+        "properties": {
+          "statement": {
+            "$ref": "#/components/schemas/DefensibilityStatementResource"
+          },
+          "snapshot": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DefensibilitySnapshotResource"
+              }
+            ]
+          },
+          "population": {
+            "$ref": "#/components/schemas/ReviewPopulationResource"
+          },
+          "reviewers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewerCodingResource"
+            }
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewerDayResource"
+            }
+          },
+          "daysTruncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReviewerCodingResource": {
+        "required": [
+          "userId",
+          "displayName",
+          "documents",
+          "changes",
+          "interactive",
+          "bulk",
+          "systemRule",
+          "firstAt",
+          "lastAt"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "changes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "interactive": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "bulk": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "systemRule": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "firstAt": {
+            "format": "date-time"
+          },
+          "lastAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "ReviewerDayResource": {
+        "required": [
+          "date",
+          "userId",
+          "displayName",
+          "documents",
+          "changes",
+          "interactive",
+          "bulk",
+          "systemRule"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "documents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "changes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "interactive": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "bulk": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "systemRule": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
       },
       "ReviewerResource": {
         "required": [
@@ -31193,6 +32928,125 @@
           }
         }
       },
+      "SearchTermHitReportResource": {
+        "required": [
+          "reportId",
+          "name",
+          "run",
+          "scope",
+          "snapshotId",
+          "searchGeneration",
+          "indexCurrent",
+          "indexPendingChanges",
+          "indexLagSeconds",
+          "executedBy",
+          "executedAt",
+          "completedAt",
+          "totals",
+          "terms"
+        ],
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "run": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "snapshotId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "searchGeneration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexCurrent": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "indexPendingChanges": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexLagSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "executedBy": {
+            "type": "string"
+          },
+          "executedAt": {
+            "format": "date-time"
+          },
+          "completedAt": {
+            "format": "date-time"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/SearchTermReportTotals"
+          },
+          "terms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchTermReportTerm"
+            }
+          }
+        }
+      },
+      "SearchTermHitsResource": {
+        "required": [
+          "statement",
+          "reports",
+          "truncated"
+        ],
+        "type": "object",
+        "properties": {
+          "statement": {
+            "$ref": "#/components/schemas/DefensibilityStatementResource"
+          },
+          "reports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchTermHitReportResource"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
       "SearchTermReportResource": {
         "required": [
           "reportId",
@@ -31270,6 +33124,24 @@
               "null",
               "boolean"
             ]
+          },
+          "indexPendingChanges": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "indexLagSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           },
           "executedBy": {
             "$ref": "#/components/schemas/SearchTermReportUser"
@@ -33245,6 +35117,9 @@
     },
     {
       "name": "Compliance"
+    },
+    {
+      "name": "Defensibility"
     },
     {
       "name": "Audit"

@@ -116,6 +116,12 @@ export const ADMIN_AREAS: readonly WorkspaceSection[] = [
   { path: 'audit', label: 'Audit', permission: PERMISSIONS.auditRead },
   // Ethical-wall proof, access review and verifiable audit export (E14-T06).
   { path: 'compliance', label: 'Compliance', permission: PERMISSIONS.complianceReport },
+  // Review summary, production history, hit reports, chain of custody and the report pack (E14-T05).
+  {
+    path: 'defensibility',
+    label: 'Defensibility Reports',
+    permission: PERMISSIONS.complianceReport,
+  },
 ];
 
 export function allowedSections(

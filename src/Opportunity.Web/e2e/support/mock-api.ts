@@ -20,6 +20,7 @@ import { LegalHoldsMock } from './mock-legal-holds';
 import { DeletionsMock } from './mock-deletions';
 import { AcknowledgmentsMock } from './mock-acknowledgments';
 import { ComplianceMock } from './mock-compliance';
+import { DefensibilityMock } from './mock-defensibility';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -146,6 +147,8 @@ export interface MockControl {
   readonly acknowledgments: AcknowledgmentsMock;
   /** Compliance reports (E14-T06): the wall proof and access review requests received. */
   readonly compliance: ComplianceMock;
+  /** Defensibility reports (E14-T05): the report and chain-of-custody requests received. */
+  readonly defensibility: DefensibilityMock;
   /** Audit log viewer and exports, and documents' coding history (E14-T04): requests received. */
   readonly auditLog: AuditLogMock;
 }
@@ -507,10 +510,12 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const acknowledgments = new AcknowledgmentsMock(options.acknowledgmentPending ?? false);
   const auditLog = new AuditLogMock();
   const compliance = new ComplianceMock();
+  const defensibility = new DefensibilityMock();
   const control: MockControl = {
     acknowledgments,
     auditLog,
     compliance,
+    defensibility,
     legalHolds,
     deletions,
     relationships,
@@ -610,6 +615,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Compliance reports (E14-T06): ./mock-compliance.ts.
     const reported = signedIn ? compliance.handle(route, method, path, url) : undefined;
     if (reported) return reported;
+    // Defensibility reports (E14-T05): ./mock-defensibility.ts.
+    const defended = signedIn ? defensibility.handle(route, method, path, url) : undefined;
+    if (defended) return defended;
     if (signedIn && method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/members$/.test(path)) {
       const items = [
         member('a-1', 'Alex Reviewer', 'workspaceAdmin'),

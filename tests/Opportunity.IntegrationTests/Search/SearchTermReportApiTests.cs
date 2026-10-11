@@ -90,6 +90,7 @@ public sealed class SearchTermReportApiTests(OpenSearchFixture openSearch, Migra
         var report = await GetAsync(client, $"{url}/{reportId}", qc);
         report.GetProperty("status").GetString().Should().Be("completed");
         report.GetProperty("indexCurrent").GetBoolean().Should().BeTrue();
+        report.GetProperty("indexPendingChanges").GetInt64().Should().Be(0);
         report.GetProperty("searchGeneration").ValueKind.Should().Be(JsonValueKind.Number);
         var snapshotId = report.GetProperty("snapshotId").GetGuid();
         Counts(report).Should().Equal(
@@ -214,6 +215,8 @@ public sealed class SearchTermReportApiTests(OpenSearchFixture openSearch, Migra
 
         report.GetProperty("scope").GetProperty("name").GetString().Should().Be("In scope");
         report.GetProperty("indexCurrent").GetBoolean().Should().BeFalse();
+        report.GetProperty("indexPendingChanges").GetInt64().Should().BePositive("the run records the index lag at execution (E14-T05)");
+        report.GetProperty("indexLagSeconds").GetDouble().Should().BeGreaterThanOrEqualTo(0);
         Counts(report).Should().Equal(("Alpha", 2L, 2L, 1L, 1L), ("Beta", 1L, 1L, 0L, 0L));
         Totals(report).Should().Equal(2L, 2L, 2L, 0L);
 
