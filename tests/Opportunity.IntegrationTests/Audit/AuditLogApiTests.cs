@@ -278,6 +278,7 @@ public sealed class AuditLogApiTests(MigrationPostgresFixture postgres)
             builder.UseSetting("ConnectionStrings:App", db.Core.AppConnectionString);
             builder.UseSetting("AuditExports:BackgroundEnabled", "false");
             builder.UseSetting("AuditExports:EventsPerChunk", "2");
+            builder.UseSetting("ListExports:BackgroundEnabled", "false");
             builder.UseSetting("SearchTermReports:BackgroundEnabled", "false");
             builder.UseSetting("Snapshots:BackgroundEnabled", "false");
             builder.ConfigureTestServices(services =>

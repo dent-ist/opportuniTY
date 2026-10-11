@@ -63,6 +63,7 @@ public enum JobResourceType
     Render,
     SearchTermReport,
     AuditExport,
+    ListExport,
 }
 
 public enum JobResourceStatus

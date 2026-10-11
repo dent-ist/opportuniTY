@@ -29,6 +29,7 @@ permissions in the Break-glass column (Q-45).
 | `Import.Overlay` | ✔ | | | | | | |
 | `Export.Create` | ✔ | | | | ✔ | | |
 | `Export.Download` | ✔ | | | | ✔ | | |
+| `Document.ExportList` | ✔ | | | | ✔ | | |
 | `Production.Create` | ✔ | | | | ✔ | | |
 | `Production.Finalize` | ✔ | | | | ✔ | | |
 | `PrivilegeLog.Generate` | ✔ | | | ✔ | ✔ | | |
@@ -73,6 +74,7 @@ flagged, so the audit event of the action carries access path `BreakGlass`.
 | `Import.Overlay` | Run overlay imports, including coding and privilege overlays (Q-31). |
 | `Export.Create` | Create exports. |
 | `Export.Download` | Download export packages. |
+| `Document.ExportList` | Export the document list (the current view's columns for a search or selection) to CSV; documents are re-authorized when the export runs (Q-15). |
 | `Production.Create` | Create and run productions. |
 | `Production.Finalize` | Finalize productions. |
 | `PrivilegeLog.Generate` | Generate privilege logs. |

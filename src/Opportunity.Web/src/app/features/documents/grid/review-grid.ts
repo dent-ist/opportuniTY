@@ -337,6 +337,8 @@ export class ReviewGrid implements CursorSource {
     () => this.adjustedColumns() ?? this.activeView()?.columns ?? DEFAULT_VIEW,
   );
   protected readonly columns = computed(() => buildColumns(this.fields(), this.columnSpecs()));
+  /** Query names of the shown columns after Control Number, in order (Export List, #181). */
+  readonly viewQueryNames = computed(() => this.columns().view.map((c) => c.queryName));
   /** The sort levels of the list (at most three; Control Number then breaks ties server-side). */
   readonly sortKeys = signal<readonly SortSpec[]>([]);
   /** The list's columns or sort differ from the View's. */
@@ -1927,7 +1929,19 @@ export class ReviewGrid implements CursorSource {
     this._selected.set(new Set());
     this.controlNumbers.clear();
     this.offerAll.set(false);
-    this._allResults.set({
+    this._allResults.set(this.wholeList());
+    this.selectionChange.emit(this._selected());
+    this.announceSelection();
+  }
+
+  /**
+   * Every result of the list as its query, the generation it was served at and its expansion, without selecting it;
+   * null before the list is ready or when no query names it (a report term's hits).
+   */
+  wholeList(): AllResultsSelection | null {
+    const r = this.result();
+    if (!r || this.status() !== 'ready' || this.termHits()) return null;
+    return {
       kind: 'all',
       query: this.compiled().query,
       generation:
@@ -1935,9 +1949,7 @@ export class ReviewGrid implements CursorSource {
       total: r.total,
       countText: this.countText(),
       expand: this.search().expand ?? null,
-    });
-    this.selectionChange.emit(this._selected());
-    this.announceSelection();
+    };
   }
 
   /** The rows selected one by one; leaving "all results" keeps the loaded rows selected, so a row can be unchecked. */

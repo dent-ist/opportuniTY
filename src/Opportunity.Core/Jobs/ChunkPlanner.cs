@@ -33,6 +33,7 @@ public sealed record ChunkBounds
         JobType.Render => new(100),
         JobType.SearchTermReport => new(1_000),
         JobType.AuditExport => new(10_000),
+        JobType.ListExport => new(1_000),
         _ => throw new ArgumentOutOfRangeException(nameof(jobType), jobType, "Unknown job type."),
     };
 }

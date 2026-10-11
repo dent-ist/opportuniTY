@@ -42,6 +42,9 @@ public enum JobType
 
     /// <summary>An audit log export (E14-T04): the filtered audit trail of a workspace written to CSV.</summary>
     AuditExport,
+
+    /// <summary>A document list export (#181): the current view's columns for a frozen selection written to CSV.</summary>
+    ListExport,
 }
 
 /// <summary>
@@ -70,6 +73,9 @@ public enum ChunkOperationKind
 
     /// <summary>A time window of a workspace's audit trail written as one part of an audit export (E14-T04).</summary>
     AuditExportChunk,
+
+    /// <summary>A range of a list export's frozen set written as one CSV part; runs in the API host (#181).</summary>
+    ListExportChunk,
 }
 
 /// <summary>How a chunk names its members (ADR-010 §4). Stored as smallint; values are fixed forever.</summary>

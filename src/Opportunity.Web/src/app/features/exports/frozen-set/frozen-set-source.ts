@@ -179,4 +179,5 @@ const PURPOSE_LABEL: Record<SnapshotResourcePurpose, string> = {
   production: 'a production',
   report: 'a report',
   reviewBatch: 'a review batch',
+  listExport: 'a list export',
 };

@@ -5,6 +5,7 @@ import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { PrivilegeConflictsMock } from './mock-privilege-conflicts';
 import { AuditLogMock } from './mock-audit';
+import { ListExportsMock } from './mock-list-exports';
 import { PrivilegeLogsMock } from './mock-privilege-logs';
 import { ProductionsMock } from './mock-productions';
 import { JobsMock } from './mock-jobs';
@@ -148,6 +149,8 @@ export interface MockControl {
   readonly compliance: ComplianceMock;
   /** Audit log viewer and exports, and documents' coding history (E14-T04): requests received. */
   readonly auditLog: AuditLogMock;
+  /** Export List (CSV) (#181): exports requested. */
+  readonly listExports: ListExportsMock;
 }
 
 /**
@@ -298,6 +301,7 @@ export const ALL_PERMISSIONS = [
   'Workspace.ManageAcknowledgments',
   'Compliance.Report',
   'Audit.Export',
+  'Document.ExportList',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -506,10 +510,12 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   );
   const acknowledgments = new AcknowledgmentsMock(options.acknowledgmentPending ?? false);
   const auditLog = new AuditLogMock();
+  const listExports = new ListExportsMock();
   const compliance = new ComplianceMock();
   const control: MockControl = {
     acknowledgments,
     auditLog,
+    listExports,
     compliance,
     legalHolds,
     deletions,
@@ -761,6 +767,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Audit log and coding history (E14-T04): ./mock-audit.ts.
     const audited = signedIn ? auditLog.handle(route, method, path, url) : undefined;
     if (audited) return audited;
+    // Export List (CSV) (#181): ./mock-list-exports.ts.
+    const listed = signedIn ? listExports.handle(route, method, path) : undefined;
+    if (listed) return listed;
     // Relationships and coding propagation (E16-T10): ./mock-relationships.ts.
     const related = signedIn ? relationships.handle(route, method, path, url) : undefined;
     if (related) return related;

@@ -560,6 +560,16 @@ internal static class RouteAttackCatalog
             new RouteProbe("audit export", HttpMethod.Get, (o, t) => $"{W(o)}/audit-exports/{t.AuditExportId}", HttpStatusCode.OK)),
         Case("GET", Ws + "/audit-exports/{exportId}/content", ProtectedOperation.AuditLog,
             new RouteProbe("audit export file", HttpMethod.Get, (o, t) => $"{W(o)}/audit-exports/{t.AuditExportId}/content", HttpStatusCode.OK)),
+        // Document list export to CSV (#181): checked rows of another workspace freeze nothing; exports are their requester's.
+        Case("POST", Ws + "/list-exports", ProtectedOperation.Export,
+            new RouteProbe("document IDs in the body", HttpMethod.Post, (o, _) => W(o) + "/list-exports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject { ["fieldIds"] = new JsonArray(), ["documentIds"] = new JsonArray(t.DocumentId.ToString()) }),
+                Expectation: ForeignExpectation.EmptySet)),
+        Case("GET", Ws + "/list-exports", ProtectedOperation.Export, WorkspaceOnly(HttpMethod.Get, "/list-exports", HttpStatusCode.OK)),
+        Case("GET", Ws + "/list-exports/{exportId}", ProtectedOperation.Export,
+            new RouteProbe("list export", HttpMethod.Get, (o, t) => $"{W(o)}/list-exports/{t.ListExportId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/list-exports/{exportId}/content", ProtectedOperation.Export,
+            new RouteProbe("list export file", HttpMethod.Get, (o, t) => $"{W(o)}/list-exports/{t.ListExportId}/content", HttpStatusCode.OK)),
         Case("POST", Ws + "/privilege-conflicts/propagations", ProtectedOperation.Coding,
             // The probe document is in no duplicate group: the own request is a validation problem, a foreign source a 404.
             new RouteProbe("source document and duplicate group in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-conflicts/propagations",

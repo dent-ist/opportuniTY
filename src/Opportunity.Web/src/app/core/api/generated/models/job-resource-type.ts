@@ -10,4 +10,5 @@ export type JobResourceType =
   | 'production'
   | 'render'
   | 'searchTermReport'
-  | 'auditExport';
+  | 'auditExport'
+  | 'listExport';
