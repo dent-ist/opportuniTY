@@ -297,6 +297,12 @@ public static class AuditTaxonomy
 
         /// <summary>The audit resource type of acknowledgment events; the resource id is the workspace id.</summary>
         public const string AcknowledgmentResourceType = "Workspace";
+
+        /// <summary>An ethical-wall proof report was generated (E14-T06): period, format, counts by outcome and verdict.</summary>
+        public const string WallProofGenerated = "WallProofGenerated";
+
+        /// <summary>A workspace access review was generated (E14-T06): format and principal counts.</summary>
+        public const string AccessReviewGenerated = "AccessReviewGenerated";
     }
 
     public static class Workspace
@@ -412,6 +418,9 @@ public static class AuditTaxonomy
         public const string Queried = "Queried";
         public const string Purged = "Purged";
 
+        /// <summary>An audit export with its chain range and verification result was downloaded (E14-T06).</summary>
+        public const string Exported = "Exported";
+
         /// <summary>A signed hash-chain checkpoint taken on request (manual, before a purge or deletion run; E14-T03).</summary>
         public const string CheckpointCreated = "CheckpointCreated";
 
@@ -442,7 +451,8 @@ public static class AuditTaxonomy
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",
-            "AcknowledgmentAccepted", "AcknowledgmentPublished", "AcknowledgmentRosterExported"),
+            "AcknowledgmentAccepted", "AcknowledgmentPublished", "AcknowledgmentRosterExported", "WallProofGenerated",
+            "AccessReviewGenerated"),
         .. Expand("Workspace", "Created", "SettingsChanged", "Closed", "Reopened", "HoldPlaced", "HoldReleaseRequested",
             "HoldReleased", "DeletionRequested", "DeletionApproved", "DeletionCancelled", "DeletionStarted",
             "DeletionStepCompleted", "DeletionHalted", "Deleted",

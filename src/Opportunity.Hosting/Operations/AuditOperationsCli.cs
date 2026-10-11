@@ -50,6 +50,10 @@ public static class AuditOperationsCli
                        --operator <name>
                        seal now (what the dispatcher does every second); with --checkpoint also take signed checkpoints
                        (required before `audit.drop_expired_partition`)
+          verify-export --file <export.jsonl> [--public-key <pem>[,<pem>...]]
+                       verify an audit export downloaded from the API offline (no database or configuration needed):
+                       event hashes, chain links from the signed anchor, checkpoint heads, Merkle roots and ES256
+                       signatures. Without --public-key the keys embedded in the file are used (not independent proof).
         """;
 
     /// <summary>Runs the CLI when <paramref name="args"/> starts with <see cref="Verb"/>; null otherwise (start the host).</summary>
@@ -76,6 +80,11 @@ public static class AuditOperationsCli
         {
             await error.WriteLineAsync(Usage).ConfigureAwait(false);
             return ExitUsage;
+        }
+
+        if (command == "verify-export")
+        {
+            return await VerifyExportAsync(options, output, error, cancellationToken).ConfigureAwait(false);
         }
 
         configuration ??= new ConfigurationBuilder()
@@ -124,6 +133,128 @@ public static class AuditOperationsCli
             }
         }
     }
+
+    /// <summary><c>audit verify-export</c>: verifies an export file (E14-T06) without the database; records nothing.</summary>
+    private static async Task<int> VerifyExportAsync(
+        Dictionary<string, string> options, TextWriter output, TextWriter error, CancellationToken cancellationToken)
+    {
+        if (!options.TryGetValue("file", out var file) || options.Keys.Any(k => k is not ("file" or "public-key")))
+        {
+            await error.WriteLineAsync(Usage).ConfigureAwait(false);
+            return ExitUsage;
+        }
+
+        if (!File.Exists(file))
+        {
+            await error.WriteLineAsync($"Export file not found: {file}").ConfigureAwait(false);
+            return ExitUsage;
+        }
+
+        IAuditCheckpointKeys? keys = null;
+        if (options.TryGetValue("public-key", out var files))
+        {
+            var (loaded, problem) = await LoadKeysAsync(files, cancellationToken).ConfigureAwait(false);
+            if (loaded is null)
+            {
+                await error.WriteLineAsync(problem).ConfigureAwait(false);
+                return ExitUsage;
+            }
+
+            keys = loaded;
+        }
+
+        AuditExportVerification result;
+        try
+        {
+            using var reader = new StreamReader(file, System.Text.Encoding.UTF8);
+            result = await AuditExportVerifier.VerifyAsync(reader, keys, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is FormatException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException
+                                       or ArgumentException or OverflowException)
+        {
+            await output.WriteLineAsync($"MALFORMED	{ex.Message}").ConfigureAwait(false);
+            return ExitBroken;
+        }
+
+        var m = result.Manifest;
+        var chain = result.Chain;
+        await output.WriteLineAsync("WORKSPACE	RESULT	EVENTS	FROM_SEQUENCE	TO_SEQUENCE	LAST_HASH	CHECKPOINTS	PURGED	WITHHELD").ConfigureAwait(false);
+        await output.WriteLineAsync(string.Join('	',
+            m.WorkspaceId.ToString("D"), chain.Intact ? "INTACT" : "BROKEN", N(chain.Events), N(m.FromSequence), N(m.ToSequence),
+            chain.LastEventHash is null ? "-" : AuditChainFormat.Hex(chain.LastEventHash), chain.Checkpoints.ToString(CultureInfo.InvariantCulture),
+            N(chain.PurgedEvents), N(result.WithheldEvents))).ConfigureAwait(false);
+        foreach (var issue in chain.Issues)
+        {
+            await output.WriteLineAsync($"  {issue.Kind}	{(issue.Sequence is { } s ? N(s) : "-")}	{issue.Message}").ConfigureAwait(false);
+        }
+
+        if (chain.IssueCount > chain.Issues.Count)
+        {
+            await output.WriteLineAsync($"  ... {N(chain.IssueCount - chain.Issues.Count)} more issue(s)").ConfigureAwait(false);
+        }
+
+        if (result.UsedEmbeddedKeys)
+        {
+            await output.WriteLineAsync(
+                "  note	signatures were checked with the public keys embedded in the export; pass --public-key with keys obtained independently "
+                + "(`keys public-key --purpose audit-checkpoint`) for proof that does not rely on the file").ConfigureAwait(false);
+        }
+
+        if (chain.EventsAfterLastCheckpoint > 0)
+        {
+            await output.WriteLineAsync(
+                $"  note	{N(chain.EventsAfterLastCheckpoint)} event(s) after the last checkpoint in the file are linked but not yet signed").ConfigureAwait(false);
+        }
+
+        if (result.WithheldEvents > 0)
+        {
+            await output.WriteLineAsync(
+                $"  note	{N(result.WithheldEvents)} event(s) carry withheld search text: checked through the chain links and Merkle roots only").ConfigureAwait(false);
+        }
+
+        if (chain.PurgedEvents > 0)
+        {
+            await output.WriteLineAsync(
+                $"  note	{N(chain.PurgedEvents)} position(s) were removed by the retention purge; the purge records are accepted as exported "
+                + "(`audit verify` checks them against the signed Audit.Purged events)").ConfigureAwait(false);
+        }
+
+        if (m.UnsealedEvents > 0)
+        {
+            await output.WriteLineAsync($"  note	{N(m.UnsealedEvents)} event(s) of the period were not sealed yet when exported and are not in the file")
+                .ConfigureAwait(false);
+        }
+
+        await output.WriteLineAsync(
+            $"  note	the server reported {(m.Verification.Intact ? "INTACT" : "BROKEN")} when it generated the export at "
+            + $"{m.GeneratedAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)} (audit event {m.AuditEventId?.ToString() ?? "-"})").ConfigureAwait(false);
+        return chain.Intact ? ExitSuccess : ExitBroken;
+    }
+
+    private static async Task<(IAuditCheckpointKeys? Keys, string Problem)> LoadKeysAsync(string files, CancellationToken cancellationToken)
+    {
+        var texts = new List<string>();
+        foreach (var file in files.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!File.Exists(file))
+            {
+                return (null, $"Public key file not found: {file}");
+            }
+
+            texts.Add(await File.ReadAllTextAsync(file, cancellationToken).ConfigureAwait(false));
+        }
+
+        try
+        {
+            return (new PemCheckpointKeys(texts), string.Empty);
+        }
+        catch (Exception ex) when (ex is FormatException or System.Security.Cryptography.CryptographicException)
+        {
+            return (null, "Not an ES256 public key PEM: " + ex.Message);
+        }
+    }
+
+    private static string N(long value) => value.ToString(CultureInfo.InvariantCulture);
 
     private static bool TryParseOptions(string[] args, out Dictionary<string, string> options)
     {
@@ -175,27 +306,14 @@ public static class AuditOperationsCli
             IAuditCheckpointKeys keys;
             if (options.TryGetValue("public-key", out var files))
             {
-                var texts = new List<string>();
-                foreach (var file in files.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                var (loaded, problem) = await LoadKeysAsync(files, cancellationToken).ConfigureAwait(false);
+                if (loaded is null)
                 {
-                    if (!File.Exists(file))
-                    {
-                        await error.WriteLineAsync($"Public key file not found: {file}").ConfigureAwait(false);
-                        return ExitUsage;
-                    }
-
-                    texts.Add(await File.ReadAllTextAsync(file, cancellationToken).ConfigureAwait(false));
-                }
-
-                try
-                {
-                    keys = new PemCheckpointKeys(texts);
-                }
-                catch (Exception ex) when (ex is FormatException or System.Security.Cryptography.CryptographicException)
-                {
-                    await error.WriteLineAsync("Not an ES256 public key PEM: " + ex.Message).ConfigureAwait(false);
+                    await error.WriteLineAsync(problem).ConfigureAwait(false);
                     return ExitUsage;
                 }
+
+                keys = loaded;
             }
             else
             {
@@ -420,7 +538,5 @@ public static class AuditOperationsCli
                     return false;
             }
         }
-
-        private static string N(long value) => value.ToString(CultureInfo.InvariantCulture);
     }
 }

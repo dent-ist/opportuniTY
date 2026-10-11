@@ -317,6 +317,16 @@ export type { DownloadPrivilegeLog$CsvCharsetUtf8$Params as DownloadPrivilegeLog
 export { downloadPrivilegeLog$CsvCharsetUtf8 as downloadPrivilegeLog$CsvCharsetUtf8 } from './fn/privilege-logs/download-privilege-log-csv-charset-utf-8';
 export type { DownloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet$Params as DownloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet$Params } from './fn/privilege-logs/download-privilege-log-vnd-openxmlformats-officedocument-spreadsheetml-sheet';
 export { downloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet as downloadPrivilegeLog$VndOpenxmlformatsOfficedocumentSpreadsheetmlSheet } from './fn/privilege-logs/download-privilege-log-vnd-openxmlformats-officedocument-spreadsheetml-sheet';
+export type { GetWallProof$Params as GetWallProof$Params } from './fn/compliance/get-wall-proof';
+export { getWallProof as getWallProof } from './fn/compliance/get-wall-proof';
+export type { GetAccessReview$Params as GetAccessReview$Params } from './fn/compliance/get-access-review';
+export { getAccessReview as getAccessReview } from './fn/compliance/get-access-review';
+export type { ExportWallProof$Params as ExportWallProof$Params } from './fn/compliance/export-wall-proof';
+export { exportWallProof as exportWallProof } from './fn/compliance/export-wall-proof';
+export type { ExportAccessReview$Params as ExportAccessReview$Params } from './fn/compliance/export-access-review';
+export { exportAccessReview as exportAccessReview } from './fn/compliance/export-access-review';
+export type { ExportAuditTrail$Params as ExportAuditTrail$Params } from './fn/compliance/export-audit-trail';
+export { exportAuditTrail as exportAuditTrail } from './fn/compliance/export-audit-trail';
 export type { ListSnapshots$Params as ListSnapshots$Params } from './fn/snapshots/list-snapshots';
 export { listSnapshots as listSnapshots } from './fn/snapshots/list-snapshots';
 export type { CreateSnapshot$Params as CreateSnapshot$Params } from './fn/snapshots/create-snapshot';

@@ -370,6 +370,17 @@ internal static class RouteAttackCatalog
             WorkspaceOnly(HttpMethod.Get, "/acknowledgment-roster", HttpStatusCode.OK)),
         Case("GET", Ws + "/acknowledgment-roster/export", ProtectedOperation.Workspace,
             WorkspaceOnly(HttpMethod.Get, "/acknowledgment-roster/export", HttpStatusCode.OK)),
+        // Compliance reports (E14-T06): workspace-level reports over the workspace's own walls, roles and audit chain.
+        Case("GET", Ws + "/compliance/wall-proof", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/wall-proof", HttpStatusCode.OK)),
+        Case("GET", Ws + "/compliance/wall-proof/export", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/wall-proof/export", HttpStatusCode.OK)),
+        Case("GET", Ws + "/compliance/access-review", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/access-review", HttpStatusCode.OK)),
+        Case("GET", Ws + "/compliance/access-review/export", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/access-review/export", HttpStatusCode.OK)),
+        Case("GET", Ws + "/compliance/audit-export", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/audit-export", HttpStatusCode.OK)),
         Case("GET", Ws + "/fields", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/fields", HttpStatusCode.OK)),
         Case("GET", Ws + "/coding-layouts", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/coding-layouts", HttpStatusCode.OK)),
 

@@ -10394,6 +10394,335 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/compliance/wall-proof": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Ethical-wall proof for a period: every audited attempt by a walled user on walled content (expected: denials only). Audited.",
+        "description": "from (inclusive) and to (exclusive), ISO 8601; to defaults to now and from to 30 days before it. At most 500 attempts are listed (breaches first); the counts cover all. The CSV form lists up to 50,000.",
+        "operationId": "GetWallProof",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WallProofResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/compliance/access-review": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "Workspace access review: users and groups with their roles, ethical walls, last workspace access and last sign-in. Audited.",
+        "operationId": "GetAccessReview",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessReviewResource"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/compliance/wall-proof/export": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "The ethical-wall proof for a period as CSV (UTF-8 with BOM): summary, walls, wall changes, then one row per attempt. Audited.",
+        "operationId": "ExportWallProof",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/compliance/access-review/export": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "The workspace access review as CSV (UTF-8 with BOM): one row per user and per group. Audited.",
+        "operationId": "ExportAccessReview",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/compliance/audit-export": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "The workspace audit trail as a verifiable export (JSON Lines) with its chain verification result. Audited as Audit.Exported.",
+        "description": "from (inclusive) and to (exclusive), ISO 8601, both optional (default: the whole chain). The file covers the checkpoint-aligned chain range around the period, so it verifies on its own: `audit verify-export --file <file> --public-key <pem>`. Search text is included only for callers with Audit.ReadSearchText; otherwise those events are marked withheld and verified through the chain links and Merkle roots.",
+        "operationId": "ExportAuditTrail",
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/snapshots": {
       "post": {
         "tags": [
@@ -16462,6 +16791,163 @@
   },
   "components": {
     "schemas": {
+      "AccessReviewEntryResource": {
+        "required": [
+          "principal",
+          "userId",
+          "group",
+          "displayName",
+          "email",
+          "roles",
+          "walls",
+          "lastAccessAt",
+          "lastSignInAt",
+          "knownMembers"
+        ],
+        "type": "object",
+        "properties": {
+          "principal": {
+            "type": "string"
+          },
+          "userId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "group": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessReviewRoleResource"
+            }
+          },
+          "walls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessReviewWallResource"
+            }
+          },
+          "lastAccessAt": {
+            "format": "date-time"
+          },
+          "lastSignInAt": {
+            "format": "date-time"
+          },
+          "knownMembers": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AccessReviewResource": {
+        "required": [
+          "generatedAt",
+          "users",
+          "groups",
+          "entries"
+        ],
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "format": "date-time"
+          },
+          "users": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "groups": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessReviewEntryResource"
+            }
+          }
+        }
+      },
+      "AccessReviewRoleResource": {
+        "required": [
+          "role",
+          "displayName",
+          "viaGroup",
+          "assignedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "viaGroup": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "assignedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "AccessReviewWallResource": {
+        "required": [
+          "wallId",
+          "name",
+          "viaGroup"
+        ],
+        "type": "object",
+        "properties": {
+          "wallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "viaGroup": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AcknowledgmentAcceptanceResource": {
         "required": [
           "version",
@@ -30648,6 +31134,275 @@
           }
         }
       },
+      "WallProofAttemptResource": {
+        "required": [
+          "eventId",
+          "occurredAt",
+          "result",
+          "userId",
+          "userDisplay",
+          "documentId",
+          "wallIds",
+          "action",
+          "outcome",
+          "reasonCode",
+          "accessPath",
+          "correlationId"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "format": "date-time"
+          },
+          "result": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userDisplay": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "wallIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "action": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "reasonCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "accessPath": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        }
+      },
+      "WallProofChangeResource": {
+        "required": [
+          "eventId",
+          "occurredAt",
+          "action",
+          "actorDisplay",
+          "wallId"
+        ],
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "format": "date-time"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actorDisplay": {
+            "type": "string"
+          },
+          "wallId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "WallProofCountsResource": {
+        "required": [
+          "attempts",
+          "denied",
+          "breakGlass",
+          "allowed",
+          "failed"
+        ],
+        "type": "object",
+        "properties": {
+          "attempts": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "denied": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "breakGlass": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "allowed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "failed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "WallProofMemberResource": {
+        "required": [
+          "userId",
+          "group",
+          "displayName",
+          "addedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "group": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "addedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "WallProofResource": {
+        "required": [
+          "from",
+          "to",
+          "generatedAt",
+          "held",
+          "counts",
+          "walls",
+          "attempts",
+          "truncated",
+          "wallChanges"
+        ],
+        "type": "object",
+        "properties": {
+          "from": {
+            "format": "date-time"
+          },
+          "to": {
+            "format": "date-time"
+          },
+          "generatedAt": {
+            "format": "date-time"
+          },
+          "held": {
+            "type": "boolean"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/WallProofCountsResource"
+          },
+          "walls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WallProofWallResource"
+            }
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WallProofAttemptResource"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "wallChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WallProofChangeResource"
+            }
+          }
+        }
+      },
+      "WallProofWallResource": {
+        "required": [
+          "wallId",
+          "name",
+          "createdAt",
+          "members",
+          "documentsCovered"
+        ],
+        "type": "object",
+        "properties": {
+          "wallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WallProofMemberResource"
+            }
+          },
+          "documentsCovered": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "WithheldDocumentsResource": {
         "enum": [
           "block",
@@ -31242,6 +31997,9 @@
     },
     {
       "name": "Privilege logs"
+    },
+    {
+      "name": "Compliance"
     },
     {
       "name": "Snapshots"

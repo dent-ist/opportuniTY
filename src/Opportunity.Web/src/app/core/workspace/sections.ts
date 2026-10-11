@@ -31,6 +31,10 @@ export const PERMISSIONS = {
   /** Request the deletion of the workspace (E20-T02, Q-23); a Retention Approver approves it. */
   requestDeletion: 'Workspace.RequestDeletion',
   auditRead: 'Audit.Read',
+  /** Ethical-wall proof and access review (E14-T06). */
+  complianceReport: 'Compliance.Report',
+  /** Verifiable audit export (E14-T06). */
+  auditExport: 'Audit.Export',
   /** Create, change and delete shared document-list views (E16-T09, "manage views"). */
   manageSharedViews: 'View.ManageShared',
   manageHighlightSets: 'HighlightSet.Manage',
@@ -108,6 +112,8 @@ export const ADMIN_AREAS: readonly WorkspaceSection[] = [
   // The empty-state checklist a new workspace lands on (E04-T07); stays available to finish setting up.
   { path: 'setup', label: 'Setup Checklist', permission: PERMISSIONS.manageSecurity },
   { path: 'audit', label: 'Audit', permission: PERMISSIONS.auditRead },
+  // Ethical-wall proof, access review and verifiable audit export (E14-T06).
+  { path: 'compliance', label: 'Compliance', permission: PERMISSIONS.complianceReport },
 ];
 
 export function allowedSections(
