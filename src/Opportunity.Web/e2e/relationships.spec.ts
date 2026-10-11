@@ -134,6 +134,35 @@ test('Related Items: only visible members, opening a member keeps the cursor, th
   ).toBeVisible();
 });
 
+test('Related Items: Produced in lists the productions of the document and its family, keyboard only', async ({
+  page,
+}) => {
+  await openPage(page, '/w/ws-1/documents');
+  await page
+    .getByRole('grid', { name: 'Documents' })
+    .getByRole('row', { name: /ACM0000003/ })
+    .dblclick();
+  const related = page.getByRole('region', { name: 'Related Items' });
+  const family = related.getByRole('tab', { name: /Family/ });
+  await family.focus();
+  await page.keyboard.press('End');
+  const produced = related.getByRole('tab', { name: 'Produced in' });
+  await expect(produced).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(produced).toHaveAttribute('aria-selected', 'true');
+  const table = related.getByRole('table');
+  await expect(table.getByRole('row')).toHaveCount(3); // header + ACM3 + its attachment ACM4
+  await expect(table).toContainText('PROD0000003');
+  await expect(table).toContainText('PROD0000004');
+  await expect(table).toContainText('PROD_VOL001');
+  await expect(
+    related.getByRole('link', { name: 'Download cross-reference (CSV)' }),
+  ).toHaveAttribute(
+    'href',
+    '/api/v1/workspaces/ws-1/productions/bates-cross-reference?documentId=doc-3',
+  );
+});
+
 test.describe('above the threshold', () => {
   test.use({ api: { propagationThreshold: 0 } });
 

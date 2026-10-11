@@ -20,8 +20,22 @@
         {{ t.label }} <span class="related__count">{{ t.count }}</span>
       </li>
     }
+    @if (canSeeProductions && tabs().length > 0) {
+      <li
+        class="opp-tab"
+        role="tab"
+        [id]="uid + '-tab-produced'"
+        data-tab="produced"
+        [attr.aria-controls]="uid + '-panel'"
+        [attr.aria-selected]="tab() === 'produced'"
+        [tabIndex]="tab() === 'produced' ? 0 : -1"
+        (click)="choose('produced')"
+      >
+        Produced in
+      </li>
+    }
   </ul>
-  @if (codingFields().length > 0) {
+  @if (codingFields().length > 0 && tab() !== 'produced') {
     <button type="button" oppButton="ghost" [cdkMenuTriggerFor]="columnMenu">
       <opp-icon name="columns" />Coding columns
     </button>
@@ -52,7 +66,20 @@
     <p class="related__muted">The related items of this document could not be loaded.</p>
   }
   @default {
-    @if (view) {
+    @if (tab() === 'produced') {
+      <div
+        class="related__panel"
+        role="tabpanel"
+        [id]="uid + '-panel'"
+        [attr.aria-labelledby]="uid + '-tab-produced'"
+      >
+        <opp-produced-in
+          [documentId]="hit().documentId"
+          [controlNumber]="hit().controlNumber"
+          (openDocument)="openProduced($event)"
+        />
+      </div>
+    } @else if (view) {
       <div
         class="related__panel"
         role="tabpanel"

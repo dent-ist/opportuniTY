@@ -259,6 +259,9 @@ public static class AuditTaxonomy
         /// <summary>A failed QC check was overridden at finalization by an authorized person, with a reason (E12-T07).</summary>
         public const string QcOverride = "QcOverride";
 
+        /// <summary>The Bates cross-reference (matter, one production or a where-produced lookup) was downloaded (E13-T04).</summary>
+        public const string CrossReferenceExported = "CrossReferenceExported";
+
         /// <summary>The audit resource type of production events.</summary>
         public const string ResourceType = "Production";
     }
@@ -438,7 +441,7 @@ public static class AuditTaxonomy
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
             "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted",
-            "QcRun"),
+            "QcRun", "CrossReferenceExported"),
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",

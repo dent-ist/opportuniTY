@@ -1026,6 +1026,9 @@ public static class ProductionEndpointRegistration
 
         // E12-T05: volume runs of finalized productions.
         services.AddProductionVolumeEndpoints();
+
+        // E13-T04: where-produced lookup.
+        services.AddWhereProducedEndpoints();
         return services;
     }
 }
