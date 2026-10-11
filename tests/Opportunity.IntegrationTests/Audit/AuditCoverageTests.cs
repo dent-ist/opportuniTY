@@ -247,16 +247,19 @@ public sealed class AuditCoverageTests(AttackWorldFixture fixture) : IClassFixtu
 
         // 1. The API offers no way to change the trail: no state-changing route under any audit path, and no permission or
         //    role that grants more than reading it (Workspace Admin holds every workspace permission).
+        //    Requesting an audit export (E14-T04) adds an export record and its job and changes no event.
         var routes = w.Factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
-            .Where(e => (e.RoutePattern.RawText ?? string.Empty).Contains("audit", StringComparison.OrdinalIgnoreCase))
+            .Where(e => (e.RoutePattern.RawText ?? string.Empty).Contains("audit", StringComparison.OrdinalIgnoreCase)
+                && (e.RoutePattern.RawText ?? string.Empty).Trim('/') != "api/v1/workspaces/{workspaceId}/audit-exports")
             .SelectMany(e => e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? ["*"])
             .ToList();
         routes.Should().OnlyContain(m => m == "GET", "the audit trail is read-only over the API");
         PermissionCatalog.All.Where(p => p.Name.StartsWith("Audit.", StringComparison.Ordinal)).Select(p => p.Permission)
-            .Should().BeEquivalentTo([Permission.AuditRead, Permission.AuditReadSearchText], "no permission edits or deletes audit events");
+            .Should().BeEquivalentTo([Permission.AuditRead, Permission.AuditReadSearchText, Permission.AuditExport],
+                "no permission edits or deletes audit events (Audit.Export downloads a read-only, verifiable copy, E14-T06)");
         RoleCatalog.All.Single(r => r.Role == WorkspaceRole.WorkspaceAdmin).Grants
             .Where(p => PermissionCatalog.Get(p).Name.StartsWith("Audit.", StringComparison.Ordinal))
-            .Should().OnlyContain(p => p == Permission.AuditRead || p == Permission.AuditReadSearchText);
+            .Should().OnlyContain(p => p == Permission.AuditRead || p == Permission.AuditReadSearchText || p == Permission.AuditExport);
 
         await using var admin = NpgsqlDataSource.Create(w.Db.Core.ConnectionString);
         Guid eventId;

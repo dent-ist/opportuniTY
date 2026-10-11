@@ -21,6 +21,13 @@ internal static class AuditSql
 {
     private static readonly JsonSerializerOptions Json = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    private const string Prefixed =
+        """
+        e.event_id, e.schema_version, e.workspace_id, e.occurred_at, e.category, e.action, e.actor_type, e.actor_id, e.actor_display,
+        e.on_behalf_of, e.access_path, e.client_ip, e.user_agent, e.session_id_hash, e.resource_type, e.resource_id, e.outcome,
+        e.reason_code, e.correlation_id, e.causation_id, e.job_id, e.chunk_sequence, e.snapshot_id, e.search_generation, e.details
+        """;
+
     private const string Columns =
         """
         event_id, schema_version, workspace_id, occurred_at, category, action, actor_type, actor_id, actor_display,
@@ -88,44 +95,34 @@ internal static class AuditSql
 
     public static async Task<AuditEventPage> QueryAsync(WorkspaceTransaction tx, AuditQuery query, CancellationToken cancellationToken)
     {
-        await using var command = tx.Command(
+        ArgumentNullException.ThrowIfNull(query);
+        await using var command = tx.Command(string.Empty);
+        var where = Filter(command, query);
+        var descending = query.NewestFirst;
+        if (query.After is { } after)
+        {
+            where.Add(descending ? "(e.occurred_at, e.event_id) < (@after_at, @after_id)" : "(e.occurred_at, e.event_id) > (@after_at, @after_id)");
+            command.Parameters.AddWithValue("after_at", after.OccurredAt.ToUniversalTime());
+            command.Parameters.AddWithValue("after_id", after.EventId);
+        }
+
+        var direction = descending ? "DESC" : "ASC";
+        command.CommandText = Select(query) +
             $"""
-            SELECT {Columns}, CASE WHEN @restricted THEN restricted_details::text END, recorded_at, sequence, sealed_at
-            FROM audit.audit_event
-            WHERE workspace_id IS NOT DISTINCT FROM @ws
-              AND (@from::timestamptz IS NULL OR occurred_at >= @from)
-              AND (@to::timestamptz IS NULL OR occurred_at < @to)
-              AND (@category::text IS NULL OR category = @category)
-              AND (@action::text IS NULL OR action = @action)
-              AND (@actor::text IS NULL OR actor_id = @actor)
-              AND (@resource_type::text IS NULL OR resource_type = @resource_type)
-              AND (@resource_id::text IS NULL OR resource_id = @resource_id)
-              AND (@correlation::text IS NULL OR correlation_id = @correlation)
-              AND (@after_at::timestamptz IS NULL OR (occurred_at, event_id) > (@after_at, @after_id))
-            ORDER BY occurred_at, event_id
+
+            WHERE {string.Join(" AND ", where)}
+            ORDER BY e.occurred_at {direction}, e.event_id {direction}
             LIMIT @limit
-            """);
-        var p = command.Parameters;
-        p.AddWithValue("restricted", query.IncludeRestrictedDetails);
-        p.Add(Nullable("ws", NpgsqlDbType.Uuid, query.WorkspaceId));
-        p.Add(Nullable("from", NpgsqlDbType.TimestampTz, query.From?.ToUniversalTime()));
-        p.Add(Nullable("to", NpgsqlDbType.TimestampTz, query.To?.ToUniversalTime()));
-        p.Add(Nullable("category", NpgsqlDbType.Text, query.Category));
-        p.Add(Nullable("action", NpgsqlDbType.Text, query.Action));
-        p.Add(Nullable("actor", NpgsqlDbType.Text, query.ActorId));
-        p.Add(Nullable("resource_type", NpgsqlDbType.Text, query.ResourceType));
-        p.Add(Nullable("resource_id", NpgsqlDbType.Text, query.ResourceId));
-        p.Add(Nullable("correlation", NpgsqlDbType.Text, query.CorrelationId));
-        p.Add(Nullable("after_at", NpgsqlDbType.TimestampTz, query.After?.OccurredAt.ToUniversalTime()));
-        p.Add(Nullable("after_id", NpgsqlDbType.Uuid, query.After?.EventId));
-        p.AddWithValue("limit", query.Limit + 1);
+            """;
+        command.Parameters.AddWithValue("restricted", query.IncludeRestrictedDetails);
+        command.Parameters.AddWithValue("limit", query.Limit + 1);
 
         var events = new List<StoredAuditEvent>(Math.Min(query.Limit + 1, 256));
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                events.Add(Read(reader));
+                events.Add(ReadWithDocument(reader));
             }
         }
 
@@ -137,6 +134,186 @@ internal static class AuditSql
         }
 
         return new AuditEventPage(events, next);
+    }
+
+    /// <summary>
+    /// The events of <paramref name="query"/> (its filters and visibility; its time bounds, cursor and limit are ignored)
+    /// that occurred in <paramref name="from"/>…<paramref name="to"/> (inclusive), oldest first, streamed to
+    /// <paramref name="onEvent"/>. Returns how many were read.
+    /// </summary>
+    public static async Task<long> ForEachAsync(
+        WorkspaceTransaction tx, AuditQuery query, DateTimeOffset from, DateTimeOffset to, Func<StoredAuditEvent, ValueTask> onEvent,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(onEvent);
+        await using var command = tx.Command(string.Empty);
+        var where = Filter(command, query with { From = null, To = null });
+        where.Add("e.occurred_at BETWEEN @window_from AND @window_to");
+        command.Parameters.AddWithValue("window_from", from.ToUniversalTime());
+        command.Parameters.AddWithValue("window_to", to.ToUniversalTime());
+        command.CommandText = Select(query) +
+            $"""
+
+            WHERE {string.Join(" AND ", where)}
+            ORDER BY e.occurred_at, e.event_id
+            """;
+        command.Parameters.AddWithValue("restricted", query.IncludeRestrictedDetails);
+        command.CommandTimeout = 0;
+        long count = 0;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await onEvent(ReadWithDocument(reader)).ConfigureAwait(false);
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// The occurrence times (Unix microseconds) of the events matching <paramref name="query"/>'s filters and visibility,
+    /// oldest first, streamed to <paramref name="onTime"/>; at most <paramref name="max"/> + 1 are read.
+    /// </summary>
+    public static async Task ForEachTimeAsync(
+        WorkspaceTransaction tx, AuditQuery query, long max, Action<long> onTime, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(onTime);
+        await using var command = tx.Command(string.Empty);
+        var where = Filter(command, query);
+        command.CommandText =
+            $"""
+            SELECT (extract(epoch FROM e.occurred_at) * 1000000)::bigint
+            FROM audit.audit_event e
+            WHERE {string.Join(" AND ", where)}
+            ORDER BY e.occurred_at, e.event_id
+            LIMIT @max
+            """;
+        command.Parameters.AddWithValue("max", max + 1);
+        command.CommandTimeout = 0;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            onTime(reader.GetInt64(0));
+        }
+    }
+
+    /// <summary>A document event's resource as a uuid, or null (the CASE keeps the cast from failing on other ids).</summary>
+    private const string DocumentResourceId =
+        "(CASE WHEN e.resource_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN e.resource_id::uuid END)";
+
+    private static string Select(AuditQuery query) => query.DocumentVisibility is null
+        ? $"""
+          SELECT {Prefixed}, CASE WHEN @restricted THEN e.restricted_details::text END, e.recorded_at, e.sequence, e.sealed_at, NULL::text
+          FROM audit.audit_event e
+          """
+        : $"""
+          SELECT {Prefixed}, CASE WHEN @restricted THEN e.restricted_details::text END, e.recorded_at, e.sequence, e.sealed_at, doc.control_number
+          FROM audit.audit_event e
+          LEFT JOIN LATERAL (
+              SELECT d.control_number FROM opportunity.document d
+              WHERE e.resource_type = 'Document' AND d.workspace_id = e.workspace_id AND d.document_id = {DocumentResourceId}
+          ) doc ON true
+          """;
+
+    private static StoredAuditEvent ReadWithDocument(NpgsqlDataReader reader) =>
+        Read(reader) with { DocumentControlNumber = reader.IsDBNull(29) ? null : reader.GetString(29) };
+
+    /// <summary>The WHERE clauses of the filters that are set (only those, so each filter shape gets its own plan).</summary>
+    private static List<string> Filter(NpgsqlCommand command, AuditQuery query)
+    {
+        var where = new List<string>();
+        var p = command.Parameters;
+        void Add(string clause, string name, object value)
+        {
+            where.Add(clause);
+            p.AddWithValue(name, value);
+        }
+
+        if (query.WorkspaceId is { } ws)
+        {
+            Add("e.workspace_id = @ws", "ws", ws);
+        }
+        else
+        {
+            where.Add("e.workspace_id IS NULL");
+        }
+
+        if (query.From is { } from)
+        {
+            Add("e.occurred_at >= @from", "from", from.ToUniversalTime());
+        }
+
+        if (query.To is { } to)
+        {
+            Add("e.occurred_at < @to", "to", to.ToUniversalTime());
+        }
+
+        if (query.Category is { } category)
+        {
+            Add("e.category = @category", "category", category);
+        }
+
+        if (query.Action is { } action)
+        {
+            Add("e.action = @action", "action", action);
+        }
+
+        if (query.ActorId is { } actor)
+        {
+            Add("e.actor_id = @actor", "actor", actor);
+        }
+
+        if (query.ResourceType is { } resourceType)
+        {
+            Add("e.resource_type = @resource_type", "resource_type", resourceType);
+        }
+
+        if (query.ResourceId is { } resourceId)
+        {
+            Add("e.resource_id = @resource_id", "resource_id", resourceId);
+        }
+
+        if (query.CorrelationId is { } correlation)
+        {
+            Add("e.correlation_id = @correlation", "correlation", correlation);
+        }
+
+        if (query.Outcome is { } outcome)
+        {
+            Add("e.outcome = @outcome", "outcome", outcome.ToString());
+        }
+
+        if (query.JobId is { } job)
+        {
+            Add("(e.job_id = @job OR (e.resource_type = 'Job' AND e.resource_id = @job_text))", "job", job);
+            p.AddWithValue("job_text", job.ToString());
+        }
+
+        // ADR-013 §8.3: events about a document the reader may not see are left out entirely.
+        if (query.DocumentVisibility is { HidesAny: true } visibility)
+        {
+            if (visibility.HideAllDocuments)
+            {
+                where.Add("e.resource_type IS DISTINCT FROM 'Document'");
+            }
+            else
+            {
+                where.Add(
+                    $"""
+                    (e.resource_type IS DISTINCT FROM 'Document'
+                     OR (NOT EXISTS (SELECT FROM opportunity.document_restriction r
+                                     WHERE r.workspace_id = e.workspace_id AND r.document_id = {DocumentResourceId} AND r.class_key = ANY (@denied))
+                         AND NOT EXISTS (SELECT FROM opportunity.document_wall w
+                                         WHERE w.workspace_id = e.workspace_id AND w.document_id = {DocumentResourceId} AND w.wall_id = ANY (@walls))))
+                    """);
+                p.AddWithValue("denied", visibility.DeniedClasses.ToArray());
+                p.AddWithValue("walls", visibility.WallIds.ToArray());
+            }
+        }
+
+        return where;
     }
 
     /// <summary>The request's correlation (the API tags the current activity), else its trace ID, else a new ID.</summary>

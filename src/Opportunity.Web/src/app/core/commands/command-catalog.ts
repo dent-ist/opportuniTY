@@ -153,6 +153,13 @@ export const COMMANDS: readonly CommandDefinition[] = [
     keys: ['Alt+Shift+Digit5'],
   },
   {
+    id: 'viewer.mode.history',
+    label: 'Document History',
+    group: 'Viewer',
+    scope: 'review',
+    keys: ['Alt+Shift+Digit6'],
+  },
+  {
     id: 'viewer.nextHit',
     label: 'Next hit',
     group: 'Viewer',

@@ -1,0 +1,142 @@
+<a class="dl__back-link" routerLink="..">
+  <opp-icon name="chevron-left" />
+  Productions
+</a>
+
+@if (store.production(); as p) {
+  <div class="dl__header">
+    <div class="dl__heading-group">
+      <h1 class="dl__title">{{ p.name }}</h1>
+      <div class="dl__title-meta">
+        @if (store.stage(); as s) {
+          <opp-badge [tone]="s.tone" [icon]="s.icon">{{ s.label }}</opp-badge>
+        }
+        <span class="dl__muted">Version {{ p.version }}</span>
+        @if (range()) {
+          <span class="dl__muted"
+            >· <span class="dl__code">{{ range() }}</span></span
+          >
+        }
+      </div>
+    </div>
+    <div class="dl__actions">
+      <a
+        oppButton="secondary"
+        [routerLink]="['..', 'new']"
+        [queryParams]="{ copyFrom: p.productionId }"
+      >
+        <opp-icon name="copy" />
+        Copy settings
+      </a>
+      @if (p.status === 'finalized' || p.status === 'voided') {
+        <button
+          type="button"
+          oppButton="secondary"
+          [busy]="creatingVersion()"
+          (click)="newVersion()"
+        >
+          <opp-icon name="plus" />
+          New version
+        </button>
+      }
+    </div>
+  </div>
+
+  <dl class="dl__facts" aria-label="Production summary">
+    <dt>Frozen set ID</dt>
+    <dd>
+      <code class="dl__code">{{ p.snapshotId }}</code>
+    </dd>
+    <dt>Documents</dt>
+    <dd>
+      @if (store.frozen(); as f) {
+        {{ num(f.documentCount) }}
+        @if (f.related > 0) {
+          <span class="dl__muted">({{ num(f.related) }} added by Include)</span>
+        }
+      } @else if (p.bates.documents !== null) {
+        {{ num(p.bates.documents) }}
+      } @else if (store.frozenError()) {
+        <span class="dl__muted">The frozen set cannot be read.</span>
+      } @else {
+        <span class="dl__muted">Loading…</span>
+      }
+    </dd>
+    @if (p.bates.numbers !== null) {
+      <dt>Bates numbers</dt>
+      <dd>{{ num(p.bates.numbers) }}</dd>
+    }
+    @if (p.status === 'voided') {
+      <dt>Void reason</dt>
+      <dd>{{ p.voidReason }}</dd>
+    }
+  </dl>
+
+  <div oppTabs class="dl__tabs">
+    <ul
+      oppTabList
+      aria-label="Production"
+      [selectedTab]="tab()"
+      (selectedTabChange)="selectTab($any($event))"
+    >
+      @for (t of tabs; track t.id) {
+        <li oppTab [value]="t.id">{{ t.label }}</li>
+      }
+    </ul>
+    <div oppTabPanel value="settings">
+      <ng-template ngTabContent>
+        <div class="dl__tab-body"><opp-production-settings-tab /></div>
+      </ng-template>
+    </div>
+    <div oppTabPanel value="documents">
+      <ng-template ngTabContent>
+        <div class="dl__tab-body"><opp-production-documents-tab /></div>
+      </ng-template>
+    </div>
+    <div oppTabPanel value="qc">
+      <ng-template ngTabContent>
+        <div class="dl__tab-body"><opp-production-qc-tab /></div>
+      </ng-template>
+    </div>
+    <div oppTabPanel value="output">
+      <ng-template ngTabContent>
+        <div class="dl__tab-body"><opp-production-output-tab /></div>
+      </ng-template>
+    </div>
+    <div oppTabPanel value="privilegeLog">
+      <ng-template ngTabContent>
+        <div class="dl__tab-body">
+          <h2 class="dl__h2">Privilege Log</h2>
+          <p class="dl__muted">
+            The privilege log of a production lists its documents withheld or redacted for
+            privilege, generated from its frozen set once it is finalized. Each version keeps its
+            SHA-256 and downloads as CSV or XLSX.
+          </p>
+          @if (p.status !== 'finalized') {
+            <p class="dl__notice">
+              <opp-icon name="info" />
+              A privilege log can be generated once the production is finalized.
+            </p>
+          } @else if (canLog) {
+            <div>
+              <a
+                oppButton="primary"
+                [routerLink]="['../../searches/privilege-logs']"
+                [queryParams]="{ production: p.productionId }"
+              >
+                <opp-icon name="report" />
+                Open privilege logs
+              </a>
+            </div>
+          } @else {
+            <p class="dl__muted">Generating privilege logs needs the privilege log permission.</p>
+          }
+        </div>
+      </ng-template>
+    </div>
+  </div>
+} @else if (store.error(); as e) {
+  <opp-error-state [error]="e" (retry)="store.load(productionId)" />
+} @else {
+  <opp-loading-state label="Loading production…" />
+}

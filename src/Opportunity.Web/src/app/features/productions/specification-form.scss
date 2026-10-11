@@ -1,0 +1,60 @@
+// The specification form: the inline "use next number" link and the sample page with its six endorsement slots.
+
+.spec__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--opp-color-accent-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.spec__sample {
+  display: flex;
+  flex-direction: column;
+  gap: var(--opp-space-1);
+  align-items: flex-start;
+  margin: 0;
+}
+
+.spec__page {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto minmax(8rem, 1fr) auto;
+  gap: var(--opp-space-1);
+  inline-size: min(100%, 22rem);
+  aspect-ratio: 8.5 / 11;
+  padding: var(--opp-space-2);
+  border: var(--opp-border-width) solid var(--opp-color-border-strong);
+  border-radius: var(--opp-radius-sm);
+  background: var(--opp-color-surface);
+  color: var(--opp-color-text);
+  font-family: var(--opp-font-family-mono);
+  font-size: var(--opp-font-size-xs);
+}
+
+.spec__page--expanded {
+  padding-block: var(--opp-space-4);
+}
+
+.spec__content {
+  grid-column: 1 / -1;
+  border: var(--opp-border-width) dashed var(--opp-color-border);
+  background: var(--opp-color-surface-sunken);
+}
+
+.spec__stamp {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.spec__stamp--tc,
+.spec__stamp--bc {
+  text-align: center;
+}
+
+.spec__stamp--tr,
+.spec__stamp--br {
+  text-align: end;
+}

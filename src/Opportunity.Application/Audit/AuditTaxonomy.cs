@@ -259,6 +259,9 @@ public static class AuditTaxonomy
         /// <summary>A failed QC check was overridden at finalization by an authorized person, with a reason (E12-T07).</summary>
         public const string QcOverride = "QcOverride";
 
+        /// <summary>The Bates cross-reference (matter, one production or a where-produced lookup) was downloaded (E13-T04).</summary>
+        public const string CrossReferenceExported = "CrossReferenceExported";
+
         /// <summary>The audit resource type of production events.</summary>
         public const string ResourceType = "Production";
     }
@@ -297,6 +300,12 @@ public static class AuditTaxonomy
 
         /// <summary>The audit resource type of acknowledgment events; the resource id is the workspace id.</summary>
         public const string AcknowledgmentResourceType = "Workspace";
+
+        /// <summary>An ethical-wall proof report was generated (E14-T06): period, format, counts by outcome and verdict.</summary>
+        public const string WallProofGenerated = "WallProofGenerated";
+
+        /// <summary>A workspace access review was generated (E14-T06): format and principal counts.</summary>
+        public const string AccessReviewGenerated = "AccessReviewGenerated";
     }
 
     public static class Workspace
@@ -412,6 +421,14 @@ public static class AuditTaxonomy
         public const string Queried = "Queried";
         public const string Purged = "Purged";
 
+        /// <summary>An audit export was requested (E14-T04: filters, export and job) or an audit-chain export with its chain range and verification result was downloaded (E14-T06).</summary>
+        public const string Exported = "Exported";
+
+        /// <summary>An audit export file was downloaded through the gateway (E14-T04): rows, bytes and SHA-256.</summary>
+        public const string ExportDownloaded = "ExportDownloaded";
+
+        public const string ExportResourceType = "AuditExport";
+
         /// <summary>A signed hash-chain checkpoint taken on request (manual, before a purge or deletion run; E14-T03).</summary>
         public const string CheckpointCreated = "CheckpointCreated";
 
@@ -438,11 +455,12 @@ public static class AuditTaxonomy
         .. Expand("Production", "Created", "SpecFrozen", "Run", "VerificationFailed", "QcOverride", "Finalized", "Voided",
             "Downloaded", "Rerun", "Modified", "Discarded", "BatesAllocated", "Verified",
             "DesignationOverridden", "DesignationOverrideRemoved", "DesignationsFrozen", "RedesignationExported", "VolumeCompleted",
-            "QcRun"),
+            "QcRun", "CrossReferenceExported"),
         .. Expand("Import", "Started", "Completed", "MalwareDetected", "HashMismatch", "PreflightRun", "ReportDownloaded", "Overlaid"),
         .. Expand("Security", "RoleAssigned", "RoleRevoked", "PermissionChanged", "RestrictionChanged", "WallCreated",
             "WallChanged", "WallDeleted", "WallMemberAdded", "WallMemberRemoved", "BreakGlassActivated", "BreakGlassEnded",
-            "AcknowledgmentAccepted", "AcknowledgmentPublished", "AcknowledgmentRosterExported"),
+            "AcknowledgmentAccepted", "AcknowledgmentPublished", "AcknowledgmentRosterExported", "WallProofGenerated",
+            "AccessReviewGenerated"),
         .. Expand("Workspace", "Created", "SettingsChanged", "Closed", "Reopened", "HoldPlaced", "HoldReleaseRequested",
             "HoldReleased", "DeletionRequested", "DeletionApproved", "DeletionCancelled", "DeletionStarted",
             "DeletionStepCompleted", "DeletionHalted", "Deleted",
@@ -450,7 +468,7 @@ public static class AuditTaxonomy
             "HoldReleaseCancelled", "DeletionBlocked"),
         .. Expand("Admin", "ConfigChanged", "UserProvisioned", "UserDeactivated", "KeyCreated", "KeyRotated", "KeyDestroyed",
             "SecretRotated"),
-        .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged"),
+        .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged", "ExportDownloaded"),
         .. Expand("Job", "Created", "Cancelled", "Failed", "CompletedWithErrors", "Replayed"),
         .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict",
             "MessageRejected"),

@@ -215,6 +215,10 @@ the APIs for classes, walls, field-level restrictions and break-glass activation
 Admin › Roles & Security and Break-glass assignment in Admin › Users & Groups (#53). **Planned:** screens for ethical
 walls, field-level restrictions and break-glass activation, and the notification (E14).
 
+**Proving the walls held:** Admin › Compliance (#120) generates the ethical-wall proof (every audited attempt by a
+walled user on walled content in a period, expected to be denials only) and the access review (users, groups, roles,
+walls, last access); see [compliance-reports.md](compliance-reports.md).
+
 ### 4.4 Field-level security (planned, #51)
 
 Some fields (for example privilege notes) can be restricted per role, so they are absent from the coding panel,

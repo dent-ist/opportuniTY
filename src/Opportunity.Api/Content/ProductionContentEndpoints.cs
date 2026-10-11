@@ -148,6 +148,7 @@ public static class ProductionContentRegistration
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<IApiEndpointModule, ProductionContentEndpoints>();
         services.AddProductionVolumeContentEndpoints();
+        services.AddBatesCrossReferenceContentEndpoints();
         return services;
     }
 }

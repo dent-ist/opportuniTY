@@ -1,0 +1,137 @@
+@if (store.production(); as p) {
+  @if (p.status === 'draft') {
+    <div class="dl__row">
+      <opp-text-field
+        class="dl__grow"
+        label="Production name"
+        [value]="form().name"
+        (valueChange)="setName($event)"
+      />
+    </div>
+    <opp-specification-form
+      [(form)]="form"
+      [documents]="store.frozen()?.documentCount ?? null"
+      [redactionSets]="redactionSets()"
+      [suggestedStart]="suggestedStart()"
+    />
+    @if (problems().length > 0) {
+      <div class="dl__blocked" role="alert">
+        <opp-icon name="warning" />
+        <span>
+          @for (pr of problems(); track $index) {
+            <span class="dl__radio-text">{{ pr }}</span>
+          }
+        </span>
+      </div>
+    }
+    @if (errors().length > 0) {
+      <div class="dl__errors" role="alert" aria-labelledby="settings-errors">
+        <p class="dl__blocked" id="settings-errors">
+          <opp-icon name="error" />
+          The specification was not saved: correct these settings.
+        </p>
+        <ul>
+          @for (e of errors(); track $index) {
+            <li>
+              <strong>{{ e[0] }}:</strong> {{ e[1] }}
+            </li>
+          }
+        </ul>
+        <div>
+          <button type="button" oppButton="secondary" (click)="downloadErrors()">
+            <opp-icon name="download" />
+            Download error list (CSV)
+          </button>
+        </div>
+      </div>
+    }
+    @if (error(); as e) {
+      <opp-error-state [error]="e" />
+    }
+    <div class="dl__actions">
+      <button type="button" oppButton="primary" [busy]="saving()" (click)="save()">
+        <opp-icon name="save" />
+        Save specification
+      </button>
+      <button type="button" oppButton="danger" [busy]="discarding()" (click)="discard()">
+        <opp-icon name="trash" />
+        Discard draft
+      </button>
+    </div>
+  } @else if (spec(); as s) {
+    <p class="dl__notice">
+      <opp-icon name="lock" />
+      @if (p.status === 'discarded') {
+        This draft was discarded; its settings are shown as they were.
+      } @else {
+        The specification and documents were frozen at finalization ({{ date(p.finalizedAt) }}). A
+        change is a new version with new Bates numbers.
+      }
+    </p>
+    <section class="dl__panel" aria-labelledby="frozen-spec">
+      <h2 id="frozen-spec">Frozen specification</h2>
+      <dl class="dl__facts">
+        <dt>Bates</dt>
+        <dd>
+          Prefix <code class="dl__code">{{ s.bates.prefix }}</code
+          >, start {{ s.bates.startNumber }}, {{ s.bates.padding }} digits{{
+            s.bates.suffix ? ', suffix ' + s.bates.suffix : ''
+          }}, {{ s.bates.level === 'document' ? 'document' : 'page' }} level
+        </dd>
+        <dt>Withheld documents</dt>
+        <dd>
+          {{
+            s.withheldDocuments === 'block'
+              ? 'Block finalization'
+              : 'Placeholder: ' + (s.placeholders?.withheld ?? '')
+          }}
+        </dd>
+        <dt>Images</dt>
+        <dd>
+          {{ s.images?.format === 'jpeg' ? 'JPEG' : 'TIFF Group 4' }}, {{ s.images?.dpi }} DPI;
+          colour file types: {{ (s.images?.colorFileTypes ?? []).join(', ') || 'none' }}
+        </dd>
+        <dt>Text</dt>
+        <dd>{{ s.includeText === false ? 'Not included' : 'Included' }}</dd>
+        <dt>Redaction Set</dt>
+        <dd>{{ redactionSetName() ?? 'None' }}</dd>
+        <dt>Endorsements</dt>
+        <dd>
+          @for (slot of slots; track slot.position) {
+            @if (endorsement(slot.position)) {
+              <span class="dl__radio-text"
+                >{{ slot.label }}:
+                <code class="dl__code">{{ endorsement(slot.position) }}</code></span
+              >
+            }
+          }
+        </dd>
+        <dt>Native file types</dt>
+        <dd>
+          @for (r of s.fileTypeRules ?? []; track $index) {
+            <span class="dl__radio-text">{{ r.output }}: {{ r.extensions.join(', ') }}</span>
+          }
+        </dd>
+        <dt>Load file</dt>
+        <dd>
+          {{ s.loadFile?.delimiters }}, {{ s.loadFile?.encoding }}, volume
+          {{ s.loadFile?.volume?.prefix }}; {{ (s.loadFile?.fields ?? []).length }} DAT columns
+        </dd>
+        <dt>Specification SHA-256</dt>
+        <dd>
+          <code class="dl__code">{{ p.specificationSha256 }}</code>
+        </dd>
+        @if (p.manifestSha256) {
+          <dt>Manifest SHA-256</dt>
+          <dd>
+            <code class="dl__code">{{ p.manifestSha256 }}</code>
+          </dd>
+        }
+      </dl>
+      <details>
+        <summary>Full specification (JSON)</summary>
+        <pre class="dl__json" tabindex="0" aria-label="Full specification">{{ specJson() }}</pre>
+      </details>
+    </section>
+  }
+}

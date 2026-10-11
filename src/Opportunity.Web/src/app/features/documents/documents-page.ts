@@ -46,9 +46,12 @@ import {
 } from './grid/review-grid';
 import { HttpRelationshipsApi, RelationshipsApi } from './relationships/relationships-api';
 import {
+  LIST_LABEL_PARAM,
+  LIST_QUERY_PARAM,
   RELATED_ID_PARAM,
   RELATED_OF_PARAM,
   RELATED_PARAM,
+  listQueryFromParams,
   relatedFromParams,
 } from './relationships/relationship-link';
 import { PendingCoding } from './review/coding/pending-coding';
@@ -309,7 +312,8 @@ export class DocumentsPage {
     deferred:
       inject(ActivatedRoute).snapshot.queryParamMap.has(SAVED_SEARCH_PARAM) ||
       inject(ActivatedRoute).snapshot.queryParamMap.has(TERM_REPORT_PARAM) ||
-      !!relatedFromParams(inject(ActivatedRoute).snapshot.queryParamMap),
+      !!relatedFromParams(inject(ActivatedRoute).snapshot.queryParamMap) ||
+      !!listQueryFromParams(inject(ActivatedRoute).snapshot.queryParamMap),
   });
   protected readonly reviewing = signal(false);
   private readonly queryBar = viewChild.required(QueryBar);
@@ -389,7 +393,19 @@ export class DocumentsPage {
       const reportId = params.get(TERM_REPORT_PARAM);
       const termId = params.get(TERM_PARAM);
       const related = relatedFromParams(params);
+      const listQuery = listQueryFromParams(params);
       untracked(() => {
+        // `?listQuery=&listLabel=` ("Open in Documents" from a production or its QC, E12-T08): the query becomes the
+        // list's search once the view exists, and the parameters leave the URL.
+        if (listQuery) {
+          queueMicrotask(() => this.showQuery(listQuery.query, listQuery.label));
+          void this.router.navigate([], {
+            queryParams: { [LIST_QUERY_PARAM]: null, [LIST_LABEL_PARAM]: null },
+            queryParamsHandling: 'merge',
+            replaceUrl: true,
+          });
+          return;
+        }
         // `?related=family|duplicates&relatedId=&relatedOf=` ("Open in Documents" from another section, E13-T02): the
         // relation becomes the list's search once the view exists, and the parameters leave the URL.
         if (related) {
@@ -744,6 +760,17 @@ export class DocumentsPage {
     this.queryBar().load(query);
     this.search.set(this.searchFor(query));
     this.toasts.show(`Showing: ${pivotLabel(pivot)}.`, { tone: 'info' });
+  }
+
+  /** A query another section links to (E12-T08 "Open in Documents"): an ordinary search of the list. */
+  private showQuery(query: string, label: string): void {
+    if (this.reviewing()) this.closeReview();
+    if (this.saved()) this.forgetSaved();
+    if (this.termView()) this.forgetTerm();
+    this.grid().resetFilters();
+    this.queryBar().load(query);
+    this.search.set(this.searchFor(query));
+    this.toasts.show(`Showing: ${label}.`, { tone: 'info' });
   }
 
   protected onRefreshed(message: string): void {

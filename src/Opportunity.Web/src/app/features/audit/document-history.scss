@@ -1,0 +1,73 @@
+.history__field {
+  min-inline-size: 12rem;
+}
+
+.history__audit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--opp-space-1);
+  margin-inline-start: auto;
+  font-size: var(--opp-font-size-sm);
+}
+
+.history__scroll {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  border: var(--opp-border-width) solid var(--opp-color-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-surface);
+}
+
+.history__scroll:focus-visible {
+  outline-offset: calc(-1 * var(--opp-focus-ring-width));
+}
+
+.history {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--opp-font-size-md);
+}
+
+.history th,
+.history td {
+  padding: var(--opp-space-1) var(--opp-space-3);
+  border-block-end: var(--opp-border-width) solid var(--opp-color-border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.history thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--opp-color-surface-sunken);
+  color: var(--opp-color-text-muted);
+  font-size: var(--opp-font-size-sm);
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.history tbody th {
+  font-weight: var(--opp-font-weight-semibold);
+}
+
+.history__nowrap {
+  white-space: nowrap;
+}
+
+.history__change {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--opp-space-1);
+  overflow-wrap: anywhere;
+}
+
+.history__empty,
+.history__note {
+  color: var(--opp-color-text-muted);
+}
+
+.history__note {
+  display: block;
+  margin-block-start: var(--opp-space-1);
+  font-size: var(--opp-font-size-sm);
+}

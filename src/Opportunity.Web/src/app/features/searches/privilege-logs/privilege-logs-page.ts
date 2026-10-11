@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
 import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
@@ -46,6 +47,8 @@ export class PrivilegeLogsPage {
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
   private readonly timeZone = this.context.workspace.displayTimeZone || 'UTC';
+  /** `?production=<id>` from a production's Privilege Log tab preselects it (E12-T08). */
+  private readonly requested = inject(ActivatedRoute).snapshot.queryParamMap.get('production');
 
   protected readonly canProduce = this.context.can(PERMISSIONS.productionCreate);
   protected readonly productions = signal<readonly FinalizedProduction[]>([]);
@@ -85,7 +88,10 @@ export class PrivilegeLogsPage {
     ]);
     if (productions.status === 'fulfilled') {
       this.productions.set(productions.value);
-      if (productions.value.length > 0) this.production.set(productions.value[0].productionId);
+      const requested = productions.value.find((p) => p.productionId === this.requested);
+      if (productions.value.length > 0) {
+        this.production.set((requested ?? productions.value[0]).productionId);
+      }
     }
     if (templates.status === 'fulfilled') this.templates.set(templates.value);
     await this.refresh();

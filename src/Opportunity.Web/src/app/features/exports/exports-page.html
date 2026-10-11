@@ -1,0 +1,77 @@
+<div class="dl__header">
+  <div class="dl__heading-group">
+    <h1 class="dl__title">Exports</h1>
+    <p class="dl__muted">
+      Load-file volumes of frozen sets. Your own exports are listed; with permission to see every
+      job, everyone's are.
+    </p>
+  </div>
+  <a oppButton="primary" routerLink="new">
+    <opp-icon name="export" />
+    New Export
+  </a>
+</div>
+
+@if (loading()) {
+  <opp-loading-state label="Loading exports…" />
+} @else if (error() && items().length === 0) {
+  <opp-error-state [error]="error()!" (retry)="load()" />
+} @else if (items().length === 0) {
+  <opp-empty-state
+    icon="export"
+    title="No exports yet"
+    message="Export a saved search or a frozen set to a load-file volume with New Export."
+  />
+} @else {
+  <div class="dl__table-wrap" tabindex="0" role="region" aria-label="Export history">
+    <table class="dl__table">
+      <caption class="opp-visually-hidden">
+        Export history, newest first
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Frozen set ID</th>
+          <th scope="col" class="dl__num">Documents</th>
+          <th scope="col" class="dl__num">Excluded</th>
+          <th scope="col">Volume</th>
+          <th scope="col">Status</th>
+          <th scope="col">Started</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (e of items(); track e.exportId) {
+          <tr>
+            <th scope="row" class="dl__name">
+              <a [routerLink]="e.exportId">{{ e.name }}</a>
+            </th>
+            <td>
+              <code class="dl__code">{{ e.snapshotId }}</code>
+            </td>
+            <td class="dl__num">
+              @if (e.report) {
+                {{ num(documents(e)) }}
+              } @else {
+                <span class="dl__muted">After the run</span>
+              }
+            </td>
+            <td class="dl__num">{{ num(e.report?.documentsExcluded) }}</td>
+            <td>{{ e.settings.volumeName }}</td>
+            <td><opp-status-pill [status]="status[e.status]" /></td>
+            <td class="dl__nowrap">{{ date(e.createdAt) }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  @if (error() && items().length) {
+    <opp-error-state [error]="error()!" (retry)="loadMore()" />
+  }
+  @if (nextCursor()) {
+    <div>
+      <button type="button" oppButton="secondary" [busy]="loadingMore()" (click)="loadMore()">
+        Load more exports
+      </button>
+    </div>
+  }
+}

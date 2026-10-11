@@ -1,0 +1,259 @@
+<a class="dl__back-link" routerLink="..">
+  <opp-icon name="chevron-left" />
+  Exports
+</a>
+
+@if (item(); as e) {
+  <div class="dl__header">
+    <div class="dl__heading-group">
+      <h1 class="dl__title">{{ e.name }}</h1>
+      <div class="dl__title-meta">
+        <opp-status-pill [status]="status[e.status]" />
+        <span class="dl__muted">Started {{ date(e.createdAt) }}</span>
+        @if (e.completedAt) {
+          <span class="dl__muted">· finished {{ date(e.completedAt) }}</span>
+        }
+      </div>
+    </div>
+    <div class="dl__actions">
+      @if (e.status === 'completed' && !filesError()) {
+        <a oppButton="primary" [href]="packageUrl()" download>
+          <opp-icon name="download" />
+          Download package (ZIP)
+        </a>
+      }
+      @if (canCreate && !running()) {
+        <button type="button" oppButton="secondary" [busy]="rerunning()" (click)="rerun()">
+          <opp-icon name="refresh" />
+          Re-run with same settings
+        </button>
+      }
+    </div>
+  </div>
+
+  <section class="dl__panel" aria-labelledby="export-set">
+    <h2 id="export-set">Frozen set</h2>
+    <dl class="dl__facts">
+      <dt>Frozen set ID</dt>
+      <dd>
+        <code class="dl__code">{{ e.snapshotId }}</code>
+      </dd>
+      <dt>Documents</dt>
+      <dd>
+        @if (frozen(); as f) {
+          {{ num(f.documentCount) }}
+          @if (f.related > 0) {
+            <span class="dl__muted">({{ num(f.related) }} added by Include)</span>
+          }
+        } @else if (e.report) {
+          {{ num(reportTotal(e)) }}
+        } @else if (frozenError()) {
+          <span class="dl__muted">The frozen set cannot be read.</span>
+        } @else {
+          <span class="dl__muted">Loading…</span>
+        }
+      </dd>
+      <dt>Job</dt>
+      <dd>
+        <a [routerLink]="['../../jobs', e.job.jobId]">View job</a>
+      </dd>
+    </dl>
+    @if (running()) {
+      @if (progress(); as p) {
+        <opp-progress label="Export progress" [value]="p.value" [max]="p.max" />
+      } @else {
+        <opp-progress label="Export progress" />
+      }
+    }
+    @if (e.statusReason) {
+      <p class="dl__notice">
+        <opp-icon name="warning" />
+        {{ e.statusReason }}
+      </p>
+    }
+  </section>
+
+  @if (e.report; as r) {
+    <section class="dl__panel" aria-labelledby="export-report">
+      <h2 id="export-report">Report</h2>
+      <dl class="dl__facts">
+        <dt>Exported</dt>
+        <dd>{{ num(r.documentsExported) }} documents</dd>
+        <dt>Excluded</dt>
+        <dd>{{ num(r.documentsExcluded) }} documents (access changed after freezing)</dd>
+        <dt>Files</dt>
+        <dd>
+          {{ num(r.files) }} ({{ num(r.natives) }} natives, {{ num(r.images) }} images of
+          {{ num(r.pages) }} pages, {{ num(r.texts) }} texts), {{ bytes(r.totalBytes) }}
+        </dd>
+        <dt>Manifest SHA-256</dt>
+        <dd>
+          <code class="dl__code">{{ r.manifestSha256 }}</code>
+        </dd>
+      </dl>
+    </section>
+  }
+
+  <section class="dl__panel" aria-labelledby="export-settings">
+    <h2 id="export-settings">Settings</h2>
+    <dl class="dl__facts">
+      <dt>Volume</dt>
+      <dd>
+        <code class="dl__code">{{ e.settings.volumeName }}</code
+        >, at most {{ num(e.settings.maxFilesPerFolder) }} files per folder
+      </dd>
+      <dt>Files</dt>
+      <dd>
+        Natives {{ e.settings.includeNatives ? 'included' : 'not included' }} · images
+        {{ e.settings.includeImages ? 'included' : 'not included' }} · text
+        {{ e.settings.includeText ? 'included (' + e.settings.textEncoding + ')' : 'not included' }}
+      </dd>
+      <dt>Load file</dt>
+      <dd>
+        {{ label(delimiterOptions, e.settings.delimiters) }},
+        {{ label(encodingOptions, e.settings.encoding) }}, path separator
+        <code class="dl__code">{{ e.settings.pathSeparator }}</code>
+      </dd>
+    </dl>
+    <div class="dl__table-wrap" tabindex="0" role="region" aria-label="DAT columns">
+      <table class="dl__table">
+        <thead>
+          <tr>
+            <th scope="col" class="dl__num">#</th>
+            <th scope="col">Header</th>
+            <th scope="col">Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (c of e.settings.fields; track $index) {
+            <tr>
+              <td class="dl__num">{{ $index + 1 }}</td>
+              <td>{{ c.header }}</td>
+              <td>{{ columnSource(c) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  @if (!running()) {
+    <section class="dl__section" aria-labelledby="export-exclusions">
+      <div class="dl__section-head">
+        <h2 id="export-exclusions">Excluded documents</h2>
+        @if (exclusionReport(); as rep) {
+          <a oppButton="secondary" [href]="fileUrl(rep)" download>
+            <opp-icon name="download" />
+            Download exclusion report
+          </a>
+        }
+      </div>
+      @if (exclusions().length === 0) {
+        <p class="dl__muted">No document was left out by the access re-check.</p>
+      } @else {
+        <div
+          class="dl__table-wrap"
+          tabindex="0"
+          role="region"
+          aria-label="List of excluded documents"
+        >
+          <table class="dl__table">
+            <thead>
+              <tr>
+                <th scope="col">Control Number</th>
+                <th scope="col">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (x of exclusions(); track x.documentId) {
+                <tr>
+                  <td>{{ x.controlNumber ?? 'Not visible to you' }}</td>
+                  <td>{{ x.reason }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (exclusionsCursor()) {
+          <div>
+            <button type="button" oppButton="secondary" (click)="moreExclusions()">
+              Load more excluded documents
+            </button>
+          </div>
+        }
+      }
+    </section>
+  }
+
+  @if (e.status === 'completed') {
+    <section class="dl__section" aria-labelledby="export-files">
+      <div class="dl__section-head">
+        <h2 id="export-files">Files</h2>
+        @if (manifest(); as m) {
+          <a oppButton="secondary" [href]="fileUrl(m)" download>
+            <opp-icon name="download" />
+            Download manifest
+          </a>
+        }
+      </div>
+      <p class="dl__muted">
+        Every download is checked against your access again and recorded in the audit log.
+      </p>
+      @if (filesError(); as fe) {
+        @if (fe.status === 403 || fe.status === 404) {
+          <p class="dl__notice">
+            <opp-icon name="lock" />
+            Only the person who ran this export, with permission to download exports, receives its
+            files.
+          </p>
+        } @else {
+          <opp-error-state [error]="fe" />
+        }
+      } @else if (files(); as list) {
+        @if (list.length === 0) {
+          <opp-empty-state title="No files" message="This export delivered no files." />
+        } @else {
+          <div class="dl__table-wrap" tabindex="0" role="region" aria-label="Export files">
+            <table class="dl__table">
+              <thead>
+                <tr>
+                  <th scope="col">Path</th>
+                  <th scope="col">Kind</th>
+                  <th scope="col" class="dl__num">Size</th>
+                  <th scope="col">SHA-256</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (f of list; track f.fileId) {
+                  <tr>
+                    <td>
+                      <a [href]="fileUrl(f)" download>{{ f.path }}</a>
+                    </td>
+                    <td>{{ f.kind }}</td>
+                    <td class="dl__num">{{ bytes(f.sizeBytes) }}</td>
+                    <td>
+                      <code class="dl__code">{{ f.sha256 }}</code>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          @if (filesCursor()) {
+            <div>
+              <button type="button" oppButton="secondary" (click)="moreFiles()">
+                Load more files
+              </button>
+            </div>
+          }
+        }
+      } @else {
+        <opp-loading-state label="Loading files…" />
+      }
+    </section>
+  }
+} @else if (error(); as e) {
+  <opp-error-state [error]="e" (retry)="load()" />
+} @else {
+  <opp-loading-state label="Loading export…" />
+}

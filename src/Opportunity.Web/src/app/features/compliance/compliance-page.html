@@ -1,0 +1,289 @@
+<header class="cmp__header">
+  <h1 class="cmp__title" tabindex="-1">Compliance</h1>
+  <p class="cmp__lead">
+    Evidence for counsel, auditors and access reviews. Each report is generated from the audit trail
+    and the current settings when you ask for it, and generating it is itself recorded in the audit
+    trail. Documents are identified by document ID only.
+  </p>
+</header>
+
+<section class="cmp__card" aria-labelledby="cmp-proof">
+  <div class="cmp__card-head">
+    <h2 id="cmp-proof" class="cmp__card-title">Ethical wall proof</h2>
+    <a
+      oppButton="secondary"
+      [attr.href]="proofPeriodError() ? null : proofCsvUrl()"
+      [attr.aria-disabled]="proofPeriodError() ? 'true' : null"
+      download
+    >
+      <opp-icon name="download" />
+      Download proof (CSV)
+    </a>
+  </div>
+  <p class="cmp__muted">
+    Every recorded attempt by a person behind an ethical wall to reach a document the wall covers.
+    The walls held when every attempt was denied.
+  </p>
+  <form class="cmp__period" (submit)="$event.preventDefault(); generateProof()">
+    <opp-text-field label="From" type="date" [(value)]="proofFrom" />
+    <opp-text-field label="To (inclusive)" type="date" [(value)]="proofTo" />
+    <button
+      type="submit"
+      oppButton="primary"
+      [busy]="proofLoading()"
+      [disabled]="!!proofPeriodError()"
+    >
+      <opp-icon name="report" />
+      Generate proof
+    </button>
+  </form>
+  @if (proofPeriodError(); as message) {
+    <p class="cmp__error" role="alert">{{ message }}</p>
+  }
+
+  @if (proofLoading()) {
+    <opp-loading-state label="Generating the ethical wall proof…" />
+  } @else if (proofError(); as error) {
+    <opp-error-state [error]="error" (retry)="generateProof()" />
+  } @else if (proof(); as p) {
+    <div class="cmp__verdict" role="status">
+      @if (p.held) {
+        <opp-badge tone="success" icon="check">Walls held</opp-badge>
+        <span
+          >No walled person reached walled content between {{ date(p.from) }} and
+          {{ date(p.to) }}.</span
+        >
+      } @else {
+        <opp-badge tone="danger" icon="error">Walls did not hold</opp-badge>
+        <span
+          >Walled content was served to a walled person between {{ date(p.from) }} and
+          {{ date(p.to) }}. Review the attempts marked Allowed.</span
+        >
+      }
+    </div>
+    <ul class="cmp__summary" aria-label="Attempts by result">
+      <li>
+        <strong>{{ p.counts.attempts }}</strong> attempts
+      </li>
+      <li>
+        <strong>{{ p.counts.denied }}</strong> denied
+      </li>
+      <li>
+        <strong>{{ p.counts.allowed }}</strong> allowed
+      </li>
+      <li>
+        <strong>{{ p.counts.breakGlass }}</strong> under break-glass
+      </li>
+      <li>
+        <strong>{{ p.counts.failed }}</strong> failed
+      </li>
+    </ul>
+
+    @if (p.walls.length) {
+      <div class="cmp__table-wrap">
+        <table class="cmp__table">
+          <caption class="opp-visually-hidden">
+            Ethical walls
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Wall</th>
+              <th scope="col">Behind the wall</th>
+              <th scope="col" class="cmp__num">Documents covered now</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (w of p.walls; track w.wallId) {
+              <tr>
+                <th scope="row">{{ w.name }}</th>
+                <td>
+                  @for (m of w.members; track $index; let last = $last) {
+                    {{ m.group ? 'Group ' + m.group : m.displayName || m.userId
+                    }}{{ last ? '' : ', ' }}
+                  }
+                </td>
+                <td class="cmp__num">{{ w.documentsCovered }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <opp-empty-state
+        icon="info"
+        title="This workspace has no ethical walls"
+        message="Only attempts refused by a wall that has since been removed can appear."
+      />
+    }
+
+    @if (p.attempts.length) {
+      <div class="cmp__table-wrap">
+        <table class="cmp__table">
+          <caption class="opp-visually-hidden">
+            Attempts on walled documents,
+            {{
+              p.attempts.length
+            }}
+            of
+            {{
+              p.counts.attempts
+            }}
+            shown, allowed attempts first
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">When</th>
+              <th scope="col">Result</th>
+              <th scope="col">Person</th>
+              <th scope="col">Document ID</th>
+              <th scope="col">Wall</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (a of p.attempts; track a.eventId) {
+              <tr>
+                <td>{{ date(a.occurredAt) }}</td>
+                <td>
+                  <opp-badge [tone]="result(a.result).tone" [icon]="result(a.result).icon">{{
+                    result(a.result).label
+                  }}</opp-badge>
+                </td>
+                <th scope="row">{{ a.userDisplay }}</th>
+                <td>
+                  <span class="cmp__mono" [title]="a.documentId">{{ short(a.documentId) }}…</span>
+                </td>
+                <td>{{ wallList(a.wallIds) }}</td>
+                <td>{{ a.action }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (p.truncated) {
+        <p class="cmp__muted">
+          The first {{ p.attempts.length }} attempts are shown. Download the CSV for the full list.
+        </p>
+      }
+    } @else {
+      <opp-empty-state
+        icon="check"
+        title="No attempts in this period"
+        message="Nobody behind a wall tried to open a document the wall covers."
+      />
+    }
+
+    @if (p.wallChanges.length) {
+      <h3 class="cmp__subtitle">Wall changes in this period</h3>
+      <p class="cmp__muted">
+        Walls are evaluated as they are now. Read the attempts in the light of these changes.
+      </p>
+      <ul class="cmp__changes">
+        @for (c of p.wallChanges; track c.eventId) {
+          <li>{{ date(c.occurredAt) }}: {{ c.action }} by {{ c.actorDisplay }}</li>
+        }
+      </ul>
+    }
+  }
+</section>
+
+<section class="cmp__card" aria-labelledby="cmp-review">
+  <div class="cmp__card-head">
+    <h2 id="cmp-review" class="cmp__card-title">Access review</h2>
+    <div class="cmp__actions">
+      <button type="button" oppButton="primary" [busy]="reviewLoading()" (click)="generateReview()">
+        <opp-icon name="report" />
+        Generate review
+      </button>
+      <a oppButton="secondary" [href]="reviewCsvUrl" download>
+        <opp-icon name="download" />
+        Download review (CSV)
+      </a>
+    </div>
+  </div>
+  <p class="cmp__muted">
+    Everyone with a role in this workspace, directly or through an identity-provider group, and
+    everyone behind an ethical wall: their roles, walls, last activity here and last sign-in.
+  </p>
+  @if (reviewLoading()) {
+    <opp-loading-state label="Generating the access review…" />
+  } @else if (reviewError(); as error) {
+    <opp-error-state [error]="error" (retry)="generateReview()" />
+  } @else if (review(); as r) {
+    <p class="cmp__muted">
+      {{ r.users }} {{ r.users === 1 ? 'person' : 'people' }} and {{ r.groups }}
+      {{ r.groups === 1 ? 'group' : 'groups' }}, generated {{ date(r.generatedAt) }}.
+    </p>
+    @if (r.entries.length) {
+      <div class="cmp__table-wrap">
+        <table class="cmp__table">
+          <caption class="opp-visually-hidden">
+            Access review
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Person or group</th>
+              <th scope="col">Roles</th>
+              <th scope="col">Ethical walls</th>
+              <th scope="col">Last activity here</th>
+              <th scope="col">Last sign-in</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (e of r.entries; track $index) {
+              <tr>
+                <th scope="row" class="cmp__person">
+                  <span class="cmp__name">{{ principal(e) }}</span>
+                  @if (e.principal === 'Group') {
+                    <span class="cmp__muted"
+                      >Group ·
+                      {{
+                        e.knownMembers === 1 ? '1 known member' : e.knownMembers + ' known members'
+                      }}</span
+                    >
+                  } @else if (e.email && e.displayName) {
+                    <span class="cmp__muted">{{ e.email }}</span>
+                  }
+                </th>
+                <td>{{ roles(e) || '–' }}</td>
+                <td>{{ walls(e) || '–' }}</td>
+                <td>{{ e.lastAccessAt ? date(e.lastAccessAt) : 'Never' }}</td>
+                <td>{{ e.lastSignInAt ? date(e.lastSignInAt) : '–' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <opp-empty-state title="Nobody has access yet" message="Assign roles to people or groups." />
+    }
+  }
+</section>
+
+@if (canExportAudit) {
+  <section class="cmp__card" aria-labelledby="cmp-audit">
+    <h2 id="cmp-audit" class="cmp__card-title">Audit export</h2>
+    <p class="cmp__muted">
+      A copy of this workspace's audit trail with its signed checkpoints, which anyone can verify
+      without access to opportuniTY:
+      <code>audit verify-export --file &lt;file&gt; --public-key &lt;key&gt;</code>. Leave the dates
+      empty to export the whole trail.
+    </p>
+    <div class="cmp__period">
+      <opp-text-field label="From (optional)" type="date" [(value)]="exportFrom" />
+      <opp-text-field label="To, inclusive (optional)" type="date" [(value)]="exportTo" />
+      <a
+        oppButton="secondary"
+        [attr.href]="exportPeriodError() ? null : auditExportUrl()"
+        [attr.aria-disabled]="exportPeriodError() ? 'true' : null"
+        download
+      >
+        <opp-icon name="download" />
+        Download audit export
+      </a>
+    </div>
+    @if (exportPeriodError(); as message) {
+      <p class="cmp__error" role="alert">{{ message }}</p>
+    }
+  </section>
+}

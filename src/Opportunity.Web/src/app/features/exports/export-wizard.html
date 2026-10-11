@@ -1,0 +1,329 @@
+<div class="wizard__header">
+  <a class="wizard__back-link" routerLink="..">
+    <opp-icon name="chevron-left" />
+    Exports
+  </a>
+  <h1 class="wizard__title">New Export</h1>
+  <p class="wizard__lead">
+    A load-file volume of a frozen set: natives, images, text, a DAT with the columns you choose,
+    and a manifest with the SHA-256 of every file.
+  </p>
+</div>
+
+<div class="wizard">
+  <nav class="wizard__rail" aria-label="Export steps">
+    <ol>
+      @for (s of steps; track s.id; let i = $index) {
+        <li
+          class="wizard__rail-item"
+          [class.wizard__rail-item--current]="s.id === current()"
+          [class.wizard__rail-item--done]="i < index()"
+        >
+          <button
+            type="button"
+            class="wizard__rail-button"
+            [attr.aria-current]="s.id === current() ? 'step' : null"
+            [disabled]="!reachable(i) || busy()"
+            (click)="goTo(s.id)"
+          >
+            <span class="wizard__rail-number" aria-hidden="true">{{ i + 1 }}</span>
+            <span>{{ s.label }}</span>
+            @if (i < index()) {
+              <span class="opp-visually-hidden">(visited)</span>
+            }
+          </button>
+        </li>
+      }
+    </ol>
+  </nav>
+
+  <section class="wizard__body" aria-labelledby="export-step-heading">
+    <h2 id="export-step-heading" class="wizard__step-heading" tabindex="-1" #stepHeading>
+      <span class="wizard__step-count">Step {{ index() + 1 }} of {{ steps.length }}</span>
+      {{ step().label }}
+    </h2>
+
+    @if (fieldsError(); as e) {
+      <opp-error-state [error]="e" />
+    }
+
+    <!-- The source stays mounted so its frozen set survives going back and forth. -->
+    <div [hidden]="current() !== 'source'">
+      <opp-frozen-set-source
+        purpose="export"
+        [initialSavedSearch]="initialSavedSearch"
+        [(frozen)]="frozen"
+      />
+    </div>
+
+    @switch (current()) {
+      @case ('volume') {
+        <div class="dl__row">
+          <opp-text-field
+            class="dl__grow"
+            label="Export name"
+            hint="Optional; shown in the export history and as the package file name."
+            [value]="form().name"
+            (valueChange)="update({ name: $event })"
+          />
+        </div>
+        <div class="dl__row">
+          <opp-text-field
+            class="dl__narrow"
+            label="Volume prefix"
+            [value]="form().volumePrefix"
+            (valueChange)="update({ volumePrefix: $event })"
+          />
+          <opp-text-field
+            class="dl__narrow"
+            label="Start"
+            [value]="form().volumeStart"
+            (valueChange)="update({ volumeStart: $event })"
+          />
+          <opp-text-field
+            class="dl__narrow"
+            label="Padding"
+            [value]="form().volumePadding"
+            (valueChange)="update({ volumePadding: $event })"
+          />
+          <opp-text-field
+            class="dl__narrow"
+            label="Files per folder"
+            [value]="form().maxFilesPerFolder"
+            (valueChange)="update({ maxFilesPerFolder: $event })"
+          />
+        </div>
+        <div class="dl__preview" role="status" aria-label="Example path">
+          <dl class="dl__facts">
+            <dt>Volume</dt>
+            <dd>
+              <code class="dl__code">{{ volume() }}</code>
+            </dd>
+            <dt>Example path</dt>
+            <dd>
+              <code class="dl__code">{{ example() }}</code>
+            </dd>
+          </dl>
+        </div>
+      }
+      @case ('files') {
+        <div class="dl__fieldset" role="group" aria-label="Files to include">
+          <opp-checkbox
+            [checked]="form().includeNatives"
+            (checkedChange)="update({ includeNatives: $event })"
+          >
+            Natives, named by Control Number
+          </opp-checkbox>
+          <opp-checkbox
+            [checked]="form().includeImages"
+            (checkedChange)="update({ includeImages: $event })"
+          >
+            Images as imported, one file per page, with an OPT
+          </opp-checkbox>
+          <opp-checkbox
+            [checked]="form().includeText"
+            (checkedChange)="update({ includeText: $event })"
+          >
+            Extracted text, one file per document
+          </opp-checkbox>
+        </div>
+        <div class="dl__row">
+          <opp-select
+            class="dl__grow"
+            label="Text encoding"
+            [options]="textEncodingOptions"
+            [value]="form().textEncoding"
+            (valueChange)="update({ textEncoding: $event })"
+          />
+          <opp-select
+            class="dl__grow"
+            label="Path separator in load files"
+            [options]="separatorOptions"
+            [value]="form().pathSeparator"
+            (valueChange)="update({ pathSeparator: $event })"
+          />
+        </div>
+        <p class="dl__muted">
+          Paths in the load files are relative to the volume, for example
+          <code class="dl__code">{{ example() }}</code
+          >. Line endings are CRLF.
+        </p>
+      }
+      @case ('loadFile') {
+        <div class="dl__row">
+          <opp-select
+            class="dl__grow"
+            label="Delimiters"
+            [options]="delimiterOptions"
+            [value]="form().delimiters"
+            (valueChange)="update({ delimiters: $event })"
+          />
+          <opp-select
+            class="dl__grow"
+            label="DAT encoding"
+            [options]="encodingOptions"
+            [value]="form().encoding"
+            (valueChange)="update({ encoding: $event })"
+          />
+        </div>
+        <h3 class="dl__h3" id="dat-columns">DAT columns, in order</h3>
+        <ol class="dl__columns" aria-labelledby="dat-columns">
+          @for (
+            c of form().columns;
+            track c.key;
+            let i = $index;
+            let first = $first;
+            let last = $last
+          ) {
+            <li>
+              <span class="dl__column-source">
+                {{ i + 1 }}. {{ c.source }}
+                @if (c.column) {
+                  <span class="dl__small">Computed column</span>
+                }
+              </span>
+              <opp-text-field
+                [label]="'Header for ' + c.source"
+                [value]="c.header"
+                (valueChange)="setHeader(i, $event)"
+              />
+              <span class="dl__actions">
+                <button
+                  type="button"
+                  oppIconButton
+                  [label]="'Move ' + c.source + ' up'"
+                  [disabled]="first"
+                  (click)="move(i, -1)"
+                >
+                  <opp-icon name="chevron-up" />
+                </button>
+                <button
+                  type="button"
+                  oppIconButton
+                  [label]="'Move ' + c.source + ' down'"
+                  [disabled]="last"
+                  (click)="move(i, 1)"
+                >
+                  <opp-icon name="chevron-down" />
+                </button>
+                <button
+                  type="button"
+                  oppIconButton
+                  [label]="'Remove ' + c.source"
+                  (click)="remove(i)"
+                >
+                  <opp-icon name="trash" />
+                </button>
+              </span>
+            </li>
+          }
+        </ol>
+        <div class="dl__row">
+          <opp-select
+            class="dl__grow"
+            label="Add a column"
+            placeholder="Choose a field or column"
+            [options]="addOptions()"
+            [(value)]="addChoice"
+          />
+          <button
+            type="button"
+            oppButton="secondary"
+            [disabled]="!addChoice()"
+            (click)="addColumn()"
+          >
+            <opp-icon name="plus" />
+            Add column
+          </button>
+        </div>
+      }
+      @case ('review') {
+        @if (frozen(); as f) {
+          <dl class="dl__facts" aria-label="Export summary">
+            <dt>Frozen set ID</dt>
+            <dd>
+              <code class="dl__code">{{ f.snapshotId }}</code>
+            </dd>
+            <dt>Documents</dt>
+            <dd>
+              {{ num(f.documentCount) }}
+              @if (f.related > 0) {
+                <span class="dl__muted">({{ num(f.related) }} added by Include)</span>
+              }
+            </dd>
+            <dt>Volume</dt>
+            <dd>
+              <code class="dl__code">{{ volume() }}</code
+              >, at most {{ form().maxFilesPerFolder }} files per folder
+            </dd>
+            <dt>Files</dt>
+            <dd>{{ fileKinds() }}</dd>
+            <dt>Load file</dt>
+            <dd>
+              {{ optionLabel(delimiterOptions, form().delimiters) }},
+              {{ optionLabel(encodingOptions, form().encoding) }}
+            </dd>
+            <dt>DAT columns</dt>
+            <dd>
+              @for (c of form().columns; track c.key; let last = $last) {
+                {{ c.header }}{{ last ? '' : ', ' }}
+              }
+            </dd>
+          </dl>
+          <p class="dl__muted">
+            Each document is checked again when its part of the volume is written: documents you can
+            no longer access are left out and listed in the exclusion report.
+          </p>
+        }
+        @if (runErrors().length > 0) {
+          <div class="dl__errors" role="alert" aria-labelledby="export-errors">
+            <p class="dl__blocked" id="export-errors">
+              <opp-icon name="error" />
+              The export cannot start until these settings are corrected.
+            </p>
+            <ul>
+              @for (e of runErrors(); track $index) {
+                <li>
+                  <strong>{{ e[0] }}:</strong> {{ e[1] }}
+                </li>
+              }
+            </ul>
+            <div>
+              <button type="button" oppButton="secondary" (click)="downloadErrors()">
+                <opp-icon name="download" />
+                Download error list (CSV)
+              </button>
+            </div>
+          </div>
+        }
+        @if (runError(); as e) {
+          <opp-error-state [error]="e" />
+        }
+      }
+    }
+
+    @if (blocked().length > 0) {
+      <div class="dl__blocked" role="alert">
+        <opp-icon name="warning" />
+        <span>
+          @for (b of blocked(); track $index) {
+            <span class="dl__radio-text">{{ b }}</span>
+          }
+        </span>
+      </div>
+    }
+
+    <div class="wizard__footer">
+      <a oppButton="ghost" routerLink="..">Cancel</a>
+      <span class="wizard__spacer"></span>
+      @if (index() > 0) {
+        <button type="button" oppButton="secondary" [disabled]="busy()" (click)="back()">
+          Back
+        </button>
+      }
+      <button type="button" oppButton="primary" [busy]="busy()" (click)="next()">
+        {{ isLast() ? 'Start export' : 'Continue' }}
+      </button>
+    </div>
+  </section>
+</div>

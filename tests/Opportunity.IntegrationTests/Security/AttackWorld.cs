@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Opportunity.Application.Audit;
 using Opportunity.Application.Authorization;
 using Opportunity.Application.Search.Indexing;
 using Opportunity.Application.Search.TermReports;
@@ -83,7 +84,8 @@ internal sealed record WorkspaceResources(
     Guid ProductionVolumeId,
     Guid ProductionVolumeFileId,
     Guid PrivilegeLogTemplateId,
-    Guid PrivilegeLogId)
+    Guid PrivilegeLogId,
+    Guid AuditExportId)
 {
     /// <summary>Fresh identifiers that exist nowhere: the reference every foreign identifier must be indistinguishable from.</summary>
     public static WorkspaceResources Unknown(CodingWorkspace fields) => new(
@@ -95,7 +97,7 @@ internal sealed record WorkspaceResources(
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         "ZZ0000001", Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
-        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
 
     /// <summary>Every identifier of the set, in the spellings a response could carry them (D and N formats).</summary>
     public IEnumerable<string> IdentifierSpellings()
@@ -107,7 +109,7 @@ internal sealed record WorkspaceResources(
             TermReportId, TermId, SpareTermReportId, GridViewId, SpareGridViewId, HighlightSetId, SpareHighlightSetId,
             ProductionSnapshotId, FinalizedProductionId, DraftProductionId, SpareProductionId, PropagationPreviewId,
             WallId, SpareWallId, BreakGlassActivationId, RedactionSetId, PreservationLockId, ReviewBatchSnapshotId, FirstPassBatchSetId,
-            QcBatchSetId, ReviewBatchId, ProductionVolumeId, ProductionVolumeFileId, PrivilegeLogTemplateId, PrivilegeLogId,
+            QcBatchSetId, ReviewBatchId, ProductionVolumeId, ProductionVolumeFileId, PrivilegeLogTemplateId, PrivilegeLogId, AuditExportId,
         ];
         return ids.SelectMany(id => new[] { id.ToString("D"), id.ToString("N") }).Append(SearchCursor);
     }
@@ -189,6 +191,7 @@ internal sealed class AttackWorld : IAsyncDisposable
             builder.UseSetting("ObjectStorage:FileSystem:RootPath", import.StoreRoot);
             builder.UseSetting("Snapshots:BackgroundEnabled", "false");
             builder.UseSetting("SearchTermReports:BackgroundEnabled", "false");
+            builder.UseSetting("AuditExports:BackgroundEnabled", "false");
             builder.UseSetting("Jobs:Events:MaxStreamDuration", "00:00:01");
             // Audit envelopes (E14-T02): a session hash key (obviously fake) and a client address, as behind a real listener.
             builder.UseSetting("Authentication:Session:AuditHashKey", Convert.ToBase64String(new byte[32]));
@@ -437,6 +440,16 @@ internal sealed class AttackWorld : IAsyncDisposable
             ["templateId"] = logTemplate.GetProperty("templateId").GetString(),
         });
 
+        // Audit log (E14-T04): a completed export of the workspace's audit trail, run by the API host's runner.
+        var auditExport = await JsonAsync(HttpMethod.Post, $"/api/v1/workspaces/{ws}/audit-exports", owner, HttpStatusCode.Accepted,
+            new JsonObject { ["category"] = "Job" });
+        var auditExportId = auditExport.GetProperty("exportId").GetGuid();
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<AuditExportRunner>().RunToEndAsync(ws, auditExportId, cancellationToken: Ct))
+                .Should().Be(AuditExportStatus.Completed);
+        }
+
         var layout = await Db.Core.ScalarAsync<Guid>(
             "SELECT layout_id FROM opportunity.coding_layout WHERE workspace_id = @ws AND is_default", ("ws", ws));
 
@@ -489,7 +502,8 @@ internal sealed class AttackWorld : IAsyncDisposable
             volumeId,
             volumeFiles.GetProperty("items")[0].GetProperty("fileId").GetGuid(),
             logTemplate.GetProperty("templateId").GetGuid(),
-            privilegeLog.GetProperty("log").GetProperty("logId").GetGuid());
+            privilegeLog.GetProperty("log").GetProperty("logId").GetGuid(),
+            auditExportId);
     }
 
     /// <summary>A draft production of the frozen set with Bates prefix <paramref name="prefix"/>.</summary>

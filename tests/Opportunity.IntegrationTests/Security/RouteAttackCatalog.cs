@@ -39,6 +39,7 @@ internal static class ProtectedOperation
     public const string Job = "Job status";
     public const string Workspace = "Workspace administration and catalogues";
     public const string PrivilegeLog = "Privilege logs (templates, versions, rows, files)";
+    public const string AuditLog = "Audit log (events, document and job filters, exports and their files)";
 
     public static IReadOnlyList<string> Section24 { get; } = [Open, View, NativeDownload, ImageRetrieval, Export, ProductionInclusion];
 }
@@ -370,6 +371,17 @@ internal static class RouteAttackCatalog
             WorkspaceOnly(HttpMethod.Get, "/acknowledgment-roster", HttpStatusCode.OK)),
         Case("GET", Ws + "/acknowledgment-roster/export", ProtectedOperation.Workspace,
             WorkspaceOnly(HttpMethod.Get, "/acknowledgment-roster/export", HttpStatusCode.OK)),
+        // Compliance reports (E14-T06): workspace-level reports over the workspace's own walls, roles and audit chain.
+        Case("GET", Ws + "/compliance/wall-proof", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/wall-proof", HttpStatusCode.OK)),
+        Case("GET", Ws + "/compliance/wall-proof/export", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/wall-proof/export", HttpStatusCode.OK)),
+        Case("GET", Ws + "/compliance/access-review", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/access-review", HttpStatusCode.OK)),
+        Case("GET", Ws + "/compliance/access-review/export", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/access-review/export", HttpStatusCode.OK)),
+        Case("GET", Ws + "/compliance/audit-export", ProtectedOperation.Workspace,
+            WorkspaceOnly(HttpMethod.Get, "/compliance/audit-export", HttpStatusCode.OK)),
         Case("GET", Ws + "/fields", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/fields", HttpStatusCode.OK)),
         Case("GET", Ws + "/coding-layouts", ProtectedOperation.Workspace, WorkspaceOnly(HttpMethod.Get, "/coding-layouts", HttpStatusCode.OK)),
 
@@ -527,6 +539,27 @@ internal static class RouteAttackCatalog
             new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}/entries", HttpStatusCode.OK)),
         Case("GET", Ws + "/privilege-logs/{logId}/content", ProtectedOperation.PrivilegeLog,
             new RouteProbe("privilege log", HttpMethod.Get, (o, t) => $"{W(o)}/privilege-logs/{t.PrivilegeLogId}/content?format=xlsx", HttpStatusCode.OK)),
+        // Audit log viewer and exports (E14-T04): the document and job filters name identifiers (a document or job of another
+        // workspace is "no such document/job", like one that exists nowhere); exports are their requester's.
+        Case("GET", Ws + "/audit-events", ProtectedOperation.AuditLog,
+            WorkspaceOnly(HttpMethod.Get, "/audit-events?limit=5", HttpStatusCode.OK),
+            new RouteProbe("document in the query", HttpMethod.Get, (o, t) => $"{W(o)}/audit-events?documentId={t.DocumentId}", HttpStatusCode.OK,
+                Expectation: ForeignExpectation.SameAsUnknown),
+            new RouteProbe("control number in the query", HttpMethod.Get, (o, t) => $"{W(o)}/audit-events?controlNumber={t.ControlNumber}",
+                HttpStatusCode.OK, Expectation: ForeignExpectation.SameAsUnknown),
+            new RouteProbe("job in the query", HttpMethod.Get, (o, t) => $"{W(o)}/audit-events?jobId={t.BulkCodingJobId}", HttpStatusCode.OK,
+                Expectation: ForeignExpectation.SameAsUnknown)),
+        Case("GET", Ws + "/audit-actions", ProtectedOperation.AuditLog, WorkspaceOnly(HttpMethod.Get, "/audit-actions", HttpStatusCode.OK)),
+        Case("POST", Ws + "/audit-exports", ProtectedOperation.AuditLog,
+            new RouteProbe("document in the body", HttpMethod.Post, (o, _) => W(o) + "/audit-exports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject { ["documentId"] = t.DocumentId.ToString() }), Expectation: ForeignExpectation.SameAsUnknown),
+            new RouteProbe("job in the body", HttpMethod.Post, (o, _) => W(o) + "/audit-exports", HttpStatusCode.Accepted,
+                (_, t) => J(new JsonObject { ["jobId"] = t.BulkCodingJobId.ToString() }), Expectation: ForeignExpectation.SameAsUnknown)),
+        Case("GET", Ws + "/audit-exports", ProtectedOperation.AuditLog, WorkspaceOnly(HttpMethod.Get, "/audit-exports", HttpStatusCode.OK)),
+        Case("GET", Ws + "/audit-exports/{exportId}", ProtectedOperation.AuditLog,
+            new RouteProbe("audit export", HttpMethod.Get, (o, t) => $"{W(o)}/audit-exports/{t.AuditExportId}", HttpStatusCode.OK)),
+        Case("GET", Ws + "/audit-exports/{exportId}/content", ProtectedOperation.AuditLog,
+            new RouteProbe("audit export file", HttpMethod.Get, (o, t) => $"{W(o)}/audit-exports/{t.AuditExportId}/content", HttpStatusCode.OK)),
         Case("POST", Ws + "/privilege-conflicts/propagations", ProtectedOperation.Coding,
             // The probe document is in no duplicate group: the own request is a validation problem, a foreign source a 404.
             new RouteProbe("source document and duplicate group in the body", HttpMethod.Post, (o, _) => W(o) + "/privilege-conflicts/propagations",
@@ -701,6 +734,15 @@ internal static class RouteAttackCatalog
                 Expectation: ForeignExpectation.EmptySet),
             new RouteProbe("document in the query", HttpMethod.Get, (o, t) => $"{W(o)}/productions/bates-lookup?documentId={t.DocumentId}", HttpStatusCode.OK,
                 Expectation: ForeignExpectation.EmptySet)),
+        // Where-produced lookup and Bates cross-reference (E13-T04): a foreign document or production answers like an unknown one.
+        Case("GET", Ws + "/documents/{documentId}/where-produced", ProtectedOperation.ProductionInclusion,
+            new RouteProbe("document", HttpMethod.Get, (o, t) => Doc(o, t) + "/where-produced", HttpStatusCode.OK)),
+        Case("GET", Ws + "/productions/bates-cross-reference", ProtectedOperation.ProductionInclusion,
+            WorkspaceOnly(HttpMethod.Get, "/productions/bates-cross-reference", HttpStatusCode.OK),
+            new RouteProbe("production in the query", HttpMethod.Get,
+                (o, t) => $"{W(o)}/productions/bates-cross-reference?productionId={t.FinalizedProductionId}", HttpStatusCode.OK),
+            new RouteProbe("document in the query", HttpMethod.Get,
+                (o, t) => $"{W(o)}/productions/bates-cross-reference?documentId={t.DocumentId}", HttpStatusCode.OK)),
         Case("GET", Ws + "/productions/{productionId}", ProtectedOperation.ProductionInclusion,
             new RouteProbe("production", HttpMethod.Get, (o, t) => $"{W(o)}/productions/{t.FinalizedProductionId}", HttpStatusCode.OK)),
         Case("PUT", Ws + "/productions/{productionId}", ProtectedOperation.ProductionInclusion,

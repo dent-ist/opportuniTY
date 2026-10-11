@@ -123,6 +123,8 @@ export class SavedSearchesPage {
   protected readonly liveLabel = LIVE_LABEL;
   protected readonly liveExplanation = LIVE_EXPLANATION;
   protected readonly canCreate = this.context.can(PERMISSIONS.searchExecute);
+  protected readonly canExport = this.context.can(PERMISSIONS.exportCreate);
+  protected readonly canProduce = this.context.can(PERMISSIONS.productionCreate);
 
   protected readonly loading = signal(true);
   protected readonly error = signal<ApiError | null>(null);
@@ -283,8 +285,11 @@ export class SavedSearchesPage {
     });
   }
 
-  protected notAvailable(what: string): void {
-    this.toasts.show(`${what} is not available in this version.`, { tone: 'info' });
+  /** "Export results…" / "Use in production…": the New Export or New Production page with this search as source. */
+  protected deliver(s: SavedSearchSummary, section: 'exports' | 'productions'): void {
+    void this.router.navigate(['/w', this.workspaceId, section, 'new'], {
+      queryParams: { savedSearch: s.savedSearchId },
+    });
   }
 
   // ── Saved searches ──────────────────────────────────────────────────────────────────────────────────────────

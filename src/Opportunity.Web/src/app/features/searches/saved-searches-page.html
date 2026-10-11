@@ -262,16 +262,26 @@
                             Mass Edit results…
                           </button>
                         }
-                        <button
-                          type="button"
-                          cdkMenuItem
-                          class="opp-menu__item"
-                          aria-disabled="true"
-                          (cdkMenuItemTriggered)="notAvailable('Export from a saved search')"
-                        >
-                          Export results…
-                          <span class="opp-menu__detail">Not available yet</span>
-                        </button>
+                        @if (canExport) {
+                          <button
+                            type="button"
+                            cdkMenuItem
+                            class="opp-menu__item"
+                            (cdkMenuItemTriggered)="deliver(r.s, 'exports')"
+                          >
+                            <opp-icon name="export" /> Export results…
+                          </button>
+                        }
+                        @if (canProduce) {
+                          <button
+                            type="button"
+                            cdkMenuItem
+                            class="opp-menu__item"
+                            (cdkMenuItemTriggered)="deliver(r.s, 'productions')"
+                          >
+                            <opp-icon name="production" /> Use in production…
+                          </button>
+                        }
                         <button
                           type="button"
                           cdkMenuItem

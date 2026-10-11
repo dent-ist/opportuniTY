@@ -227,12 +227,14 @@ public sealed class RoleAssignmentApiTests(MigrationPostgresFixture postgres)
         var users = $"/api/v1/workspaces/{ws}/role-assignments/users";
 
         // Each removes the other with the version both read: the workspace row lock lets exactly one through. The other
-        // answers 412 (stale version) or, when its request starts after the first committed, 403 (no longer an admin).
+        // answers 412 (stale version) or, when its request starts after the first committed, 403 (no longer an admin) or
+        // 404 (its only role is gone, so it is no longer a member and gets the non-member answer).
         var results = await Task.WhenAll(
             SendAsync(client, HttpMethod.Put, $"{users}/{b}", a, body: """{"roles":[]}""", ifMatch: "\"1\""),
             SendAsync(client, HttpMethod.Put, $"{users}/{a}", b, body: """{"roles":[]}""", ifMatch: "\"1\""));
         results.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
-        results.Should().ContainSingle(r => r.StatusCode == HttpStatusCode.PreconditionFailed || r.StatusCode == HttpStatusCode.Forbidden);
+        results.Should().ContainSingle(r =>
+            r.StatusCode == HttpStatusCode.PreconditionFailed || r.StatusCode == HttpStatusCode.Forbidden || r.StatusCode == HttpStatusCode.NotFound);
         foreach (var r in results)
         {
             r.Dispose();

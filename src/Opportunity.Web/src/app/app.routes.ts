@@ -49,6 +49,10 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
     import('./features/acknowledgments/acknowledgments-admin-page').then(
       (m) => m.AcknowledgmentsAdminPage,
     ),
+  // Ethical-wall proof, access review and audit export (E14-T06).
+  compliance: () => import('./features/compliance/compliance-page').then((m) => m.CompliancePage),
+  // The audit log viewer and audit exports (E14-T04).
+  audit: () => import('./features/audit/audit-log-page').then((m) => m.AuditLogPage),
 };
 
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */
@@ -175,8 +179,57 @@ export const workspaceChildren: Routes = [
       },
     ],
   },
+  {
+    // Productions (E12-T08): the list, New Production, and a production's page with its tabs.
+    path: 'productions',
+    canActivate: [requirePermission(PERMISSIONS.productionCreate)],
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        title: 'Productions',
+        loadComponent: () =>
+          import('./features/productions/productions-page').then((m) => m.ProductionsPage),
+      },
+      {
+        path: 'new',
+        title: 'New Production',
+        loadComponent: () =>
+          import('./features/productions/new-production-page').then((m) => m.NewProductionPage),
+      },
+      {
+        path: ':productionId',
+        title: 'Production',
+        loadComponent: () =>
+          import('./features/productions/production-page').then((m) => m.ProductionPage),
+      },
+    ],
+  },
+  {
+    // Exports (E12-T08): the export history, New Export wizard and one export's report and files.
+    path: 'exports',
+    canActivate: [requirePermission(PERMISSIONS.exportCreate)],
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        title: 'Exports',
+        loadComponent: () => import('./features/exports/exports-page').then((m) => m.ExportsPage),
+      },
+      {
+        path: 'new',
+        title: 'New Export',
+        loadComponent: () => import('./features/exports/export-wizard').then((m) => m.ExportWizard),
+      },
+      {
+        path: ':exportId',
+        title: 'Export',
+        loadComponent: () => import('./features/exports/export-detail').then((m) => m.ExportDetail),
+      },
+    ],
+  },
   ...WORKSPACE_SECTIONS.filter(
-    (s) => !['documents', 'searches', 'imports', 'jobs'].includes(s.path),
+    (s) => !['documents', 'searches', 'imports', 'jobs', 'productions', 'exports'].includes(s.path),
   ).map((s): Route => ({
     path: s.path,
     title: s.label,

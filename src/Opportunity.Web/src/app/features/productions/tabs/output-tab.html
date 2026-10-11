@@ -1,0 +1,274 @@
+@if (store.production(); as p) {
+  @if (p.status === 'draft' || p.status === 'discarded') {
+    <opp-empty-state
+      icon="production"
+      title="No output yet"
+      message="The volume, the manifest and its checksums are available once the production is finalized."
+    />
+  } @else {
+    <section class="dl__panel" aria-labelledby="output-record">
+      <div class="dl__section-head">
+        <h2 id="output-record">Manifest and reports</h2>
+        <div class="dl__actions">
+          <button type="button" oppButton="secondary" (click)="downloadManifest()">
+            <opp-icon name="download" />
+            Manifest (JSON)
+          </button>
+          <a oppButton="secondary" [href]="reportUrl('csv')" download>
+            <opp-icon name="download" />
+            QC report (CSV)
+          </a>
+          <a oppButton="secondary" [href]="reportUrl('pdf')" download>
+            <opp-icon name="download" />
+            QC report (PDF)
+          </a>
+          <button
+            type="button"
+            oppButton="secondary"
+            [busy]="exporting()"
+            (click)="crossReference()"
+          >
+            <opp-icon name="download" />
+            Bates cross-reference (CSV)
+          </button>
+        </div>
+      </div>
+      <dl class="dl__facts">
+        <dt>Manifest SHA-256</dt>
+        <dd>
+          <code class="dl__code">{{ p.manifestSha256 ?? '—' }}</code>
+        </dd>
+        <dt>Specification SHA-256</dt>
+        <dd>
+          <code class="dl__code">{{ p.specificationSha256 }}</code>
+        </dd>
+        <dt>Bates assignments SHA-256</dt>
+        <dd>
+          <code class="dl__code">{{ p.bates.assignmentsSha256 ?? '—' }}</code>
+        </dd>
+      </dl>
+      <div class="dl__actions">
+        <button type="button" oppButton="secondary" [busy]="verifying()" (click)="verify()">
+          <opp-icon name="check" />
+          Verify against manifest
+        </button>
+      </div>
+      @if (verifyError(); as e) {
+        <opp-error-state [error]="e" />
+      }
+      @if (verification(); as v) {
+        @if (v.consistent) {
+          <p class="dl__ok" role="status">
+            <opp-icon name="success" />
+            The specification, the frozen set and a re-run of the Bates assignment match the
+            manifest: the same documents get the same numbers.
+          </p>
+        } @else {
+          <div class="dl__errors" role="alert">
+            <p class="dl__blocked">
+              <opp-icon name="error" />
+              {{ v.differences.length }} differences from the manifest.
+            </p>
+            <ul>
+              @for (d of v.differences; track $index) {
+                <li>
+                  <strong>{{ d.item }}:</strong> expected {{ d.expected ?? '—' }}, now
+                  {{ d.actual ?? '—' }}
+                </li>
+              }
+            </ul>
+          </div>
+        }
+      }
+    </section>
+
+    <section class="dl__section" aria-labelledby="output-volumes">
+      <div class="dl__section-head">
+        <h2 id="output-volumes">Volumes</h2>
+        @if (p.status === 'finalized') {
+          <button
+            type="button"
+            oppButton="primary"
+            [busy]="starting()"
+            [disabled]="anyRunning()"
+            (click)="startVolume()"
+          >
+            <opp-icon name="play" />
+            {{ completedRuns() > 0 ? 'Re-run with same specification' : 'Write volume' }}
+          </button>
+        }
+      </div>
+      <p class="dl__muted">
+        Each run writes images with burned-in redactions and endorsements, natives with slip sheets,
+        placeholders, text, DAT and OPT. Files download for the person who ran the volume; every
+        download is checked against their access again and audited.
+      </p>
+      @if (volumesError(); as e) {
+        <opp-error-state [error]="e" (retry)="loadVolumes()" />
+      } @else if (volumes(); as list) {
+        @if (list.length === 0) {
+          <opp-empty-state
+            icon="production"
+            title="No volume yet"
+            message="Write the volume to deliver the production."
+          />
+        } @else {
+          <ul class="dl__check-list">
+            @for (v of list; track v.volumeId) {
+              <li
+                class="dl__check"
+                [attr.aria-label]="'Volume run ' + v.volume + ', ' + date(v.createdAt)"
+              >
+                <div class="dl__check-head">
+                  <span class="dl__check-title">{{ v.volume }} · {{ date(v.createdAt) }}</span>
+                  <opp-status-pill [status]="status[v.status]" />
+                  @if (v.report && firstManifest(); as first) {
+                    @if (completedRuns() > 1) {
+                      @if (v.report.manifestSha256 === first) {
+                        <opp-badge tone="success" icon="check"
+                          >Identical to the first run</opp-badge
+                        >
+                      } @else {
+                        <opp-badge tone="danger" icon="error">Differs from the first run</opp-badge>
+                      }
+                    }
+                  }
+                </div>
+                @if (v.status === 'running') {
+                  @if (progress(v); as pr) {
+                    <opp-progress label="Volume progress" [value]="pr.value" [max]="pr.max" />
+                  } @else {
+                    <opp-progress label="Volume progress" />
+                  }
+                }
+                @if (v.statusReason) {
+                  <p class="dl__notice">
+                    <opp-icon name="warning" />
+                    {{ v.statusReason }}
+                  </p>
+                }
+                @if (v.report; as r) {
+                  <dl class="dl__facts">
+                    <dt>Contents</dt>
+                    <dd>
+                      {{ num(r.documents) }} documents · {{ num(r.images) }} images ·
+                      {{ num(r.natives) }} natives · {{ num(r.texts) }} texts ·
+                      {{ num(r.files) }} files, {{ bytes(r.totalBytes) }}
+                    </dd>
+                    <dt>Manifest SHA-256</dt>
+                    <dd>
+                      <code class="dl__code">{{ r.manifestSha256 }}</code>
+                    </dd>
+                    @if (v.verification; as ver) {
+                      <dt>Burn-in verification</dt>
+                      <dd>
+                        {{ ver.status === 'passed' ? 'Passed' : 'Failed' }}:
+                        {{ num(ver.pages) }} pages, {{ num(ver.boxes) }} redactions,
+                        {{ num(ver.failures) }} failures
+                      </dd>
+                    }
+                  </dl>
+                }
+                @if (v.status === 'completed') {
+                  @if (mine(v)) {
+                    <div class="dl__actions">
+                      <a oppButton="secondary" [href]="packageUrl(v)" download>
+                        <opp-icon name="download" />
+                        Download volume (ZIP)
+                      </a>
+                      @if (v.verification) {
+                        <a oppButton="secondary" [href]="verificationUrl(v)" download>
+                          <opp-icon name="download" />
+                          Burn-in verification report
+                        </a>
+                      }
+                      <button
+                        type="button"
+                        oppButton="ghost"
+                        [attr.aria-expanded]="!!files()[v.volumeId]"
+                        (click)="toggleFiles(v)"
+                      >
+                        <opp-icon [name]="files()[v.volumeId] ? 'chevron-up' : 'chevron-down'" />
+                        {{ files()[v.volumeId] ? 'Hide files' : 'Show files and checksums' }}
+                      </button>
+                    </div>
+                    @if (filesFailed(v.volumeId)) {
+                      <p class="dl__muted">The files cannot be listed.</p>
+                    }
+                    @if (fileList(v.volumeId); as fl) {
+                      <div
+                        class="dl__table-wrap"
+                        tabindex="0"
+                        role="region"
+                        [attr.aria-label]="'Files of ' + v.volume"
+                      >
+                        <table class="dl__table">
+                          <thead>
+                            <tr>
+                              <th scope="col">Path</th>
+                              <th scope="col">Kind</th>
+                              <th scope="col" class="dl__num">Size</th>
+                              <th scope="col">SHA-256</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            @for (f of fl; track f.fileId) {
+                              <tr>
+                                <td>
+                                  <a [href]="fileUrl(v, f)" download>{{ f.path }}</a>
+                                </td>
+                                <td>{{ f.kind }}</td>
+                                <td class="dl__num">{{ bytes(f.sizeBytes) }}</td>
+                                <td>
+                                  <code class="dl__code">{{ f.sha256 }}</code>
+                                </td>
+                              </tr>
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                    }
+                  } @else {
+                    <p class="dl__muted">
+                      <opp-icon name="lock" />
+                      Only the person who ran this volume receives its files.
+                    </p>
+                  }
+                }
+              </li>
+            }
+          </ul>
+        }
+      } @else {
+        <p class="dl__muted" role="status">Loading volumes…</p>
+      }
+    </section>
+
+    @if (p.status === 'finalized' && canFinalize) {
+      <section class="dl__panel" aria-labelledby="output-void">
+        <h2 id="output-void">Void production</h2>
+        <p class="dl__muted">
+          Voiding keeps the production on record and its Bates numbers are never issued again. Use
+          it when a delivered production is withdrawn.
+        </p>
+        <div class="dl__row">
+          <opp-text-field
+            class="dl__grow"
+            label="Reason for voiding"
+            [value]="voidReason()"
+            (valueChange)="voidReason.set($event)"
+          />
+          <button
+            type="button"
+            oppButton="danger"
+            [busy]="voiding()"
+            [disabled]="!voidReason().trim()"
+            (click)="voidProduction()"
+          >
+            Void production
+          </button>
+        </div>
+      </section>
+    }
+  }
+}

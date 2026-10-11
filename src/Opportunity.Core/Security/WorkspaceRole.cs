@@ -55,7 +55,7 @@ public static class RoleCatalog
         Role(WorkspaceRole.Auditor, "Auditor", "Auditor (read-only)",
         [
             Permission.DocumentView, Permission.SearchExecute, Permission.JobViewAll, Permission.AuditRead,
-            Permission.AuditReadSearchText,
+            Permission.AuditReadSearchText, Permission.AuditExport, Permission.ComplianceReport,
         ]),
         Role(WorkspaceRole.BreakGlass, "BreakGlass", "Break-glass",
         [

@@ -28,6 +28,16 @@ const SIGNED_IN_ROUTES = [
   '/w/ws-1/jobs/job-bulk-7',
   '/w/ws-1/imports',
   '/w/ws-1/imports/imp-1',
+  // Exports and Productions (E12-T08): lists, New Export, an export, New Production and a production's tabs.
+  '/w/ws-1/exports',
+  '/w/ws-1/exports/new',
+  '/w/ws-1/exports/exp-1',
+  '/w/ws-1/productions',
+  '/w/ws-1/productions/new',
+  '/w/ws-1/productions/prod-1',
+  '/w/ws-1/productions/prod-1?tab=output',
+  '/w/ws-1/productions/prod-2?tab=qc',
+  '/w/ws-1/productions/prod-2?tab=documents',
   '/w/ws-1/admin/fields',
   '/w/ws-1/admin/audit',
   '/w/ws-1/admin/settings',
@@ -42,6 +52,8 @@ const SIGNED_IN_ROUTES = [
   // Acknowledgments (E20-T03): the admin page and the text as a member who has accepted it.
   '/w/ws-1/admin/acknowledgments',
   '/w/ws-1/acknowledgment',
+  // Compliance reports (E14-T06); the generated reports are checked in compliance.spec.ts.
+  '/w/ws-1/admin/compliance',
   // A requester sees only their own deletions (none yet) (E20-T02).
   '/workspace-deletions',
 ];

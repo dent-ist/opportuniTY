@@ -74,6 +74,9 @@ public sealed class PostgresAuditEventReader(NpgsqlDataSource dataSource) : IAud
             ["ResourceType"] = query.ResourceType,
             ["ResourceId"] = query.ResourceId,
             ["CorrelationId"] = query.CorrelationId,
+            ["JobId"] = query.JobId?.ToString(),
+            ["Outcome"] = query.Outcome?.ToString(),
+            ["Page"] = query.After is null ? "first" : "next",
             ["IncludeRestrictedDetails"] = query.IncludeRestrictedDetails ? "true" : "false",
             ["Limit"] = query.Limit.ToString(System.Globalization.CultureInfo.InvariantCulture),
         };

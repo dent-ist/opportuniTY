@@ -132,6 +132,7 @@ internal static class JobMapping
         JobType.Export => "Export",
         JobType.Production => "Production",
         JobType.SearchTermReport => "Search Terms Report",
+        JobType.AuditExport => "Audit export",
         _ => "Rendering",
     };
 

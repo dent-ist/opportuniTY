@@ -4,7 +4,9 @@ import { documentText, serveContent, snippetsFor, type Rendition } from './mock-
 import { FreshnessMock, type MockFreshnessState } from './mock-freshness';
 import { ImportsMock } from './mock-imports';
 import { PrivilegeConflictsMock } from './mock-privilege-conflicts';
+import { AuditLogMock } from './mock-audit';
 import { PrivilegeLogsMock } from './mock-privilege-logs';
+import { ProductionsMock } from './mock-productions';
 import { JobsMock } from './mock-jobs';
 import { SavedSearchesMock } from './mock-saved-searches';
 import { SearchTermReportsMock } from './mock-search-term-reports';
@@ -17,6 +19,7 @@ import { RelationshipsMock, hitRelations } from './mock-relationships';
 import { LegalHoldsMock } from './mock-legal-holds';
 import { DeletionsMock } from './mock-deletions';
 import { AcknowledgmentsMock } from './mock-acknowledgments';
+import { ComplianceMock } from './mock-compliance';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -127,6 +130,8 @@ export interface MockControl {
   readonly privilegeConflicts: PrivilegeConflictsMock;
   /** Privilege logs (E13-T03): finalized productions, templates, versions and generations received. */
   readonly privilegeLogs: PrivilegeLogsMock;
+  /** Productions and exports (E12-T08): their state and the writes received (If-Match, Idempotency-Key). */
+  readonly productions: ProductionsMock;
   /** Document-list views and the saved layout (E16-T09). */
   readonly gridViews: GridViewsMock;
   /** The body of the last `POST …/searches` (sort, fields). */
@@ -139,6 +144,10 @@ export interface MockControl {
   readonly deletions: DeletionsMock;
   /** Acknowledgments (E20-T03): ws-1's text versions, the user's acceptances and writes received. */
   readonly acknowledgments: AcknowledgmentsMock;
+  /** Compliance reports (E14-T06): the wall proof and access review requests received. */
+  readonly compliance: ComplianceMock;
+  /** Audit log viewer and exports, and documents' coding history (E14-T04): requests received. */
+  readonly auditLog: AuditLogMock;
 }
 
 /**
@@ -287,6 +296,8 @@ export const ALL_PERMISSIONS = [
   'HighlightSet.Manage',
   'Workspace.ManageHolds',
   'Workspace.ManageAcknowledgments',
+  'Compliance.Report',
+  'Audit.Export',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -466,6 +477,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
   const termReports = new SearchTermReportsMock();
   const privilegeConflicts = new PrivilegeConflictsMock();
   const privilegeLogs = new PrivilegeLogsMock();
+  const productions = new ProductionsMock();
   const jobsMock = new JobsMock({
     userId: principal.userId,
     viewAll: permissions.includes('Job.ViewAll'),
@@ -493,8 +505,12 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     ),
   );
   const acknowledgments = new AcknowledgmentsMock(options.acknowledgmentPending ?? false);
+  const auditLog = new AuditLogMock();
+  const compliance = new ComplianceMock();
   const control: MockControl = {
     acknowledgments,
+    auditLog,
+    compliance,
     legalHolds,
     deletions,
     relationships,
@@ -506,6 +522,7 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     termReports,
     privilegeConflicts,
     privilegeLogs,
+    productions,
     gridViews,
     lastSearch: () => lastSearch,
     highlights,
@@ -590,6 +607,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Roles, permissions and user/group assignment (E05-T08): ./mock-role-admin.ts.
     const roles = signedIn ? roleAdmin.handle(route, method, path, url) : undefined;
     if (roles) return roles;
+    // Compliance reports (E14-T06): ./mock-compliance.ts.
+    const reported = signedIn ? compliance.handle(route, method, path, url) : undefined;
+    if (reported) return reported;
     if (signedIn && method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/members$/.test(path)) {
       const items = [
         member('a-1', 'Alex Reviewer', 'workspaceAdmin'),
@@ -720,6 +740,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Privilege conflicts (E13-T02): ./mock-privilege-conflicts.ts.
     const conflicts = signedIn ? privilegeConflicts.handle(route, method, path, url) : undefined;
     if (conflicts) return conflicts;
+    // Productions and exports (E12-T08): ./mock-productions.ts (before the privilege logs' production list).
+    const delivered = signedIn ? productions.handle(route, method, path) : undefined;
+    if (delivered) return delivered;
     // Privilege logs (E13-T03): ./mock-privilege-logs.ts.
     const privilegeLog = signedIn ? privilegeLogs.handle(route, method, path) : undefined;
     if (privilegeLog) return privilegeLog;
@@ -735,6 +758,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Coding and coding layouts (E10-T01, E04-T03): ./mock-coding.ts.
     const coded = signedIn ? coding.handle(route, method, path) : undefined;
     if (coded) return coded;
+    // Audit log and coding history (E14-T04): ./mock-audit.ts.
+    const audited = signedIn ? auditLog.handle(route, method, path, url) : undefined;
+    if (audited) return audited;
     // Relationships and coding propagation (E16-T10): ./mock-relationships.ts.
     const related = signedIn ? relationships.handle(route, method, path, url) : undefined;
     if (related) return related;
