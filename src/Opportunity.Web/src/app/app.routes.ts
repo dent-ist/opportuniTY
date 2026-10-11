@@ -49,6 +49,8 @@ const ADMIN_PAGES: Readonly<Record<string, Route['loadComponent']>> = {
     import('./features/acknowledgments/acknowledgments-admin-page').then(
       (m) => m.AcknowledgmentsAdminPage,
     ),
+  // Ethical-wall proof, access review and audit export (E14-T06).
+  compliance: () => import('./features/compliance/compliance-page').then((m) => m.CompliancePage),
 };
 
 /** Children of `/w/:workspaceId`, each guarded by the permission that shows it in the navigation. */

@@ -52,6 +52,8 @@ const SIGNED_IN_ROUTES = [
   // Acknowledgments (E20-T03): the admin page and the text as a member who has accepted it.
   '/w/ws-1/admin/acknowledgments',
   '/w/ws-1/acknowledgment',
+  // Compliance reports (E14-T06); the generated reports are checked in compliance.spec.ts.
+  '/w/ws-1/admin/compliance',
   // A requester sees only their own deletions (none yet) (E20-T02).
   '/workspace-deletions',
 ];

@@ -212,7 +212,6 @@ public sealed class AuditChainSealingTests(MigrationPostgresFixture postgres)
             "INSERT INTO audit.chain_head (chain_id) VALUES (gen_random_uuid())",
             "DELETE FROM audit.checkpoint",
             "UPDATE audit.checkpoint SET reason = 'Manual'",
-            "SELECT count(*) FROM audit.chain_gap",
             "INSERT INTO audit.chain_gap (chain_id, first_sequence, last_sequence, last_event_hash, partition_name) VALUES (gen_random_uuid(), 1, 1, sha256(''::bytea), 'x')",
         })
         {
@@ -295,6 +294,13 @@ public sealed class AuditChainSealingTests(MigrationPostgresFixture postgres)
             "SELECT coalesce(workspace_id::text, 'system') || ':' || first_sequence || '-' || last_sequence FROM audit.chain_gap g "
             + "LEFT JOIN LATERAL (SELECT NULLIF(g.chain_id, '00000000-0000-0000-0000-000000000000') AS workspace_id) w ON true ORDER BY 1");
         gaps.Should().BeEquivalentTo($"{ws}:1-1", $"{ws}:3-4", "system:1-1");
+
+        // The application role reads the purge records of its own workspace's chain only (V0063, for audit exports).
+        await h.Db.InWorkspaceAsync(ws, async tx =>
+        {
+            await using var visible = tx.Command("SELECT string_agg(first_sequence || '-' || last_sequence, ',' ORDER BY first_sequence) FROM audit.chain_gap");
+            (await visible.ExecuteScalarAsync(Ct)).Should().Be("1-1,3-4");
+        });
         var purged = (await AuditSamples.ReadAllAsync(h.Db, null)).Single(e => e.Event.Action == AuditTaxonomy.Audit.Purged);
         purged.Event.Details.Should().ContainKey("GapDigest").And.Contain("Chains", "2").And.Contain("Events", "4");
 

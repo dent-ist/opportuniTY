@@ -253,10 +253,11 @@ public sealed class AuditCoverageTests(AttackWorldFixture fixture) : IClassFixtu
             .ToList();
         routes.Should().OnlyContain(m => m == "GET", "the audit trail is read-only over the API");
         PermissionCatalog.All.Where(p => p.Name.StartsWith("Audit.", StringComparison.Ordinal)).Select(p => p.Permission)
-            .Should().BeEquivalentTo([Permission.AuditRead, Permission.AuditReadSearchText], "no permission edits or deletes audit events");
+            .Should().BeEquivalentTo([Permission.AuditRead, Permission.AuditReadSearchText, Permission.AuditExport],
+                "no permission edits or deletes audit events (Audit.Export downloads a read-only, verifiable copy, E14-T06)");
         RoleCatalog.All.Single(r => r.Role == WorkspaceRole.WorkspaceAdmin).Grants
             .Where(p => PermissionCatalog.Get(p).Name.StartsWith("Audit.", StringComparison.Ordinal))
-            .Should().OnlyContain(p => p == Permission.AuditRead || p == Permission.AuditReadSearchText);
+            .Should().OnlyContain(p => p == Permission.AuditRead || p == Permission.AuditReadSearchText || p == Permission.AuditExport);
 
         await using var admin = NpgsqlDataSource.Create(w.Db.Core.ConnectionString);
         Guid eventId;

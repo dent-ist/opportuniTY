@@ -11,7 +11,8 @@ verify with the exported public key.
 | Sealer | dispatcher worker, every second (`AuditChainSealerService`); one active sealer per chain |
 | Checkpoints | `audit.checkpoint`, every 10 minutes for each chain that advanced, signed with key purpose `audit-checkpoint` |
 | Purge records | `audit.chain_gap`, written by `audit.drop_expired_partition` |
-| CLI | worker image: `audit verify`, `audit checkpoints`, `audit seal` |
+| CLI | worker image: `audit verify`, `audit checkpoints`, `audit seal`, `audit verify-export` |
+| Export | API `GET …/workspaces/{ws}/compliance/audit-export` (`Audit.Export`), verifiable offline ([below](#audit-exports)) |
 | Format | `src/Opportunity.Application/Audit/Chain/AuditChainFormat.cs` (described [below](#format-for-independent-verifiers)) |
 
 ## How it works
@@ -113,6 +114,55 @@ Each row carries the range, head hash, Merkle root, reason, time, key id, the ba
 # payload.bin = base64-decoded signed_payload; sig.der = the P1363 signature (r || s) re-encoded as a DER ECDSA-Sig-Value
 openssl dgst -sha256 -verify audit-checkpoint-v1.pem -signature sig.der payload.bin
 ```
+
+## Audit exports
+
+Holders of `Audit.Export` (Workspace Admin, Auditor) download a workspace's audit trail through the API as a single JSON
+Lines file that verifies **without the database** (E14-T06; Admin › Compliance, or
+`GET /api/v1/workspaces/{ws}/compliance/audit-export?from=&to=`). The download is audited as `Audit.Exported` with the
+range, counts and verification result.
+
+The file covers a **checkpoint-aligned range** of the chain: it starts right after the newest checkpoint before the
+first event of the requested period (that checkpoint, the *anchor*, is included and signs the hash the range links
+from) and ends at the first checkpoint at or after the last event of the period, or at that event when no checkpoint
+covers it yet. Without `from`/`to` it holds the whole chain. Events of the period that the sealer had not reached are
+counted in the manifest (`unsealedEvents`) but not included.
+
+```sh
+docker compose run --rm --no-deps -v "$PWD:/work:ro" worker \
+  audit verify-export --file /work/audit-export-<ws>-<time>.jsonl --public-key /work/audit-checkpoint-v1.pem
+```
+
+`verify-export` needs no configuration and records nothing. It checks that the anchor checkpoint signs the anchor hash
+(or that the range starts at genesis), recomputes every event hash, follows the links, compares every checkpoint's head
+hash and Merkle root, checks continuity and every ES256 signature, and that the file reaches the last position the
+manifest promises. Output: one line (`WORKSPACE RESULT EVENTS FROM_SEQUENCE TO_SEQUENCE LAST_HASH CHECKPOINTS PURGED
+WITHHELD`), the issues (same kinds as `audit verify`) and notes. Exit codes as for `verify`: `0` intact, `1` anything
+does not verify (or the file is malformed), `2` usage. Without `--public-key` the keys embedded in the file are used and
+a note says so: that shows the file is self-consistent, not that the installation's key signed it; pass the
+independently exported key for an exhibit.
+
+Notes, not failures: events after the last checkpoint in the file (linked, not yet signed; take `audit seal
+--checkpoint` before exporting for an exhibit), **withheld** events (search text, Q-16, is included only for callers who
+also hold `Audit.ReadSearchText`; a withheld event's hash cannot be recomputed and is checked through the next link and
+the signed Merkle root), and positions removed by the retention purge (accepted as recorded in the file; `audit verify`
+checks purge records against the signed `Audit.Purged` events, which belong to the system chain and are not exported).
+
+### Export file format
+
+UTF-8, one JSON object per line (LF), with a `record` member, in this order:
+
+| Record | Members |
+|---|---|
+| `manifest` (first line) | `format` (`opportunity.audit.export.v1`), `workspaceId`, `generatedAt`, `generatedBy`, `generatedByName`, `auditEventId`, `requestedFrom`, `requestedTo`, `fromSequence`, `toSequence`, `anchorHash` (hex; 32 zero bytes from position 1), `events`, `checkpoints`, `gaps`, `withheldEvents`, `unsealedEvents`, `eventsAfterLastCheckpoint`, `verification` (`intact`, `issueCount`, `issues[]` (at most 20), `signaturesVerified`, `signaturesUnchecked` — signatures the API could not check because it holds no public key) |
+| `publicKey` | `keyId`, `pem`: the public keys the API could read, for convenience only |
+| `checkpoint` | `keyId`, `algorithm`, `signature` (base64 IEEE P1363), `payload`: the signed JCS payload itself ([format](#format-for-independent-verifiers)); the anchor comes first |
+| `gap` | `firstSequence`, `lastSequence`, `lastEventHash`, `partition`: purge records inside the range |
+| `event` | `eventHash` (hex), `withheld`, `envelope`: the canonical JCS envelope that was hashed (it contains `Sequence` and `PrevHash`) |
+
+An independent verifier needs only the [format below](#format-for-independent-verifiers): for each event,
+`SHA-256(hex-decode(envelope.PrevHash) ‖ UTF-8(envelope))` must equal `eventHash`, and `PrevHash` must equal the previous
+event's `eventHash` (the first one: `anchorHash`).
 
 ## Seal and checkpoint now
 

@@ -18,6 +18,7 @@ import { RelationshipsMock, hitRelations } from './mock-relationships';
 import { LegalHoldsMock } from './mock-legal-holds';
 import { DeletionsMock } from './mock-deletions';
 import { AcknowledgmentsMock } from './mock-acknowledgments';
+import { ComplianceMock } from './mock-compliance';
 
 /**
  * In-browser stand-in for the BFF and API, mirroring src/app/core/api/fake-api.testing.ts: answers the routes the
@@ -142,6 +143,8 @@ export interface MockControl {
   readonly deletions: DeletionsMock;
   /** Acknowledgments (E20-T03): ws-1's text versions, the user's acceptances and writes received. */
   readonly acknowledgments: AcknowledgmentsMock;
+  /** Compliance reports (E14-T06): the wall proof and access review requests received. */
+  readonly compliance: ComplianceMock;
 }
 
 /**
@@ -290,6 +293,8 @@ export const ALL_PERMISSIONS = [
   'HighlightSet.Manage',
   'Workspace.ManageHolds',
   'Workspace.ManageAcknowledgments',
+  'Compliance.Report',
+  'Audit.Export',
 ] as const;
 
 const WORKSPACE_DEFAULTS = {
@@ -497,8 +502,10 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     ),
   );
   const acknowledgments = new AcknowledgmentsMock(options.acknowledgmentPending ?? false);
+  const compliance = new ComplianceMock();
   const control: MockControl = {
     acknowledgments,
+    compliance,
     legalHolds,
     deletions,
     relationships,
@@ -595,6 +602,9 @@ export async function mockApi(page: Page, options: MockApiOptions = {}): Promise
     // Roles, permissions and user/group assignment (E05-T08): ./mock-role-admin.ts.
     const roles = signedIn ? roleAdmin.handle(route, method, path, url) : undefined;
     if (roles) return roles;
+    // Compliance reports (E14-T06): ./mock-compliance.ts.
+    const reported = signedIn ? compliance.handle(route, method, path, url) : undefined;
+    if (reported) return reported;
     if (signedIn && method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/members$/.test(path)) {
       const items = [
         member('a-1', 'Alex Reviewer', 'workspaceAdmin'),

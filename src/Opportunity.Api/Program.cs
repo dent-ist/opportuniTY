@@ -1,6 +1,7 @@
 using System.Reflection;
 
 using Opportunity.Api.Coding;
+using Opportunity.Api.Compliance;
 using Opportunity.Api.Content;
 using Opportunity.Api.Conventions;
 using Opportunity.Api.Dedupe;
@@ -78,6 +79,8 @@ builder.Services.AddCodingHistoryEndpoints();
 builder.Services.AddReviewBatchEndpoints();
 builder.Services.AddPrivilegeLogEndpoints();
 builder.Services.AddPrivilegeLogContentEndpoints();
+builder.Services.AddComplianceEndpoints();
+builder.Services.AddComplianceContentEndpoints();
 builder.Services.AddPostgresAuditStore();
 builder.Services.AddOpportunityAuthentication();
 builder.Services.AddOpportunityAuthorization();
