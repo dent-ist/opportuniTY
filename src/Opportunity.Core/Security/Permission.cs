@@ -88,7 +88,7 @@ public static class PermissionCatalog
         new(Permission.AuditRead, "Audit.Read", "Read the workspace audit trail."),
         new(Permission.AuditReadSearchText, "Audit.ReadSearchText", "Read search query text in the audit trail (Q-16)."),
         new(Permission.AuditExport, "Audit.Export", "Download the workspace audit trail as a verifiable export: events, hash chain and signed checkpoints (search text only with Audit.ReadSearchText)."),
-        new(Permission.ComplianceReport, "Compliance.Report", "Generate the ethical-wall proof and the workspace access review (users, roles, walls, last access)."),
+        new(Permission.ComplianceReport, "Compliance.Report", "Generate the ethical-wall proof and the workspace access review (users, roles, walls, last access), and the defensibility reports and report pack (review summary, production history, search term hit reports, chain of custody; E14-T05)."),
         new(Permission.WorkspaceManageUsers, "Workspace.ManageUsers", "Assign and revoke workspace roles."),
         new(Permission.WorkspaceManageSecurity, "Workspace.ManageSecurity", "Manage restriction classes, class grants and ethical walls."),
         new(Permission.WorkspaceManageFields, "Workspace.ManageFields", "Manage fields, choices and coding layouts."),
