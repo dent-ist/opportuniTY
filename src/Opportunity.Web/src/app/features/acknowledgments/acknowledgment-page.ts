@@ -14,7 +14,6 @@ import {
   describeError,
   toApiError,
 } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { continueUrl } from '../../core/workspace/acknowledgment';
 import { Workspace, WorkspaceDirectory } from '../../core/workspace/workspace-api';
 import { ActiveWorkspace, WORKSPACE_DATA } from '../../core/workspace/workspace-context';
@@ -33,6 +32,7 @@ import {
   AcknowledgmentState,
   HttpAcknowledgmentApi,
 } from './acknowledgment-api';
+import { DisplayFormat } from '../../core/i18n';
 
 /** The short form of a text fingerprint shown to people (the full SHA-256 is in the roster and audit). */
 export function shortHash(hash: string | null | undefined): string {
@@ -65,7 +65,7 @@ export class AcknowledgmentPage {
   private readonly directory = inject(WorkspaceDirectory);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly confirmBox = viewChild<Checkbox>('confirm');
 
   protected readonly workspace = this.route.snapshot.data[WORKSPACE_DATA] as Workspace;
@@ -112,14 +112,7 @@ export class AcknowledgmentPage {
   }
 
   protected date(value: unknown): string {
-    if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(d);
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   protected short(hash: string | null | undefined): string {

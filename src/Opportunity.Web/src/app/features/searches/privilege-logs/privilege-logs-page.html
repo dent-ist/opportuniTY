@@ -127,7 +127,7 @@
                     >{{ v.withheld }} withheld · {{ v.redacted }} redacted</span
                   >
                 </td>
-                <td>{{ v.excludedByRules.toLocaleString() }}</td>
+                <td>{{ v.excludedByRules | oppNumber }}</td>
                 <td>
                   <code class="pl__sha" [attr.title]="v.contentSha256">{{
                     short(v.contentSha256)

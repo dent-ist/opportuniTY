@@ -9,6 +9,7 @@ import type {
 import type { JobStatus } from '../../ui';
 import { DELIMITER_PRESETS } from '../imports/import-model';
 import type { ExportableField } from './export-api';
+import { formatterFor } from '../../core/i18n';
 
 /** Steps of New Export (familiarity guide §5.5), in order. */
 export type ExportStepId = 'source' | 'volume' | 'files' | 'loadFile' | 'review';
@@ -315,12 +316,5 @@ const SETTING_LABELS: Record<string, string> = {
 };
 
 export function formatBytes(bytes: number, locale: string): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value.toLocaleString(locale, { maximumFractionDigits: unit === 0 ? 0 : 1 })} ${units[unit]}`;
+  return formatterFor(locale).bytes(bytes);
 }

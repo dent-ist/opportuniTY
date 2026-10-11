@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { SessionService } from '../../core/session/session';
 import { INSTALLATION_PERMISSIONS } from '../../core/workspace/sections';
 import { Badge, Checkbox, EmptyState, ErrorState, LoadingState } from '../../ui';
@@ -11,6 +10,7 @@ import {
   OPEN_DELETION_STATUSES,
   WorkspaceDeletionsApi,
 } from './workspace-deletions-api';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * Workspace deletions (E20-T02), installation level: every deletion for Retention Approvers, one's own requests for
@@ -26,7 +26,7 @@ import {
 })
 export class WorkspaceDeletionsPage {
   private readonly api = inject(WorkspaceDeletionsApi);
-  private readonly locale = inject(UiPreferences).locale;
+  private readonly fmt = inject(DisplayFormat);
   private readonly session = inject(SessionService);
 
   /** Display only: the API decides what the caller sees and may approve. */
@@ -70,10 +70,6 @@ export class WorkspaceDeletionsPage {
   }
 
   protected date(value: unknown): string {
-    if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat(this.locale(), { dateStyle: 'medium' }).format(d);
+    return value ? this.fmt.date(String(value)) : '';
   }
 }

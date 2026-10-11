@@ -56,7 +56,7 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
         profile_id, profile_version, profile::text, coding_overlay_field_ids, header::text, dat_encoding, dat_encoding_fallback,
         data_offset, rows_total, fields_created, choices_created, prepared_at, rows_imported, rows_overlaid, rows_skipped,
         rows_errored, created_by, created_at, completed_at, may_create_fields, opt_file_name, opt_object_key, opt_sha256, opt_size,
-        images_only, opt_rows_total
+        images_only, opt_rows_total, max_record_bytes, max_field_count
         """;
 
     // Overlay may set these document columns; identity, family and page-set columns belong to other tickets. A new
@@ -318,7 +318,8 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
             """
             UPDATE opportunity.import_batch
             SET header = @header::jsonb, dat_encoding = @encoding, dat_encoding_fallback = @fallback, data_offset = @offset,
-                rows_total = @rows, fields_created = @fields, choices_created = @choices, opt_rows_total = @opt_rows, prepared_at = now()
+                rows_total = @rows, fields_created = @fields, choices_created = @choices, opt_rows_total = @opt_rows,
+                max_record_bytes = @max_record_bytes, max_field_count = @max_field_count, prepared_at = now()
             WHERE workspace_id = @ws AND import_batch_id = @id AND prepared_at IS NULL
             """))
         {
@@ -332,6 +333,8 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
             update.Parameters.AddWithValue("fields", preparation.FieldsCreated);
             update.Parameters.AddWithValue("choices", preparation.ChoicesCreated);
             update.Parameters.Add(Nullable("opt_rows", NpgsqlDbType.Bigint, preparation.OptRowsTotal));
+            update.Parameters.Add(Nullable("max_record_bytes", NpgsqlDbType.Integer, preparation.MaxRecordBytes));
+            update.Parameters.Add(Nullable("max_field_count", NpgsqlDbType.Integer, preparation.MaxFieldCount));
             if (await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
             {
                 return false;
@@ -926,7 +929,71 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
             await members.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        await RecordScreeningEventsAsync(tx, batch, chunk, plan, cancellationToken).ConfigureAwait(false);
         await InsertIssuesAsync(tx, batch.ImportBatchId, plan, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// E08-T09: one <c>Import.MalwareDetected</c> audit event for the chunk's quarantined natives and images (ADR-013:
+    /// their object ids; ADR-015 D16) and one <c>Import.HashMismatch</c> for its rows whose load-file hashes differ from
+    /// the delivered natives (D15.3). Only rows the chunk loaded count; ids, counts and signature names, never values.
+    /// </summary>
+    private static async Task RecordScreeningEventsAsync(
+        WorkspaceTransaction tx, ImportBatchRecord batch, ClaimedChunk chunk, ChunkPlan plan, CancellationToken cancellationToken)
+    {
+        var loaded = plan.Members.Where(m => m.Action != ActionSkipped).ToList();
+        var quarantined = loaded
+            .SelectMany(m => m.Row.Objects.Where(o => o.Quarantined).Select(o => (m.DocumentId, o.LogicalKey, Scan: o.Scan!))
+                .Concat((m.Row.Images?.Objects ?? []).Where(o => o.Scan is { Quarantines: true }).Select(o => (m.DocumentId, o.LogicalKey, Scan: o.Scan!))))
+            .DistinctBy(q => q.LogicalKey, StringComparer.Ordinal)
+            .ToList();
+        if (quarantined.Count > 0)
+        {
+            var objectIds = new List<Guid>();
+            await using (var select = tx.Command(
+                "SELECT object_id FROM opportunity.stored_object WHERE workspace_id = @ws AND logical_key = ANY(@keys) AND state = 2 ORDER BY object_id"))
+            {
+                select.Parameters.AddWithValue("ws", tx.WorkspaceId);
+                select.Parameters.AddWithValue("keys", quarantined.Select(q => q.LogicalKey).ToArray());
+                await using var reader = await select.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    objectIds.Add(reader.GetGuid(0));
+                }
+            }
+
+            await AuditSql.InsertAsync(tx, ServiceEvent(batch, chunk, AuditTaxonomy.Import.Category, AuditTaxonomy.Import.MalwareDetected,
+                new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["ImportBatchId"] = batch.ImportBatchId.ToString(),
+                    ["Objects"] = Invariant(quarantined.Count),
+                    ["Infected"] = Invariant(quarantined.Count(q => q.Scan.Verdict == MalwareScanVerdict.Infected)),
+                    ["Unscannable"] = Invariant(quarantined.Count(q => q.Scan.Verdict == MalwareScanVerdict.Unscannable)),
+                    ["ObjectIds"] = Truncate(string.Join(',', objectIds), 2_000),
+                    ["DocumentIds"] = Truncate(string.Join(',', quarantined.Select(q => q.DocumentId).Distinct().Order()), 2_000),
+                    ["Signatures"] = Truncate(string.Join("; ", quarantined.Select(q => q.Scan.Detail).OfType<string>().Distinct(StringComparer.Ordinal)
+                        .Order(StringComparer.Ordinal)), 1_000),
+                    ["Engine"] = Truncate(quarantined[0].Scan.Engine, 200),
+                }), cancellationToken).ConfigureAwait(false);
+        }
+
+        var mismatched = loaded.Where(m => m.Row.Issues.Any(i => i.Code.StartsWith("hash-mismatch-", StringComparison.Ordinal)))
+            .OrderBy(m => m.Row.RowNo)
+            .ToList();
+        if (mismatched.Count > 0)
+        {
+            await AuditSql.InsertAsync(tx, ServiceEvent(batch, chunk, AuditTaxonomy.Import.Category, AuditTaxonomy.Import.HashMismatch,
+                new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["ImportBatchId"] = batch.ImportBatchId.ToString(),
+                    ["Documents"] = Invariant(mismatched.Count),
+                    ["Rows"] = Truncate(string.Join(',', mismatched.Select(m => Invariant(m.Row.RowNo))), 2_000),
+                    ["DocumentIds"] = Truncate(string.Join(',', mismatched.Select(m => m.DocumentId)), 2_000),
+                    ["Algorithms"] = string.Join(',', mismatched.SelectMany(m => m.Row.Issues).Select(i => i.Code)
+                        .Where(c => c.StartsWith("hash-mismatch-", StringComparison.Ordinal)).Select(c => c["hash-mismatch-".Length..])
+                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)),
+                }), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -1450,7 +1517,9 @@ public sealed partial class ImportBatchRepository(NpgsqlDataSource dataSource, I
                 reader.GetInt64(17),
                 reader.GetInt32(18),
                 reader.GetInt32(19),
-                reader.IsDBNull(34) ? null : reader.GetInt64(34));
+                reader.IsDBNull(34) ? null : reader.GetInt64(34),
+                reader.IsDBNull(35) ? null : reader.GetInt32(35),
+                reader.IsDBNull(36) ? null : reader.GetInt32(36));
         }
 
         return new ImportBatchRecord

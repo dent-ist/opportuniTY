@@ -1,15 +1,8 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  LOCALE_ID,
-  computed,
-  inject,
-  model,
-  output,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, model, output } from '@angular/core';
 import { Button, Checkbox, Icon, Select, type SelectOption } from '../../../../../ui';
 import type { RedactionType } from './redaction-api';
 import { type EditableRedaction, RedactionSession } from './redaction-session';
+import { DisplayFormat } from '../../../../../core/i18n';
 
 const TYPE_OPTIONS: readonly SelectOption[] = [
   { value: 'black', label: 'Black box' },
@@ -37,7 +30,7 @@ const CATEGORY: Record<string, string> = {
 })
 export class RedactionPanel {
   protected readonly session = inject(RedactionSession);
-  private readonly locale = inject(LOCALE_ID);
+  private readonly fmt = inject(DisplayFormat);
 
   /** The reviewer asked for a new box from the keyboard. */
   readonly newBox = output<void>();
@@ -103,10 +96,7 @@ export class RedactionPanel {
   }
 
   protected when(iso: string): string {
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '';
-    return new Intl.DateTimeFormat(this.locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-      date,
-    );
+    if (Number.isNaN(new Date(iso).getTime())) return '';
+    return this.fmt.dateTime(iso);
   }
 }

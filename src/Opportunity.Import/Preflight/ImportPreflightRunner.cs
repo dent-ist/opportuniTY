@@ -220,7 +220,8 @@ public sealed class ImportPreflightRunner(
     IImportPreflightStore store,
     IEnumerable<IImportPreflightCheck> checks,
     ImportVolumeOptions? volumes = null,
-    ImportPreflightOptions? options = null)
+    ImportPreflightOptions? options = null,
+    ImportLimits? limits = null)
 {
     private readonly ImportPreflightOptions _options = options ?? new ImportPreflightOptions();
     private readonly IReadOnlyList<IImportPreflightCheck> _checks = [.. checks];
@@ -263,7 +264,7 @@ public sealed class ImportPreflightRunner(
     {
         var profile = request.Profile;
         var settingsIssues = new List<MappingIssue>();
-        var readerOptions = ImportSource.ReaderOptions(profile, null, settingsIssues);
+        var readerOptions = ImportSource.ReaderOptions(profile, null, settingsIssues, limits);
         foreach (var issue in settingsIssues)
         {
             sink.Add(FileIssue(issue));

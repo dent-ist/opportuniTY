@@ -14,7 +14,7 @@ helper, `./opportunity.sh`:
 | OpenSearch security plugin | **off** (see the decision below) | **on**: one internal user per component, no anonymous access |
 | Credentials | one database login per component, one broker user per queue area; the combined worker holds the worker union (AR-04) | a distinct database login, broker user, OpenSearch user and object-storage identity per component and worker type (D9.6) |
 | Published ports | every port on `127.0.0.1` | only the web edge (`HTTPS_PORT`, default 443); Prometheus/Grafana/Jaeger on `127.0.0.1` |
-| Backup targets | none (Q-40), see ADR-016 §10 | RPO ≤ 5 min, RTO ≤ 1 h (ADR-016; pgBackRest, snapshots and versioning arrive with #164) |
+| Backup targets | none (Q-40), see ADR-016 §10 | RPO ≤ 5 min, RTO ≤ 1 h (ADR-016): pgBackRest WAL archiving and backups, hourly OpenSearch snapshots with PostgreSQL anchors, artifact bucket versioning, optional `filer.sync` replica ([backup-and-restore.md](backup-and-restore.md)) |
 
 ## Lite
 
@@ -108,7 +108,14 @@ browser ──HTTPS──▶ web (edge: TLS, SPA, load balancer) ──HTTPS─�
 ```
 
 - **Networks.** `edge` (browsers ↔ web), `app` (web ↔ api, internal), `data` (stores, internal: no component has
-  general egress, D14.1), `egress` (the api's route to the IdP), `ops` (observability UIs on 127.0.0.1).
+  general egress, D14.1), `egress` (the api's route to the IdP, clamav's route to the signature mirrors), `scan`
+  (worker-import ↔ clamav only, internal), `ops` (observability UIs on 127.0.0.1).
+- **Malware scanning (E08-T09, ADR-015 D16).** `clamav` (ClamAV clamd, `CLAMAV`/`CLAMAV_DIGEST` in `versions.env`,
+  `CLAMAV_MEMORY`, default 3g) scans every native and OPT image the import stores; worker-import runs with
+  `Import__MalwareScanning__Mode=ClamAv` and is not ready while clamd is unreachable or its signatures are older than
+  48 h (`Import__MalwareScanning__MaxSignatureAge`). An air-gapped installation must feed the `clamav-data` volume
+  with signature updates (or raise that age deliberately). Ingest limits are `Import__Limits__*`
+  (docs/architecture/import-volumes.md). Lite runs without a scanner (`Off`): archive limits still apply.
 - **Load balancing.** The web edge resolves `api` at request time (Docker DNS returns one address per replica) and
   retries the next replica on a connection error or 502/503. `data-lb` is a TCP load balancer (nginx stream, TLS passes
   through, so clients verify the node they reach); a node that refuses connections is skipped for 10 s.
@@ -129,7 +136,8 @@ browser ──HTTPS──▶ web (edge: TLS, SPA, load balancer) ──HTTPS─�
     (`quorum_queue.continuous_membership_reconciliation`), `pause_minority` on partitions.
   - *SeaweedFS* (ADR-020 rule 2, ADR-016 §2.7): three Raft masters, two volume servers on two racks with replication
     `010` (every object on both), the filer on its **own** PostgreSQL cluster (`filer-postgres`), two stateless S3
-    gateways over HTTPS. Bucket versioning and `filer.sync` replication are turned on by #164 after its contract run.
+    gateways over HTTPS. The migrator turns bucket versioning on (`ObjectStorage__S3__Versioning`, E19-T08, after the
+    contract suite passed against a versioned bucket); `--profile replica` adds `filer.sync` to a second cluster.
 - **Observability.** `COMPOSE_PROFILES=full,observability` adds the collector, Prometheus (scraping every node, both
   PostgreSQL exporters and SeaweedFS), Jaeger, Loki and Grafana (no anonymous access in Full); the alert rules are the
   shared `observability/alerts.yaml`. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317` in `full/.env`.
@@ -161,7 +169,7 @@ operator drills: they need a host that can run the three-node OpenSearch cluster
 | Component | PostgreSQL login (RLS applies) | RabbitMQ user | OpenSearch user | S3 identity |
 |---|---|---|---|---|
 | api (each replica) | `opportunity_api` | none (outbox) | `opportunity-api`: read, PIT, analyze; placement creates workspace indexes and aliases | `opportunity-api` |
-| worker-dispatcher | `opportunity_worker_dispatcher`; audit sealing with `opportunity_sealer` | `opportunity-dispatcher` (publishes work) | `opportunity-dispatcher`: refresh and read metadata | none |
+| worker-dispatcher | `opportunity_worker_dispatcher`; audit sealing with `opportunity_sealer` | `opportunity-dispatcher` (publishes work) | `opportunity-dispatcher`: refresh and read metadata; register the snapshot repository, create, list and delete snapshots (E19-T08) | none |
 | worker-import | `opportunity_worker_import` | `opportunity-import` | none | `opportunity-import` |
 | worker-index | `opportunity_worker_index` | `opportunity-index` | `opportunity-indexer`: write/delete documents, create/delete indexes, aliases, settings | `opportunity-index` |
 | worker-render | `opportunity_worker_render` | `opportunity-render` | none | `opportunity-render` |
@@ -170,6 +178,8 @@ operator drills: they need a host that can run the three-node OpenSearch cluster
 | worker-bulkcoding | `opportunity_worker_bulkcoding` | `opportunity-bulkcoding` | none | none |
 | migrator (one-shot) | `opportunity_owner` | `opportunity` (administrator, topology) | `opportunity-migrator`: index templates | `opportunity-migrator` (Admin: creates the bucket) |
 | exporters, health checks | `opportunity_monitor` (`pg_monitor`) | — | `opportunity-monitor`: cluster and index statistics | — |
+| pgbackrest (scheduler), postgres (archive-push) | `postgres` over the local socket (backups need the superuser or a backup role) | — | — | `opportunity-pgbackrest`: the `opportunity-pgbackrest` bucket only |
+| opensearch-1..3 (snapshot repository) | — | — | — | `opportunity-snapshots`: the `opportunity-search-snapshots` bucket only (in each node's keystore) |
 | OpenSearch security config | — | — | admin **certificate**, mounted only into the one-shot `opensearch-security` | — |
 
 Deviations from the D9.6 matrix, accepted for v1:
@@ -215,7 +225,10 @@ convention (`ConnectionStrings__RabbitMq_FILE`, `OpenSearch__Password_FILE`, `Ob
 - RabbitMQ inter-node (Erlang distribution) traffic and the SeaweedFS volume data plane (HTTP between filer, gateways
   and volume servers) are not TLS-encrypted; both stay on the internal `data` network. Clients ↔ RabbitMQ, all
   SeaweedFS gRPC and S3 are TLS.
-- PostgreSQL PITR (pgBackRest), OpenSearch snapshots and bucket versioning/replication are #164 (E19-T08).
+- Backups (E19-T08): the pgBackRest repository and the snapshot bucket live on the installation's own SeaweedFS cluster;
+  an off-site copy (pgBackRest `repo2`, a replica cluster for `filer.sync`, a second snapshot repository) is the
+  operator's (Q-40). Whether the S3 server enforces the noncurrent-version expiry rule depends on the provider: check it
+  as the runbook describes.
 - No developer IdP in Full: point `OIDC_AUTHORITY` at the installation's IdP.
 - Compose runs on one host: the topology demonstrates and tests the clustered stores, but host loss still loses the
   service. Multi-host Kubernetes is E19-T09 (Q-41).

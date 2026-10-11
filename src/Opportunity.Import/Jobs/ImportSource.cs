@@ -14,13 +14,20 @@ namespace Opportunity.Import.Jobs;
 public static class ImportSource
 {
     /// <summary>Reader settings of the profile, with the encoding decisions of the preparation pass when known.</summary>
+    /// <param name="limits">
+    /// The record and field limits of a pass that is not yet prepared (pre-flight, preparation); a prepared import reads
+    /// with the limits frozen in <paramref name="preparation"/>. Null: the built-in defaults.
+    /// </param>
     public static DatReaderOptions ReaderOptions(
-        ImportProfileDefinition profile, ImportPreparation? preparation, List<MappingIssue> issues)
+        ImportProfileDefinition profile, ImportPreparation? preparation, List<MappingIssue> issues, ImportLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         var options = LoadFileSettingsResolver.ReaderOptions(profile.LoadFile, issues);
+        var defaults = limits ?? new ImportLimits();
         return new DatReaderOptions
         {
+            MaxRecordBytes = preparation is null ? defaults.MaxRecordBytes : preparation.MaxRecordBytes ?? new DatReaderOptions().MaxRecordBytes,
+            MaxFieldCount = preparation is null ? defaults.MaxFieldCount : preparation.MaxFieldCount ?? new DatReaderOptions().MaxFieldCount,
             Profile = options.Profile,
             EncodingOverride = preparation is null ? options.EncodingOverride : Enum.Parse<LoadFileEncodingKind>(preparation.DatEncoding),
             RowEncodingFallback = preparation?.EncodingFallback,

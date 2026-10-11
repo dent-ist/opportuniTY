@@ -61,6 +61,7 @@ import {
 } from './saved-search-model';
 import { ShareDialog, ShareDialogData } from './share-dialog';
 import { SCOPE_SAVED_SEARCH_PARAM } from './terms-reports/search-term-report-model';
+import { DisplayFormat } from '../../core/i18n';
 
 const ALL = 'all';
 const UNFILED = 'unfiled';
@@ -112,6 +113,7 @@ export class SavedSearchesPage {
   private readonly api = inject(SavedSearchApi);
   private readonly context = inject(WorkspaceContext);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
@@ -135,7 +137,6 @@ export class SavedSearchesPage {
   protected readonly node = signal<string>(ALL);
   protected readonly filter = signal('');
 
-  private readonly timeZone = this.context.workspace.displayTimeZone || 'UTC';
   private readonly caller = computed(() => ({
     userId: this.me()?.userId ?? null,
     can: (p: string) => this.context.can(p),
@@ -200,26 +201,22 @@ export class SavedSearchesPage {
           owner: mine ? 'You' : s.owner.displayName,
           sharing: !mine && s.scope === 'shared' ? 'Shared with you' : sharingLabel(s),
           mine,
-          lastRun: s.lastRunAt ? formatDate(s.lastRunAt, locale, this.timeZone) : 'Never',
+          lastRun: s.lastRunAt ? formatDate(s.lastRunAt, this.fmt.formatter()) : 'Never',
           hits: hitCountLabel(s, locale),
-          freshness: freshnessLabel(s, locale, this.timeZone),
-          modified: formatDate(s.modifiedAt, locale, this.timeZone),
+          freshness: freshnessLabel(s, this.fmt.formatter()),
+          modified: formatDate(s.modifiedAt, this.fmt.formatter()),
           actions: actionsFor(s, caller),
         };
       });
   });
 
   protected readonly frozenRows = computed(() => {
-    const locale = this.prefs.locale();
     const me = this.me()?.userId ?? null;
     return (this.frozen() ?? []).map((f) => ({
       f,
-      label: frozenLabel(f, me, locale, this.timeZone),
-      count:
-        f.documentCount === null
-          ? 'Freezing…'
-          : new Intl.NumberFormat(locale).format(f.documentCount),
-      at: formatDate(f.frozenAt, locale, this.timeZone),
+      label: frozenLabel(f, me, this.fmt.formatter()),
+      count: f.documentCount === null ? 'Freezing…' : this.fmt.number(f.documentCount),
+      at: formatDate(f.frozenAt, this.fmt.formatter()),
       by: f.createdBy === me ? 'You' : 'Another user',
       purpose: PURPOSES[f.purpose] ?? f.purpose,
     }));

@@ -38,6 +38,7 @@ import {
   summaryText,
   valueText,
 } from './privilege-conflicts-model';
+import { DisplayFormat } from '../../../core/i18n';
 
 /** The responsiveness field preselected when the workspace has one by this name (the default template's). */
 const DEFAULT_RESPONSIVENESS = 'responsiveness';
@@ -74,11 +75,11 @@ export class PrivilegeConflictsPage {
   private readonly api = inject(PrivilegeConflictApi);
   private readonly context = inject(WorkspaceContext);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
   private readonly router = inject(Router);
-  private readonly timeZone = this.context.workspace.displayTimeZone || 'UTC';
   private propagationKey: string | null = null;
 
   protected readonly workspaceId = this.context.workspaceId;
@@ -125,7 +126,7 @@ export class PrivilegeConflictsPage {
       : '';
   });
   protected readonly checkedAt = computed(() =>
-    formatDate(this.report()?.generatedAt, this.prefs.locale(), this.timeZone),
+    formatDate(this.report()?.generatedAt, this.fmt.formatter()),
   );
   protected readonly exportUrl = computed(() => this.api.exportUrl(this.fieldId()));
   /** Selected groups that have a source to copy from. */
@@ -182,9 +183,7 @@ export class PrivilegeConflictsPage {
 
   protected reviewer(value: CodedValue | null): string {
     if (!value?.changedBy) return '';
-    const at = formatDate(value.changedAt, this.prefs.locale(), this.timeZone, {
-      dateStyle: 'medium',
-    });
+    const at = value.changedAt ? this.fmt.date(value.changedAt) : '';
     return at ? `by ${value.changedBy.displayName}, ${at}` : `by ${value.changedBy.displayName}`;
   }
 

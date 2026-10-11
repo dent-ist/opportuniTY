@@ -99,6 +99,7 @@ public static class AuditChainRegistration
             sp.GetRequiredService<AuditChainOptions>(),
             sp.GetService<ILogger<PostgresAuditChainSealer>>()));
         services.TryAddSingleton(sp => new PostgresAuditChainVerifier(sp.GetRequiredService<AuditChainDataSource>()));
+        services.TryAddSingleton<IAuditChainReader>(sp => sp.GetRequiredService<PostgresAuditChainVerifier>());
         return services;
     }
 

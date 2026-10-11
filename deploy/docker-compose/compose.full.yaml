@@ -20,6 +20,12 @@
 #   seaweedfs        3 masters (Raft), 2 volume servers on two racks (replication 010), filer on its own PostgreSQL
 #                    cluster (filer-postgres), S3 gateways × 2 over HTTPS, gRPC with mutual TLS
 #   data-lb          TCP load balancer: opensearch:9200, rabbitmq:5671, s3:8333 (TLS passes through)
+#   clamav           malware scanner (clamd) for worker-import only, on the internal scan network; freshclam over egress
+#   pgbackrest       backup scheduler (E19-T08, ADR-016 §2): WAL archiving to the opportunity-pgbackrest bucket from the
+#                    primary (archive_timeout 60 s), full weekly / differential daily / incremental 6-hourly, weekly verify
+#                    plus a restore test; hourly OpenSearch snapshots with PostgreSQL anchors by the dispatcher (§3);
+#                    artifact bucket versioning by the migrator (§4); `--profile replica` adds filer.sync to a second
+#                    SeaweedFS cluster. Runbook: docs/operations/backup-and-restore.md
 # Secrets are Docker secrets (files in full/secrets/, mounted at /run/secrets), never plain environment variables
 # (ADR-015 D10.1). Only web publishes a port (D14.1); the data tier sits on an internal network without egress.
 
@@ -75,6 +81,14 @@ x-postgres-args: &postgres-args
   - shared_buffers=${POSTGRES_SHARED_BUFFERS:-1GB}
   - -c
   - max_connections=${POSTGRES_MAX_CONNECTIONS:-400}
+  # Continuous WAL archiving with pgBackRest (E19-T08, ADR-016 §2.2): RPO about 2 minutes, alert WalArchiveLagHigh at 4.
+  # A standby does not archive (archive_mode=on); after a failover the promoted replica archives with the same command.
+  - -c
+  - archive_mode=on
+  - -c
+  - archive_command=pgbackrest --stanza=opportunity archive-push %p
+  - -c
+  - archive_timeout=60s
 
 x-postgres-healthcheck: &postgres-healthcheck
   test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d postgres"]
@@ -133,9 +147,16 @@ services:
   # --- PostgreSQL: primary + streaming replica ---------------------------------------------------------------------
   postgres:
     <<: *full
-    image: postgres:${POSTGRES:?run with --env-file ../../versions.env}@${POSTGRES_DIGEST:?run with --env-file ../../versions.env}
+    # The official image plus pgBackRest (full/pgbackrest/postgres.Dockerfile, E19-T08), built locally from the pinned digest.
+    image: &postgres-image opportunity-local/opportunity-postgres:${POSTGRES:?run with --env-file ../../versions.env}-pgbackrest
+    build: &postgres-build
+      context: ./full/pgbackrest
+      dockerfile: postgres.Dockerfile
+      args:
+        POSTGRES: ${POSTGRES:?run with --env-file ../../versions.env}
+        POSTGRES_DIGEST: ${POSTGRES_DIGEST:?run with --env-file ../../versions.env}
     hostname: postgres
-    entrypoint: ["/etc/opportunity/postgres/tls-entrypoint.sh", "docker-entrypoint.sh"]
+    entrypoint: ["/etc/opportunity/pgbackrest/entrypoint.sh", "/etc/opportunity/postgres/tls-entrypoint.sh", "docker-entrypoint.sh"]
     command: *postgres-args
     environment:
       POSTGRES_USER: postgres
@@ -171,8 +192,16 @@ services:
       - db-replication-password
       # Read by `./opportunity.sh --profile full up` to create or re-key the audit sealer login (E14-T03).
       - db-sealer-password
+      # pgBackRest repo1 (E19-T08): encryption passphrase and the backup bucket's own S3 identity.
+      - pgbackrest-cipher-pass
+      - s3-pgbackrest-secret-key
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - postgres-socket:/var/run/postgresql
+      - pgbackrest-spool:/var/spool/pgbackrest
+      - &pgbackrest-conf ./full/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+      - &pgbackrest-scripts ./full/pgbackrest:/etc/opportunity/pgbackrest:ro
+      - &pgbackrest-ca ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
       - ./postgres/init/10-opportunity.sh:/docker-entrypoint-initdb.d/10-opportunity.sh:ro
       - ./postgres/init/20-group-roles.sql:/docker-entrypoint-initdb.d/20-group-roles.sql:ro
       - ./postgres/init/30-component-logins.sh:/docker-entrypoint-initdb.d/30-component-logins.sh:ro
@@ -189,17 +218,21 @@ services:
 
   postgres-replica:
     <<: *full
-    image: postgres:${POSTGRES:?run with --env-file ../../versions.env}@${POSTGRES_DIGEST:?run with --env-file ../../versions.env}
+    # Same image and archive settings as the primary, so a promoted replica keeps archiving (ADR-016 §2.6).
+    image: *postgres-image
     hostname: postgres-replica
-    entrypoint: ["/etc/opportunity/postgres/tls-entrypoint.sh", "gosu", "postgres", "/etc/opportunity/postgres/replica-entrypoint.sh"]
+    entrypoint: ["/etc/opportunity/pgbackrest/entrypoint.sh", "/etc/opportunity/postgres/tls-entrypoint.sh", "gosu", "postgres", "/etc/opportunity/postgres/replica-entrypoint.sh"]
     command: *postgres-args
     environment:
       PRIMARY_HOST: postgres
       PGDATA: /var/lib/postgresql/data
       REPLICATION_PASSWORD_FILE: /run/secrets/db-replication-password
-    secrets: [db-replication-password]
+    secrets: [db-replication-password, pgbackrest-cipher-pass, s3-pgbackrest-secret-key]
     volumes:
       - postgres-replica-data:/var/lib/postgresql/data
+      - *pgbackrest-conf
+      - *pgbackrest-scripts
+      - *pgbackrest-ca
       - ./full/postgres/tls-entrypoint.sh:/etc/opportunity/postgres/tls-entrypoint.sh:ro
       - ./full/postgres/replica-entrypoint.sh:/etc/opportunity/postgres/replica-entrypoint.sh:ro
       - ./full/postgres/pg_hba.conf:/etc/opportunity/postgres/pg_hba.conf:ro
@@ -218,6 +251,41 @@ services:
       start_period: 120s
       start_interval: 2s
       retries: 6
+    networks: [data]
+
+  # Backup scheduler (E19-T08, ADR-016 §2.2): same image, the data directory read-only and the server socket shared;
+  # full/pgbackrest/scheduler.sh takes full, differential and incremental backups by age and verifies weekly with a
+  # restore test. Point-in-time restores run as one-off containers of this service: `./opportunity.sh --profile full
+  # restore-pg <time|latest>` (full/pgbackrest/restore-to-time.sh).
+  pgbackrest:
+    <<: *full
+    image: *postgres-image
+    build: *postgres-build
+    entrypoint: ["/etc/opportunity/pgbackrest/entrypoint.sh", "gosu", "postgres"]
+    command: ["/bin/bash", "/etc/opportunity/pgbackrest/scheduler.sh"]
+    environment:
+      OPPORTUNITY_DB: ${OPPORTUNITY_DB:-opportunity}
+      BACKUP_FULL_EVERY: ${BACKUP_FULL_EVERY:-604800}
+      BACKUP_DIFF_EVERY: ${BACKUP_DIFF_EVERY:-86400}
+      BACKUP_INCR_EVERY: ${BACKUP_INCR_EVERY:-21600}
+      BACKUP_VERIFY_EVERY: ${BACKUP_VERIFY_EVERY:-604800}
+    secrets: [pgbackrest-cipher-pass, s3-pgbackrest-secret-key]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data:ro
+      - postgres-socket:/var/run/postgresql
+      - pgbackrest-work:/var/spool/pgbackrest
+      - *pgbackrest-conf
+      - *pgbackrest-scripts
+      - *pgbackrest-ca
+    tmpfs: [/tmp]
+    mem_limit: ${PGBACKREST_MEMORY:-2g}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs-s3:
+        condition: service_healthy
+      data-lb:
+        condition: service_healthy
     networks: [data]
 
   # Replication lag is exported by both: pg_replication_lag_seconds on the replica (alert PostgresReplicationLagHigh)
@@ -259,20 +327,30 @@ services:
   # --- OpenSearch: three nodes, security plugin on ------------------------------------------------------------------
   opensearch-1: &opensearch
     <<: *full
-    image: opensearchproject/opensearch:${OPENSEARCH:?run with --env-file ../../versions.env}@${OPENSEARCH_DIGEST:?run with --env-file ../../versions.env}
+    # The official image plus the repository-s3 plugin for snapshots (full/opensearch/opensearch.Dockerfile, E19-T08).
+    image: opportunity-local/opportunity-opensearch:${OPENSEARCH:?run with --env-file ../../versions.env}-s3
+    build:
+      context: ./full/opensearch
+      dockerfile: opensearch.Dockerfile
+      args:
+        OPENSEARCH: ${OPENSEARCH:?run with --env-file ../../versions.env}
+        OPENSEARCH_DIGEST: ${OPENSEARCH_DIGEST:?run with --env-file ../../versions.env}
+    # Puts the snapshot bucket's S3 identity into the keystore and trusts the installation CA, then starts the node.
+    entrypoint: ["/bin/bash", "/etc/opportunity/opensearch/s3-snapshot-entrypoint.sh"]
     hostname: opensearch-1
     environment:
       NODE_NAME: opensearch-1
       OPENSEARCH_JAVA_OPTS: -Xms${OPENSEARCH_HEAP:-2g} -Xmx${OPENSEARCH_HEAP:-2g}
       DISABLE_INSTALL_DEMO_CONFIG: "true"
       OPENSEARCH_MEMORY_LOCK: ${OPENSEARCH_MEMORY_LOCK:-true}
-    secrets: [opensearch-monitor-password]
+    secrets: [opensearch-monitor-password, s3-snapshots-secret-key]
     ulimits:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 65536, hard: 65536 }
     volumes:
       - opensearch-1-data:/usr/share/opensearch/data
       - ./full/opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+      - ./full/opensearch/s3-snapshot-entrypoint.sh:/etc/opportunity/opensearch/s3-snapshot-entrypoint.sh:ro
       - ./full/tls/opensearch-1.crt:/usr/share/opensearch/config/certs/node.crt:ro
       - ./full/tls/opensearch-1.key:/usr/share/opensearch/config/certs/node.key:ro
       - ./full/tls/ca.crt:/usr/share/opensearch/config/certs/ca.crt:ro
@@ -298,6 +376,7 @@ services:
     volumes:
       - opensearch-2-data:/usr/share/opensearch/data
       - ./full/opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+      - ./full/opensearch/s3-snapshot-entrypoint.sh:/etc/opportunity/opensearch/s3-snapshot-entrypoint.sh:ro
       - ./full/tls/opensearch-2.crt:/usr/share/opensearch/config/certs/node.crt:ro
       - ./full/tls/opensearch-2.key:/usr/share/opensearch/config/certs/node.key:ro
       - ./full/tls/ca.crt:/usr/share/opensearch/config/certs/ca.crt:ro
@@ -313,6 +392,7 @@ services:
     volumes:
       - opensearch-3-data:/usr/share/opensearch/data
       - ./full/opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+      - ./full/opensearch/s3-snapshot-entrypoint.sh:/etc/opportunity/opensearch/s3-snapshot-entrypoint.sh:ro
       - ./full/tls/opensearch-3.crt:/usr/share/opensearch/config/certs/node.crt:ro
       - ./full/tls/opensearch-3.key:/usr/share/opensearch/config/certs/node.key:ro
       - ./full/tls/ca.crt:/usr/share/opensearch/config/certs/ca.crt:ro
@@ -594,6 +674,8 @@ services:
       - s3-render-secret-key
       - s3-export-secret-key
       - s3-production-secret-key
+      - s3-pgbackrest-secret-key
+      - s3-snapshots-secret-key
     volumes:
       - ./full/seaweedfs/run.sh:/etc/opportunity/seaweedfs/run.sh:ro
       - *seaweedfs-security
@@ -614,6 +696,27 @@ services:
       retries: 6
     networks: [data]
 
+  # Object replication (ADR-016 §4.3, `--profile replica`): continuous one-way filer.sync of the artifact bucket to a
+  # second SeaweedFS cluster (REPLICA_FILER, e.g. replica-filer.example.org:8888, reachable with the same gRPC mutual TLS).
+  # Off-site placement is the operator's choice (Q-40). Its lag is the object RPO after site loss; `restore plan
+  # --object-sync-point` uses it.
+  seaweedfs-filer-sync:
+    profiles: [replica]
+    image: chrislusf/seaweedfs:${SEAWEEDFS:?run with --env-file ../../versions.env}@${SEAWEEDFS_DIGEST:?run with --env-file ../../versions.env}
+    command: ["filer.sync", "-a=seaweedfs-filer:8888", "-b=${REPLICA_FILER:-replica-filer:8888}", "-isActivePassive",
+              "-a.path=/buckets/opportunity", "-b.path=/buckets/opportunity", "-metricsPort=9327"]
+    volumes:
+      - *seaweedfs-security
+      - *seaweedfs-cert
+      - *seaweedfs-key
+      - *seaweedfs-ca
+    mem_limit: 512m
+    restart: unless-stopped
+    depends_on:
+      seaweedfs-filer:
+        condition: service_healthy
+    networks: [data, egress]
+
   # TCP load balancer for the clustered data tier (full/data-lb/nginx.conf); its aliases are the names clients use.
   data-lb:
     <<: *app-hardening
@@ -631,6 +734,33 @@ services:
     networks:
       data:
         aliases: [opensearch, rabbitmq, s3]
+
+  # --- Malware scanning (E08-T09, ADR-015 D16) --------------------------------------------------------------------
+  # ClamAV clamd (GPL-2.0, unmodified, never linked into the product): worker-import streams every native and OPT image
+  # to it (zINSTREAM) before anything renders the file. Only worker-import reaches it (network scan); freshclam keeps
+  # the signatures current over egress, and worker-import reports not-ready when they are older than 48 h. Files over
+  # 2000 MiB, encrypted content and anything over clamd's limits are reported, so they are quarantined, not passed.
+  clamav:
+    <<: *full
+    image: clamav/clamav:${CLAMAV:?run with --env-file ../../versions.env}@${CLAMAV_DIGEST:?run with --env-file ../../versions.env}
+    environment:
+      CLAMAV_NO_MILTERD: "true"
+      CLAMD_CONF_StreamMaxLength: 2000M
+      CLAMD_CONF_MaxScanSize: 2000M
+      CLAMD_CONF_MaxFileSize: 2000M
+      CLAMD_CONF_AlertExceedsMax: "yes"
+      CLAMD_CONF_AlertEncrypted: "yes"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    mem_limit: ${CLAMAV_MEMORY:-3g}
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      start_period: 300s
+      start_interval: 5s
+      retries: 3
+    networks: [scan, egress]
 
   # --- Application -----------------------------------------------------------------------------------------------
   migrator:
@@ -654,6 +784,9 @@ services:
       ObjectStorage__S3__Bucket: opportunity
       ObjectStorage__S3__AccessKey: opportunity-migrator
       ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-migrator-secret-key
+      # ADR-016 §4.2: versioning on, noncurrent versions expire after BackupRetention (35 days). Deleted or damaged
+      # objects come back with `restore object --key ...`; correctness never depends on it (ADR-011 §3.4).
+      ObjectStorage__S3__Versioning: "true"
     secrets: [pgpass-owner, amqp-admin, opensearch-migrator-password, s3-migrator-secret-key]
     volumes:
       - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
@@ -727,6 +860,14 @@ services:
       ConnectionStrings__OpenSearch: https://opensearch:9200
       OpenSearch__Username: opportunity-dispatcher
       OpenSearch__Password_FILE: /run/secrets/opensearch-dispatcher-password
+      # Hourly snapshots with PostgreSQL catch-up anchors (E19-T08, ADR-016 §3.2) to their own bucket; the nodes hold
+      # the bucket's S3 identity (full/opensearch/s3-snapshot-entrypoint.sh).
+      Backup__SearchSnapshots__Enabled: ${SEARCH_SNAPSHOTS_ENABLED:-true}
+      Backup__SearchSnapshots__Interval: ${SEARCH_SNAPSHOT_INTERVAL:-01:00:00}
+      Backup__SearchSnapshots__RepositoryType: s3
+      Backup__SearchSnapshots__RepositorySettings__bucket: opportunity-search-snapshots
+      Backup__SearchSnapshots__RepositorySettings__base_path: opportunity
+      Backup__SearchSnapshots__RepositorySettings__client: default
     secrets: [pgpass-worker-dispatcher, pgpass-sealer, amqp-dispatcher, opensearch-dispatcher-password, envelope-hmac-k1]
     volumes:
       - keys:/var/lib/opportunity/keys
@@ -743,11 +884,16 @@ services:
       ObjectStorage__S3__AccessKey: opportunity-import
       ObjectStorage__S3__SecretKey_FILE: /run/secrets/s3-import-secret-key
       Import__VolumeShareRoot: /var/lib/opportunity/import
+      # E08-T09: malware scanning is on by default in Full (ADR-015 D16); limits under Import__Limits__*.
+      Import__MalwareScanning__Mode: ClamAv
+      Import__MalwareScanning__Host: clamav
+      Import__MalwareScanning__MaxScanBytes: "2097152000"
     secrets: [pgpass-worker-import, amqp-import, s3-import-secret-key, envelope-hmac-k1]
     volumes:
       - keys:/var/lib/opportunity/keys
       - ${OPPORTUNITY_IMPORT_SHARE:-./import-share}:/var/lib/opportunity/import:ro
       - ./full/tls/ca.crt:/etc/opportunity/tls/ca.crt:ro
+    networks: [data, scan]
 
   # `--scale worker-index=N`: every replica consumes the same quorum queues; RabbitMQ spreads deliveries over all
   # consumers (prefetch-bounded), and index writes are idempotent by external version (ADR-001).
@@ -992,8 +1138,11 @@ networks:
   # (ADR-015 D14.1).
   data:
     internal: true
-  # The api's route to the installation's IdP.
+  # The api's route to the installation's IdP; clamav's route to the signature mirrors (freshclam).
   egress: {}
+  # worker-import -> clamav only (E08-T09). Internal: the scanner never sees the data tier.
+  scan:
+    internal: true
   # Published observability UIs (127.0.0.1 only).
   ops: {}
 
@@ -1054,6 +1203,10 @@ secrets:
   s3-export-secret-key: { file: ./full/secrets/s3-export-secret-key }
   s3-production-secret-key: { file: ./full/secrets/s3-production-secret-key }
   envelope-hmac-k1: { file: ./full/secrets/envelope-hmac-k1 }
+  # Backups (E19-T08): pgBackRest repository encryption and the S3 identities of the two backup buckets.
+  pgbackrest-cipher-pass: { file: ./full/secrets/pgbackrest-cipher-pass }
+  s3-pgbackrest-secret-key: { file: ./full/secrets/s3-pgbackrest-secret-key }
+  s3-snapshots-secret-key: { file: ./full/secrets/s3-snapshots-secret-key }
   audit-session-hash-key: { file: ./full/secrets/audit-session-hash-key }
   # Supplied by the operator from the IdP's client registration (init leaves it empty; `up` refuses to start without it).
   oidc-client-secret: { file: ./full/secrets/oidc-client-secret }
@@ -1062,6 +1215,11 @@ secrets:
 volumes:
   postgres-data:
   postgres-replica-data:
+  # The server socket, shared with the pgbackrest scheduler (backups need a local connection to the primary).
+  postgres-socket:
+  # pgBackRest's asynchronous archive queue on the primary, and the scheduler's own spool (restore tests run there).
+  pgbackrest-spool:
+  pgbackrest-work:
   filer-postgres-data:
   opensearch-1-data:
   opensearch-2-data:
@@ -1077,6 +1235,8 @@ volumes:
   # Local key store (E05-T09): KEKs and signing keys, shared by api and every worker on this host. Back it up apart
   # from the data (ADR-016 §5).
   keys:
+  # ClamAV signatures (freshclam updates them in place).
+  clamav-data:
   prometheus-data:
   loki-data:
   grafana-data:

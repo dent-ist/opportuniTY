@@ -60,3 +60,19 @@
   color: var(--opp-color-text-muted);
   font-size: var(--opp-font-size-sm);
 }
+
+.native__quarantine {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--opp-space-2);
+  margin: 0;
+  padding: var(--opp-space-2) var(--opp-space-3);
+  border: var(--opp-border-width) solid var(--opp-color-warning-border);
+  border-radius: var(--opp-radius-md);
+  background: var(--opp-color-warning-bg);
+  color: var(--opp-color-warning-text);
+}
+
+.native__quarantine opp-icon {
+  flex: none;
+}

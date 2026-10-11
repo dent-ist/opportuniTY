@@ -23,7 +23,7 @@
             @if (data.target.kind === 'all') {
               all {{ data.listCount }} results
             } @else {
-              {{ n().format(data.target.documentIds.length) }} documents
+              {{ n().number(data.target.documentIds.length) }} documents
             }
           </strong>
           — frozen when you continue. Fields left unticked are not touched.
@@ -53,7 +53,7 @@
               Frozen set
             </h3>
             <p class="me__count">
-              <strong>{{ n().format(count()) }}</strong>
+              <strong>{{ n().number(count()) }}</strong>
               {{ count() === 1 ? 'document' : 'documents' }}
             </p>
             <p class="me__frozen-at"><opp-icon name="clock" />{{ frozenLine() }}</p>
@@ -142,7 +142,7 @@
             [busy]="busy() === 'submitting'"
             [disabled]="!canApply()"
           >
-            Apply to {{ n().format(count()) }} {{ count() === 1 ? 'document' : 'documents' }}
+            Apply to {{ n().number(count()) }} {{ count() === 1 ? 'document' : 'documents' }}
           </button>
         }
         @case ('progress') {

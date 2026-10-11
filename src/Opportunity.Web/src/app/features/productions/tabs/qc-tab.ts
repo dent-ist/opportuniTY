@@ -7,7 +7,6 @@ import type {
   ProductionQcReportResource,
 } from '../../../core/api/generated/models';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import {
@@ -35,6 +34,7 @@ import {
   warnings,
 } from '../production-model';
 import { ProductionStore } from '../production-store';
+import { DisplayFormat } from '../../../core/i18n';
 
 interface ExceptionView {
   readonly loading: boolean;
@@ -58,7 +58,7 @@ interface ExceptionView {
 export class QcTab {
   protected readonly store = inject(ProductionStore);
   private readonly api = inject(ProductionApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
@@ -241,15 +241,10 @@ export class QcTab {
   }
 
   protected num(n: number | string | null | undefined): string {
-    return n === null || n === undefined ? '—' : Number(n).toLocaleString(this.prefs.locale());
+    return n === null || n === undefined ? '—' : this.fmt.number(Number(n));
   }
 
   protected date(value: unknown): string {
-    return value
-      ? new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(new Date(String(value)))
-      : '';
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 }

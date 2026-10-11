@@ -28,7 +28,7 @@ internal static class DocumentResources
                 d.TextLength,
                 TextChunks.ChunkBytes,
                 text is { Quarantined: false } ? TextChunks.Count(text.SizeBytes) : 0),
-            new DocumentNativeInfo(record.Native is not null, d.NativeMissing, record.Native?.SizeBytes, d.FileExtension),
+            new DocumentNativeInfo(record.Native is not null, d.NativeMissing, record.Native?.SizeBytes, d.FileExtension, record.Native is { Quarantined: true }),
             new DocumentImagesInfo(
                 pageSet is not null,
                 // The active set decides (a Ready Rendered set replaces an Incomplete Imported one, Q-68); ImagesIncomplete

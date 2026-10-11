@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 
+using Opportunity.Core.Text;
+
 namespace Opportunity.Import.LoadFiles;
 
 /// <summary>
@@ -103,7 +105,8 @@ public sealed class DatErrorFileWriter(Stream output, bool leaveOpen = false) : 
     {
         output.Write(raw);
         output.Write(_column);
-        output.Write(_encoding!.GetBytes(Qualify(error)));
+        // The source row stays byte for byte (it must load again); the platform-written error text is neutralized (D15.5).
+        output.Write(_encoding!.GetBytes(Qualify(FormulaNeutralizer.Neutralize(error))));
         output.Write(_lineEnd);
     }
 
@@ -171,7 +174,7 @@ public sealed class DatIssueReportWriter(TextWriter output) : IDatIssueSink
                 output.Write(',');
             }
 
-            string v = values[i];
+            string v = FormulaNeutralizer.Neutralize(values[i]);
             if (v.AsSpan().IndexOfAny(",\"\r\n") >= 0)
             {
                 output.Write('"');

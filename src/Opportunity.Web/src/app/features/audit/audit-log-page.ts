@@ -17,7 +17,6 @@ import type {
   AuditExportResource,
 } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import {
   Badge,
@@ -49,6 +48,7 @@ import {
   resourceText,
   shortId,
 } from './audit-log-model';
+import { DisplayFormat } from '../../core/i18n';
 
 /** How often the page checks on its running exports. */
 export const AUDIT_EXPORT_POLL_MS = 3000;
@@ -100,7 +100,7 @@ export class AuditLogPage {
 
   private readonly api = inject(AuditLogApi);
   private readonly router = inject(Router);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly toasts = inject(ToastService);
   private readonly context = inject(WorkspaceContext);
 
@@ -167,15 +167,6 @@ export class AuditLogPage {
   protected readonly exporting = signal(false);
   private exportKey: { filter: string; key: string } | null = null;
   private poll: ReturnType<typeof setTimeout> | null = null;
-
-  private readonly dates = computed(
-    () =>
-      new Intl.DateTimeFormat(this.prefs.locale(), {
-        dateStyle: 'medium',
-        timeStyle: 'medium',
-      }),
-  );
-  private readonly numbers = computed(() => new Intl.NumberFormat(this.prefs.locale()));
 
   constructor() {
     effect(() => {
@@ -343,11 +334,11 @@ export class AuditLogPage {
   }
 
   protected date(value: unknown): string {
-    return value ? this.dates().format(new Date(String(value))) : '';
+    return value ? this.fmt.dateTime(String(value), { seconds: true }) : '';
   }
 
   protected num(value: unknown): string {
-    return value === null || value === undefined ? '' : this.numbers().format(Number(value));
+    return value === null || value === undefined ? '' : this.fmt.number(Number(value));
   }
 
   protected onlyUser(e: AuditEventResource): void {

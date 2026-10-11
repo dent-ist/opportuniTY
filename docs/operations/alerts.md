@@ -147,6 +147,10 @@ PostgreSQL is writing WAL but has not archived a segment for more than 4 minutes
 3. Watch `pg_wal` disk usage: unarchived segments are kept and can fill the volume.
 4. Confirm `archive_timeout` is ≤ 60 s; without it a quiet database archives too rarely and this alert can fire
    when writes resume.
+5. Full (pgBackRest, [backup-and-restore.md](backup-and-restore.md)): `./opportunity.sh --profile full backup status`,
+   `docker compose … exec postgres ls /var/log/pgbackrest` (the `opportunity-archive-push-async.log` names the failing
+   segment and reason), and `docker compose … exec pgbackrest pgbackrest --stanza=opportunity check`. Repository
+   credentials or the `opportunity-pgbackrest` bucket missing are the usual causes after a re-install.
 
 ## WalArchiveFailing
 

@@ -17,7 +17,7 @@ internal static class ObjectKeyGrammar
     /// <summary>Areas under <c>sys/</c>.</summary>
     public static readonly IReadOnlySet<string> SystemAreas = new HashSet<string>(StringComparer.Ordinal)
     {
-        "certificates", "audit",
+        "certificates", "audit", "restores",
     };
 
     /// <summary>Lowercase ASCII <c>[a-z0-9._-]+</c>, not <c>.</c> or <c>..</c>.</summary>

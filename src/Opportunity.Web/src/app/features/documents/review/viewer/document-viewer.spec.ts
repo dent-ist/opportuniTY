@@ -163,16 +163,26 @@ describe('Document viewer (E16-T04)', () => {
   let root: HTMLElement;
   let announced: () => string[];
   let canDownload: boolean;
+  let canViewQuarantined: boolean;
 
-  async function setup(permissions: { download?: boolean } = {}): Promise<void> {
+  async function setup(
+    permissions: { download?: boolean; viewQuarantined?: boolean } = {},
+  ): Promise<void> {
     canDownload = permissions.download ?? true;
+    canViewQuarantined = permissions.viewQuarantined ?? false;
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: DocumentContentApi, useClass: FakeContentApi },
         { provide: RedactionApi, useClass: FakeRedactionApi },
-        { provide: WorkspaceContext, useValue: { can: () => canDownload } },
+        {
+          provide: WorkspaceContext,
+          useValue: {
+            can: (p: string) =>
+              p === 'Document.ViewQuarantined' ? canViewQuarantined : canDownload,
+          },
+        },
         { provide: HighlightSetsApi, useClass: FakeHighlightSetsApi },
         HighlightState,
       ],
@@ -663,6 +673,28 @@ describe('Document viewer (E16-T04)', () => {
     await show({ hit: hit(2), state: 'ready', content: loaded(2, documentResource(2)) });
     expect(button('Download native')).toBeUndefined();
     expect(root.textContent).toContain('Your role does not allow downloading natives');
+  });
+
+  it('marks a quarantined native and downloads it only with Document.ViewQuarantined (E08-T09)', async () => {
+    const quarantined = () => {
+      const resource = documentResource(2);
+      return { ...resource, native: { ...resource.native, quarantined: true } };
+    };
+    await setup();
+    TestBed.inject(PreferenceStorage).write('viewer.mode', { mode: 'native' });
+    await show({ hit: hit(2), state: 'ready', content: loaded(2, quarantined()) });
+    expect(root.textContent).toContain('Content quarantined — not viewable.');
+    expect(root.querySelector('iframe, object, embed, img')).toBeNull();
+    expect(button('Download quarantined native')).toBeUndefined();
+    expect(root.textContent).toContain('needs the View Quarantined permission');
+    root.remove();
+    TestBed.resetTestingModule();
+
+    await setup({ viewQuarantined: true });
+    TestBed.inject(PreferenceStorage).write('viewer.mode', { mode: 'native' });
+    await show({ hit: hit(2), state: 'ready', content: loaded(2, quarantined()) });
+    button('Download quarantined native').click();
+    expect(api.downloads).toEqual(['doc-2 as ACM0000002.msg']);
   });
 
   it('lists the fields with display values and the imported value in a tooltip', async () => {

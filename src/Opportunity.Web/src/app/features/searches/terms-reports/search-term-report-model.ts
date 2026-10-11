@@ -8,6 +8,7 @@ import type {
   TermDraft,
   TermError,
 } from './search-term-report-api';
+import { Formatter } from '../../../core/i18n';
 
 // Pure rules of the Search Terms Reports screens (#180, familiarity guide §2.3 and §5 step 5): reading pasted and
 // uploaded terms, wording, sorting and who may do what. No Angular here, so every rule is unit-tested.
@@ -304,9 +305,9 @@ export function canSeeGenerations(caller: Pick<Caller, 'can'>): boolean {
   return caller.can('Job.ViewAll') || caller.can('Workspace.ManageUsers');
 }
 
-/** "Search terms – Oct 5, 2026": the default name of a new report. */
-export function defaultReportName(now: Date, locale: string): string {
-  return `Search terms – ${new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(now)}`;
+/** "Search terms – 10/05/2026": the default name of a new report. */
+export function defaultReportName(now: Date, format: Formatter): string {
+  return `Search terms – ${format.date(now)}`;
 }
 
 /** A failed call in plain words; 404 does not say whether the report exists (ADR-019 §2.3). */

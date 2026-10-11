@@ -13,9 +13,9 @@ import { generationText } from '../../../core/search/search-freshness';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { FreshnessIndicator, Icon } from '../../../ui';
-import { formatTime } from '../grid/grid-format';
 import { FreshnessMonitor } from './freshness-monitor';
 import { PendingSearchJobs } from './pending-jobs';
+import { DisplayFormat } from '../../../core/i18n';
 
 let nextId = 0;
 
@@ -40,6 +40,7 @@ export class FreshnessStatus {
   protected readonly monitor = inject(FreshnessMonitor);
   private readonly pending = inject(PendingSearchJobs, { optional: true });
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly context = inject(WorkspaceContext);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly toggleButton = viewChild<ElementRef<HTMLButtonElement>>('toggleRef');
@@ -63,9 +64,9 @@ export class FreshnessStatus {
       latest: index.latestGeneration === null ? null : g(index.latestGeneration),
       jobs: jobs.map((j) => ({ title: j.title, generation: g(j.jobGeneration) })),
       served: served ? g(served.servedGeneration) : null,
-      pending: new Intl.NumberFormat(locale).format(index.pendingChanges),
-      lag: `${new Intl.NumberFormat(locale).format(Math.round(index.lagSeconds))} s`,
-      checked: formatTime(index.asOf, locale, this.context.workspace.displayTimeZone || 'UTC'),
+      pending: this.fmt.number(index.pendingChanges),
+      lag: `${this.fmt.number(Math.round(index.lagSeconds))} s`,
+      checked: this.fmt.time(index.asOf),
     };
   });
 

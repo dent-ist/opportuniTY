@@ -11,7 +11,6 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import {
   Button,
   Checkbox,
@@ -51,6 +50,7 @@ import {
   newIdempotencyKey,
 } from './frozen-set/frozen-set-api';
 import { FrozenSetSource } from './frozen-set/frozen-set-source';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * Exports → New Export (E12-T08, familiarity guide §5.5): Source (a saved search frozen now, or a frozen set; its ID and
@@ -88,7 +88,7 @@ export class ExportWizard {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly injector = inject(Injector);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly heading = viewChild<ElementRef<HTMLElement>>('stepHeading');
 
   protected readonly steps = EXPORT_STEPS;
@@ -244,7 +244,7 @@ export class ExportWizard {
   }
 
   protected num(n: number | null): string {
-    return (n ?? 0).toLocaleString(this.prefs.locale());
+    return this.fmt.number(n ?? 0);
   }
 
   protected fileKinds(): string {

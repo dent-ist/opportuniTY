@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../core/workspace/sections';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import {
@@ -22,6 +21,7 @@ import { DocumentsTab } from './tabs/documents-tab';
 import { OutputTab } from './tabs/output-tab';
 import { QcTab } from './tabs/qc-tab';
 import { SettingsTab } from './tabs/settings-tab';
+import { DisplayFormat } from '../../core/i18n';
 
 const TAB_PARAM = 'tab';
 
@@ -62,7 +62,7 @@ export class ProductionPage {
   private readonly api = inject(ProductionApi);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly context = inject(WorkspaceContext);
@@ -122,7 +122,7 @@ export class ProductionPage {
   }
 
   protected num(n: number | string | null | undefined): string {
-    return n === null || n === undefined ? '—' : Number(n).toLocaleString(this.prefs.locale());
+    return n === null || n === undefined ? '—' : this.fmt.number(Number(n));
   }
 
   protected version(): number {

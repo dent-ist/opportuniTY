@@ -41,6 +41,9 @@ public sealed class ImportJobOptions
     /// <summary>Volume files of one chunk read and stored in parallel.</summary>
     public int FileConcurrency { get; init; } = 4;
 
+    /// <summary>Ingest limits (E08-T09, <c>Import:Limits</c>); the DAT record and field limits are frozen with the preparation.</summary>
+    public ImportLimits Limits { get; init; } = new();
+
     public string WorkerId { get; init; } = string.Create(
         CultureInfo.InvariantCulture, $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}");
 }
@@ -156,7 +159,7 @@ public sealed partial class ImportJobPreparer(
         var ws = batch.WorkspaceId;
         var profile = ImportProfileRules.Deserialize(batch.ProfileJson);
         var settingsIssues = new List<MappingIssue>();
-        var readerOptions = ImportSource.ReaderOptions(profile, null, settingsIssues);
+        var readerOptions = ImportSource.ReaderOptions(profile, null, settingsIssues, options.Limits);
         if (settingsIssues.FirstOrDefault(i => i.Severity == MappingIssueSeverity.Error) is { } settingsError)
         {
             return ScanResult.Fail("The load file settings are invalid: " + settingsError.Message);
@@ -315,7 +318,9 @@ public sealed partial class ImportJobPreparer(
                     rows,
                     fieldsCreated,
                     choicesCreated,
-                    optRows),
+                    optRows,
+                    readerOptions.MaxRecordBytes,
+                    readerOptions.MaxFieldCount),
                 chunks,
                 null,
                 null);

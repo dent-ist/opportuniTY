@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   /** Privilege logs and the privilege conflicts report (E13-T02). */
   privilegeLogGenerate: 'PrivilegeLog.Generate',
   downloadNative: 'Document.DownloadNative',
+  /** Download a native the import's malware screening quarantined (E08-T09; with Document.DownloadNative). */
+  viewQuarantined: 'Document.ViewQuarantined',
   productionCreate: 'Production.Create',
   /** Finalize (behind the QC gate) and void productions (E12-T07). */
   productionFinalize: 'Production.Finalize',

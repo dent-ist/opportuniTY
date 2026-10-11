@@ -10,7 +10,6 @@ import {
 } from '@angular/core';
 import type { SnapshotResourcePurpose } from '../../../core/api/generated/models';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import {
   Announcer,
   Badge,
@@ -23,6 +22,7 @@ import {
   TextField,
 } from '../../../ui';
 import { FrozenSet, FrozenSetApi, SavedSearchChoice, newIdempotencyKey } from './frozen-set-api';
+import { DisplayFormat } from '../../../core/i18n';
 
 export type SourceKind = 'savedSearch' | 'frozenSet';
 
@@ -47,7 +47,7 @@ const MAX_POLLS = 120;
 })
 export class FrozenSetSource {
   private readonly api = inject(FrozenSetApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly announcer = inject(Announcer);
   private destroyed = false;
 
@@ -171,7 +171,7 @@ export class FrozenSetSource {
   }
 
   protected num(n: number): string {
-    return n.toLocaleString(this.prefs.locale());
+    return this.fmt.number(n);
   }
 }
 

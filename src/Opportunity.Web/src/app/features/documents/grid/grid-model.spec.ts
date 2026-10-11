@@ -1,6 +1,7 @@
 import type { FieldResource, SearchFreshness } from '../../../core/api/generated/models';
 import { defaultColumns, familyMarker } from './grid-columns';
-import { CellFormatter, countLabel, freshnessLabel } from './grid-format';
+import { formatterFor } from '../../../core/i18n';
+import { countLabel, freshnessLabel } from './grid-format';
 import { fakePage, hit } from './grid-fixtures.testing';
 import { ResultWindow, toLoadedPage } from './result-window';
 
@@ -26,21 +27,23 @@ describe('Document list counts (Q-10, Q-32)', () => {
   });
 
   it('states freshness in plain language in the workspace time zone', () => {
-    expect(freshnessLabel(CURRENT, 'en-GB', 'Europe/Berlin')).toBe('Results current as of 12:42');
-    expect(freshnessLabel({ ...CURRENT, current: false }, 'en-GB', 'UTC')).toBe(
-      'Results as of 10:42',
+    expect(freshnessLabel(CURRENT, formatterFor('en-GB', 'Europe/Berlin'))).toBe(
+      'Results current as of 12:42 CEST',
+    );
+    expect(freshnessLabel({ ...CURRENT, current: false }, formatterFor('en-GB', 'UTC'))).toBe(
+      'Results as of 10:42 UTC',
     );
     // The wave-10 state wins over the M1 flag.
     const delayed = { ...CURRENT, current: false, state: 'delayed' } as typeof CURRENT;
-    expect(freshnessLabel(delayed, 'en-GB', 'UTC')).toBe('Results as of 10:42');
+    expect(freshnessLabel(delayed, formatterFor('en-GB', 'UTC'))).toBe('Results as of 10:42 UTC');
   });
 
   it('formats cells with the zone shown', () => {
-    const f = new CellFormatter('en-GB', 'UTC');
-    expect(f.formatDate('2024-03-01T14:30:00Z')).toBe('01/03/2024, 14:30 UTC');
-    expect(f.formatSize(512)).toBe('512 B');
-    expect(f.formatSize(2048)).toBe('2 KB');
-    expect(f.formatSize(5.5 * 1024 * 1024)).toBe('5.5 MB');
+    const f = formatterFor('en-GB', 'UTC');
+    expect(f.dateTime('2024-03-01T14:30:00Z')).toBe('01/03/2024, 14:30 UTC');
+    expect(f.bytes(512)).toBe('512 B');
+    expect(f.bytes(2048)).toBe('2 KB');
+    expect(f.bytes(5.5 * 1024 * 1024)).toBe('5.5 MB');
   });
 });
 

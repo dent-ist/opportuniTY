@@ -321,16 +321,25 @@ public sealed partial class ImportBatchRepository
                 """
                 INSERT INTO opportunity.stored_object
                     (workspace_id, object_id, logical_key, area, document_id, sha256, size_bytes, content_type, key_id, encryption_scheme, state,
-                     created_by_job_id)
-                SELECT @ws, u.object_id, u.logical_key, @area, u.document_id, u.sha256, u.size_bytes, u.content_type, u.key_id, u.scheme, @state, @job
-                FROM unnest(@ids, @keys, @documents, @shas, @sizes, @types, @key_ids, @schemes)
-                    AS u(object_id, logical_key, document_id, sha256, size_bytes, content_type, key_id, scheme)
+                     created_by_job_id, scan_verdict, scan_detail, scan_engine, scanned_at)
+                SELECT @ws, u.object_id, u.logical_key, @area, u.document_id, u.sha256, u.size_bytes, u.content_type, u.key_id, u.scheme,
+                       CASE WHEN u.verdict IN (2, 3) THEN @quarantined ELSE @state END, @job,
+                       u.verdict, u.detail, u.engine, CASE WHEN u.verdict IS NULL THEN NULL ELSE now() END
+                FROM unnest(@ids, @keys, @documents, @shas, @sizes, @types, @key_ids, @schemes, @verdicts, @details, @engines)
+                    AS u(object_id, logical_key, document_id, sha256, size_bytes, content_type, key_id, scheme, verdict, detail, engine)
                 ON CONFLICT (workspace_id, logical_key) DO NOTHING
                 """))
             {
                 insert.Parameters.AddWithValue("ws", ws);
                 insert.Parameters.AddWithValue("area", (short)ObjectArea.Image);
                 insert.Parameters.AddWithValue("state", (short)StoredObjectState.Committed);
+                insert.Parameters.AddWithValue("quarantined", (short)StoredObjectState.Quarantined);
+                insert.Parameters.Add(new NpgsqlParameter("verdicts", NpgsqlDbType.Array | NpgsqlDbType.Smallint)
+                {
+                    Value = objects.Select(o => o.Object.Scan is { } scan ? (short?)scan.Verdict : null).ToArray(),
+                });
+                insert.Parameters.Add(new NpgsqlParameter("details", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = objects.Select(o => o.Object.Scan?.Detail).ToArray() });
+                insert.Parameters.Add(new NpgsqlParameter("engines", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = objects.Select(o => o.Object.Scan?.Engine).ToArray() });
                 insert.Parameters.AddWithValue("job", batch.JobId);
                 insert.Parameters.AddWithValue("ids", objects.Select(_ => Guid.CreateVersion7()).ToArray());
                 insert.Parameters.AddWithValue("keys", objects.Select(o => o.Object.LogicalKey).ToArray());

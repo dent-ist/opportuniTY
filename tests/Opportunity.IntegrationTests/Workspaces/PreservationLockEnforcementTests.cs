@@ -113,6 +113,7 @@ public sealed class PreservationLockEnforcementTests(MigrationPostgresFixture po
         ["import_preflight_issue"] = "a pre-flight check's 48-hour result before an import exists",
         ["coding_propagation_preview"] = Operational,
         ["document_set_snapshot_stage"] = Operational,
+        ["search_snapshot_anchor"] = "the search-watermark anchor of an OpenSearch backup snapshot (E19-T08); it expires with the snapshot and holds generations only",
     };
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

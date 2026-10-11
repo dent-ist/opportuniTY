@@ -48,6 +48,7 @@ import {
   ToastService,
 } from '../../ui';
 import { LiveNote } from './live-note';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * One job (E06-T07): status, the two phases Saved (committed in the database) and Searchable (applied to the search
@@ -83,6 +84,7 @@ export class JobDetail {
   private readonly context = inject(WorkspaceContext);
   private readonly session = inject(SessionService);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly announcer = inject(Announcer);
   private readonly toasts = inject(ToastService);
   private readonly dialogs = inject(DialogService);
@@ -193,16 +195,11 @@ export class JobDetail {
   }
 
   protected num(value: number): string {
-    return new Intl.NumberFormat(this.prefs.locale()).format(value);
+    return this.fmt.number(value);
   }
 
   protected date(value: string | null): string {
-    return value
-      ? new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'medium',
-        }).format(new Date(value))
-      : '–';
+    return value ? this.fmt.dateTime(value, { seconds: true }) : '–';
   }
 
   protected async load(): Promise<void> {

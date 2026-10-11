@@ -220,6 +220,7 @@ six. "—" means no credible threat beyond the ones listed elsewhere for that el
 | F7 presigned GET | | — | | T-27 | — | |
 | F14 broker ↔ renderer | | T-42 | | T-40 | T-41 | |
 | F16 ingest | | T-43, T-44 | | — | T-44 | |
+| F15 scan stream (#83: plain TCP on the internal `scan` network, worker-import ↔ clamav only; freshclam over egress, CVD signatures verified by freshclam) | | T-45 | | — | T-44 | |
 | F17 export download | | — | | T-49 | — | |
 | Supply chain (TB12) | T-58 | T-57, T-58 | | T-59 | | T-57 |
 | In-app admin (TB11) | | T-55 | T-52 | | | T-52, T-54 |
@@ -319,7 +320,7 @@ loss of A3/A4/A5, or RCE). **High ≥ 6, Medium 3–4, Low ≤ 2.** Ticket keys 
 |---|---|---|---|---|---|---|
 | T-43 | T, I, E | Path traversal through DAT/OPT/TXT references (`..\..\`, absolute or UNC paths, symlinks) reads or overwrites files outside the import root | All references resolved against an import-root jail. `..`, absolute, UNC and drive paths rejected. Symlinks not followed. Fuzz tests | D15 | `E08-T05` #79, `E08-T04` #78, `E08-T09` #83 | 3×3 = **9 High** |
 | T-44 | D, T | Parser attacks: giant lines or fields, delimiter or encoding confusion, BOM tricks, archive and decompression bombs | Streaming parser with configurable max line, field, field-count and file size. Zip ratio and entry-count limits. Encoding detection with explicit override. Rejects go to the error file | D15 | `E08-T01` #75, `E08-T09` #83 | 3×2 = **6 High** |
-| T-45 | E (client) | Malware in natives reaches reviewer workstations through download | Scan at ingest (clamd by default, ICAP pluggable). Infected or unscannable → `Quarantined` restriction class: never rendered, downloadable only with `Document.ViewQuarantined`. Download off for Reviewer (Q-18) | D16 | `E08-T09` #83 | 3×3 = **9 High** |
+| T-45 | E (client) | Malware in natives reaches reviewer workstations through download | Scan at ingest (clamd by default, ICAP pluggable). Infected or unscannable → `Quarantined` restriction class: never rendered, downloadable only with `Document.ViewQuarantined`. Download off for Reviewer (Q-18). *Implemented (#83):* natives and OPT images pass `IMalwareScanner` (clamd on its own `scan` network in Full) and ZIP limits before storage is committed; quarantined objects are audited (`Import.MalwareDetected`) and counted in the import report | D16 | `E08-T09` #83 | 3×3 = **9 High** |
 | T-46 | T, R | Evidence integrity disputes: native does not match the load-file hash, or custodian or metadata spoofed | MD5/SHA-1/SHA-256 verified against DAT values when present. Mismatch flagged in the import report. Import provenance (batch, source volume, operator) audited | D15 | `E08-T09` #83, `E08-T06` #80 | 2×2 = 4 Medium |
 
 ### TB10 — Export/production ↔ recipient

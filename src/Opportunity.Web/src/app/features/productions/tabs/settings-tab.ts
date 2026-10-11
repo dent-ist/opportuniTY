@@ -9,7 +9,6 @@ import {
 } from '@angular/core';
 import type { ProductionResource } from '../../../core/api/generated/models';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import {
   Announcer,
   Button,
@@ -32,6 +31,7 @@ import {
 } from '../production-model';
 import { ProductionStore } from '../production-store';
 import { SpecificationForm } from '../specification-form';
+import { DisplayFormat } from '../../../core/i18n';
 
 /**
  * Settings tab: a draft's specification, editable (saving with If-Match releases any Bates numbers already assigned,
@@ -51,7 +51,7 @@ export class SettingsTab {
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly announcer = inject(Announcer);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly form = signal<ProductionForm>(defaultProductionForm());
   protected readonly productions = signal<readonly ProductionResource[]>([]);
@@ -180,11 +180,6 @@ export class SettingsTab {
   }
 
   protected date(value: unknown): string {
-    return value
-      ? new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(new Date(String(value)))
-      : '';
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 }

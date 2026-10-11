@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { Badge, Button, Checkbox, ErrorState, Icon, LoadingState } from '../../../ui';
 import { MODE_LABELS, isMapped } from '../import-model';
 import { ImportWizardStore } from '../import-wizard-store';
+import { DisplayFormat } from '../../../core/i18n';
 
 /**
  * Step 6, Validate & run: the pre-flight reads the whole load file with the settings and writes nothing. Errors block
@@ -18,9 +18,9 @@ import { ImportWizardStore } from '../import-wizard-store';
 })
 export class ValidateStep {
   protected readonly store = inject(ImportWizardStore);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   protected readonly modeLabels = MODE_LABELS;
-  protected readonly n = computed(() => new Intl.NumberFormat(this.prefs.locale()));
+  protected readonly n = this.fmt.formatter;
 
   protected readonly result = computed(() =>
     this.store.preflightStale() ? null : this.store.preflight(),

@@ -285,7 +285,7 @@ public sealed class ProductionQcGateTests(MigrationPostgresFixture postgres)
             });
     }
 
-    private static async Task<List<ProductionQcExceptionRow>> ExceptionsAsync(
+    internal static async Task<List<ProductionQcExceptionRow>> ExceptionsAsync(
         ProductionService service, Application.Authorization.SecurityPrincipal principal, Guid ws, Guid qcRunId)
     {
         var all = new List<ProductionQcExceptionRow>();
@@ -309,14 +309,17 @@ public sealed class ProductionQcGateTests(MigrationPostgresFixture postgres)
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
-    /// <summary>Gives a document's active page set a stored image per page (as rendering would) and, optionally, extracted text.</summary>
-    private static async Task RenderAsync(ProductionHarness h, Guid ws, Guid documentId, bool text = true)
+    /// <summary>
+    /// Gives a document's active page set a stored image per page (as rendering would; only the first
+    /// <paramref name="imaged"/> pages when given) and, optionally, extracted text.
+    /// </summary>
+    internal static async Task RenderAsync(ProductionHarness h, Guid ws, Guid documentId, bool text = true, int? imaged = null)
     {
         var (pageSet, pages) = (await h.Db.ScalarAsync<Guid>("SELECT active_page_set_id FROM opportunity.document WHERE document_id = @doc", ("doc", documentId)),
             await h.Db.ScalarAsync<int>(
                 "SELECT ps.page_count FROM opportunity.page_set ps JOIN opportunity.document d ON d.active_page_set_id = ps.page_set_id WHERE d.document_id = @doc",
                 ("doc", documentId)));
-        for (var ordinal = 1; ordinal <= pages; ordinal++)
+        for (var ordinal = 1; ordinal <= (imaged ?? pages); ordinal++)
         {
             var image = await ObjectAsync(h, ws, documentId, 3);
             await h.Db.ExecuteAsync(
@@ -336,7 +339,7 @@ public sealed class ProductionQcGateTests(MigrationPostgresFixture postgres)
         }
     }
 
-    private static async Task NativeAsync(ProductionHarness h, Guid ws, Guid documentId)
+    internal static async Task NativeAsync(ProductionHarness h, Guid ws, Guid documentId)
     {
         var native = await ObjectAsync(h, ws, documentId, 1);
         await h.Db.ExecuteAsync("UPDATE opportunity.document SET native_object_id = @n WHERE workspace_id = @ws AND document_id = @doc",

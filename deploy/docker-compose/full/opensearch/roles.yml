@@ -64,11 +64,19 @@ opportunity_indexer:
         - "indices:monitor/*"
         - "indices:data/write/reindex"
 
-# Dispatcher: the refresh-aware search watermark refreshes indexes with applied work and reads placements.
+# Dispatcher: the refresh-aware search watermark refreshes indexes with applied work and reads placements; the hourly
+# snapshot job (E19-T08, ADR-016 §3.2) registers the repository and creates, lists and deletes snapshots. Restoring a
+# snapshot is an operator action with the admin user (docs/operations/backup-and-restore.md), never the dispatcher's.
 opportunity_dispatcher:
   cluster_permissions:
     - "cluster_composite_ops_ro"
     - "cluster:monitor/health"
+    - "cluster:admin/repository/get"
+    - "cluster:admin/repository/put"
+    - "cluster:admin/snapshot/create"
+    - "cluster:admin/snapshot/get"
+    - "cluster:admin/snapshot/status*"
+    - "cluster:admin/snapshot/delete"
   index_permissions:
     - index_patterns: ["opp-*"]
       allowed_actions:

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 
+using Opportunity.Core.Text;
 using Opportunity.Import.LoadFiles;
 
 namespace Opportunity.Production.Exports;
@@ -57,7 +58,7 @@ public static class LoadFileText
     public static string Neutralize(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        return value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? "'" + value : value;
+        return FormulaNeutralizer.Neutralize(value);
     }
 
     /// <summary>Encodes text for a load file (no byte-order mark: the DAT header carries it).</summary>

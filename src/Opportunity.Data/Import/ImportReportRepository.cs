@@ -102,7 +102,7 @@ internal static class ImportReportSql
         WorkspaceTransaction tx, ImportBatchRecord batch, bool final, CancellationToken cancellationToken)
     {
         var ws = tx.WorkspaceId;
-        long nativesLinked = 0, nativesMissing = 0, textLinked = 0, textMissing = 0, textTruncated = 0, familiesBuilt = 0, orphans = 0;
+        long nativesLinked = 0, nativesMissing = 0, textLinked = 0, textMissing = 0, textTruncated = 0, familiesBuilt = 0, orphans = 0, quarantined = 0;
         await using (var command = tx.Command(
             """
             SELECT count(*) FILTER (WHERE d.native_object_id IS NOT NULL),
@@ -113,7 +113,10 @@ internal static class ImportReportSql
                    count(*) FILTER (WHERE d.family_sequence = 0 AND EXISTS (
                        SELECT 1 FROM opportunity.document c
                        WHERE c.workspace_id = d.workspace_id AND c.family_id = d.document_id AND c.document_id <> d.document_id)),
-                   count(*) FILTER (WHERE d.family_status = 3)
+                   count(*) FILTER (WHERE d.family_status = 3),
+                   count(*) FILTER (WHERE EXISTS (
+                       SELECT 1 FROM opportunity.stored_object o
+                       WHERE o.workspace_id = d.workspace_id AND o.object_id = d.native_object_id AND o.state = 2))
             FROM opportunity.import_batch_member m
             JOIN opportunity.document d ON d.workspace_id = m.workspace_id AND d.document_id = m.document_id
             WHERE m.workspace_id = @ws AND m.import_batch_id = @id AND m.action IN (1, 2)
@@ -126,6 +129,7 @@ internal static class ImportReportSql
             {
                 (nativesLinked, nativesMissing, textLinked, textMissing, textTruncated, familiesBuilt, orphans) =
                     (reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5), reader.GetInt64(6));
+                quarantined = reader.GetInt64(7);
             }
         }
 
@@ -167,7 +171,18 @@ internal static class ImportReportSql
             }
         }
 
-        long withWarnings = 0, errorRows = 0;
+        long withWarnings = 0, errorRows = 0, hashMismatches = 0;
+        await using (var command = tx.Command(
+            """
+            SELECT count(DISTINCT row_no) FROM opportunity.import_row_issue
+            WHERE workspace_id = @ws AND import_batch_id = @id AND source = 1 AND severity = 2 AND code LIKE 'hash-mismatch-%'
+            """))
+        {
+            command.Parameters.AddWithValue("ws", ws);
+            command.Parameters.AddWithValue("id", batch.ImportBatchId);
+            hashMismatches = (long)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) ?? 0L);
+        }
+
         await using (var command = tx.Command(
             """
             SELECT count(*) FILTER (WHERE NOT has_error), count(*) FILTER (WHERE has_error)
@@ -200,6 +215,9 @@ internal static class ImportReportSql
             RowsWithWarnings = withWarnings,
             NativesLinked = nativesLinked,
             NativesMissing = nativesMissing,
+            NativesQuarantined = quarantined,
+            NativesHashMismatch = hashMismatches,
+            PagesQuarantined = counts.Where(c => c.Code == "opt-image-quarantined").Sum(c => c.Count),
             TextLinked = textLinked,
             TextMissing = textMissing,
             TextTruncated = textTruncated,
@@ -222,6 +240,9 @@ internal static class ImportReportSql
         static string N(long value) => value.ToString(CultureInfo.InvariantCulture);
         yield return new("NativesLinked", N(report.NativesLinked));
         yield return new("NativesMissing", N(report.NativesMissing));
+        yield return new("NativesQuarantined", N(report.NativesQuarantined));
+        yield return new("NativesHashMismatch", N(report.NativesHashMismatch));
+        yield return new("PagesQuarantined", N(report.PagesQuarantined));
         yield return new("TextLinked", N(report.TextLinked));
         yield return new("TextMissing", N(report.TextMissing));
         yield return new("PagesLinked", N(report.PagesLinked));

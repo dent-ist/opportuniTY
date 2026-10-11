@@ -5,10 +5,12 @@ using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 using Opportunity.Data.Audit;
+using Opportunity.Data.Backup;
 using Opportunity.Data.Messaging;
 using Opportunity.Data.Search;
 using Opportunity.Data.SearchWork;
 using Opportunity.Jobs;
+using Opportunity.Jobs.Backup;
 using Opportunity.Jobs.Dispatch;
 using Opportunity.Messaging;
 using Opportunity.Search;
@@ -115,6 +117,16 @@ public static class WorkerModuleCatalog
             services.AddOpenSearchIndexManagement(openSearch);
             services.AddPostgresSearchWatermarkStore();
             services.AddSearchWatermarkTicker(configuration);
+
+            // Hourly OpenSearch snapshots with their PostgreSQL catch-up anchors (E19-T08, ADR-016 §3.2); Full turns it on.
+            var snapshots = Operations.RestoreOperationsCli.BindSnapshotOptions(configuration);
+            if (snapshots.Enabled)
+            {
+                services.AddPostgresReindexStore();
+                services.AddPostgresBackupStores();
+                services.AddOpenSearchBackup(openSearch, snapshots);
+                services.AddSearchSnapshotJob(snapshots);
+            }
         }
     }
 

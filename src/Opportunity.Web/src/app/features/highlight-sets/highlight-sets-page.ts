@@ -18,7 +18,6 @@ import {
   HttpHighlightSetsApi,
   highlightColor,
 } from '../../core/highlights/highlight-sets';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import {
   Announcer,
   Button,
@@ -32,6 +31,7 @@ import {
   SelectOption,
   TextField,
 } from '../../ui';
+import { DisplayFormat } from '../../core/i18n';
 
 interface Draft {
   readonly name: string;
@@ -60,7 +60,7 @@ export class HighlightSetsPage {
   private readonly api = inject(HighlightSetsApi);
   private readonly dialogs = inject(DialogService);
   private readonly announcer = inject(Announcer);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly injector = inject(Injector);
   private readonly nameField = viewChild<TextField>('nameField');
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
@@ -129,9 +129,7 @@ export class HighlightSetsPage {
   }
 
   protected date(value: string): string {
-    return new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium' }).format(
-      new Date(value),
-    );
+    return this.fmt.date(value);
   }
 
   protected startNew(): void {

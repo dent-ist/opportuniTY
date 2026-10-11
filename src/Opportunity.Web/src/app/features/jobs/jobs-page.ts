@@ -44,6 +44,7 @@ import {
   TextField,
 } from '../../ui';
 import { LiveNote } from './live-note';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * Jobs (familiarity guide §2.3, E06-T07): the workspace's jobs, newest first, with type, status, the two phases Saved
@@ -81,6 +82,7 @@ export class JobsPage {
   private readonly api = inject(JobsApi);
   private readonly router = inject(Router);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly context = inject(WorkspaceContext);
   private readonly session = inject(SessionService);
   private readonly userId = computed(() => this.session.principal()?.userId ?? null);
@@ -131,11 +133,6 @@ export class JobsPage {
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
     return [...started, ...rows];
   });
-
-  private readonly numbers = computed(() => new Intl.NumberFormat(this.prefs.locale()));
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium', timeStyle: 'short' }),
-  );
 
   constructor() {
     effect(() => {
@@ -236,10 +233,10 @@ export class JobsPage {
   }
 
   protected num(value: number): string {
-    return this.numbers().format(value);
+    return this.fmt.number(value);
   }
 
   protected date(value: string | null): string {
-    return value ? this.dates().format(new Date(value)) : '';
+    return value ? this.fmt.dateTime(value) : '';
   }
 }

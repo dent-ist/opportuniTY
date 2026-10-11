@@ -15,7 +15,6 @@ import type {
   WorkspaceSearchPlacementState,
 } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../core/workspace/sections';
 import { Workspace, WorkspaceDirectory } from '../../core/workspace/workspace-api';
 import { ActiveWorkspace, WorkspaceContext } from '../../core/workspace/workspace-context';
@@ -48,6 +47,7 @@ import {
   WorkspaceDeletion,
 } from './workspace-deletion';
 import type { DeletionView } from '../workspace-deletions/workspace-deletions-api';
+import { DisplayFormat } from '../../core/i18n';
 
 const PLACEMENT_KIND: Record<WorkspaceSearchPlacementKind, string> = {
   shared: 'Shared index',
@@ -96,7 +96,7 @@ export class WorkspaceSettingsPage {
   private readonly deletion = inject(WorkspaceDeletion);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
 
@@ -192,18 +192,11 @@ export class WorkspaceSettingsPage {
   }
 
   protected date(value: unknown): string {
-    if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(d);
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   protected num(value: number | string): string {
-    return new Intl.NumberFormat(this.prefs.locale()).format(Number(value));
+    return this.fmt.number(Number(value));
   }
 
   /** Reads the workspace afresh (not the copy cached at navigation) so the form starts from the current version. */

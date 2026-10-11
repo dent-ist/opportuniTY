@@ -28,6 +28,7 @@ public class ObjectKeyTests
         { $"ws/{Ws:N}/tmp/{Doc:N}/a/b.bin", ObjectArea.Tmp },
         { $"sys/certificates/{Doc:N}/{Sha}", ObjectArea.Certificate },
         { "sys/audit/2026/10/segment-000001.jsonl", ObjectArea.Audit },
+        { $"sys/restores/{Doc:N}/{Sha}", ObjectArea.RestoreRecord },
     };
 
     [Theory]

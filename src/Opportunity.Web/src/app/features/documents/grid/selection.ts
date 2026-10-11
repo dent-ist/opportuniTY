@@ -1,4 +1,5 @@
 import type { SearchExpand, TotalCount } from '../../../core/api/generated/models';
+import { DEFAULT_LOCALE, formatNumber } from '../../../core/i18n';
 
 /**
  * Most documents a selection may name one by one (E16-T06). A larger set is chosen as "all results", which is
@@ -33,7 +34,7 @@ export type SelectionTarget = AllResultsSelection | DocumentSelection;
 export function selectionLabel(target: SelectionTarget | null, locale: string): string {
   if (!target) return '0';
   if (target.kind === 'all') return `all ${target.countText} results`;
-  return new Intl.NumberFormat(locale).format(target.documentIds.length);
+  return formatNumber(target.documentIds.length, locale);
 }
 
 /** Spoken after the selection changes. */
@@ -41,18 +42,19 @@ export function selectionAnnouncement(target: SelectionTarget | null, locale: st
   if (!target) return 'Selection cleared.';
   if (target.kind === 'all') return `All ${target.countText} results selected.`;
   const n = target.documentIds.length;
-  return n === 1
-    ? '1 document selected.'
-    : `${new Intl.NumberFormat(locale).format(n)} documents selected.`;
+  return n === 1 ? '1 document selected.' : `${formatNumber(n, locale)} documents selected.`;
 }
 
 /** Why a selection cannot go to Mass Actions as it is, or null when it can. */
-export function selectionProblem(target: SelectionTarget | null): string | null {
+export function selectionProblem(
+  target: SelectionTarget | null,
+  locale: string = DEFAULT_LOCALE,
+): string | null {
   if (!target || (target.kind === 'documents' && target.documentIds.length === 0)) {
     return 'Select documents first: check rows, a page, or all results.';
   }
   if (target.kind === 'documents' && target.documentIds.length > MAX_SELECTED_IDS) {
-    return `More than ${MAX_SELECTED_IDS.toLocaleString('en')} documents are checked one by one. Select all results instead, after narrowing the search with a filter if needed.`;
+    return `More than ${formatNumber(MAX_SELECTED_IDS, locale)} documents are checked one by one. Select all results instead, after narrowing the search with a filter if needed.`;
   }
   return null;
 }

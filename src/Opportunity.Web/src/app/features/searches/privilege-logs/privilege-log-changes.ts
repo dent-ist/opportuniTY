@@ -8,7 +8,6 @@ import {
   untracked,
 } from '@angular/core';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { Badge, BadgeTone, Button, ErrorState, LoadingState } from '../../../ui';
 import {
   EntryChange,
@@ -17,6 +16,7 @@ import {
   LogVersion,
   PrivilegeLogApi,
 } from './privilege-logs-api';
+import { DisplayFormat } from '../../../core/i18n';
 
 const KIND: Record<EntryChange['kind'], { tone: BadgeTone; text: string }> = {
   added: { tone: 'success', text: 'Added' },
@@ -44,7 +44,7 @@ const TREATMENT: Record<LogTreatment, string> = {
 })
 export class PrivilegeLogChanges {
   private readonly api = inject(PrivilegeLogApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   readonly version = input.required<LogVersion>();
 
@@ -94,6 +94,6 @@ export class PrivilegeLogChanges {
   }
 
   protected count(n: number): string {
-    return n.toLocaleString(this.prefs.locale());
+    return this.fmt.number(n);
   }
 }

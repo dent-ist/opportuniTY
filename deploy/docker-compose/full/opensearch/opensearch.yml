@@ -35,3 +35,11 @@ plugins.security.check_snapshot_restore_write_privileges: true
 plugins.security.restapi.roles_enabled: []
 plugins.security.system_indices.enabled: true
 plugins.security.audit.type: noop
+
+# Snapshots (E19-T08, ADR-016 §3.1): repository-s3 against the S3 gateways (data-lb alias `s3`, TLS with the installation
+# CA). The access and secret key are in the keystore (s3-snapshot-entrypoint.sh); the dispatcher registers the
+# repository `opportunity-snapshots` (bucket opportunity-search-snapshots) on its first snapshot.
+s3.client.default.endpoint: "s3:8333"
+s3.client.default.protocol: https
+s3.client.default.path_style_access: true
+s3.client.default.region: us-east-1

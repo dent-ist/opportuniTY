@@ -160,6 +160,15 @@ public static class AuditTaxonomy
 
         /// <summary>An import chunk overlaid documents (E08-T07); old and new values are in <c>document_overlay_event</c>.</summary>
         public const string Overlaid = "Overlaid";
+
+        /// <summary>
+        /// An import chunk stored natives or images that were infected or could not be screened (E08-T09, ADR-015 D16):
+        /// they are quarantined; the event lists their object and document ids and the signatures or reasons.
+        /// </summary>
+        public const string MalwareDetected = "MalwareDetected";
+
+        /// <summary>Load-file MD5/SHA-1/SHA-256 values of an import chunk's natives differ from the delivered files (D15.3).</summary>
+        public const string HashMismatch = "HashMismatch";
     }
 
     /// <summary>Load-file exports of a frozen set (E12-T01, ADR-013 §5).</summary>
@@ -412,6 +421,13 @@ public static class AuditTaxonomy
 
         /// <summary><c>audit verify</c> found a modified, missing or reordered event or a bad checkpoint (E14-T03).</summary>
         public const string ChainBroken = "ChainBroken";
+
+        /// <summary>
+        /// The installation was restored from backup (E19-T08, ADR-016 §5.3): written by the <c>restore</c> tool to the system
+        /// chain and every workspace chain before reopening, with the restore id, the recovery target, the backup label,
+        /// the snapshot used and the chain's restored head. A checkpoint with reason <c>AfterRestore</c> signs it.
+        /// </summary>
+        public const string Restored = "Restored";
     }
 
     /// <summary>Key management (E05-T09): data keys and KEKs created, rotated or rewrapped, and destroyed. Key ids only.</summary>
@@ -489,7 +505,7 @@ public static class AuditTaxonomy
         .. Expand("Audit", "Queried", "Exported", "CheckpointCreated", "Verified", "Purged", "ExportDownloaded", "DefensibilityReportGenerated"),
         .. Expand("Job", "Created", "Cancelled", "Failed", "CompletedWithErrors", "Replayed"),
         .. Expand("Integrity", "HashMismatch", "ChainBroken", "FenceViolation", "EnvelopeMismatch", "BatesConflict",
-            "MessageRejected"),
+            "MessageRejected", "Restored"),
     ];
 
     /// <summary>The category that may carry <see cref="AuditEvent.RestrictedDetails"/> (Q-16 search text).</summary>

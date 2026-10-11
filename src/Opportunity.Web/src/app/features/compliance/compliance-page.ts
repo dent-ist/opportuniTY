@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../core/workspace/sections';
 import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import {
@@ -23,6 +22,7 @@ import {
   WallProof,
   dayBoundary,
 } from './compliance-api';
+import { DisplayFormat } from '../../core/i18n';
 
 const RESULTS: Record<string, { label: string; tone: BadgeTone; icon: IconName }> = {
   Denied: { label: 'Denied', tone: 'success', icon: 'lock' },
@@ -57,7 +57,7 @@ function localDay(date: Date): string {
 export class CompliancePage {
   private readonly api = inject(ComplianceApi);
   private readonly context = inject(WorkspaceContext);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly canExportAudit = this.context.can(PERMISSIONS.auditExport);
 
@@ -149,14 +149,7 @@ export class CompliancePage {
   }
 
   protected date(value: unknown): string {
-    if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat(this.prefs.locale(), {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(d);
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   protected short(id: string): string {

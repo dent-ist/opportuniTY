@@ -74,11 +74,17 @@ public sealed record ImportReportRows(long? Read, long Imported, long Overlaid, 
 /// <param name="Linked">Documents with the file stored.</param>
 /// <param name="Missing">Documents flagged Native Missing / Text Missing (blank link or file not in the volume).</param>
 /// <param name="Truncated">Text only: documents whose text exceeds the indexed-text cap.</param>
-public sealed record ImportReportFiles(long Linked, long Missing, long Truncated = 0);
+/// <param name="Quarantined">
+/// Natives only (E08-T09): documents whose native is quarantined (infected, or not screenable: encrypted, oversize,
+/// archive limits). Never rendered; downloading needs <c>Document.ViewQuarantined</c>.
+/// </param>
+/// <param name="HashMismatch">Natives only: documents whose load-file MD5/SHA-1/SHA-256 differs from the delivered file.</param>
+public sealed record ImportReportFiles(long Linked, long Missing, long Truncated = 0, long Quarantined = 0, long HashMismatch = 0);
 
 /// <param name="DocumentsLinked">Documents that received an imported page set.</param>
 /// <param name="DocumentsWithoutImages">Loaded DAT rows the OPT gave no images.</param>
-public sealed record ImportReportImages(long DocumentsLinked, long DocumentsWithoutImages, long PagesLinked, long PagesMissing);
+/// <param name="PagesQuarantined">Image files quarantined by the malware screening (E08-T09); their pages have no image.</param>
+public sealed record ImportReportImages(long DocumentsLinked, long DocumentsWithoutImages, long PagesLinked, long PagesMissing, long PagesQuarantined = 0);
 
 /// <param name="Built">Families of this import's documents with a parent and at least one attachment.</param>
 /// <param name="Orphans">Attachments whose parent is not in the workspace.</param>

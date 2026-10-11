@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import { toApiError } from '../../../../core/api/problem-details';
 import { JobFeed } from '../../../../core/jobs/job-feed';
-import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
 import { Announcer, Button, DialogLayout, Icon, LoadingState } from '../../../../ui';
 import {
@@ -12,6 +11,7 @@ import {
   PropagationStaleError,
   RelationshipsApi,
 } from '../../relationships/relationships-api';
+import { DisplayFormat } from '../../../../core/i18n';
 
 /** A coding field the dialog offers, with the source document's (saved) value. */
 export interface ApplyField {
@@ -66,7 +66,7 @@ export class ApplyToRelatedDialog {
   protected readonly ref = inject<DialogRef<ApplyToRelatedResult>>(DialogRef);
   private readonly api = inject(RelationshipsApi);
   private readonly announcer = inject(Announcer);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly feed = inject(JobFeed, { optional: true });
   protected readonly workspaceId = inject(WorkspaceContext).workspaceId;
 
@@ -124,7 +124,7 @@ export class ApplyToRelatedDialog {
   });
 
   protected count(n: number): string {
-    return new Intl.NumberFormat(this.prefs.locale()).format(n);
+    return this.fmt.number(n);
   }
 
   protected toggle(queryName: string, checked: boolean): void {

@@ -5,5 +5,6 @@ export interface DocumentNativeInfo {
   available: boolean;
   fileExtension: string | null;
   missing: boolean;
+  quarantined?: boolean;
   sizeBytes: number | string | null;
 }

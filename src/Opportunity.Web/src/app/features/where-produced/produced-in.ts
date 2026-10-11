@@ -9,10 +9,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
-import { WorkspaceContext } from '../../core/workspace/workspace-context';
 import { Badge, Button, Icon, LoadingState } from '../../ui';
-import { CellFormatter } from '../documents/grid/grid-format';
 import {
   HttpWhereProducedApi,
   ProducedItem,
@@ -20,6 +17,7 @@ import {
   WhereProduced,
   WhereProducedApi,
 } from './where-produced-api';
+import { DisplayFormat } from '../../core/i18n';
 
 /** A row as shown. */
 interface ProducedRow {
@@ -69,15 +67,12 @@ export class ProducedIn {
   readonly openDocument = output<{ documentId: string; controlNumber: string }>();
 
   private readonly api = inject(WhereProducedApi);
-  private readonly prefs = inject(UiPreferences);
-  private readonly context = inject(WorkspaceContext);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly state = signal<WhereProduced | 'loading' | 'unavailable'>('loading');
   private seq = 0;
 
-  private readonly format = computed(
-    () => new CellFormatter(this.prefs.locale(), this.context.workspace?.displayTimeZone || 'UTC'),
-  );
+  private readonly format = this.fmt.formatter;
 
   protected readonly exportUrl = computed(() => this.api.exportUrl(this.documentId()));
 
@@ -90,8 +85,8 @@ export class ProducedIn {
       key: `${item.productionId}/${item.documentId}`,
       production: `${item.productionName} (v${item.productionVersion})`,
       status: item.voided
-        ? `Voided ${item.voidedAt ? f.formatDate(item.voidedAt) : ''}`.trim()
-        : `Produced ${f.formatDate(item.producedAt)}`,
+        ? `Voided ${item.voidedAt ? f.dateTime(item.voidedAt) : ''}`.trim()
+        : `Produced ${f.dateTime(item.producedAt)}`,
       volumes: item.volumes.length > 0 ? item.volumes.join(', ') : 'No volume written yet',
       relation: item.relations.map((r) => RELATION_LABELS[r]).join(', '),
       bates:
@@ -110,10 +105,10 @@ export class ProducedIn {
     const state = this.state();
     if (typeof state === 'string') return '';
     const productions = new Set(state.items.map((i) => i.productionId)).size;
-    const n = new Intl.NumberFormat(this.prefs.locale());
+    const n = this.fmt.formatter();
     return productions === 1
-      ? `Produced in 1 production (${n.format(state.items.length)} Bates ranges).`
-      : `Produced in ${n.format(productions)} productions (${n.format(state.items.length)} Bates ranges).`;
+      ? `Produced in 1 production (${n.number(state.items.length)} Bates ranges).`
+      : `Produced in ${n.number(productions)} productions (${n.number(state.items.length)} Bates ranges).`;
   });
 
   protected readonly truncated = computed(() => {

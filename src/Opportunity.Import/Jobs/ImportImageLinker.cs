@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Opportunity.Application.Import;
 using Opportunity.Application.Storage;
 using Opportunity.Import.Images;
+using Opportunity.Import.Scanning;
 using Opportunity.Import.Volumes;
 
 using CoreEncryption = Opportunity.Core.Storage.EncryptionScheme;
@@ -36,13 +37,16 @@ public static class ImportImageLinker
         public const string VolumeUnavailable = "opt-volume-unavailable";
         public const string DocumentNotFound = "opt-document-not-found";
 
+        /// <summary>The image is infected or could not be screened (E08-T09): stored quarantined, its page has no image.</summary>
+        public const string ImageQuarantined = "opt-image-quarantined";
+
         /// <summary>A DAT row that an import with an OPT gives no images.</summary>
         public const string NoImages = "no-images";
     }
 
     public static async Task<(ImportImages Images, IReadOnlyList<ImportOptIssue> Issues)> LinkAsync(
         IObjectStore store, Guid workspaceId, Guid documentId, IReadOnlyList<ImportImageRow> rows, ImportVolume? volume, string? stripPrefix,
-        CancellationToken cancellationToken)
+        IngestScreening? screening, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(rows);
@@ -89,7 +93,7 @@ public static class ImportImageLinker
 
             if (!files.TryGetValue(file, out var stored))
             {
-                stored = await StoreAsync(store, workspaceId, documentId, file, cancellationToken).ConfigureAwait(false);
+                stored = await StoreAsync(store, workspaceId, documentId, file, screening, cancellationToken).ConfigureAwait(false);
                 files[file] = stored;
                 if (stored.Object is { } obj)
                 {
@@ -159,7 +163,7 @@ public static class ImportImageLinker
     }
 
     private static async Task<StoredFile> StoreAsync(
-        IObjectStore store, Guid workspaceId, Guid documentId, string path, CancellationToken cancellationToken)
+        IObjectStore store, Guid workspaceId, Guid documentId, string path, IngestScreening? screening, CancellationToken cancellationToken)
     {
         FileStream stream;
         try
@@ -198,6 +202,8 @@ public static class ImportImageLinker
                     "is not a readable TIFF, JPEG or PNG page image.");
             }
 
+            // Screened before it is stored or used as a page (ADR-015 D16.1); a quarantined image is kept, never shown.
+            var scan = screening is null ? null : await screening.ScreenAsync(stream, cancellationToken).ConfigureAwait(false);
             stream.Position = 0;
             var sha = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
             var digest = Sha256Digest.FromBytes(sha);
@@ -210,7 +216,12 @@ public static class ImportImageLinker
                 ExpectedLength = length,
             }, cancellationToken).ConfigureAwait(false);
             var scheme = put.EncryptionScheme == EncryptionScheme.Envelope ? CoreEncryption.Envelope : CoreEncryption.ProviderSse;
-            return new StoredFile(info, new ImportImageObject(key.Value, sha, length, info.ContentType, put.KeyId, scheme), null, null);
+            var stored = new ImportImageObject(key.Value, sha, length, info.ContentType, put.KeyId, scheme) { Scan = scan };
+            return scan is { Quarantines: true }
+                ? new StoredFile(null, stored, Codes.ImageQuarantined, scan.Verdict == MalwareScanVerdict.Infected
+                    ? $"is infected ({scan.Detail}); it is quarantined and the page has no image."
+                    : $"could not be screened ({scan.Detail}); it is quarantined and the page has no image.")
+                : new StoredFile(info, stored, null, null);
         }
     }
 

@@ -1,11 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ProductionResource } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { Badge, Button, EmptyState, ErrorState, Icon, LoadingState } from '../../ui';
 import { HttpProductionApi, ProductionApi } from './production-api';
 import { batesRange, stageOf } from './production-model';
+import { DisplayFormat } from '../../core/i18n';
 
 /**
  * Productions (familiarity guide §2.3, ticket review E12-T08): every production of the workspace, newest first, with
@@ -23,7 +23,7 @@ import { batesRange, stageOf } from './production-model';
 })
 export class ProductionsPage {
   private readonly api = inject(ProductionApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
 
   protected readonly items = signal<readonly ProductionResource[]>([]);
   protected readonly nextCursor = signal<string | null>(null);
@@ -33,9 +33,6 @@ export class ProductionsPage {
   protected readonly stage = stageOf;
   protected readonly range = batesRange;
   protected readonly versionOf = (p: ProductionResource) => Number(p.version);
-  private readonly dates = computed(
-    () => new Intl.DateTimeFormat(this.prefs.locale(), { dateStyle: 'medium', timeStyle: 'short' }),
-  );
 
   constructor() {
     void this.load();
@@ -70,12 +67,10 @@ export class ProductionsPage {
   }
 
   protected date(value: unknown): string {
-    return value ? this.dates().format(new Date(String(value))) : '';
+    return value ? this.fmt.dateTime(String(value)) : '';
   }
 
   protected num(value: number | string | null | undefined): string {
-    return value === null || value === undefined
-      ? '—'
-      : Number(value).toLocaleString(this.prefs.locale());
+    return value === null || value === undefined ? '—' : this.fmt.number(Number(value));
   }
 }

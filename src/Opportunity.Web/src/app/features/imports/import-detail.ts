@@ -11,7 +11,6 @@ import {
 import { RouterLink } from '@angular/router';
 import type { ImportResource, ImportRowIssueResource } from '../../core/api/generated/models';
 import { ApiError, toApiError } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { Badge, Button, ErrorState, Icon, LoadingState, Progress, StatusPill } from '../../ui';
 import { HttpImportApi, ImportApi } from './import-api';
 import {
@@ -23,6 +22,7 @@ import {
   searchableProgress,
 } from './import-model';
 import { elapsedText, issueRows, reportGroups } from './import-report';
+import { DisplayFormat } from '../../core/i18n';
 
 /** How often a running import is re-read. */
 export const IMPORT_POLL_MS = new InjectionToken<number>('IMPORT_POLL_MS', { factory: () => 1500 });
@@ -50,7 +50,7 @@ export class ImportDetail {
   readonly importId = input.required<string>();
 
   protected readonly api = inject(ImportApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly pollMs = inject(IMPORT_POLL_MS);
   private timer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
@@ -61,7 +61,7 @@ export class ImportDetail {
   protected readonly modeLabels = MODE_LABELS;
   protected readonly Number = Number;
 
-  protected readonly n = computed(() => new Intl.NumberFormat(this.prefs.locale()));
+  protected readonly n = this.fmt.formatter;
   protected readonly status = computed(() => {
     const i = this.item();
     return i ? JOB_STATUS[i.job.status] : 'queued';
@@ -103,7 +103,7 @@ export class ImportDetail {
   }
 
   protected num(value: number | string | null | undefined): string {
-    return value === null || value === undefined ? '–' : this.n().format(Number(value));
+    return value === null || value === undefined ? '–' : this.n().number(Number(value));
   }
 
   protected async load(): Promise<void> {

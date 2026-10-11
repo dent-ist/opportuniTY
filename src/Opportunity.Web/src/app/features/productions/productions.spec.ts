@@ -297,7 +297,7 @@ describe('Productions (E12-T08)', () => {
     expect(text(rows[1])).toContain('Volume 1');
     expect(text(rows[1])).toContain('ACME0000001 – ACME0000120');
     expect(text(rows[1])).toContain('Finalized');
-    expect(text(rows[1])).toContain('Oct 2, 2026');
+    expect(text(rows[1])).toContain('10/02/2026');
     expect(text(rows[1])).toContain('snap-p-1');
     expect(text(rows[0])).toContain('Bates assigned');
     await expectNoAxeViolations(root());

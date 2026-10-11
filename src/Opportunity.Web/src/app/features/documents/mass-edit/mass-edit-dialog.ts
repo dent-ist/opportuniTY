@@ -22,7 +22,6 @@ import {
 } from '../../../core/api/problem-details';
 import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { Announcer, Button, DialogLayout, Icon, LoadingState, TextField } from '../../../ui';
-import { formatTime } from '../grid/grid-format';
 import { SelectionTarget } from '../grid/selection';
 import { BulkCodingApi, BulkFieldChange, FrozenSet, isFinished } from './bulk-coding-api';
 import { MassEditField } from './mass-edit-field';
@@ -40,6 +39,7 @@ import {
   toChanges,
 } from './field-edits';
 import { MASS_EDIT_POLL_MS, MassEditJobs, TrackedJob, outcomeText } from './mass-edit-jobs';
+import { DisplayFormat } from '../../../core/i18n';
 
 export interface MassEditData {
   readonly target: SelectionTarget;
@@ -49,7 +49,6 @@ export interface MassEditData {
   readonly canWritePrivilege: boolean;
   /** Raw generation numbers are for admin and support roles only (Q-10). */
   readonly showGeneration: boolean;
-  readonly timeZone: string;
 }
 
 type Step = 'edit' | 'confirm' | 'progress';
@@ -93,6 +92,7 @@ export class MassEditDialog {
   private readonly jobs = inject(MassEditJobs);
   private readonly announcer = inject(Announcer);
   private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly pollMs = inject(MASS_EDIT_POLL_MS);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
@@ -114,7 +114,7 @@ export class MassEditDialog {
   private destroyed = false;
   protected readonly tracked = signal<TrackedJob | null>(null);
 
-  protected readonly n = computed(() => new Intl.NumberFormat(this.prefs.locale()));
+  protected readonly n = this.fmt.formatter;
 
   protected readonly changed = computed(() =>
     this.fields.filter((f) => this.edit(f.fieldId).change),
@@ -152,7 +152,7 @@ export class MassEditDialog {
       const names = security.map((f) => f.field.displayName).join(', ');
       return `Required because ${names} affects who may see documents. Mass edits cannot be undone.`;
     }
-    return `Required for more than ${this.n().format(TYPED_CONFIRMATION_THRESHOLD)} documents. Mass edits cannot be undone.`;
+    return `Required for more than ${this.n().number(TYPED_CONFIRMATION_THRESHOLD)} documents. Mass edits cannot be undone.`;
   });
   protected readonly confirmLabel = computed(
     () => `Type ${confirmationText(this.count())} to confirm`,
@@ -165,13 +165,13 @@ export class MassEditDialog {
   );
   protected readonly frozenAt = computed(() => {
     const at = this.frozen()?.frozenAt;
-    return at ? formatTime(at, this.prefs.locale(), this.data.timeZone) : '—';
+    return at ? this.fmt.time(at) : '—';
   });
   protected readonly frozenLine = computed(() => {
     const f = this.frozen();
     const generation =
       this.data.showGeneration && f?.searchGeneration
-        ? ` · generation ${this.n().format(Number(f.searchGeneration))}`
+        ? ` · generation ${this.n().number(Number(f.searchGeneration))}`
         : '';
     return `Frozen at ${this.frozenAt()}${generation}`;
   });
@@ -182,13 +182,13 @@ export class MassEditDialog {
     if (target.kind === 'documents') {
       const checked = target.documentIds.length;
       return count === checked
-        ? `All ${this.n().format(checked)} checked documents are in the frozen set.`
-        : `You checked ${this.n().format(checked)} documents; ${this.n().format(count)} of them are in the frozen set. The others are no longer available to you or cannot be coded by you.`;
+        ? `All ${this.n().number(checked)} checked documents are in the frozen set.`
+        : `You checked ${this.n().number(checked)} documents; ${this.n().number(count)} of them are in the frozen set. The others are no longer available to you or cannot be coded by you.`;
     }
     const related = this.frozen()?.related ?? 0;
     const included =
       related > 0
-        ? ` It includes ${this.n().format(related)} related ${related === 1 ? 'document' : 'documents'} (family, duplicates or email thread) added before freezing.`
+        ? ` It includes ${this.n().number(related)} related ${related === 1 ? 'document' : 'documents'} (family, duplicates or email thread) added before freezing.`
         : '';
     return `The list showed ${this.data.listCount} documents. The frozen set holds the documents that matched the search when it was frozen and that you may code, so imports, coding changes and access changes since the list loaded can make the numbers differ.${included} Only the frozen documents change.`;
   });
@@ -274,7 +274,7 @@ export class MassEditDialog {
     this.announcer.announce(
       count === 0
         ? 'Frozen: none of the selected documents can be mass edited by you.'
-        : `Frozen: ${this.n().format(count)} documents. Review and confirm.`,
+        : `Frozen: ${this.n().number(count)} documents. Review and confirm.`,
     );
   }
 

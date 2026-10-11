@@ -17,7 +17,7 @@ namespace Opportunity.Storage.S3;
 /// and <c>x-amz-checksum-sha256</c>; larger ones as multipart uploads that are aborted when the streamed hash or length
 /// does not match. Write-once is enforced with <c>If-None-Match: *</c> plus HEAD-and-compare (ADR-011 §4.1).
 /// </summary>
-public sealed class S3ObjectStore : ObjectStoreBase, IObjectUrlSigner, IDisposable
+public sealed class S3ObjectStore : ObjectStoreBase, IObjectUrlSigner, IObjectVersionRecovery, IDisposable
 {
     internal const string ShaMetadata = "sha256";
     internal const string KeyIdMetadata = "keyid";
@@ -58,6 +58,9 @@ public sealed class S3ObjectStore : ObjectStoreBase, IObjectUrlSigner, IDisposab
 
     public ObjectDeliveryMode DeliveryMode => ObjectDeliveryMode.Presign;
 
+    /// <summary><see cref="S3ObjectStoreOptions.Versioning"/>: the bootstrap step turns versioning on.</summary>
+    public bool VersioningRequested => _options.Versioning;
+
     /// <summary>Creates the installation bucket when missing (migrator bootstrap step).</summary>
     public async Task EnsureBucketAsync(CancellationToken cancellationToken = default)
     {
@@ -68,6 +71,131 @@ public sealed class S3ObjectStore : ObjectStoreBase, IObjectUrlSigner, IDisposab
         catch (AmazonS3Exception ex) when (ex.ErrorCode is "BucketAlreadyOwnedByYou" or "BucketAlreadyExists")
         {
         }
+    }
+
+    /// <summary>
+    /// ADR-016 §4.2: turns bucket versioning on and installs the lifecycle rules (noncurrent versions expire after
+    /// <see cref="S3ObjectStoreOptions.NoncurrentVersionDays"/>, <c>ws/*/tmp/</c> objects after
+    /// <see cref="S3ObjectStoreOptions.TmpExpirationDays"/>). A store without lifecycle support keeps the versions until an
+    /// operator expires them (the runbook covers it); versioning itself is required.
+    /// </summary>
+    public async Task EnableVersioningAsync(CancellationToken cancellationToken = default)
+    {
+        await _client.PutBucketVersioningAsync(new PutBucketVersioningRequest
+        {
+            BucketName = _options.Bucket,
+            VersioningConfig = new S3BucketVersioningConfig { Status = VersionStatus.Enabled },
+        }, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _client.PutLifecycleConfigurationAsync(new PutLifecycleConfigurationRequest
+            {
+                BucketName = _options.Bucket,
+                Configuration = new LifecycleConfiguration
+                {
+                    Rules =
+                    [
+                        new LifecycleRule
+                        {
+                            Id = "opportunity-noncurrent-versions",
+                            Status = LifecycleRuleStatus.Enabled,
+                            Filter = new LifecycleFilter { LifecycleFilterPredicate = new LifecyclePrefixPredicate { Prefix = _prefix.Length == 0 ? string.Empty : _prefix + "/" } },
+                            NoncurrentVersionExpiration = new LifecycleRuleNoncurrentVersionExpiration { NoncurrentDays = _options.NoncurrentVersionDays },
+                            AbortIncompleteMultipartUpload = new LifecycleRuleAbortIncompleteMultipartUpload { DaysAfterInitiation = 1 },
+                        },
+                    ],
+                },
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode is HttpStatusCode.NotImplemented or HttpStatusCode.BadRequest or HttpStatusCode.MethodNotAllowed)
+        {
+            // SeaweedFS and some other servers implement only part of the lifecycle API; see docs/operations/backup-and-restore.md.
+        }
+    }
+
+    public async Task<bool> IsVersioningEnabledAsync(CancellationToken cancellationToken = default)
+    {
+        var versioning = await _client.GetBucketVersioningAsync(
+            new GetBucketVersioningRequest { BucketName = _options.Bucket }, cancellationToken).ConfigureAwait(false);
+        return versioning.VersioningConfig?.Status == VersionStatus.Enabled;
+    }
+
+    public async Task<IReadOnlyList<ObjectVersion>> ListVersionsAsync(ObjectKey key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        var physical = PhysicalKey(key);
+        var request = new ListVersionsRequest { BucketName = _options.Bucket, Prefix = physical };
+        var versions = new List<ObjectVersion>();
+        ListVersionsResponse page;
+        do
+        {
+            page = await _client.ListVersionsAsync(request, cancellationToken).ConfigureAwait(false);
+            foreach (var v in page.Versions ?? [])
+            {
+                if (v.Key == physical)
+                {
+                    versions.Add(new ObjectVersion(
+                        v.VersionId ?? "null", v.IsLatest == true, v.IsDeleteMarker == true, v.Size ?? 0,
+                        v.LastModified is { } modified ? new DateTimeOffset(modified.ToUniversalTime(), TimeSpan.Zero) : null));
+                }
+            }
+
+            request.KeyMarker = page.NextKeyMarker;
+            request.VersionIdMarker = page.NextVersionIdMarker;
+        }
+        while (page.IsTruncated == true);
+
+        return [.. versions.OrderByDescending(v => v.IsLatest).ThenByDescending(v => v.LastModified)];
+    }
+
+    public async Task<ObjectRecoveryOutcome> RecoverAsync(ObjectKey key, string? versionId = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        var physical = PhysicalKey(key);
+        if (versionId is null && await HeadAsync(key, cancellationToken).ConfigureAwait(false) is not null)
+        {
+            return ObjectRecoveryOutcome.AlreadyPresent;
+        }
+
+        var versions = await ListVersionsAsync(key, cancellationToken).ConfigureAwait(false);
+        if (versionId is null)
+        {
+            // Deleted: remove every delete marker newer than the newest real version, so that version is current again.
+            var newestData = versions.Where(v => !v.IsDeleteMarker).MaxBy(v => v.LastModified);
+            if (newestData is null)
+            {
+                return ObjectRecoveryOutcome.NoVersion;
+            }
+
+            foreach (var marker in versions.Where(v => v.IsDeleteMarker && (v.LastModified >= newestData.LastModified || v.IsLatest)))
+            {
+                await _client.DeleteObjectAsync(new DeleteObjectRequest { BucketName = _options.Bucket, Key = physical, VersionId = marker.VersionId },
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            if (await HeadAsync(key, cancellationToken).ConfigureAwait(false) is not null)
+            {
+                return ObjectRecoveryOutcome.Recovered;
+            }
+
+            versionId = newestData.VersionId;
+        }
+
+        if (versions.All(v => v.VersionId != versionId || v.IsDeleteMarker))
+        {
+            return ObjectRecoveryOutcome.NoVersion;
+        }
+
+        await _client.CopyObjectAsync(new CopyObjectRequest
+        {
+            SourceBucket = _options.Bucket,
+            SourceKey = physical,
+            SourceVersionId = versionId,
+            DestinationBucket = _options.Bucket,
+            DestinationKey = physical,
+            MetadataDirective = S3MetadataDirective.COPY,
+        }, cancellationToken).ConfigureAwait(false);
+        return ObjectRecoveryOutcome.Recovered;
     }
 
     public override async Task<PutObjectResult> PutAsync(ObjectKey key, Stream content, PutObjectOptions? options = null, CancellationToken cancellationToken = default)

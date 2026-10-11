@@ -12,6 +12,7 @@ using Opportunity.Application.Storage;
 using Opportunity.Contracts.Api;
 using Opportunity.Contracts.Import;
 using Opportunity.Core.Security;
+using Opportunity.Core.Text;
 using Opportunity.Import.Jobs;
 using Opportunity.Security.Authorization;
 using Opportunity.Security.Http;
@@ -113,6 +114,8 @@ public sealed class ImportContentEndpoints : IApiEndpointModule
         csv.Line("Rows", "With warnings", N(report.Rows.WithWarnings));
         csv.Line("Natives", "Linked", N(report.Natives.Linked));
         csv.Line("Natives", "Missing", N(report.Natives.Missing));
+        csv.Line("Natives", "Quarantined", N(report.Natives.Quarantined));
+        csv.Line("Natives", "Hash mismatch", N(report.Natives.HashMismatch));
         csv.Line("Text", "Linked", N(report.Text.Linked));
         csv.Line("Text", "Missing", N(report.Text.Missing));
         csv.Line("Text", "Truncated", N(report.Text.Truncated));
@@ -120,6 +123,7 @@ public sealed class ImportContentEndpoints : IApiEndpointModule
         csv.Line("Images", "Documents without images", N(report.Images.DocumentsWithoutImages));
         csv.Line("Images", "Pages linked", N(report.Images.PagesLinked));
         csv.Line("Images", "Pages missing", N(report.Images.PagesMissing));
+        csv.Line("Images", "Images quarantined", N(report.Images.PagesQuarantined));
         csv.Line("Families", "Built", N(report.Families.Built));
         csv.Line("Families", "Orphans", N(report.Families.Orphans));
         csv.Line("Fields", "Fields created", report.FieldsCreated.ToString(CultureInfo.InvariantCulture));
@@ -317,10 +321,7 @@ public sealed class ImportContentEndpoints : IApiEndpointModule
                 }
 
                 var v = values[i];
-                if (v.Length > 0 && v[0] is '=' or '+' or '@' or '\t' or '\r' || (v.Length > 1 && v[0] == '-' && !char.IsDigit(v[1])))
-                {
-                    v = "'" + v;
-                }
+                v = FormulaNeutralizer.Neutralize(v);
 
                 if (v.AsSpan().IndexOfAny(",\"\r\n") >= 0)
                 {

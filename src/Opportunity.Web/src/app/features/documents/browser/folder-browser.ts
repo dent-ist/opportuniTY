@@ -1,7 +1,6 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  LOCALE_ID,
   computed,
   inject,
   input,
@@ -12,6 +11,7 @@ import {
 import { ApiError, toApiError } from '../../../core/api/problem-details';
 import { Icon, Tree, TreeNode } from '../../../ui';
 import { DocumentFolder, FolderApi } from './folder-api';
+import { DisplayFormat } from '../../../core/i18n';
 
 /** Tree ids of the helper items under a folder (or the top level, ``). */
 const MORE_PREFIX = 'more:';
@@ -74,7 +74,7 @@ export class FolderBrowser {
   readonly selectFolder = output<DocumentFolder>();
 
   private readonly api = inject(FolderApi);
-  private readonly number = new Intl.NumberFormat(inject(LOCALE_ID));
+  private readonly fmt = inject(DisplayFormat);
   private readonly tree = viewChild(Tree);
 
   /** Loaded levels by parent folder id (`` for the top level). */
@@ -151,7 +151,7 @@ export class FolderBrowser {
 
   private node(f: DocumentFolder): TreeNode {
     const count = this.includeSubfolders() ? f.totalCount : f.documentCount;
-    const detail = `${this.approximate() ? '≈' : ''}${this.number.format(count)} ${count === 1 ? 'document' : 'documents'}`;
+    const detail = `${this.approximate() ? '≈' : ''}${this.fmt.number(count)} ${count === 1 ? 'document' : 'documents'}`;
     return {
       id: f.folderId,
       label: f.name,

@@ -187,7 +187,7 @@ describe('Searches › Saved Searches and the Documents pane (E16-T11)', () => {
     await settle();
     expect(api.urls()).toContain(`${WS}/snapshots?limit=100`);
     expect(text()).toContain(
-      'Frozen set (snapshot): 42 documents, frozen Oct 3, 2026, 10:42 AM by you',
+      'Frozen set (snapshot): 42 documents, frozen 10/03/2026, 10:42 AM UTC by you',
     );
     expect(text()).toContain('keeps the documents it had when it was frozen');
     await expectNoAxeViolations(root());

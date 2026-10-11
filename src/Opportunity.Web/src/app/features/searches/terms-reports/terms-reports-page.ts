@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { ApiError, toApiError } from '../../../core/api/problem-details';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { SessionService } from '../../../core/session/session';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
@@ -24,6 +23,7 @@ import {
   SearchTermReportSummary,
 } from './search-term-report-api';
 import { canDelete, reportErrorText, scopeLabel, statusPill } from './search-term-report-model';
+import { DisplayFormat } from '../../../core/i18n';
 
 /**
  * Searches › Search Terms Reports (#180, familiarity guide §2.3): the reports of the workspace the caller may see,
@@ -51,7 +51,7 @@ import { canDelete, reportErrorText, scopeLabel, statusPill } from './search-ter
 export class TermsReportsPage {
   private readonly api = inject(SearchTermReportApi);
   private readonly context = inject(WorkspaceContext);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
@@ -67,19 +67,16 @@ export class TermsReportsPage {
   protected readonly loadingMore = signal(false);
   protected readonly error = signal<ApiError | null>(null);
 
-  private readonly timeZone = this.context.workspace.displayTimeZone || 'UTC';
-
   protected readonly rows = computed(() => {
-    const locale = this.prefs.locale();
-    const n = new Intl.NumberFormat(locale);
+    const n = this.fmt.formatter();
     const caller = { userId: this.me()?.userId ?? null, can: (p: string) => this.context.can(p) };
     return this.items().map((r) => ({
       r,
       scope: scopeLabel(r.scope),
-      terms: n.format(r.termCount),
+      terms: n.number(r.termCount),
       by: r.createdBy.userId === caller.userId ? 'You' : r.createdBy.displayName,
-      created: formatDate(r.createdAt, locale, this.timeZone),
-      completed: r.completedAt ? formatDate(r.completedAt, locale, this.timeZone) : '—',
+      created: formatDate(r.createdAt, this.fmt.formatter()),
+      completed: r.completedAt ? formatDate(r.completedAt, this.fmt.formatter()) : '—',
       pill: statusPill(r.status),
       canDelete: canDelete(r, caller),
     }));

@@ -16,7 +16,6 @@ import {
   describeError,
   toApiError,
 } from '../../core/api/problem-details';
-import { UiPreferences } from '../../core/preferences/ui-preferences';
 import { SessionService } from '../../core/session/session';
 import {
   Badge,
@@ -35,6 +34,7 @@ import {
   OPEN_DELETION_STATUSES,
   WorkspaceDeletionsApi,
 } from './workspace-deletions-api';
+import { DisplayFormat } from '../../core/i18n';
 
 /** How often an open deletion is read again (approval, start and progress happen elsewhere). */
 export const DELETION_REFRESH_MS = 5000;
@@ -69,7 +69,7 @@ export class WorkspaceDeletionPage {
   readonly deletionId = input.required<string>();
 
   private readonly api = inject(WorkspaceDeletionsApi);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly session = inject(SessionService);
   private readonly dialogs = inject(DialogService);
   private readonly toasts = inject(ToastService);
@@ -91,7 +91,7 @@ export class WorkspaceDeletionPage {
     const d = this.deletion();
     if (!d) return [];
     const recorded = new Map(d.steps.map((s) => [s.step, s]));
-    const format = (value: number) => new Intl.NumberFormat(this.prefs.locale()).format(value);
+    const format = (value: number) => this.fmt.number(value);
     return DELETION_STEPS.map(({ step, label }, i) => {
       const record = recorded.get(step);
       const done = !!record?.finishedAt;
@@ -184,13 +184,7 @@ export class WorkspaceDeletionPage {
 
   protected date(value: unknown, withTime = true): string {
     if (!value) return '';
-    const d = new Date(String(value));
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : new Intl.DateTimeFormat(
-          this.prefs.locale(),
-          withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' },
-        ).format(d);
+    return withTime ? this.fmt.dateTime(String(value)) : this.fmt.date(String(value));
   }
 
   private async refresh(): Promise<void> {

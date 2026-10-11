@@ -13,19 +13,18 @@ import {
 } from '@angular/core';
 import type { FieldResource, SearchHit } from '../../../../core/api/generated/models';
 import { PreferenceStorage } from '../../../../core/preferences/preference-storage';
-import { UiPreferences } from '../../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../../core/workspace/workspace-context';
 import { Button, Icon, LoadingState, MENU } from '../../../../ui';
 import { ProducedIn } from '../../../where-produced/produced-in';
 import type { RelationshipPivot } from '../../grid/review-grid';
-import { CellFormatter } from '../../grid/grid-format';
 import {
   DocumentRelationships,
   MAX_RELATIONSHIP_FIELDS,
   RelatedDocument,
   RelationshipsApi,
 } from '../../relationships/relationships-api';
+import { DisplayFormat } from '../../../../core/i18n';
 
 export type RelatedTab = 'family' | 'duplicates' | 'thread' | 'produced';
 
@@ -91,7 +90,7 @@ export class RelatedItems {
 
   private readonly api = inject(RelationshipsApi);
   private readonly storage = inject(PreferenceStorage);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly context = inject(WorkspaceContext);
   private readonly columnsKey = `related.columns.${this.context.workspaceId}`;
   protected readonly uid = inject(_IdGenerator).getId('opp-related-');
@@ -124,18 +123,16 @@ export class RelatedItems {
       .slice(0, DEFAULT_COLUMNS);
   });
 
-  private readonly format = computed(
-    () => new CellFormatter(this.prefs.locale(), this.context.workspace.displayTimeZone || 'UTC'),
-  );
+  private readonly format = this.fmt.formatter;
 
   protected readonly tabs = computed<TabView[]>(() => {
     const state = this.state();
     if (typeof state === 'string') return [];
-    const n = new Intl.NumberFormat(this.prefs.locale());
+    const n = this.fmt.formatter();
     const { family, duplicates, thread } = state;
     const truncated =
       thread.total > thread.members.length
-        ? `Showing the first ${n.format(thread.members.length)} of ${n.format(thread.total)} email thread members.`
+        ? `Showing the first ${n.number(thread.members.length)} of ${n.number(thread.total)} email thread members.`
         : null;
     return [
       {
@@ -307,7 +304,7 @@ export class RelatedItems {
     return {
       member,
       relation: member.isSelf ? `${relation} (this document)` : relation,
-      date: member.documentDate ? f.formatDate(member.documentDate) : '',
+      date: member.documentDate ? f.dateTime(member.documentDate) : '',
       coding: this.columns().map((c) => codingText(c, member.coding[c.queryName] ?? [])),
     };
   }

@@ -13,6 +13,7 @@ import {
   savedSearchErrorText,
   sharingLabel,
 } from './saved-search-model';
+import { formatterFor } from '../../core/i18n';
 
 const folder = (folderId: string, name: string, parentFolderId: string | null = null) =>
   ({ folderId, name, parentFolderId, version: 1 }) satisfies SavedSearchFolder;
@@ -104,14 +105,15 @@ describe('saved search rules (E16-T11)', () => {
       lastRunFreshness: { state: 'catchingUp', asOf: '2026-10-03T10:42:00Z' },
     });
     expect(hitCountLabel(catchingUp, 'en-US')).toBe('≈ 1,240');
-    expect(freshnessLabel(catchingUp, 'en-US', 'UTC')).toBe('Updating as of 10:42 AM');
+    expect(freshnessLabel(catchingUp, formatterFor('en-US', 'UTC'))).toBe(
+      'Updating as of 10:42 AM UTC',
+    );
     expect(
       freshnessLabel(
         summary({ lastRunFreshness: { state: 'current', asOf: '2026-10-03T10:42:00Z' } }),
-        'en-GB',
-        'UTC',
+        formatterFor('en-GB', 'UTC'),
       ),
-    ).toBe('Current as of 10:42');
+    ).toBe('Current as of 10:42 UTC');
   });
 
   it('labels a frozen set with its count, time and who froze it', () => {
@@ -124,11 +126,12 @@ describe('saved search rules (E16-T11)', () => {
       frozenAt: '2026-10-03T10:42:00Z',
       createdBy: 'u-1',
     };
-    expect(frozenLabel(set, 'u-1', 'en-US', 'UTC')).toBe(
-      'Frozen set (snapshot): 1,240 documents, frozen Oct 3, 2026, 10:42 AM by you',
+    const f = formatterFor('en-US', 'UTC');
+    expect(frozenLabel(set, 'u-1', f)).toBe(
+      'Frozen set (snapshot): 1,240 documents, frozen 10/03/2026, 10:42 AM UTC by you',
     );
-    expect(frozenLabel({ ...set, documentCount: null }, 'u-2', 'en-US', 'UTC')).toContain(
-      'documents still being frozen, frozen Oct 3, 2026, 10:42 AM by another user',
+    expect(frozenLabel({ ...set, documentCount: null }, 'u-2', f)).toContain(
+      'documents still being frozen, frozen 10/03/2026, 10:42 AM UTC by another user',
     );
   });
 

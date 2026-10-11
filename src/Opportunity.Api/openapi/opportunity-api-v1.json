@@ -23375,6 +23375,10 @@
               "null",
               "string"
             ]
+          },
+          "quarantined": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -26083,6 +26087,24 @@
             ],
             "format": "int64",
             "default": 0
+          },
+          "quarantined": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64",
+            "default": 0
+          },
+          "hashMismatch": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64",
+            "default": 0
           }
         }
       },
@@ -26126,6 +26148,15 @@
               "string"
             ],
             "format": "int64"
+          },
+          "pagesQuarantined": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64",
+            "default": 0
           }
         }
       },

@@ -1,9 +1,9 @@
 import { _IdGenerator } from '@angular/cdk/a11y';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { Icon, JobStatus, StatusPill } from '../../../ui';
 import { BulkJob, isFinished, processed } from './bulk-coding-api';
 import { TrackedJob } from './mass-edit-jobs';
+import { DisplayFormat } from '../../../core/i18n';
 
 const STATUS: Record<BulkJob['status'], JobStatus> = {
   created: 'queued',
@@ -33,9 +33,9 @@ export class MassEditProgress {
   /** Documents in the frozen set. */
   readonly count = input.required<number>();
 
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   protected readonly ids = inject(_IdGenerator).getId('opp-mass-edit-progress-');
-  protected readonly n = computed(() => new Intl.NumberFormat(this.prefs.locale()));
+  protected readonly n = this.fmt.formatter;
 
   protected readonly job = computed(() => this.tracked().job());
   protected readonly jobError = computed(() => this.tracked().error());

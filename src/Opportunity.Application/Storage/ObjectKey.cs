@@ -19,6 +19,9 @@ public enum ObjectArea
     Tmp,
     Certificate,
     Audit,
+
+    /// <summary>A signed restore record (E19-T08, ADR-016 §5.3): <c>sys/restores/{restoreId}/{sha256}</c>.</summary>
+    RestoreRecord,
 }
 
 /// <summary>
@@ -121,6 +124,8 @@ public sealed class ObjectKey : IEquatable<ObjectKey>
         "certificates" when s.Length == 4 && ObjectKeyGrammar.IsId(s[2]) && ObjectKeyGrammar.IsSha256(s[3]) =>
             new(value, ObjectArea.Certificate, null, null, Sha256Digest.Parse(s[3])),
         "audit" => new(value, ObjectArea.Audit, null, null, null),
+        "restores" when s.Length == 4 && ObjectKeyGrammar.IsId(s[2]) && ObjectKeyGrammar.IsSha256(s[3]) =>
+            new(value, ObjectArea.RestoreRecord, null, null, Sha256Digest.Parse(s[3])),
         _ => null,
     };
 

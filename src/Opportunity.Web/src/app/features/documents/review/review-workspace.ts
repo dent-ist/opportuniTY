@@ -17,7 +17,6 @@ import {
 import { firstValueFrom } from 'rxjs';
 import type { FieldResource, SearchHit } from '../../../core/api/generated/models';
 import { CommandRegionDirective, CommandRegistry } from '../../../core/commands';
-import { UiPreferences } from '../../../core/preferences/ui-preferences';
 import { PERMISSIONS } from '../../../core/workspace/sections';
 import { WorkspaceContext } from '../../../core/workspace/workspace-context';
 import { Announcer, Button, DialogService, Icon, IconButton, SplitPane } from '../../../ui';
@@ -31,6 +30,7 @@ import { duplicateGroupOf } from '../grid/family-groups';
 import type { RelationshipPivot } from '../grid/review-grid';
 import { DocumentViewer, ViewerDocument } from './viewer/document-viewer';
 import { UnsavedChangesDialog, UnsavedChoice } from './unsaved-changes-dialog';
+import { DisplayFormat } from '../../../core/i18n';
 
 /** A message under the review bar; `refreshed` and the end notices clear on the next move. */
 interface Notice {
@@ -93,7 +93,7 @@ export class ReviewWorkspace {
   private readonly content = inject(DocumentContentApi);
   private readonly announcer = inject(Announcer);
   private readonly dialogs = inject(DialogService);
-  private readonly prefs = inject(UiPreferences);
+  private readonly fmt = inject(DisplayFormat);
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
   private readonly access = inject(DocumentAccess);
@@ -131,11 +131,11 @@ export class ReviewWorkspace {
   });
   protected readonly positionText = computed(() => {
     const cursor = this.cursor();
-    const n = new Intl.NumberFormat(this.prefs.locale());
+    const n = this.fmt.formatter();
     const position = cursor.position();
     const total = cursor.total();
     if (cursor.left()) return `Not in the refreshed results · ${total}`;
-    return position === null ? `Doc — of ${total}` : `Doc ${n.format(position)} of ${total}`;
+    return position === null ? `Doc — of ${total}` : `Doc ${n.number(position)} of ${total}`;
   });
   /** Share of the result reviewed up to here, for the progress line under the bar (decorative). */
   protected readonly progress = computed(() => {

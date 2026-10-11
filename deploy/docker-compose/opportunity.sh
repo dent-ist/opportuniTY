@@ -22,6 +22,17 @@
 #                 Lite: import synthetic demo documents into the demo workspace through the real import API, signed in
 #                 as admin.dev (default: seed/demo-volume, 10 readable documents with extracted text, copied into the
 #                 import share; a file.dat is imported as metadata only; run after `up` and `seed`)
+#     backup status|full|diff|incr|verify|info
+#                 Full: PostgreSQL backups with pgBackRest (E19-T08, docs/operations/backup-and-restore.md): the scheduler's
+#                 last outcomes, a backup now, `pgbackrest verify` plus a restore test, or `pgbackrest info`
+#     restore-pg <timestamp|latest> [--set <label>]
+#                 Full: point-in-time restore of PostgreSQL (R3 of the restore procedure): stops every writer and the
+#                 database, restores in place with pgBackRest, starts PostgreSQL to replay and promote. Continue with
+#                 `restore reconcile/record/verify` in the worker image (the runbook lists every step)
+#     ops backup|restore <command> [options]
+#                 Full: the backup/restore CLI (`backup search-snapshot`, `restore plan|search-snapshot|reconcile|record|
+#                 verify|object`) in a one-off worker container with what it needs: the database, the audit sealer login,
+#                 the OpenSearch admin user, the snapshot repository and object storage
 #     compose ... any other docker compose command with the right files, e.g. `compose config`
 set -euo pipefail
 
@@ -78,7 +89,8 @@ compose() {
       [[ -n "$tag" ]] || die "--images ghcr needs OPPORTUNITY_IMAGE_TAG (sha-<commit> or X.Y.Z), in the environment or $env_file"
       [[ "$tag" != latest && "$tag" != edge ]] || die "OPPORTUNITY_IMAGE_TAG=$tag is mutable; use sha-<commit> or X.Y.Z"
       if [[ "$profile" == full ]]; then
-        # compose.full.yaml has no build sections; point it at the published images.
+        # The application images of compose.full.yaml have no build sections (only the pgBackRest and repository-s3
+        # data-tier images are built locally from pinned upstream digests); point them at the published images.
         export OPPORTUNITY_IMAGE_PREFIX="${OPPORTUNITY_IMAGE_PREFIX:-$(env_value OPPORTUNITY_IMAGE_PREFIX | grep . || echo ghcr.io/plogramer/)}"
         export OPPORTUNITY_IMAGE_TAG="$tag"
       else
@@ -253,6 +265,10 @@ full_init() {
   # OpenSearch internal users (full/opensearch/roles.yml), S3 identities (full/seaweedfs/run.sh), application keys.
   for name in admin api indexer dispatcher migrator monitor; do full_secret "opensearch-$name-password"; done
   for name in migrator api import index render export production; do full_secret "s3-$name-secret-key"; done
+  # Backups (E19-T08): the pgBackRest repository passphrase and the S3 identities of the two backup buckets. Keep a copy
+  # of pgbackrest-cipher-pass outside this host: without it the PostgreSQL backups cannot be read.
+  full_secret pgbackrest-cipher-pass 44
+  for name in pgbackrest snapshots; do full_secret "s3-$name-secret-key"; done
   full_secret envelope-hmac-k1 44
   full_secret audit-session-hash-key 44
   full_secret grafana-admin-password
@@ -415,6 +431,14 @@ full_up() {
     'psql -q -v ON_ERROR_STOP=1 -d postgres -v login=opportunity_sealer -v password="$(cat /run/secrets/db-sealer-password)" -f -' \
     <"$here/postgres/audit-sealer-login.sql"
   compose exec -T rabbitmq-1 sh /etc/opportunity/rabbitmq-users.sh
+  # The two backup buckets (E19-T08): pgBackRest's repository and the OpenSearch snapshot repository (idempotent).
+  compose up -d "${wait[@]}" seaweedfs-filer
+  local bucket
+  for bucket in opportunity-pgbackrest opportunity-search-snapshots; do
+    printf 's3.bucket.create -name %s\n' "$bucket" \
+      | compose exec -T seaweedfs-filer weed shell -master=seaweedfs-master-1:9333,seaweedfs-master-2:9333,seaweedfs-master-3:9333 \
+        >/dev/null 2>&1 || true
+  done
   compose up -d --no-build "${wait[@]}" "$@"
   compose ps
   echo
@@ -456,6 +480,64 @@ cmd_verify() {
   fi
   ((failed == 0)) || die "verify failed"
   echo "ok"
+}
+
+# PostgreSQL backups (E19-T08): pgBackRest in the pgbackrest scheduler container (the stanza is created by the scheduler).
+cmd_backup() {
+  [[ "$profile" == full ]] || die "backup is for the Full profile (Lite: pg_dump, see docs/operations/backup-and-restore.md)"
+  local action="${1:-status}"
+  case "$action" in
+    status)
+      compose exec -T pgbackrest sh -c 'for f in /var/spool/pgbackrest/scheduler/*; do [ -e "$f" ] || continue; printf "%s\t%s\n" "$(basename "$f")" "$(date -u -d "@$(cat "$f")" +%Y-%m-%dT%H:%M:%SZ)"; done'
+      compose exec -T pgbackrest pgbackrest --stanza=opportunity info
+      ;;
+    info) compose exec -T pgbackrest pgbackrest --stanza=opportunity info --output="${2:-text}" ;;
+    full | diff | incr) compose exec -T pgbackrest pgbackrest --stanza=opportunity --type="$action" backup ;;
+    verify)
+      compose exec -T pgbackrest pgbackrest --stanza=opportunity verify
+      compose exec -T pgbackrest bash -c 'source /etc/opportunity/pgbackrest/scheduler.sh --functions-only 2>/dev/null; restore_test'
+      ;;
+    *) die "backup status|full|diff|incr|verify|info" ;;
+  esac
+}
+
+# The backup/restore CLI (E19-T08) in a one-off container of the import worker (its database login, object storage and
+# key store) plus the audit sealer login, the OpenSearch admin user (snapshot restore) and the snapshot repository.
+cmd_ops() {
+  [[ "$profile" == full ]] || die "ops is for the Full profile (Lite: ./opportunity.sh compose run --rm --no-deps worker restore ...)"
+  [[ "${1:-}" == backup || "${1:-}" == restore ]] || die "ops backup|restore <command> [options]"
+  local db name mounts=()
+  db="Host=postgres;Database=$(env_value OPPORTUNITY_DB | grep . || echo opportunity);SSL Mode=VerifyFull;Root Certificate=/etc/opportunity/tls/ca.crt;GSS Encryption Mode=Disable"
+  for name in pgpass-sealer opensearch-admin-password; do
+    mounts+=(-v "$secrets_dir/$name:/run/ops/$name:ro")
+  done
+  compose run --rm --no-deps "${mounts[@]}" \
+    -e "ConnectionStrings__AuditSealer=$db;Username=opportunity_sealer;Passfile=/run/ops/pgpass-sealer" \
+    -e ConnectionStrings__OpenSearch=https://opensearch:9200 -e OpenSearch__Username=admin \
+    -e OpenSearch__Password_FILE=/run/ops/opensearch-admin-password \
+    -e Backup__SearchSnapshots__RepositoryType=s3 \
+    -e Backup__SearchSnapshots__RepositorySettings__bucket=opportunity-search-snapshots \
+    -e Backup__SearchSnapshots__RepositorySettings__base_path=opportunity \
+    -e Backup__SearchSnapshots__RepositorySettings__client=default \
+    worker-import "$@"
+}
+
+# R3 of the restore procedure (ADR-016 §8): no writer may survive, then an in-place point-in-time restore.
+cmd_restore_pg() {
+  [[ "$profile" == full ]] || die "restore-pg is for the Full profile"
+  local target="${1:?restore-pg <timestamp|latest> [--set <label>]}"
+  shift
+  echo "R0: stopping every writer, the broker and the database"
+  compose stop web api worker-dispatcher worker-import worker-index worker-render worker-export worker-production \
+    worker-bulkcoding pgbackrest postgres-replica postgres rabbitmq-1 rabbitmq-2 rabbitmq-3
+  echo "R3: restoring PostgreSQL to $target"
+  # A one-off container of the postgres service: its data volume read-write, pgBackRest configuration and secrets.
+  compose run --rm --no-deps --entrypoint /etc/opportunity/pgbackrest/entrypoint.sh postgres \
+    gosu postgres /bin/bash /etc/opportunity/pgbackrest/restore-to-time.sh "$target" "$@"
+  compose up -d --no-build --wait postgres
+  compose exec -T -u postgres postgres psql -d postgres -tAc "SELECT 'in recovery: ' || pg_is_in_recovery()"
+  yellow "The replica is on the old timeline: re-clone it (compose rm -sf postgres-replica; docker volume rm the replica volume; up)."
+  yellow "Next: OpenSearch (restore search-snapshot), then restore reconcile / record / verify (docs/operations/backup-and-restore.md)."
 }
 
 cmd_reset() {
@@ -555,6 +637,9 @@ case "$command" in
   ps) compose ps "$@" ;;
   seed) cmd_seed ;;
   demo-documents) cmd_demo_documents "$@" ;;
+  backup) cmd_backup "$@" ;;
+  restore-pg) cmd_restore_pg "$@" ;;
+  ops) cmd_ops "$@" ;;
   compose) compose "$@" ;;
-  *) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; [[ -z "$command" || "$command" == help ]] || exit 2 ;;
+  *) sed -n '2,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; [[ -z "$command" || "$command" == help ]] || exit 2 ;;
 esac
