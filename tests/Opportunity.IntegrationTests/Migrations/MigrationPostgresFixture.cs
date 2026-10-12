@@ -15,6 +15,9 @@ public sealed class MigrationPostgresFixture : IAsyncLifetime
     public string AdminConnectionString => _container?.GetConnectionString()
         ?? throw new InvalidOperationException("Container not started.");
 
+    /// <summary>Docker id of the container (benchmark environment capture).</summary>
+    public string ContainerId => _container?.Id ?? throw new InvalidOperationException("Container not started.");
+
     public async ValueTask InitializeAsync()
     {
         _container = new PostgreSqlBuilder($"postgres:{ReadPostgresVersion()}")

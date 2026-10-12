@@ -90,6 +90,16 @@ cd deploy/docker-compose && ./opportunity.sh up && ./opportunity.sh seed
 cd ../../src/Opportunity.Web && npm run e2e:slice   # E2E_SLICE_BASE_URL if the web is not on http://localhost:8080
 ```
 
+## Nightly scale regression (E18-T06)
+
+[`.github/workflows/scale-regression.yml`](../.github/workflows/scale-regression.yml) runs nightly (25K documents) and
+weekly (100K) on a hosted runner, and on manual dispatch; never on pull requests. It runs the opt-in
+`Category=ScaleRegression` test (import → index → search → bulk tag → export through the real worker host), writes a
+result bundle with the environment manifest, and `opportunity-bench regress` compares it with the rolling baseline of
+its series (relative gates only, Q-70), keeps a 90-day history and dashboard as artifacts and opens a
+`scale-regression` issue when a regression or correctness failure is sustained over two runs. Details, thresholds and
+local reproduction: [docs/testing/scale-regression.md](testing/scale-regression.md).
+
 ## Security and supply-chain gates
 
 These gates implement #24 (`E01-T04`) and threat-model entries T-57 and T-59 ([threat model](security/threat-model.md#tb12--supply-chain--installation)). Image scanning, signing and provenance (#25, `E01-T05`, T-58) are described under [Container images](#container-images).

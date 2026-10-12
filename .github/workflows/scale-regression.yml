@@ -1,0 +1,183 @@
+# Nightly scale-regression workflow with a performance regression guard (E18-T06, test-strategy §3 tier T2, Q-70).
+# A seeded synthetic corpus goes import → index → search → bulk tag → export through the real worker host and search
+# service (tests/Opportunity.IntegrationTests/Scale, Testcontainers PostgreSQL/OpenSearch/RabbitMQ on the hosted runner),
+# measuring stage throughput, search p50/p95/p99 per query bucket (idle and during the bulk tag), coding → searchable,
+# index lag and correctness counters into an E17-T03 result bundle with the full environment manifest (hardware,
+# versions, JVM, shard layout, seed, configuration). `opportunity-bench regress` then compares the run with the rolling
+# baseline of its series (tools/Opportunity.Benchmarks/scale-regression.yaml: relative gates only, no hardware gates),
+# appends it to the 90-day history and renders the trend dashboard. A regression sustained over two runs, or any
+# correctness failure, opens (or updates) an issue labelled `scale-regression`. Off the PR path: schedule and manual dispatch only.
+# See docs/testing/scale-regression.md.
+name: Scale regression
+
+on:
+  schedule:
+    - cron: '37 1 * * 1-6'   # nightly, 25K documents
+    - cron: '37 1 * * 0'     # weekly, 100K documents (same job, its own baseline series)
+  workflow_dispatch:
+    inputs:
+      documents:
+        description: Corpus size (empty = 25000; a new size is a new baseline series).
+        default: ''
+      seed:
+        description: Corpus seed (a new seed is a new baseline series).
+        default: '20261012'
+      rebaseline:
+        description: Start a new baseline with this run (only after an accepted, deliberate change).
+        type: boolean
+        default: false
+
+# Runs of the series must not overlap: each reads the history the previous one wrote.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  CONFIGURATION: Release
+  HISTORY_ARTIFACT: scale-regression-history
+
+jobs:
+  scale:
+    name: Scale regression (import → index → search → bulk tag → export)
+    runs-on: ubuntu-latest
+    # 25K takes ~15 min on a 4-vCPU hosted runner, 100K ~60 min; plus build.
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      actions: read     # the previous run's history artifact
+      issues: write     # the regression issue
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load versions.env
+        run: grep -E '^[A-Z_][A-Z0-9_]*=' versions.env >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('global.json', 'Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Raise vm.max_map_count for OpenSearch
+        run: sudo sysctl -w vm.max_map_count=262144
+      - name: Choose the corpus
+        id: corpus
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_DOCUMENTS: ${{ inputs.documents }}
+          INPUT_SEED: ${{ inputs.seed }}
+        run: |
+          documents=25000
+          if [ "$SCHEDULE" = "37 1 * * 0" ]; then documents=100000; fi
+          if [ -n "$INPUT_DOCUMENTS" ]; then documents="$INPUT_DOCUMENTS"; fi
+          seed="${INPUT_SEED:-20261012}"
+          case "$documents$seed" in
+            *[!0-9]*) echo "::error::documents and seed must be whole numbers"; exit 1 ;;
+          esac
+          echo "documents=$documents" >> "$GITHUB_OUTPUT"
+          echo "seed=$seed" >> "$GITHUB_OUTPUT"
+      # The integration test project references the benchmark harness, so this also builds opportunity-bench.
+      - name: Build
+        run: dotnet build tests/Opportunity.IntegrationTests -c "$CONFIGURATION" -warnaserror
+      - name: Scale run
+        env:
+          OPPORTUNITY_SCALE_REGRESSION: "1"
+          OPPORTUNITY_SCALE_DOCS: ${{ steps.corpus.outputs.documents }}
+          OPPORTUNITY_SCALE_SEED: ${{ steps.corpus.outputs.seed }}
+          OPPORTUNITY_SCALE_OUT: ${{ runner.temp }}/scale/run
+          OPPORTUNITY_SCALE_TIMEOUT: "01:30:00"
+          OPPORTUNITY_SCALE_OPERATOR: ci:scale-regression
+        run: >-
+          dotnet test --project tests/Opportunity.IntegrationTests -c "$CONFIGURATION" --no-build
+          --results-directory TestResults/scale-regression
+          --report-xunit-trx --report-xunit-trx-filename scale-regression.trx
+          --
+          --filter-trait "Category=ScaleRegression"
+      - name: Previous history (latest run on main)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/scale/previous"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$HISTORY_ARTIFACT&per_page=50" \
+            --jq '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == "main")][0].id // empty')
+          if [ -z "$id" ]; then
+            echo "No earlier history: this run starts it."
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/scale/previous.zip"
+          unzip -o -q "$RUNNER_TEMP/scale/previous.zip" -d "$RUNNER_TEMP/scale/previous"
+          wc -l "$RUNNER_TEMP/scale/previous/history.jsonl" || true
+      - name: Regression guard
+        id: guard
+        if: ${{ !cancelled() }}
+        env:
+          REBASELINE: ${{ inputs.rebaseline }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          run_dir=$(find "$RUNNER_TEMP/scale/run" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1)
+          if [ -z "$run_dir" ]; then
+            echo "::error::The scale run wrote no result bundle; see the Scale run step."
+            echo "exit=2" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          args=(regress --run "$run_dir" --out "$RUNNER_TEMP/scale/guard" --run-url "$RUN_URL")
+          if [ -f "$RUNNER_TEMP/scale/previous/history.jsonl" ]; then args+=(--history "$RUNNER_TEMP/scale/previous/history.jsonl"); fi
+          if [ "$REBASELINE" = "true" ]; then args+=(--rebaseline); fi
+          set +e
+          dotnet "tools/Opportunity.Benchmarks/bin/$CONFIGURATION/net10.0/opportunity-bench.dll" "${args[@]}"
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/scale/guard/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          echo "alert=$(jq -r '.alert' "$RUNNER_TEMP/scale/guard/verdict.json")" >> "$GITHUB_OUTPUT"
+      - name: Upload the result bundle
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scale-regression-run-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/scale/run/
+            TestResults/scale-regression/
+          if-no-files-found: warn
+          retention-days: 30
+      # History, verdict, summary and the 90-day dashboard; the next run downloads the latest one from main.
+      - name: Upload the history and dashboard
+        if: ${{ !cancelled() && contains(fromJSON('["0","1"]'), steps.guard.outputs.exit) }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.HISTORY_ARTIFACT }}
+          path: ${{ runner.temp }}/scale/guard/
+          retention-days: 90
+      - name: Open or update the regression issue
+        if: ${{ !cancelled() && steps.guard.outputs.alert == 'true' && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          summary="$RUNNER_TEMP/scale/guard/summary.md"
+          gh label create scale-regression --color B60205 --description "Nightly scale-regression guard (E18-T06)" 2>/dev/null || true
+          number=$(gh issue list --label scale-regression --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file "$summary"
+          else
+            gh issue create --title "Nightly scale regression: correctness failure or sustained regression on main" --label scale-regression --body-file "$summary"
+          fi
+      - name: Fail on an alert or a correctness failure
+        if: ${{ !cancelled() && steps.guard.outputs.exit != '0' }}
+        env:
+          GUARD_EXIT: ${{ steps.guard.outputs.exit }}
+        run: |
+          case "$GUARD_EXIT" in
+            1) echo "::error::Correctness failure or sustained regression (see the job summary and the scale-regression issue)." ;;
+            *) echo "::error::The regression guard could not judge this run (exit $GUARD_EXIT)." ;;
+          esac
+          exit 1

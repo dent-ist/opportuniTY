@@ -48,6 +48,9 @@ public class OpenSearchFixture : DependencyFixture
     /// <summary>Direct REST endpoint.</summary>
     public Uri BaseAddress => new($"http://{_container.Hostname}:{_container.GetMappedPublicPort(Port)}/");
 
+    /// <summary>Docker id of the container (benchmark environment capture).</summary>
+    public string ContainerId => _container.Id;
+
     protected override string NetworkAlias => HostAlias;
 
     protected override int ServicePort => Port;
