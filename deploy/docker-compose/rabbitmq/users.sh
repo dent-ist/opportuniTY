@@ -12,6 +12,9 @@
 # Full profile passes files instead (RABBITMQ_<NAME>_PASSWORD_FILE, Docker secrets, ADR-015 D10.1).
 set -eu
 
+# A healthy container can still be booting the rabbit application (first start on a new volume); wait for it.
+rabbitmqctl -q await_startup --timeout 120
+
 vhost="${OPPORTUNITY_RABBITMQ_VHOST:-/}"
 prefix="${OPPORTUNITY_RABBITMQ_USER_PREFIX:-opportunity-}"
 
