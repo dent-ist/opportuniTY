@@ -32,6 +32,7 @@
     <!-- Schemas are embedded so the validator never depends on the working directory. -->
     <EmbeddedResource Include="schema\*.schema.json" LogicalName="schema/%(Filename)%(Extension)" />
     <None Include="gates.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="scale-regression.yaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

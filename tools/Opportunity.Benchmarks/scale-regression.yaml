@@ -1,0 +1,44 @@
+# opportuniTY nightly scale-regression guard (E18-T06, test-strategy §3 T2). Read by `opportunity-bench regress`.
+#
+# Hosted runners (Q-70): no absolute hardware gates. Every gate here is RELATIVE: a run is compared with the median of
+# the previous accepted runs of the SAME series only. A series is one runner shape (CPU model, logical cores, memory),
+# corpus size and seed, and scenario version; anything else starts a new series and is never compared with the old one
+# (test-strategy §3). A regressed run never joins the baseline, so a lasting regression keeps alerting until it is fixed
+# or a maintainer starts a new series on purpose (workflow input `rebaseline`).
+#
+# Alert (issue + red run) when the same gated metric is worse than tolerance on `sustainedRuns` consecutive runs of a
+# series, or when any correctness counter is > 0 on `sustainedRuns` consecutive runs. A single bad night is reported
+# (summary, warning) but does not alert; a single night with a correctness counter > 0 still fails the run.
+
+schemaVersion: 1
+tolerance: 0.15            # worse than the rolling baseline by more than 15% = regressed
+baseline:
+  window: 7                # median of the last 7 accepted runs of the series
+  minimumRuns: 3           # fewer accepted runs: the series is still collecting its baseline (no verdict)
+sustainedRuns: 2           # consecutive runs ("2 nights")
+retentionDays: 90          # history and dashboard window
+
+# First matching rule wins. `*` matches within one dot-separated segment, `**` across segments.
+metrics:
+  - pattern: "search.*.*.p95"
+    direction: lower-is-better
+    gated: true
+    minAbsoluteChange: 3          # ms: smaller differences are timer and scheduler noise on a shared runner
+  - pattern: "coding-to-searchable.*.p95"
+    direction: lower-is-better
+    gated: true
+    minAbsoluteChange: 100        # ms (the probe polls; the refresh interval is 1 s)
+  - pattern: "index-lag.*.p95"
+    direction: lower-is-better
+    gated: true
+    minAbsoluteChange: 2          # s (1 s sampling)
+  - pattern: "stage.generate.*"
+    direction: higher-is-better
+    gated: false                  # the run's own corpus generator, not the product
+  - pattern: "stage.*.docs-per-second"
+    direction: higher-is-better
+    gated: true
+    minAbsoluteChange: 0
+  - pattern: "**"
+    direction: lower-is-better
+    gated: false                  # recorded for the dashboard only (p50/p99, max lag, stage seconds)

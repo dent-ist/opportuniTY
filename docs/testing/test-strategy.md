@@ -47,7 +47,7 @@ Rules that apply to all layers:
 Tier rules:
 
 - **PR budget is enforced.** If T1 goes over 15 min, the slowest suites are split or sharded. Tests are not moved to nightly to save time unless the owner and QA agree, and the move is recorded in this document.
-- **Nightly regression guard** (`E18-T06`): an alert fires on > 15% p95 regression in any query bucket against the rolling baseline *on the same runner*, or on any correctness counter > 0 for 2 consecutive nights. Runs on a different machine start a new baseline series. They are never compared directly with the previous series.
+- **Nightly regression guard** (`E18-T06`): an alert fires on > 15% p95 regression in any query bucket against the rolling baseline *on the same runner*, or on any correctness counter > 0 for 2 consecutive nights. Runs on a different machine start a new baseline series. They are never compared directly with the previous series. Implemented by `scale-regression.yml` with relative gates on hosted runners (Q-70); see [scale-regression.md](scale-regression.md).
 - **Weekly 1M slot** reuses the nightly job definition. If a 1M cache restore pushes it over 3 h, it moves to T3-style manual dispatch, and the regression guard compares only weekly runs with each other.
 
 ## 4. Performance gate method (applies to T2/T3)

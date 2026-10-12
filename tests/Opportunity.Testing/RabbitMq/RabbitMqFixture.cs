@@ -49,6 +49,12 @@ public class RabbitMqFixture : DependencyFixture
 
     public int AmqpPort => _container.GetMappedPublicPort(Port);
 
+    /// <summary>Docker id of the container (benchmark environment capture).</summary>
+    public string ContainerId => _container.Id;
+
+    /// <summary>Management API endpoint (no credentials; they are <see cref="Username"/>/<see cref="Password"/>).</summary>
+    public Uri ManagementAddress => new($"http://{_container.Hostname}:{_container.GetMappedPublicPort(ManagementPort)}/");
+
     protected override string NetworkAlias => HostAlias;
 
     protected override int ServicePort => Port;

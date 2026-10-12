@@ -7,6 +7,7 @@ using Opportunity.Benchmarks.Bundles;
 using Opportunity.Benchmarks.Capture;
 using Opportunity.Benchmarks.Gates;
 using Opportunity.Benchmarks.Infrastructure;
+using Opportunity.Benchmarks.Regression;
 using Opportunity.Benchmarks.Workloads;
 
 // ---- capture-env -------------------------------------------------------------------------------------------------
@@ -386,9 +387,65 @@ ledger.SetAction(async (parse, cancellationToken) =>
     return errors.Count > 0 ? 2 : verdict.Passed ? 0 : 1;
 });
 
+// ---- regress / dashboard (E18-T06) ----------------------------------------------------------------------------
+var regressRunOption = new Option<DirectoryInfo>("--run") { Description = "Nightly run directory (bundle.json + scale-run.json).", Required = true };
+var historyOption = new Option<FileInfo?>("--history") { Description = "history.jsonl of earlier runs (missing = first run)." };
+var policyOption = new Option<FileInfo?>("--policy") { Description = "scale-regression.yaml (default: the repository file)." };
+var regressOutOption = new Option<DirectoryInfo>("--out") { Description = "Writes verdict.json, summary.md, history.jsonl and dashboard.html here.", Required = true };
+var rebaselineOption = new Option<bool>("--rebaseline") { Description = "Start a new baseline with this run (a deliberate, accepted change)." };
+var runUrlOption = new Option<string?>("--run-url") { Description = "Link to the CI run, recorded in the history." };
+var regress = new Command("regress", "Nightly regression guard: compare a scale-regression run with the rolling baseline of its series, append it to the history and render the 90-day dashboard. Exit 1 = alert (sustained regression, or any correctness counter > 0), 0 otherwise.")
+{
+    regressRunOption, historyOption, policyOption, regressOutOption, rebaselineOption, runUrlOption,
+};
+regress.SetAction(parse =>
+{
+    RegressionPolicy policy = RegressionPolicy.Load(parse.GetValue(policyOption)?.FullName ?? RegressionPolicy.Locate() ?? throw new FileNotFoundException("scale-regression.yaml not found; pass --policy."));
+    IReadOnlyList<HistoryEntry> history = RunHistory.Load(parse.GetValue(historyOption)?.FullName);
+    HistoryEntry run = RunHistory.FromRun(parse.GetValue(regressRunOption)!.FullName, parse.GetValue(rebaselineOption), parse.GetValue(runUrlOption));
+    RegressionVerdict verdict = RegressionEvaluator.Evaluate(run, history, policy);
+    run = run with { Verdict = verdict.ToEntryVerdict() };
+    string output = parse.GetValue(regressOutOption)!.FullName;
+    Directory.CreateDirectory(output);
+    IReadOnlyList<HistoryEntry> kept = RunHistory.Save(Path.Combine(output, RunHistory.FileName), [.. history.Where(h => h.RunId != run.RunId), run], run.StartedUtc, policy.RetentionDays);
+    File.WriteAllText(Path.Combine(output, "verdict.json"), BenchJson.Serialize(verdict));
+    File.WriteAllText(Path.Combine(output, "summary.md"), RegressionReport.Markdown(verdict, run, policy));
+    File.WriteAllText(Path.Combine(output, "dashboard.html"), TrendDashboard.Render(kept, run.Series, run.StartedUtc, policy.RetentionDays));
+    Console.WriteLine($"{RegressionReport.Headline(verdict)}: {verdict.SeriesLabel}");
+    foreach (string reason in verdict.Reasons)
+    {
+        Console.WriteLine("  " + reason);
+    }
+
+    return verdict.Alert ? 1 : 0;
+});
+
+var dashboardHistoryOption = new Option<FileInfo>("--history") { Description = "history.jsonl.", Required = true };
+var seriesOption = new Option<string?>("--series") { Description = "Series key (default: the series of the latest run)." };
+var daysOption = new Option<int>("--days") { Description = "Window in days.", DefaultValueFactory = _ => 90 };
+var dashboardOutOption = new Option<FileInfo>("--out") { Description = "HTML file to write.", DefaultValueFactory = _ => new FileInfo("dashboard.html") };
+var dashboard = new Command("dashboard", "Render the trend dashboard (search p95 by bucket, coding→searchable p95, index lag, throughput) from history.jsonl.")
+{
+    dashboardHistoryOption, seriesOption, daysOption, dashboardOutOption,
+};
+dashboard.SetAction(parse =>
+{
+    IReadOnlyList<HistoryEntry> history = RunHistory.Load(parse.GetValue(dashboardHistoryOption)!.FullName);
+    if (history.Count == 0)
+    {
+        throw new InvalidOperationException("The history is empty.");
+    }
+
+    string series = parse.GetValue(seriesOption) ?? history[^1].Series;
+    FileInfo file = parse.GetValue(dashboardOutOption)!;
+    File.WriteAllText(file.FullName, TrendDashboard.Render(history, series, DateTime.UtcNow, parse.GetValue(daysOption)));
+    Console.WriteLine(file.FullName);
+    return 0;
+});
+
 var root = new RootCommand($"{HarnessInfo.Name} {HarnessInfo.Version}: opportuniTY benchmark harness (E17). Synthetic data only.")
 {
-    captureEnv, validate, publish, gatesCheck, schema, queries, stubApi, ingest, ledger,
+    captureEnv, validate, publish, gatesCheck, schema, queries, stubApi, ingest, ledger, regress, dashboard,
 };
 
 try

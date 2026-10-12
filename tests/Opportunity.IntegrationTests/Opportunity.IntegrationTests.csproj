@@ -45,6 +45,9 @@
     <ProjectReference Include="..\..\src\Opportunity.Rendering.Sandbox\Opportunity.Rendering.Sandbox.csproj" />
     <ProjectReference Include="..\..\tools\Opportunity.DataGenerator.Corpus\Opportunity.DataGenerator.Corpus.csproj" />
     <ProjectReference Include="..\..\tools\Opportunity.Correctness\Opportunity.Correctness.csproj" />
+    <!-- The nightly scale-regression run (E18-T06) writes a result bundle with the benchmark harness; aliased so its
+         Program does not clash with the API's (WebApplicationFactory<Program>). -->
+    <ProjectReference Include="..\..\tools\Opportunity.Benchmarks\Opportunity.Benchmarks.csproj" Aliases="bench" />
   </ItemGroup>
 
 </Project>
