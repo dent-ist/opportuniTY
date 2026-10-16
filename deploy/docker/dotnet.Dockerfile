@@ -5,7 +5,7 @@
 # Base images are pinned by multi-arch index digest directly in FROM, where Dependabot (docker ecosystem) finds and
 # bumps tag and digest together.
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS source
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:0d99ebf1ccad15037b5c98c9fe8979d6b8dbac23812feae2277a0b277b5c5ffa AS source
 ENV DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 # Data directories the chiseled images cannot create at runtime (no shell). Named volumes mounted there inherit the
 # app user's ownership, e.g. the Lite filesystem object store (ObjectStorage__FileSystem__RootPath) and the local key
