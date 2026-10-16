@@ -141,7 +141,7 @@ jobs:
           echo "alert=$(jq -r '.alert' "$RUNNER_TEMP/scale/guard/verdict.json")" >> "$GITHUB_OUTPUT"
       - name: Upload the result bundle
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: scale-regression-run-${{ github.run_id }}
           path: |
@@ -152,7 +152,7 @@ jobs:
       # History, verdict, summary and the 90-day dashboard; the next run downloads the latest one from main.
       - name: Upload the history and dashboard
         if: ${{ !cancelled() && contains(fromJSON('["0","1"]'), steps.guard.outputs.exit) }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.HISTORY_ARTIFACT }}
           path: ${{ runner.temp }}/scale/guard/
