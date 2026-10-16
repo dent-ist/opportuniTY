@@ -52,7 +52,7 @@ RUN --mount=type=cache,id=nuget-${TARGETARCH},target=/root/.nuget/packages,shari
 # Shared runtime settings. Chiseled images have no shell or package manager and run as the non-root "app" user
 # (UID/GID 1654). Nothing below writes to the root filesystem, so containers run with read_only: true; give them a
 # tmpfs at /tmp for the .NET diagnostics socket.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:48e51f2f6798897be7ac4e775c049ed8fe60d3190f637e1f9c9dc7513efa659c AS aspnet-base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:84def277556c2843a44fdeefbd3145d0a2e32d8f736d0c1a7b0a96b2880b0187 AS aspnet-base
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
 ARG CREATED
